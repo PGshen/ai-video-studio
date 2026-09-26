@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "additionalDirectories": ["/Users/peng/Me/Ai/ai-video"],
+    "deny": [
+      "Edit(//Users/peng/Me/Ai/ai-video/**)",
+      "Write(//Users/peng/Me/Ai/ai-video/**)"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+# 运行时数据（数据库、快照内容、工作区、验证证据）
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# 前端
+node_modules/
+dist/
+
+# 环境与本地配置
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+.DS_Store

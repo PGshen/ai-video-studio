@@ -1,0 +1,34 @@
+# 术语表
+
+代码、文档和对话中统一使用下面的术语。英文一列是代码中的命名。
+
+| 术语 | 英文 | 含义 |
+|---|---|---|
+| 想法卡片 | idea | 选题池中的一条候选选题 |
+| 选题池 | idea pool | 所有想法卡片的集合，头脑风暴的产出放在这里 |
+| 项目 | project | 从一张想法卡片创建，完整走完三个阶段，产出一个视频 |
+| 阶段 | stage | `topic`（选题打磨）、`narrative`（叙事）、`animation`（动画，含成片）；另有不属于项目的 `brainstorm` |
+| 阶段状态 | stage status | `locked`（未开放）、`active`（进行中）、`finalized`（已定稿）、`stale`（上游已变更） |
+| 工作区 | workspace | 一个项目的文件目录 `data/projects/<id>/`，产物的权威来源 |
+| 产物 | artifact | 阶段的主要输出文件：`brief.md`、`narrative.json`、`scenes/*.py`、`final.mp4` |
+| 画布 | canvas | 工作台右侧显示和编辑产物的区域 |
+| 会话 | session | 某个阶段中的一段对话，绑定一个模型配置；一个阶段可以有多个会话，同一时刻只有一个处于活动状态 |
+| 轮次 | turn | 用户发一条消息，到 agent 完成回复，这是一轮 |
+| 轮次事件 | turn event | 一轮中持久化的事件：文本块、工具调用、工具结果、快照、回退建议等 |
+| 上下文前言 | turn preamble | 每轮附在用户消息之前的现状说明：用户编辑、上游变更、被还原的越界改动等 |
+| 运行时 | runtime | agent SDK 的适配器：`claude`、`openai`，以及测试用的 `fake` |
+| 模型配置 | model profile | 模型、接入方式、价格、预算上限，决定使用哪种运行时 |
+| 业务工具 | business tool / ToolSpec | 我们自己定义的工具，只定义一次，由适配层转成两种 SDK 的格式 |
+| 原生工具 | native tool | SDK 自带的工具，例如 Claude 的 Read/Edit/Bash、OpenAI 的 ApplyPatchTool |
+| 兜底工具集 | fallback tools | 模型用不了原生工具时，由我们提供的最小文件工具和搜索工具 |
+| 快照 | snapshot | 某一时刻工作区的清单 `{路径: 内容哈希}`，内容存在 `data/blobs/` 中 |
+| 定稿 | finalize | 负责人确认某个阶段的产物，记录定稿快照，并开放下游阶段 |
+| 上游只读副本 | upstream copy | `upstream/<stage>/`，上游定稿版本的只读副本，每轮开始前刷新 |
+| 越界检查 | scope guard | 每轮结束时，还原本阶段可写范围之外的改动 |
+| 工具托管文件 | tool-managed file | 只能由工具写入的文件，例如 `narrative/timing.json` |
+| 回退建议 | upstream suggestion | 下游 agent 对上游产物提出的修改建议 |
+| 镜头 | scene | 视频的最小内容单元，有稳定的 `id`（slug），对应一个旁白段落和一个代码文件 |
+| 节拍 | beat | 镜头内的一个动画时间点，由 `cue_text` 锚定在旁白中 |
+| 预览渲染 | preview render | 低清渲染单个镜头并抽取关键帧，供视觉自检使用 |
+| 视觉自检 | visual self-check | agent 查看预览关键帧，自己发现并修复画面问题 |
+| 成片 | final render | worker 以最终画质渲染全部镜头，合成音频和字幕 |
