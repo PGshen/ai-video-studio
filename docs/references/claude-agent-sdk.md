@@ -14,3 +14,5 @@
 | ⚠️ 待验证 | 可以开启 sandbox 选项来限制 Bash 的文件系统访问；macOS 上的具体行为未知 | 推断，M1 验证（R3） |
 | ⚠️ 待验证 | 会话存储位置可以通过环境变量（例如 `CLAUDE_CONFIG_DIR`）指向数据目录 | 推断，M1 验证（R4） |
 | ⚠️ 待验证 | 中断正在运行的轮次：`ClaudeSDKClient.interrupt()`；使用 `query()` 时只能关闭流 | 推断，M1 验证 |
+| ✅ 已验证（2026-09-27） | 官方政策：除非事先获批，Anthropic 不允许第三方开发者在其产品（包括基于 Agent SDK 构建的 agent）中提供 claude.ai 登录或订阅额度，应使用 API key 认证（也支持 Bedrock / Vertex 等云厂商认证） | [Agent SDK Overview](https://docs.claude.com/en/docs/agent-sdk/overview) |
+| ⚠️ 待验证 | 技术上 SDK 通过子进程调用 Claude Code CLI；未设置 `ANTHROPIC_API_KEY` 时，CLI 会沿用本机已登录的凭据（订阅账号）。若把 `CLAUDE_CONFIG_DIR` 指向数据目录（R4），可能读不到原有登录状态 | 推断，T9 读源码、T15 实测 |

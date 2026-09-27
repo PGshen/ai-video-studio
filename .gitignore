@@ -18,3 +18,7 @@ dist/
 !.env.example
 .claude/settings.local.json
 .DS_Store
+
+# 本地工具工作区
+.claude/worktrees/
+.superpowers/
