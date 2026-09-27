@@ -101,7 +101,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿。
 - **验证命令**：`make check`
 
-### T3：快照库（待开始）
+### T3：快照库（完成）
 
 - **目标**：实现设计 §3.3 的全部操作。
 - **涉及文件**：`backend/src/studio/workspace/{__init__,layout,blobs,snapshot}.py`、`backend/tests/workspace/test_snapshot.py`。
@@ -295,10 +295,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 - 2026-09-27 — T1：后端骨架与后端质量关口 — 完成，`make check`/`make setup`/`make dev` 均验证通过（见本提交）。
 - 2026-09-27 — T2：数据库与迁移 — 完成，`make check` 全绿（见本提交）。
+- 2026-09-27 — T3：快照库 — 完成，`make check` 全绿（见本提交）。
 
 ## 下一步
 
-- 从 T3 开始：快照库。
+- 从 T4 开始：越界检查、上游只读副本、受控文件读写。
 
 ## 决策记录
 
@@ -320,6 +321,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T2：`model_profiles` 种子的 `provider` 字段取值——`claude-sonnet`/`claude-login` 用 `anthropic`，`gpt` 用 `openai`，`deepseek` 用 `litellm`（区分"经 LiteLLM 转发"和"原生 OpenAI Responses API"两条 T10 要分别实现的路径）；`fake` 用 `provider="fake"`。这些是本任务的临时值，T9/T10 核实运行时行为后可能调整。
 - 2026-09-27 — T2：本任务只在 `repo/` 下创建 `projects.py`、`profiles.py` 两个文件（各自的仓储函数与测试），未创建 `stages.py`/`sessions.py`/`turns.py`/`snapshots.py` 空文件——遵循"先写失败测试再实现"和 YAGNI，这几个仓储会分别在 T6（`turns`/`sessions`）、T3/T7（`snapshots`）、T7（`stages`）按各自任务需要的签名新增，brief 中列出的文件名是完整清单，不代表本任务要全部建好空壳。
 - 2026-09-27 — T2：import-linter 新增两条契约（规则 5 相关）——`config` 不依赖 `db`（config 层依赖表里 config 一行是"—"）；`main` 不 import `studio.db.models`（只有 `db` 定义 ORM 模型，其他模块经 `db.repo` 的函数拿到 dataclass 值对象）。
+- 2026-09-27 — T3：`create_snapshot`/`rollback` 的签名（`engine, blobs, project_id, ...`）不带 `data_dir`/`workdir` 参数，工作区目录从 `blobs.root.parent` 反推（约定 `<data_dir>/blobs/` 与 `<data_dir>/projects/<id>/` 是同一 `data_dir` 下的兄弟目录）——避免在这两个函数上额外增加参数，调用方（T4/T6）只需持有同一个 `BlobStore` 实例即可；`scan`/`read_file_at` 保持纯函数（不依赖这一约定），方便单独测试。
+- 2026-09-27 — T3：新增两条 import-linter 契约——`workspace` 不直接依赖 `studio.db.models`（`allow_indirect_imports = true`，因为 `workspace` 经 `studio.db.repo.snapshots` 间接用到 `db.models` 是被允许的合法路径，只禁止绕过 repo 直接 import 模型）；`workspace` 不依赖 `main`。
+- 2026-09-27 — T3：`rollback` 内部复用 `create_snapshot`（而不是直接插入快照行）——回滚后的工作区状态和"新建快照"的语义完全一致（含清单去重：目标已是最新时 `created=False`），复用能保证这条规则不必在两处分别实现。
 
 ## 意外与发现
 
