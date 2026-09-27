@@ -73,7 +73,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：后端骨架与后端质量关口（待开始）
+### T1：后端骨架与后端质量关口（完成）
 
 - **目标**：`backend/` 可安装、可启动、可检查。
 - **涉及文件**：`backend/pyproject.toml`、`backend/uv.lock`、`backend/.env.example`、`backend/src/studio/{__init__,config,main}.py`、`backend/tests/{conftest,test_config,test_health}.py`、`Makefile`、`scripts/dev.sh`、`docs/runbooks/dev-setup.md`。
@@ -293,11 +293,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-09-27 — T1：后端骨架与后端质量关口 — 完成，`make check`/`make setup`/`make dev` 均验证通过（见本提交）。
 
 ## 下一步
 
-- 等待负责人批准本计划。批准后：从 main 创建分支 `m1-skeleton`（推荐独立 worktree），提交本计划，然后从 T1 开始。
+- 从 T2 开始：数据库与迁移。
 
 ## 决策记录
 
@@ -310,6 +310,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-26 — 自己实现 fetch SSE 客户端，不引入库 — 逻辑小，且续传语义需要完全可控、可测。
 - 2026-09-27 — Claude 同时支持本机登录：用模型配置 `api_key_env` 为空表示登录模式，不新增表字段 — 负责人要求；复用设计 §3.1 已有字段，不偏离设计。
 - 2026-09-26 — 定稿、重新打开、stale 流转的通用部分放进 M1 — 上游只读副本（§4.3、R5）依赖定稿快照，没有定稿就无法验证。
+- 2026-09-27 — T1：锁定依赖版本（`uv sync` 解析结果，见 `backend/uv.lock`）：Python `3.12.11`（uv 自动下载）、`fastapi 0.141.1`、`uvicorn 0.54.0`（含 `standard` extras：`httptools`、`uvloop`、`watchfiles`、`websockets` 等）、`pydantic 2.13.5`、`pydantic-settings 2.15.0`；开发依赖 `ruff 0.16.9`、`pyright 1.1.414`、`import-linter 2.15`、`pytest 8.4.2`、`pytest-asyncio 0.26.0`、`httpx 0.28.1`。
+- 2026-09-27 — T1：import-linter 契约按控制者裁定 R1 只写"`config` 不 import `main`"一条最小契约（此时只有这两个模块存在）；后续任务新建 `db`/`workspace`/`agent`/`stages`/`api`/`worker` 时，把 ARCHITECTURE §2 对应的规则 1–6 逐条补进 `backend/pyproject.toml` 的 `[tool.importlinter]`。
+- 2026-09-27 — T1：`Settings.data_dir` 用 pydantic `field_validator` 解析为绝对路径并校验不落在 `backend/src` 之下，校验失败抛自定义 `WorkspaceInsideSourceError`（继承 `RuntimeError`，不是 `ValueError`）——pydantic v2 只把 `ValueError`/`TypeError`/`AssertionError` 包装成 `ValidationError`，用独立异常类型能让调用方精确捕获这一种配置错误，而不必解析 pydantic 的通用校验错误。
+- 2026-09-27 — T1：测试中不传 `_env_file=None` 覆盖 `Settings`（pyright 对 pydantic-settings 的 dataclass-transform 合成 `__init__` 不认识这个私有 kwarg，会报 `reportCallIssue`）；改为直接传字段值（如 `data_dir=...`）覆盖，init kwargs 在 pydantic-settings 的来源优先级里本就高于 `.env` 文件，效果等价且类型检查干净。
+- 2026-09-27 — T1：给 `scripts/check_docs.py` 的 `SKIP_DIRS` 加入 `.superpowers`（本次 SDD 编排的临时脚手架目录，已在 `.gitignore` 中，不属于文档知识库）——运行 `make check` 时发现该目录下的 `common.md` 引用了尚未创建的 `docs/references/claude-agent-sdk.md`（T9 才会创建），导致 `check-docs` 误报，与 T1 范围无关但阻塞了质量关口，遂一并修正扫描范围。
 
 ## 意外与发现
 

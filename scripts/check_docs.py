@@ -18,7 +18,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKIP_DIRS = {".git", "node_modules", ".venv", "data", "dist", ".pytest_cache"}
+SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    ".venv",
+    "data",
+    "dist",
+    ".pytest_cache",
+    # SDD 编排的临时脚手架内容（不进 git，见 .gitignore），不是文档知识库的一部分。
+    ".superpowers",
+}
 
 PLAN_SECTIONS = [
     "元信息",

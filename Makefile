@@ -25,15 +25,22 @@ endif
 check: check-docs check-backend check-frontend
 	@echo "make check 全部通过"
 
-# pre-commit 运行的快速子集：M1 接入 ruff 和前端 lint 后补充进来。
+# pre-commit 运行的快速子集：前端 lint 在 T11 接入后补充进来。
 check-fast: check-docs
+ifneq ($(HAS_BACKEND),)
+	cd backend && $(UV) run ruff check .
+endif
 
 check-docs:
 	@$(PYTHON) scripts/check_docs.py
 
 check-backend:
 ifneq ($(HAS_BACKEND),)
-	@echo "TODO(M1): 接入 ruff、pyright、import-linter、pytest" && exit 1
+	cd backend && $(UV) run ruff check .
+	cd backend && $(UV) run ruff format --check .
+	cd backend && $(UV) run pyright
+	cd backend && $(UV) run lint-imports
+	cd backend && $(UV) run pytest
 else
 	@echo "跳过后端检查：backend/ 尚未创建"
 endif
@@ -46,7 +53,7 @@ else
 endif
 
 dev:
-	@echo "TODO(M1): 同时启动 api、worker、frontend" && exit 1
+	@bash scripts/dev.sh
 
 smoke:
 	@echo "TODO(M1): 运行需要真实 key 的冒烟测试" && exit 1
