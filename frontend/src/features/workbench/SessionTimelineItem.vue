@@ -21,6 +21,19 @@ const toolState = computed(() => {
   if (!props.item.result) return 'input-available' as const
   return props.item.result.isError ? ('output-error' as const) : ('output-available' as const)
 })
+
+/**
+ * 工具结果里的图片没法预览（控制者裁定，见 T6：后端只持久化
+ * `media_type`，不存图片内容本身），只能提示有几张、说明看不到——不是
+ * 真的缩略图。M2 落地 `render_preview` 关键帧时如果要真缩略图，需要先在
+ * 后端补图片内容的持久化（记入计划「已知限制」）。
+ */
+const imageNotice = computed(() => {
+  if (props.item.kind !== 'tool_call') return null
+  const count = props.item.result?.images.length ?? 0
+  if (count === 0) return null
+  return `含 ${count} 张图片（M1 未存图片内容，不可预览）`
+})
 </script>
 
 <template>
@@ -52,6 +65,12 @@ const toolState = computed(() => {
         :output="item.result?.isError ? undefined : item.result?.text"
         :error-text="item.result?.isError ? item.result.text : undefined"
       />
+      <p
+        v-if="imageNotice"
+        class="text-muted-foreground px-4 pb-4 text-xs"
+      >
+        {{ imageNotice }}
+      </p>
     </ToolContent>
   </Tool>
 

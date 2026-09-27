@@ -425,6 +425,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T12：`sse.ts` 的重连退避 `sleep()` 即使延迟是 0ms 也强制走一次真正的 `setTimeout`宏任务，不用 `Promise.resolve()` 的快速路径——vitest 测试里用 mock fetch 连续制造"立刻失败/立刻结束"的场景时，纯微任务的 `Promise.resolve()` 会让重连循环变成不给事件循环宏任务（定时器）任何执行机会的忙循环，饿死测试自己用来轮询断言/触发 abort 的定时器，实测直接把 worker 进程点到 OOM（`Reached heap limit`）；换成真定时器后同样的测试用例正常在数百毫秒内跑完。
 - 2026-09-27 — T13：`useSessionStream` 的乐观插入用一个"占位 `turnId`（`local-<n>`）+ FIFO 队列"实现，而不是让 `SessionPanel` 自己维护一份临时消息列表再和真实 turn 合并——理由是 `items` 数组本身、`ensureUserMessage` 的插入位置逻辑已经在 `useSessionStream` 内部，占位跟真实 turn 的"原地替换"（而不是先插占位、来了真实事件再追加一条、需要另外删除旧占位）只有在同一个模块里操作同一份 `items.value` 才能做到零闪烁；FIFO（而不是按文本匹配或按 turnId 预测）是因为发送顺序和 turn 创建顺序在单会话内必然一致（后端按会话串行化，见控制者裁定 3 的"忙"语义），先进先出足够正确且不需要猜测后端还没告诉前端的 turn id。
 - 2026-09-27 — T13：阶段导航的 `[定稿]`/`[重新打开]` 按钮可见性直接判断 `currentStageInfo.status`（`active`/`stale` 显示定稿，`finalized`/`stale` 显示重新打开），没有抽成 `stageStatus.ts` 里的纯函数——`stageStatusStyle` 只负责"这个阶段本身长什么样、能不能点去看它"，按钮的可见性是"当前正在看的这一个阶段"的额外规则，和阶段列表渲染是两件事，抽在一起会让 `stageStatusStyle` 的返回值多出和渲染阶段列表无关的字段，判断为不值得为此拆分。
+- 2026-09-27 — T13 审查后修复：`ProjectWorkbenchPage` 原来只 `watch(stage, ...)` 清空 `sessionId`，改成 `watch(() => sessionResetKey(projectId.value, stage.value), ...)`——新增的纯函数 `sessionResetKey(projectId, stage)` 把两个值拼成一个比较键，项目或阶段任一个变化都会让键变化、触发一次清空；单独抽出来是因为这条 watch 表达式本身不好直接单测（依赖 `useRoute()`），拼键这一步是唯一有分支意义的逻辑，抽出来之后可以离开组件单测四种组合。
+- 2026-09-27 — T13 审查后修复：`addLocalUserMessage` 改为返回它插入的占位 `turnId`（原来是 `void`），新增 `removeLocalUserMessage(placeholderId)`——发送请求本身失败时占位必须能被撤回，否则占位会一直占着 `useSessionStream` 内部 FIFO 队列的队首，下一条真正发出去的消息对应的真实 turn 会被错误配对到这条"其实没发出去"的占位上。`removeLocalUserMessage` 对已经被真实 turn 认领的占位（`turnId` 已经被原地替换过）或者本来就不存在的 id 是安全的 no-op。
+- 2026-09-27 — T13 审查后修复：`ToolCallItem.result` 补上 `images: ToolResultImage[]` 字段（透传自 `ToolResultPayload.images`，之前直接丢弃）。M1 后端只持久化 `media_type`、不存图片内容（T6 控制者裁定），前端因此也只能显示"含 N 张图片，不可预览"的文字提示，不是真缩略图——记入「已知限制」，留给 M2 判断是否需要在后端补图片内容持久化。
 
 ## 意外与发现
 
@@ -459,6 +462,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 ## 已知限制（非本任务缺陷，留给后续任务）
 
 - `useSessionStream` 的 `items` 数组只增不减，长会话（很多轮 turn）会让这个数组无限增长，没有做虚拟滚动或历史裁剪——T13 接入真实会话面板、出现长会话性能问题时再按需处理（比如只保留最近 N 轮 + "加载更早"的分页）。
+- T13 审查发现：工具结果里的图片（`ToolResultPayload.images`）在 M1 没法在会话面板里预览缩略图——T6 的控制者裁定是后端只持久化 `ToolResultImage.media_type`，不存图片内容本身（图片数据可能很大，M1 没有实现对应的存储/清理机制）。前端 `ToolCallItem.result.images` 保留了这个字段、`SessionTimelineItem` 在工具结果下面渲染一句"含 N 张图片（M1 未存图片内容，不可预览）"的文字占位，不是真缩略图。M2 落地 `render_preview` 关键帧时，如果产物预览需要真的显示图片，要先在后端补图片内容的持久化（存到 blob 或工作区文件，再由前端按路径/id 拉取），这属于新的设计决策，不是简单的前端改动。
 
 ## 阻塞
 

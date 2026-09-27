@@ -10,6 +10,7 @@ import { useProjectQuery } from '@/composables/queries'
 import StageNav from '@/features/workbench/StageNav.vue'
 import SessionPanel from '@/features/workbench/SessionPanel.vue'
 import SessionPicker from '@/features/workbench/SessionPicker.vue'
+import { sessionResetKey } from '@/features/workbench/sessionResetKey'
 
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
@@ -18,10 +19,15 @@ const stage = computed(() => String(route.params.stage))
 const { data: project, isPending, isError } = useProjectQuery(projectId)
 
 const sessionId = ref<string | null>(null)
-// 切换阶段（也覆盖切换项目）时，上一个阶段选中的会话不应该带到新阶段里。
-watch(stage, () => {
-  sessionId.value = null
-})
+// 切换阶段或切换项目时，上一次选中的会话不应该带到新的项目/阶段组合里
+// （审查修复：原来只 watch(stage)，项目 A/topic 切到项目 B/topic 时
+// stage 两边都是 "topic"、不触发，A 的 sessionId 会带进 B）。
+watch(
+  () => sessionResetKey(projectId.value, stage.value),
+  () => {
+    sessionId.value = null
+  },
+)
 </script>
 
 <template>

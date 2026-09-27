@@ -31,7 +31,11 @@
  * 新 `turn_id` 的第一个事件时优先按 FIFO 顺序认领最早的一条待处理占位、
  * 原地把 `turnId` 换成真实值，而不是去 `knownTurns` 查（查不到就只能插空
  * 文本）。`sessionId` 切换时占位队列会清空，避免旧会话遗留的占位被新会话
- * 的 turn 误认领。
+ * 的 turn 误认领。发送请求本身失败（409/网络错误等，从没真正创建 turn）
+ * 时，调用方要用 `addLocalUserMessage` 返回的 `turnId` 调
+ * `removeLocalUserMessage` 撤回占位（T13 审查修复）——否则这条占位会一直
+ * 占着 `pendingLocalMessages` 队首，下一条真正发出去的消息的真实 turn 会
+ * 被 FIFO 错误配对到这条"其实没发出去"的占位上。
  */
 
 import { onScopeDispose, ref, watch, type Ref } from 'vue'
@@ -48,6 +52,7 @@ import type {
   TextDeltaPayload,
   TextPayload,
   ToolCallPayload,
+  ToolResultImage,
   ToolResultPayload,
   TurnStatusPayload,
 } from '@/types/events'
@@ -72,7 +77,15 @@ export interface ToolCallItem {
   callId: string
   name: string
   args: Record<string, unknown>
-  result?: { text: string; isError: boolean; truncated: boolean }
+  /**
+   * `images` 透传自 `ToolResultPayload.images`：M1 后端只持久化
+   * `media_type`（审查裁定，见计划「已知限制」），不存图片内容本身，所以
+   * 这里永远拿不到可渲染的图片数据、只能数出有几张——`SessionTimelineItem`
+   * 用它渲染一句"含 N 张图片（M1 未存图片内容，不可预览）"的文字占位，
+   * 不是真的缩略图。M2 落地 `render_preview` 关键帧时如果需要真缩略图，
+   * 要先在后端补图片内容的持久化。
+   */
+  result?: { text: string; isError: boolean; truncated: boolean; images: ToolResultImage[] }
 }
 
 export interface NoticeItem {
@@ -120,9 +133,19 @@ export interface UseSessionStreamResult {
    * `turn_id`。占位项先用 `local-<n>` 当 `turnId` 插入 `items`；等这个
    * turn 的第一个事件到达、`ensureUserMessage` 按 FIFO 顺序认领一个待
    * 处理的占位时，原地把占位的 `turnId` 换成真实值，不会同时存在"占位 +
-   * 空文本"两条。
+   * 空文本"两条。返回这条占位的 `turnId`（`local-<n>`），发送失败时传给
+   * `removeLocalUserMessage` 撤回。
    */
-  addLocalUserMessage: (text: string) => void
+  addLocalUserMessage: (text: string) => string
+  /**
+   * 撤回一条还没被真实 turn 认领的乐观占位（T13 审查修复：发送失败——
+   * 409/网络错误等——如果不撤回，占位会一直留在 `items` 里、并且还占着
+   * `pendingLocalMessages` 队首，导致下一次真正发出去的消息在 FIFO 里排到
+   * 它后面，被下一个真实 turn 的事件错误配对到这条"其实没发出去"的占位
+   * 上。`turnId` 不在队列里（已经被认领，或者本来就传错）时是安全的
+   * no-op，不做任何事。
+   */
+  removeLocalUserMessage: (placeholderId: string) => void
 }
 
 function findLastStreamingTextIndex(items: TimelineItem[], turnId: string): number {
@@ -172,11 +195,22 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     projectId = null
   }
 
-  function addLocalUserMessage(text: string): void {
+  function addLocalUserMessage(text: string): string {
     const placeholderId = `local-${localMessageCounter}`
     localMessageCounter += 1
     pendingLocalMessages.push({ placeholderId, text })
     items.value.push({ kind: 'user_message', turnId: placeholderId, text })
+    return placeholderId
+  }
+
+  function removeLocalUserMessage(placeholderId: string): void {
+    const pendingIdx = pendingLocalMessages.findIndex((p) => p.placeholderId === placeholderId)
+    if (pendingIdx !== -1) pendingLocalMessages.splice(pendingIdx, 1)
+
+    const itemIdx = items.value.findIndex(
+      (item) => item.kind === 'user_message' && item.turnId === placeholderId,
+    )
+    if (itemIdx !== -1) items.value.splice(itemIdx, 1)
   }
 
   function ensureUserMessage(turnId: string): void {
@@ -255,6 +289,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
             text: payload.text,
             isError: payload.is_error,
             truncated: payload.truncated,
+            images: payload.images,
           }
         }
         break
@@ -352,5 +387,5 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     disconnect()
   })
 
-  return { items, turnStatus, connectionStatus, addLocalUserMessage }
+  return { items, turnStatus, connectionStatus, addLocalUserMessage, removeLocalUserMessage }
 }

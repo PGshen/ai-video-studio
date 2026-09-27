@@ -192,7 +192,7 @@ describe('useSessionStream', () => {
     )
 
     const call = result.items.value.find((i): i is ToolCallItem => i.kind === 'tool_call')
-    expect(call?.result).toEqual({ text: 'ok', isError: false, truncated: false })
+    expect(call?.result).toEqual({ text: 'ok', isError: false, truncated: false, images: [] })
   })
 
   it('workspace_changed 让文件树/快照 query 失效', async () => {
@@ -353,6 +353,48 @@ describe('useSessionStream', () => {
     expect(result.items.value).toEqual([
       { kind: 'user_message', turnId: 't-s2', text: '' },
       { kind: 'text', turnId: 't-s2', text: '新会话的回复', streaming: false },
+    ])
+  })
+
+  it('removeLocalUserMessage 撤回发送失败的占位，不留空文本、不占 FIFO 队首', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+    const { result } = await setup('s1')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    // 第一条消息的发送请求本身失败（409/网络错误），从没真正创建 turn。
+    const failedId = result.addLocalUserMessage('发送失败的消息')
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: failedId, text: '发送失败的消息' },
+    ])
+    result.removeLocalUserMessage(failedId)
+    expect(result.items.value).toEqual([])
+
+    // 第二条消息正常发出去，真实 turn 的第一个事件到达时应该配对到第二条
+    // 的文本，而不是被撤回的第一条"污染"（FIFO 队首本来会是被撤回的那条）。
+    result.addLocalUserMessage('真正发出去的消息')
+    onEvent(frame('text', { turn_id: 't1', text: '收到', seq: 1 }))
+
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: 't1', text: '真正发出去的消息' },
+      { kind: 'text', turnId: 't1', text: '收到', streaming: false },
+    ])
+  })
+
+  it('removeLocalUserMessage 对已经被真实 turn 认领的占位是安全的 no-op', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+    const { result } = await setup('s1')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    const placeholderId = result.addLocalUserMessage('已经配对成功的消息')
+    onEvent(frame('text', { turn_id: 't1', text: '回复', seq: 1 }))
+
+    // 这条占位已经被 't1' 认领、原地换过 turnId 了；用旧的 placeholderId
+    // 撤回不应该误删真实的 't1' 用户消息。
+    result.removeLocalUserMessage(placeholderId)
+
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: 't1', text: '已经配对成功的消息' },
+      { kind: 'text', turnId: 't1', text: '回复', streaming: false },
     ])
   })
 

@@ -33,7 +33,8 @@ import SessionTimelineItem from './SessionTimelineItem.vue'
 const props = defineProps<{ sessionId: string | null }>()
 
 const sessionIdRef = toRef(props, 'sessionId')
-const { items, turnStatus, addLocalUserMessage } = useSessionStream(sessionIdRef)
+const { items, turnStatus, addLocalUserMessage, removeLocalUserMessage } =
+  useSessionStream(sessionIdRef)
 
 const controls = computed(() => computeTurnControls(turnStatus.value?.status ?? null))
 
@@ -55,10 +56,15 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
   const text = message.text.trim()
   if (!text || !props.sessionId) return
   sendError.value = null
-  addLocalUserMessage(text)
+  const placeholderId = addLocalUserMessage(text)
   try {
     await sendMutation.mutateAsync({ text })
   } catch (error) {
+    // 请求本身失败（409/网络错误等）：这个 turn 从没真正创建，占位必须
+    // 撤回——留着的话会一直占着 useSessionStream 内部 FIFO 队列的队首，
+    // 下一条真正发出去的消息到达的真实 turn 会被错误配对到这条假消息上
+    // （审查发现）。
+    removeLocalUserMessage(placeholderId)
     sendError.value = describeError(error)
   }
 }
