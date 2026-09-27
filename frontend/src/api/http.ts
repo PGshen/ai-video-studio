@@ -39,6 +39,26 @@ export interface RequestOptions {
   signal?: AbortSignal
 }
 
+/**
+ * 对一段动态拼进 URL 路径的值做百分号编码（项目 id、阶段名、快照 id 等）。
+ * `endpoints.ts` 在每一处把 id/名字拼进路径模板时都要过一遍这个函数，
+ * 否则名字里出现 `#`（被当成 fragment 起点）、`?`（被当成 query 起点）、
+ * 空格等字符会让 `new URL()` 解析出错误的路径（审查发现，T12）。
+ */
+export function encodePathSegment(segment: string): string {
+  return encodeURIComponent(segment)
+}
+
+/**
+ * 编码一个**文件路径**（工作区里的相对路径，比如 `topic/fake-note.md`）：
+ * 按 `/` 切开逐段编码再拼回去，保留路径分隔符本身，只编码每一段里的特殊
+ * 字符。不能直接对整个路径调用 `encodePathSegment`（会把 `/` 也编码掉，
+ * 破坏目录结构）。
+ */
+export function encodeFilePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/')
+}
+
 function buildUrl(path: string, query?: RequestOptions['query']): string {
   const url = new URL(`${BASE_URL}${path}`, window.location.origin)
   if (query) {

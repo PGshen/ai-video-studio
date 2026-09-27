@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, request, requestText } from '@/api/http'
+import { ApiError, encodeFilePath, encodePathSegment, request, requestText } from '@/api/http'
 
 describe('request', () => {
   afterEach(() => {
@@ -85,5 +85,31 @@ describe('requestText', () => {
 
     expect(error).toBeInstanceOf(ApiError)
     expect((error as ApiError).status).toBe(404)
+  })
+})
+
+describe('encodePathSegment / encodeFilePath', () => {
+  it('encodePathSegment 编码单个动态段里的特殊字符', () => {
+    // `#` 会被当成 URL fragment 起点，`?` 会被当成 query 起点，
+    // 都必须编码掉，否则名字含这些字符的项目/会话/快照 id 会拼出错误的路径。
+    expect(encodePathSegment('proj#1')).toBe('proj%231')
+    expect(encodePathSegment('a?b=c')).toBe('a%3Fb%3Dc')
+    expect(encodePathSegment('a b')).toBe('a%20b')
+    expect(encodePathSegment('a/b')).toBe('a%2Fb') // 单个段里的 `/` 也要编码。
+  })
+
+  it('encodeFilePath 保留 / 分隔符，只编码每一段内部的特殊字符', () => {
+    expect(encodeFilePath('topic/fake note.md')).toBe('topic/fake%20note.md')
+    expect(encodeFilePath('a#b/c?d')).toBe('a%23b/c%3Fd')
+  })
+
+  it('GET 请求里名字含特殊字符的路径段会被正确编码并原样送到 fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await request(`/projects/${encodePathSegment('proj#1')}`)
+
+    const [url] = fetchMock.mock.calls[0]!
+    expect(String(url)).toBe('/api/projects/proj%231')
   })
 })

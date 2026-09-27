@@ -136,6 +136,17 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   const userMessageInserted = new Set<string>()
   const toolCallIndex = new Map<string, number>()
 
+  // 审查发现的竞态（`sessionId` 在上一次 `watch` 回调还卡在 `await
+  // loadHistory` 时又变了一次）：`generation` 每次回调开始时自增一，回调
+  // 自己的编号存进 `myGeneration`；`await` 之后、以及每个 SSE 回调触发时都
+  // 检查编号是不是还等于最新的 `generation`——不等就说明这次回调已经过期
+  // （有更新的 `sessionId` 变化发生过），直接丢弃这次的结果，不写共享状态、
+  // 不打开连接。只有"当前最新"的那次回调有机会调用 `connect()`，所以不会
+  // 出现两条流同时往同一份 `items`/`turnStatus` 写数据的情况；`disconnect()`
+  // 仍然在每次回调开始时同步调用，负责立刻掐断"上一个已经连上的"流（它不是
+  // 过期回调，是真的要被替换掉的现役连接）。
+  let generation = 0
+
   function reset(): void {
     items.value = []
     turnStatus.value = null
@@ -253,8 +264,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     }
   }
 
-  async function loadHistory(id: string): Promise<void> {
-    const detail = await getSession(id)
+  function applyHistory(detail: Awaited<ReturnType<typeof getSession>>): void {
     projectId = detail.project_id
     for (const turn of detail.turns) {
       knownTurns.set(turn.id, turn)
@@ -265,15 +275,20 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     }
   }
 
-  function connect(id: string): void {
-    controller = new AbortController()
+  function connect(id: string, myGeneration: number): void {
+    const myController = new AbortController()
+    controller = myController
     openStream(sessionStreamUrl(id), {
       afterSeq: 0,
-      onEvent: handleEvent,
+      onEvent: (event) => {
+        if (myGeneration !== generation) return // 过期连接的事件，丢弃。
+        handleEvent(event)
+      },
       onStatus: (status) => {
+        if (myGeneration !== generation) return
         connectionStatus.value = status
       },
-      signal: controller.signal,
+      signal: myController.signal,
     })
   }
 
@@ -285,16 +300,23 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   watch(
     sessionId,
     async (id) => {
-      disconnect()
+      generation += 1
+      const myGeneration = generation
+      disconnect() // 掐断上一个真正连上的流（不是过期回调，是要被替换的现役连接）。
       reset()
       if (id === null) return
-      await loadHistory(id)
-      connect(id)
+      const detail = await getSession(id)
+      if (myGeneration !== generation) return // 等待期间又换了一次 sessionId，这次结果作废。
+      applyHistory(detail)
+      connect(id, myGeneration)
     },
     { immediate: true },
   )
 
-  onScopeDispose(disconnect)
+  onScopeDispose(() => {
+    generation += 1 // 让任何还没落地的 loadHistory/connect 在恢复执行时发现自己已经过期。
+    disconnect()
+  })
 
   return { items, turnStatus, connectionStatus }
 }

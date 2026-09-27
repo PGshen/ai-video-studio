@@ -4,7 +4,7 @@
  * sessions,profiles}.py` 一一对应。
  */
 
-import { request, requestText } from '@/api/http'
+import { encodeFilePath, encodePathSegment, request, requestText } from '@/api/http'
 import type {
   FileTreeOut,
   FileWriteResult,
@@ -32,25 +32,31 @@ export function listProjects(): Promise<ProjectOut[]> {
 }
 
 export function getProject(projectId: string): Promise<ProjectDetailOut> {
-  return request(`/projects/${projectId}`)
+  return request(`/projects/${encodePathSegment(projectId)}`)
 }
 
 export function finalizeStage(projectId: string, stage: string) {
-  return request(`/projects/${projectId}/stages/${stage}/finalize`, { method: 'POST' })
+  return request(
+    `/projects/${encodePathSegment(projectId)}/stages/${encodePathSegment(stage)}/finalize`,
+    { method: 'POST' },
+  )
 }
 
 export function reopenStage(projectId: string, stage: string) {
-  return request(`/projects/${projectId}/stages/${stage}/reopen`, { method: 'POST' })
+  return request(
+    `/projects/${encodePathSegment(projectId)}/stages/${encodePathSegment(stage)}/reopen`,
+    { method: 'POST' },
+  )
 }
 
 // ---- files --------------------------------------------------------------
 
 export function getFileTree(projectId: string): Promise<FileTreeOut> {
-  return request(`/projects/${projectId}/files`)
+  return request(`/projects/${encodePathSegment(projectId)}/files`)
 }
 
 export function getFileContent(projectId: string, path: string): Promise<string> {
-  return requestText(`/projects/${projectId}/files/${path}`)
+  return requestText(`/projects/${encodePathSegment(projectId)}/files/${encodeFilePath(path)}`)
 }
 
 export function writeFileContent(
@@ -59,7 +65,7 @@ export function writeFileContent(
   stage: string,
   content: string,
 ): Promise<FileWriteResult> {
-  return request(`/projects/${projectId}/files/${path}`, {
+  return request(`/projects/${encodePathSegment(projectId)}/files/${encodeFilePath(path)}`, {
     method: 'PUT',
     query: { stage },
     body: { content },
@@ -69,7 +75,7 @@ export function writeFileContent(
 // ---- snapshots ------------------------------------------------------------
 
 export function listSnapshots(projectId: string): Promise<SnapshotOut[]> {
-  return request(`/projects/${projectId}/snapshots`)
+  return request(`/projects/${encodePathSegment(projectId)}/snapshots`)
 }
 
 export function diffSnapshots(
@@ -77,11 +83,16 @@ export function diffSnapshots(
   fromId: string,
   toId: string,
 ): Promise<SnapshotDiffOut> {
-  return request(`/projects/${projectId}/snapshots/diff`, { query: { from: fromId, to: toId } })
+  return request(`/projects/${encodePathSegment(projectId)}/snapshots/diff`, {
+    query: { from: fromId, to: toId },
+  })
 }
 
 export function rollbackSnapshot(projectId: string, snapshotId: string): Promise<SnapshotOut> {
-  return request(`/projects/${projectId}/snapshots/${snapshotId}/rollback`, { method: 'POST' })
+  return request(
+    `/projects/${encodePathSegment(projectId)}/snapshots/${encodePathSegment(snapshotId)}/rollback`,
+    { method: 'POST' },
+  )
 }
 
 // ---- sessions -------------------------------------------------------------
@@ -91,32 +102,37 @@ export function createSession(
   stage: string,
   body: SessionCreate,
 ): Promise<SessionOut> {
-  return request(`/projects/${projectId}/stages/${stage}/sessions`, { method: 'POST', body })
+  return request(
+    `/projects/${encodePathSegment(projectId)}/stages/${encodePathSegment(stage)}/sessions`,
+    { method: 'POST', body },
+  )
 }
 
 export function listSessions(projectId: string, stage: string): Promise<SessionOut[]> {
-  return request(`/projects/${projectId}/stages/${stage}/sessions`)
+  return request(
+    `/projects/${encodePathSegment(projectId)}/stages/${encodePathSegment(stage)}/sessions`,
+  )
 }
 
 export function getSession(sessionId: string): Promise<SessionDetailOut> {
-  return request(`/sessions/${sessionId}`)
+  return request(`/sessions/${encodePathSegment(sessionId)}`)
 }
 
 export function sendMessage(sessionId: string, body: MessageCreate): Promise<TurnAccepted> {
-  return request(`/sessions/${sessionId}/messages`, { method: 'POST', body })
+  return request(`/sessions/${encodePathSegment(sessionId)}/messages`, { method: 'POST', body })
 }
 
 export function cancelSession(sessionId: string): Promise<TurnAccepted> {
-  return request(`/sessions/${sessionId}/cancel`, { method: 'POST' })
+  return request(`/sessions/${encodePathSegment(sessionId)}/cancel`, { method: 'POST' })
 }
 
 export function continueSession(sessionId: string): Promise<TurnAccepted> {
-  return request(`/sessions/${sessionId}/continue`, { method: 'POST' })
+  return request(`/sessions/${encodePathSegment(sessionId)}/continue`, { method: 'POST' })
 }
 
 /** SSE 流的 URL（真正的连接由 `api/sse.ts` 的 `openStream` 负责）。 */
 export function sessionStreamUrl(sessionId: string): string {
-  return `/api/sessions/${sessionId}/stream`
+  return `/api/sessions/${encodePathSegment(sessionId)}/stream`
 }
 
 // ---- model profiles ---------------------------------------------------

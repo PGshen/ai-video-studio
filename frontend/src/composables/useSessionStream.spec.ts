@@ -220,6 +220,84 @@ describe('useSessionStream', () => {
     expect(result.turnStatus.value).toEqual({ turnId: 't2', status: 'running', error: null })
   })
 
+  it('审查回归：sessionId 在 loadHistory 完成前又变化，慢的历史结果不生效、不会多开连接', async () => {
+    let resolveS1: (detail: SessionDetailOut) => void = () => {}
+    const s1Promise = new Promise<SessionDetailOut>((resolve) => {
+      resolveS1 = resolve
+    })
+    getSessionMock.mockImplementation((id: string) => {
+      if (id === 's1') return s1Promise
+      return Promise.resolve(sessionDetail({ id: 's2', project_id: 'p2', turns: [] }))
+    })
+
+    const { result, idRef } = await setup('s1')
+    // s1 的 getSession 还没 resolve，不应该已经打开任何流。
+    expect(openStreamMock).not.toHaveBeenCalled()
+
+    idRef.value = 's2'
+    await flushAsync()
+
+    // s2 的历史已经加载完（同步 resolve），流已经打开，且只有这一条。
+    expect(openStreamMock).toHaveBeenCalledTimes(1)
+    const [s2Url, s2Options] = openStreamMock.mock.calls[0]!
+    expect(s2Url).toBe('/api/sessions/s2/stream')
+    const s2Signal = (s2Options as { signal: AbortSignal }).signal
+
+    // 现在才让 s1 的 getSession resolve（复现"慢请求最后才回来"）。
+    resolveS1(
+      sessionDetail({
+        id: 's1',
+        project_id: 'p1',
+        turns: [
+          {
+            id: 't-s1',
+            session_id: 's1',
+            user_message: '这是 s1 的消息',
+            status: 'done',
+            start_snapshot_id: null,
+            end_snapshot_id: null,
+            usage: null,
+            cost_usd: null,
+            error: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+      }),
+    )
+    await flushAsync()
+
+    // s1 的结果必须被丢弃：没有多打开第二条连接，s2 现役连接也没被误伤。
+    expect(openStreamMock).toHaveBeenCalledTimes(1)
+    expect(s2Signal.aborted).toBe(false)
+
+    const s2OnEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+    s2OnEvent(frame('text', { turn_id: 't-s2', text: 's2 的事件', seq: 1 }))
+
+    expect(result.items.value).toHaveLength(2) // s2 的 user_message 占位 + 这条 text
+    expect(result.items.value.every((i) => i.turnId !== 't-s1')).toBe(true)
+  })
+
+  it('审查回归：已过期连接的 onEvent 即使仍被调用也不会写入状态', async () => {
+    getSessionMock.mockImplementation((id: string) =>
+      Promise.resolve(sessionDetail({ id, project_id: `p-${id}`, turns: [] })),
+    )
+    const { result, idRef } = await setup('s1')
+    const s1OnEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    idRef.value = 's2'
+    await flushAsync()
+    expect(openStreamMock).toHaveBeenCalledTimes(2)
+
+    // 模拟真实网络里"abort 生效前，旧连接的最后几个字节已经在路上"：
+    // 直接调用捕获到的 s1 回调（它对应的流已经被 disconnect 掐断，但这里
+    // 强行模拟它仍然触发了一次 onEvent）。
+    s1OnEvent(frame('text', { turn_id: 't-s1', text: '过期事件', seq: 1 }))
+
+    // 世代检查应该丢弃它：不写进 items，也不影响 s2 的状态。
+    expect(result.items.value.every((i) => i.turnId !== 't-s1')).toBe(true)
+  })
+
   it('sessionId 变为 null 时关闭连接并清空状态', async () => {
     getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
     const abort = vi.fn()
