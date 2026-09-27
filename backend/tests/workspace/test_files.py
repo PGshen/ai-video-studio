@@ -7,6 +7,7 @@ import pytest
 from studio.workspace.files import (
     ScopeError,
     list_tree,
+    read_bytes,
     read_text,
     safe_path,
     write_text,
@@ -134,3 +135,14 @@ class TestWriteTextUnscoped:
     def test_still_rejects_unsafe_path(self, workdir: Path) -> None:
         with pytest.raises(ScopeError):
             write_text_unscoped(workdir, "../outside.md", "hacked")
+
+
+class TestReadBytes:
+    def test_reads_raw_bytes(self, workdir: Path) -> None:
+        _write(workdir / "narrative" / "timing.json", b"\x00\x01")
+
+        assert read_bytes(workdir, "narrative/timing.json") == b"\x00\x01"
+
+    def test_rejects_unsafe_path(self, workdir: Path) -> None:
+        with pytest.raises(ScopeError):
+            read_bytes(workdir, "../outside")

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String
+from sqlalchemy import JSON, DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -116,10 +116,11 @@ class TurnEvent(Base):
     `seq` 是会话内单调递增的序号（决策记录 2026-09-26），不是 turn 内的序号，
     这样 SSE `after_seq` 续传只需要认识会话，不需要关心事件属于哪个 turn。
     为此本表冗余存储 `session_id`（可从 `turn_id` 关联 `turns.session_id` 推出，
-    但直接存一份可以避免续传查询时联表）。
+    但直接存一份可以避免续传查询时联表）。`(session_id, seq)` 唯一（迁移 0002）。
     """
 
     __tablename__ = "turn_events"
+    __table_args__ = (Index("uq_turn_events_session_seq", "session_id", "seq", unique=True),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
     turn_id: Mapped[str] = mapped_column(String, nullable=False)

@@ -67,6 +67,15 @@ def list_tree(workdir: Path | str) -> list[str]:
     return sorted(paths)
 
 
+def read_bytes(workdir: Path | str, relpath: str) -> bytes:
+    """按相对路径读取原始字节；路径不安全时抛出 `ScopeError`。
+
+    TurnRunner 用它把工具托管文件（工具刚写入的内容）存进 blob 库，供
+    `scope.guard` 在轮末按工具写入的版本恢复。
+    """
+    return safe_path(workdir, relpath).read_bytes()
+
+
 def read_text(workdir: Path | str, relpath: str) -> str:
     """按相对路径读取文本内容（UTF-8）；路径不安全时抛出 `ScopeError`。"""
     path = safe_path(workdir, relpath)

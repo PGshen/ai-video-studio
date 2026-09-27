@@ -116,3 +116,10 @@ def get_model_profile(engine: Engine, name: str) -> ModelProfileValue | None:
     with session_scope(engine) as session:
         row = session.scalars(select(ModelProfile).where(ModelProfile.name == name)).one_or_none()
         return _to_value(row) if row is not None else None
+
+
+def get_model_profile_by_id(engine: Engine, profile_id: str) -> ModelProfileValue | None:
+    """按 id 查询模型配置（会话表存的是 `model_profile_id`），不存在时返回 `None`。"""
+    with session_scope(engine) as session:
+        row = session.get(ModelProfile, profile_id)
+        return _to_value(row) if row is not None else None

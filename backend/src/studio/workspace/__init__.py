@@ -10,6 +10,7 @@ from studio.workspace.blobs import BlobStore
 from studio.workspace.files import (
     ScopeError,
     list_tree,
+    read_bytes,
     read_text,
     safe_path,
     write_text,
@@ -47,6 +48,7 @@ __all__ = [
     "list_tree",
     "materialize_upstream",
     "project_dir",
+    "read_bytes",
     "read_file_at",
     "read_text",
     "rollback",
