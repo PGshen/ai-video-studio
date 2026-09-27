@@ -19,6 +19,21 @@ class ScopeError(Exception):
     """路径不安全（绝对路径、`..`、越出工作区、经过符号链接），或不在可写范围内。"""
 
 
+def normalize_relpath(relpath: str) -> str:
+    """规范化工作区相对路径：去掉 `.` 段和重复的 `/`（`narrative/./timing.json` →
+    `narrative/timing.json`）；空路径、绝对路径、含 `..` 时抛出 `ScopeError`。
+
+    写入/删除前的范围检查必须用规范化后的路径，否则 `narrative//timing.json`
+    这类写法能绕过 `tool_managed` 的 glob 匹配（`safe_path` 仍会解析到同一个文件）。
+    """
+    rel = PurePosixPath(relpath)
+    if rel.is_absolute() or not rel.parts:
+        raise ScopeError(f"路径不合法：{relpath}")
+    if ".." in rel.parts:
+        raise ScopeError(f"路径不能包含 ..：{relpath}")
+    return rel.as_posix()
+
+
 def safe_path(workdir: Path | str, relpath: str) -> Path:
     """校验 `relpath` 合法且落在 `workdir` 内，返回绝对路径；否则抛出 `ScopeError`。
 
@@ -87,6 +102,7 @@ def write_text(workdir: Path | str, relpath: str, content: str, scope: WriteScop
 
     路径不安全或不在 `scope` 允许 agent 写入的范围内时抛出 `ScopeError`。
     """
+    relpath = normalize_relpath(relpath)
     path = safe_path(workdir, relpath)
     if not is_writable(scope, relpath):
         raise ScopeError(f"不在可写范围内：{relpath}")
@@ -101,6 +117,7 @@ def delete_file(workdir: Path | str, relpath: str, scope: WriteScope) -> None:
     路径不安全或不在 `scope` 内时抛出 `ScopeError`；文件不存在抛出
     `FileNotFoundError`；目标是目录抛出 `IsADirectoryError`。
     """
+    relpath = normalize_relpath(relpath)
     path = safe_path(workdir, relpath)
     if not is_writable(scope, relpath):
         raise ScopeError(f"不在可写范围内：{relpath}")

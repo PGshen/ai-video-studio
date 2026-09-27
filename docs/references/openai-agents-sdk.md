@@ -26,12 +26,13 @@
 | ✅ 已验证（2026-09-27） | 取消：`RunResultStreaming.cancel(mode="immediate")` 取消后台任务、清空队列，`stream_events()` 随即正常结束（不抛异常）；`mode="after_turn"` 等本次模型调用和工具执行完再停 | 源码 `result.py`；实测 |
 | ✅ 已验证（2026-09-27） | `Runner.run_streamed` 的 `max_turns` 默认 10（模型调用次数），超过抛 `MaxTurnsExceeded` | 源码 `run.py` |
 | ✅ 已验证（2026-09-27） | SDK 自带测试替身 `agents.testing.ScriptedModel`：按脚本返回 `ModelStep`（输出条目、usage、错误、`respond(responder)` 动态响应、`stream(events)` 自定义流事件）。自动流式只支持 message、function_call、apply_patch_call、reasoning 条目；`shell_call` 需用 `ModelStep.stream([...])` 手写 `response.output_item.done` + `response.completed` 事件 | 源码 `testing/model.py` |
+| ✅ 已验证（2026-09-27） | （Python 3.12 asyncio，不是 SDK）`asyncio.subprocess.Process.wait()`/`communicate()` 要等**所有管道都关闭**才返回；后台子进程继承了 stdout 时会一直拖到它结束。`proc.returncode` 在进程退出时就已设置，可以轮询它判断 shell 本身是否退出 | T10 审查后修复时实测 |
 | ✅ 已验证（2026-09-27） | 追踪默认开启且会上传到 OpenAI；`RunConfig(tracing_disabled=True)` 关闭 | 源码 `run_config.py` |
 
 ## 本项目的用法（T10）
 
-- `provider=openai` → `OpenAIResponsesModel` + 原生 `ApplyPatchTool`（`WorkspaceApplyPatchEditor`）+ `ShellTool`（`LocalShellExecutor`，cwd 为工作区，单条命令默认超时 120 秒、上限 600 秒，输出截断 2 万字符，名字含 KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL 的环境变量不传给子进程）；`allow_web` 时加 `WebSearchTool`。Shell 没有沙箱，越界改动靠轮末 `guard` 还原。
+- `provider=openai` → `OpenAIResponsesModel` + 原生 `ApplyPatchTool`（`WorkspaceApplyPatchEditor`）+ `ShellTool`（`LocalShellExecutor`，cwd 为工作区，单条命令默认超时 120 秒、上限 600 秒，输出截断 2 万字符，名字含 KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL 的环境变量不传给子进程）；`allow_web` 时加 `WebSearchTool`。**Shell 没有沙箱**：命令能读本机任意文件（包括 `backend/.env`）、写任意有权限的位置；过滤环境变量只是减少 key 被意外打印出来，不是安全边界。工作区内的越界改动靠轮末 `guard` 还原，工作区外的改动没有防线。每条命令在独立进程组里运行，命令结束（任何退出码）、超时、输出超限（按字符上限 ×4 字节计，边读边截，超出即杀）或被取消时都 `killpg` 整个进程组，后台进程（`nohup … &`）不会活过这次调用；主动 `setsid` 脱离进程组的进程管不到。
 - `provider=litellm` → `LitellmModel` + 兜底文件工具（`list_files`/`read_file`/`write_file`/`edit_file`），无 Shell、无联网工具。
 - 会话：`<data_dir>/openai_sessions.db`，首轮生成新 id 作为 `resume_ref`；发给模型的历史只保留最近 `Settings.openai_history_turns`（默认 20）轮，按用户消息切分。
-- 用量：每次模型调用一个 `Usage` 事件，成本 = `input_tokens × price_input + output_tokens × price_output`，单价单位为**美元 / 百万 token**；缓存命中的输入按普通输入价计（宁可高估）。配置了 `max_cost_per_turn` 却缺单价时本轮直接失败。
+- 用量：每次模型调用一个 `Usage` 事件（缺单价时 `priced=False`，TurnRunner 发一次 `cost_unpriced` 提示并把 turn 成本记为空），成本 = `input_tokens × price_input + output_tokens × price_output`，单价单位为**美元 / 百万 token**；缓存命中的输入按普通输入价计（宁可高估）。配置了 `max_cost_per_turn` 却缺单价时本轮直接失败。
 - `RunConfig(tracing_disabled=True)`、`max_turns=200`（步数预算由 TurnRunner 强制）。

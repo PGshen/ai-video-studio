@@ -284,6 +284,48 @@ class TestBudget:
         assert turn.status == "done"
         assert turn.cost_usd == pytest.approx(5.0)
 
+    async def test_unpriced_usage_emits_one_notice_and_no_cost(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+
+        class Unpriced:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                for _ in range(2):
+                    yield events.Usage(
+                        input_tokens=10, output_tokens=5, cost_usd=0.0, auth="api_key", priced=False
+                    )
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        turn = await h.run(session_id, Unpriced)
+
+        assert turn.status == "done"
+        assert turn.cost_usd is None
+        notices = [r.payload for r in list_events(env.engine, session_id) if r.type == "notice"]
+        assert [n["kind"] for n in notices] == ["cost_unpriced"]
+        assert turn.usage is not None and turn.usage["input_tokens"] == 20
+
+
+class TestWorkspaceChangedPaths:
+    async def test_move_to_target_is_published(self, h: Harness) -> None:
+        class Mover:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                args: dict[str, object] = {
+                    "type": "update_file",
+                    "path": "topic/a.md",
+                    "move_to": "topic/b.md",
+                }
+                yield events.ToolCall(call_id="p1", name="apply_patch", args=args)
+                yield events.ToolResult(call_id="p1", text="ok")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        received, pump = _collect(h.bus, session_id)
+        await h.run(session_id, Mover)
+        await _drain(pump)
+
+        changed = [e.payload["paths"] for e in received if e.type == "workspace_changed"]
+        assert changed == [["topic/a.md", "topic/b.md"]]
+
 
 class TestAllowWeb:
     async def test_allow_web_follows_stage_definition(self, h: Harness) -> None:

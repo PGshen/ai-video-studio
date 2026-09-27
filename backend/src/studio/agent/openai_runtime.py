@@ -80,12 +80,13 @@ from agents.usage import Usage as SdkUsage
 from openai import AsyncOpenAI
 
 from studio.agent import events
-from studio.agent.apply_patch import WorkspaceApplyPatchEditor
+from studio.agent.apply_patch import WorkspaceApplyPatchEditor, to_workspace_relpath
 from studio.agent.fallback_tools import build_fallback_tools
 from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec, invoke_tool
 from studio.config import Settings
 from studio.db.repo.profiles import ModelProfileValue
+from studio.workspace.files import ScopeError
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,8 @@ SHELL_DEFAULT_TIMEOUT_S = 120.0
 SHELL_MAX_TIMEOUT_S = 600.0
 SHELL_MAX_OUTPUT_CHARS = 20_000
 _SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
-"""名字匹配的环境变量不传给 Shell 子进程（API key 不应被 agent 的命令读到）。"""
+"""名字匹配的环境变量不传给 Shell 子进程。只是减少 key **意外**泄露（例如命令
+把环境打印出来）：Shell 没有沙箱，命令仍能读取本机任意文件（包括 `backend/.env`）。"""
 
 ModelFactory = Callable[[ModelProfileValue, str], Model]
 
@@ -172,12 +174,61 @@ def _kill_group(proc: asyncio.subprocess.Process) -> None:
         os.killpg(proc.pid, signal.SIGKILL)
 
 
+async def _read_capped(
+    stream: asyncio.StreamReader | None, cap: int, on_overflow: Callable[[], None]
+) -> bytes:
+    """读到 EOF，只保留前 `cap` 字节；超过时调用一次 `on_overflow`（杀进程组），
+    之后继续读并丢弃，直到管道关闭。"""
+    if stream is None:
+        return b""
+    kept = bytearray()
+    overflowed = False
+    while chunk := await stream.read(65536):
+        room = cap - len(kept)
+        if room > 0:
+            kept += chunk[:room]
+        if len(chunk) > room and not overflowed:
+            overflowed = True
+            on_overflow()
+    return bytes(kept)
+
+
+async def _wait_for_exit(proc: asyncio.subprocess.Process, timeout: float) -> bool:
+    """等 shell 进程本身退出（`True`）或超时（`False`）。
+
+    不能用 `proc.wait()`：asyncio 要等所有管道都关闭才让它返回，而后台子进程
+    继承了 stdout，会一直拖到它们自己结束——那样就来不及在它们改工作区之前杀掉。
+    `returncode` 在进程退出时就会被设置，这里轮询它。
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while proc.returncode is None:
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(0.02)
+    return True
+
+
+_READER_DRAIN_TIMEOUT_S = 2.0
+"""命令结束并杀掉进程组后，等管道读完的上限；逃出进程组（`setsid`）又占着管道的
+进程会让读取一直挂起，超时后放弃读取。"""
+
+
 class LocalShellExecutor:
     """`ShellTool` 的本地 executor：命令在工作区目录下逐条执行。
 
-    Shell 能写工作区内任意路径，不经过事前拦截；越界改动由轮末的 `guard` 还原
-    （设计 §4.3 第 2 道防线）。超时或非零退出码的调用记进 `failed`，运行时据此把
-    对应的 `ToolResult` 标记为 `is_error`。
+    **没有沙箱**：命令能读本机任意文件、写工作区内任意路径，不经过事前拦截；
+    工作区内的越界改动由轮末的 `guard` 还原（设计 §4.3 第 2 道防线），工作区外的
+    改动没有防线。
+
+    每条命令在自己的进程组里运行（`start_new_session`）；命令结束（无论退出码）、
+    超时、输出超限或被取消时都杀掉整个进程组，所以 `nohup ... &` 之类的后台进程
+    不会活过这次调用——否则它们可能在轮末 `guard` 和快照之后才改工作区，改动会
+    进入下一轮的基线、永远不会被还原。用 `setsid` 等方式主动脱离进程组的进程
+    管不到。
+
+    超时、输出超限或非零退出码的调用记进 `failed`，运行时据此把对应的
+    `ToolResult` 标记为 `is_error`。
     """
 
     def __init__(
@@ -200,15 +251,17 @@ class LocalShellExecutor:
         limit = min(action.max_output_length or self._max_output_chars, self._max_output_chars)
         outputs: list[ShellCommandOutput] = []
         for command in action.commands:
-            output = await self._run(command, timeout, limit)
+            output, failed = await self._run(command, timeout, limit)
             outputs.append(output)
-            if output.status == "timeout" or output.exit_code != 0:
+            if failed:
                 self._failed.add(request.data.call_id)
             if output.status == "timeout":
                 break
         return ShellResult(output=outputs)
 
-    async def _run(self, command: str, timeout: float, limit: int) -> ShellCommandOutput:
+    async def _run(
+        self, command: str, timeout: float, limit: int
+    ) -> tuple[ShellCommandOutput, bool]:
         proc = await asyncio.create_subprocess_shell(
             command,
             cwd=self._workdir,
@@ -218,25 +271,59 @@ class LocalShellExecutor:
             env=_shell_env(),
             start_new_session=True,
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
-        except TimeoutError:
+        overflowed = False
+
+        def on_overflow() -> None:
+            nonlocal overflowed
+            overflowed = True
             _kill_group(proc)
-            await proc.wait()
-            return ShellCommandOutput(
-                stderr=f"命令超时（{timeout:g} 秒），已终止",
-                outcome=ShellCallOutcome(type="timeout"),
-                command=command,
-            )
+
+        cap = limit * 4  # UTF-8 needs at most 4 bytes per character
+        readers = [
+            asyncio.create_task(_read_capped(stream, cap, on_overflow))
+            for stream in (proc.stdout, proc.stderr)
+        ]
+        try:
+            exited = await _wait_for_exit(proc, timeout)
         except asyncio.CancelledError:
             _kill_group(proc)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(proc.wait(), _READER_DRAIN_TIMEOUT_S)
+            for reader in readers:
+                reader.cancel()
             raise
-        return ShellCommandOutput(
-            stdout=_truncate(stdout.decode("utf-8", errors="replace"), limit),
-            stderr=_truncate(stderr.decode("utf-8", errors="replace"), limit),
+        timed_out = not exited
+        # Always kill the group: background children must not outlive the command.
+        _kill_group(proc)
+        done, pending = await asyncio.wait(
+            [*readers, asyncio.ensure_future(proc.wait())], timeout=_READER_DRAIN_TIMEOUT_S
+        )
+        for task in pending:
+            task.cancel()
+        stdout, stderr = (
+            reader.result() if reader in done and not reader.cancelled() else b""
+            for reader in readers
+        )
+
+        stdout_text = _truncate(stdout.decode("utf-8", errors="replace"), limit)
+        stderr_text = _truncate(stderr.decode("utf-8", errors="replace"), limit)
+        if timed_out:
+            note = f"命令超时（{timeout:g} 秒），已终止"
+            return ShellCommandOutput(
+                stdout=stdout_text,
+                stderr=f"{stderr_text}\n{note}" if stderr_text else note,
+                outcome=ShellCallOutcome(type="timeout"),
+                command=command,
+            ), True
+        if overflowed:
+            stderr_text += f"\n…（输出超过上限 {limit} 字符，命令已被终止）"
+        output = ShellCommandOutput(
+            stdout=stdout_text,
+            stderr=stderr_text,
             outcome=ShellCallOutcome(type="exit", exit_code=proc.returncode),
             command=command,
         )
+        return output, overflowed or proc.returncode != 0
 
 
 # ---- business tools -----------------------------------------------------
@@ -280,8 +367,11 @@ def build_function_tool(
             on_invoke_tool=on_invoke,
             strict_json_schema=True,
         )
-    except UserError:
+    except UserError as exc:
         # Some Pydantic schemas cannot be made strict (e.g. open dicts); fall back to non-strict.
+        logger.warning(
+            "工具 %s 的参数 schema 无法转成 strict 模式，改用非 strict：%s", spec.name, exc
+        )
         return FunctionTool(
             name=spec.name,
             description=spec.description,
@@ -297,9 +387,14 @@ def build_function_tool(
 @dataclass
 class _Turn:
     profile: ModelProfileValue
+    workdir: Path
     results: dict[str, ToolResult] = field(default_factory=dict)
     failed_calls: set[str] = field(default_factory=set)
     pending_usage: list[SdkUsage] = field(default_factory=list)
+
+    @property
+    def priced(self) -> bool:
+        return self.profile.price_input is not None and self.profile.price_output is not None
 
     def drain_usage(self) -> list[events.AgentEvent]:
         drained, self.pending_usage = self.pending_usage, []
@@ -309,6 +404,7 @@ class _Turn:
                 output_tokens=usage.output_tokens,
                 cost_usd=turn_cost(self.profile, usage.input_tokens, usage.output_tokens),
                 auth="api_key",
+                priced=self.priced,
             )
             for usage in drained
         ]
@@ -340,7 +436,18 @@ def _parse_args(raw: Any) -> dict[str, object]:
     return parsed if isinstance(parsed, dict) else {"raw": parsed}
 
 
-def _tool_call(item: ToolCallItem) -> events.ToolCall:
+def _patch_path(workdir: Path, raw: Any) -> object:
+    """apply_patch 路径 → 规范化的工作区相对路径（与 editor 实际写入的一致）；
+    不安全的路径原样保留（editor 会拒绝它，事件里保留模型给的原文便于排查）。"""
+    if not isinstance(raw, str) or not raw:
+        return raw
+    try:
+        return to_workspace_relpath(workdir, raw)
+    except ScopeError:
+        return raw
+
+
+def _tool_call(item: ToolCallItem, workdir: Path) -> events.ToolCall:
     raw = item.raw_item
     kind = _get(raw, "type")
     call_id = item.call_id or ""
@@ -349,8 +456,13 @@ def _tool_call(item: ToolCallItem) -> events.ToolCall:
     if kind == "apply_patch_call":
         operation = _get(raw, "operation")
         args: dict[str, object] = {
-            key: _get(operation, key) for key in ("type", "path", "diff") if _get(operation, key)
+            key: _get(operation, key)
+            for key in ("type", "path", "move_to", "diff")
+            if _get(operation, key)
         }
+        for key in ("path", "move_to"):
+            if key in args:
+                args[key] = _patch_path(workdir, args[key])
         return events.ToolCall(call_id, "apply_patch", args)
     if kind == "shell_call":
         commands = _get(_get(raw, "action"), "commands") or []
@@ -392,7 +504,7 @@ def _convert(event: Any, turn: _Turn) -> list[events.AgentEvent]:
         text = ItemHelpers.text_message_output(item)
         return [events.TextBlock(text=text)] if text else []
     if isinstance(item, ToolCallItem):
-        call = _tool_call(item)
+        call = _tool_call(item, turn.workdir)
         if call.name == "web_search":
             # Hosted tool: no separate output item; close the call so the UI does not hang.
             status = _get(item.raw_item, "status") or "completed"
@@ -415,7 +527,8 @@ def keep_recent_turns(
 ) -> Callable[[list[TResponseInputItem], list[TResponseInputItem]], list[TResponseInputItem]]:
     """`session_input_callback`：历史从倒数第 `turns` 条用户消息开始截取。
 
-    按用户消息切分，保证不会从一对工具调用/结果的中间截断。
+    发给模型的是 **`turns` 轮历史 + 当前这一轮**（`turns=0` 只发当前轮）。按用户消息
+    切分，保证不会从一对工具调用/结果的中间截断。
     """
 
     def combine(
@@ -508,7 +621,7 @@ class OpenAIRuntime:
             yield events.TurnEnd(resume_ref=ctx.resume_ref, status="failed", error=str(exc))
             return
 
-        turn = _Turn(profile=ctx.model_profile)
+        turn = _Turn(profile=ctx.model_profile, workdir=ctx.workdir)
         agent = Agent(
             name="studio",
             instructions=ctx.system_prompt,

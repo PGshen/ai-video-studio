@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -34,12 +35,17 @@ from openai.types.responses import (
     ResponseOutputItemDoneEvent,
 )
 from openai.types.responses.response_function_shell_tool_call import Action as ShellAction
+from openai.types.responses.response_function_web_search import (
+    ActionSearch,
+    ResponseFunctionWebSearch,
+)
 from pydantic import BaseModel
 
 from studio.agent import events
 from studio.agent.openai_runtime import (
     LocalShellExecutor,
     OpenAIRuntime,
+    build_function_tool,
     build_model,
     openai_client,
     register_openai,
@@ -171,13 +177,18 @@ def _apply_patch_call(call_id: str, kind: str, path: str, diff: str | None) -> d
 
 def _shell_step(call_id: str, commands: list[str]) -> ModelStep:
     """Automatic streaming in ScriptedModel does not cover shell calls; script the events."""
-    call = ResponseFunctionShellToolCall(
-        id=call_id,
-        call_id=call_id,
-        type="shell_call",
-        status="completed",
-        action=ShellAction(commands=commands),
+    return _streamed_item(
+        ResponseFunctionShellToolCall(
+            id=call_id,
+            call_id=call_id,
+            type="shell_call",
+            status="completed",
+            action=ShellAction(commands=commands),
+        )
     )
+
+
+def _streamed_item(call: Any) -> ModelStep:
     response = Response(
         id="resp-shell",
         created_at=0,
@@ -635,3 +646,141 @@ def test_register_openai(tmp_path: Path) -> None:
 
 def test_settings_history_turns_default() -> None:
     assert Settings().openai_history_turns == 20
+
+
+async def _group_gone(pgid: int) -> bool:
+    for _ in range(100):
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            return True  # pid reused by a process we do not own
+        await asyncio.sleep(0.02)
+    return False
+
+
+class TestShellProcessGroup:
+    def _request(self, commands: list[str], timeout_ms: int | None = None) -> ShellCommandRequest:
+        data = ShellCallData(
+            call_id="s1", action=ShellActionRequest(commands=commands, timeout_ms=timeout_ms)
+        )
+        return ShellCommandRequest(ctx_wrapper=RunContextWrapper(context=None), data=data)
+
+    @pytest.mark.parametrize(
+        "background",
+        [
+            "nohup sh -c 'sleep 0.5; touch marker' > /dev/null 2>&1 &",
+            "(sleep 0.5; touch marker) &",  # still holds the stdout pipe
+        ],
+    )
+    async def test_background_processes_die_with_the_command(
+        self, workdir: Path, background: str
+    ) -> None:
+        executor = LocalShellExecutor(workdir, set())
+
+        result = await asyncio.wait_for(executor(self._request([f"echo $$; {background}"])), 3)
+
+        pgid = int(result.output[0].stdout.split()[0])
+        assert await _group_gone(pgid)
+        await asyncio.sleep(0.8)
+        assert not (workdir / "marker").exists()
+
+    async def test_output_flood_is_capped_and_killed(self, workdir: Path) -> None:
+        failed: set[str] = set()
+        executor = LocalShellExecutor(workdir, failed, max_output_chars=1000)
+
+        result = await asyncio.wait_for(executor(self._request(["yes"], timeout_ms=10_000)), 5)
+
+        (output,) = result.output
+        assert output.status == "completed"
+        assert len(output.stdout) < 1200
+        assert "终止" in output.stderr
+        assert failed == {"s1"}
+
+    async def test_cancel_while_shell_runs(self, workdir: Path, data_dir: Path) -> None:
+        models = Models([_shell_step("s1", ["echo $$ > pgid; sleep 30"])])
+        token = CancelToken()
+        runtime = _runtime(data_dir, models)
+
+        async def cancel_when_started() -> None:
+            while not (workdir / "pgid").exists() or not (workdir / "pgid").read_text():
+                await asyncio.sleep(0.02)
+            token.cancel()
+
+        canceller = asyncio.create_task(cancel_when_started())
+        out = await asyncio.wait_for(_run(runtime, _ctx(workdir, cancel_token=token)), 5)
+        await canceller
+
+        assert _end(out).status == "cancelled"
+        pgid = int((workdir / "pgid").read_text())
+        assert await _group_gone(pgid)
+
+
+class TestReviewFixes:
+    async def test_web_search_call_gets_synthesized_result(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        search = ResponseFunctionWebSearch(
+            id="ws1",
+            type="web_search_call",
+            status="completed",
+            action=ActionSearch(type="search", query="manim"),
+        )
+        models = Models([_streamed_item(search), [assistant_message("好")]])
+        out = await _run(_runtime(data_dir, models), _ctx(workdir, allow_web=True))
+
+        assert _of(out, events.ToolCall) == [
+            events.ToolCall(call_id="ws1", name="web_search", args={"query": "manim"})
+        ]
+        (result,) = _of(out, events.ToolResult)
+        assert result.call_id == "ws1" and not result.is_error
+        assert "completed" in result.text
+
+    async def test_apply_patch_args_are_normalised_with_move_to(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        (workdir / "topic").mkdir()
+        (workdir / "topic" / "a.md").write_text("a\n", encoding="utf-8")
+        call = _apply_patch_call("p1", "update_file", str(workdir / "topic" / "a.md"), "@@\n-a\n+b")
+        call["operation"]["move_to"] = "./topic//b.md"
+        models = Models([[call], [assistant_message("好")]])
+
+        out = await _run(_runtime(data_dir, models), _ctx(workdir))
+
+        (tool_call,) = _of(out, events.ToolCall)
+        assert tool_call.args["path"] == "topic/a.md"
+        assert tool_call.args["move_to"] == "topic/b.md"
+        assert (workdir / "topic" / "b.md").read_text(encoding="utf-8") == "b\n"
+
+    def test_non_strict_fallback_logs_warning(
+        self, workdir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        class Open(BaseModel):
+            data: dict[str, Any]
+
+        def handler(_ctx: ToolContext, args: Open) -> ToolResult:
+            return ToolResult(text="ok")
+
+        spec = ToolSpec("open", "开放参数", Open, {"topic"}, handler)
+        tool_ctx = ToolContext("p", "topic", workdir, _noop_record)
+        with caplog.at_level(logging.WARNING, logger="studio.agent.openai_runtime"):
+            tool = build_function_tool(spec, tool_ctx, {})
+
+        assert tool.strict_json_schema is False
+        assert any("strict" in record.getMessage() for record in caplog.records)
+
+    async def test_unpriced_usage_is_flagged(self, workdir: Path, data_dir: Path) -> None:
+        usage = Usage(requests=1, input_tokens=10, output_tokens=5, total_tokens=15)
+        models = Models([ModelStep(output=[assistant_message("好")], usage=usage)])
+        profile = dataclasses.replace(_OPENAI, price_input=None, price_output=None)
+
+        out = await _run(_runtime(data_dir, models), _ctx(workdir, profile=profile))
+
+        (reported,) = _of(out, events.Usage)
+        assert reported.priced is False and reported.cost_usd == 0.0
+
+    async def test_priced_usage_is_flagged_priced(self, workdir: Path, data_dir: Path) -> None:
+        models = Models([[assistant_message("好")]])
+        out = await _run(_runtime(data_dir, models), _ctx(workdir))
+        assert all(u.priced for u in _of(out, events.Usage))

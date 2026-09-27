@@ -104,6 +104,9 @@ class _State:
     output_tokens: int = 0
     cost_usd: float = 0.0
     cost_advisory: bool = False
+    cost_unpriced: bool = False
+    """收到过 `Usage.priced == False`：模型配置缺单价，成本没有统计（turn 的
+    `cost_usd` 记为空，并发一次 `cost_unpriced` 提示）。"""
     budget_exceeded: bool = False
     end: events.TurnEnd | None = None
     status: str | None = None
@@ -381,6 +384,11 @@ class TurnRunner:
             # Subscription (login) auth: cost is informational, only steps are enforced.
             if event.auth == "login":
                 state.cost_advisory = True
+            if not event.priced and not state.cost_unpriced:
+                state.cost_unpriced = True
+                self._persist(
+                    job, "notice", {"kind": "cost_unpriced", "message": "未配置单价，成本未统计"}
+                )
             limit = job.profile.max_cost_per_turn
             if limit is not None and not state.cost_advisory and state.cost_usd > limit:
                 self._exceed_budget(job, state, "cost")
@@ -391,9 +399,10 @@ class TurnRunner:
         call = state.calls.get(event.call_id)
         recorded, state.pending_tool_paths = state.pending_tool_paths, []
         if call is not None and call.name in events.FILE_TOOL_NAMES:
-            path = call.args.get("path")
+            # `move_to` is the target of an apply_patch rename (OpenAIRuntime).
+            candidates = (call.args.get("path"), call.args.get("move_to"))
             # An empty list means "unknown paths, refetch" (e.g. shell commands).
-            paths = [path] if isinstance(path, str) else []
+            paths = [path for path in candidates if isinstance(path, str)]
             self._publish(job, "workspace_changed", {"paths": paths + recorded})
         elif recorded:
             self._publish(job, "workspace_changed", {"paths": recorded})
@@ -465,7 +474,7 @@ class TurnRunner:
             status=status,
             end_snapshot_id=end_snapshot_id,
             usage=usage,
-            cost_usd=state.cost_usd,
+            cost_usd=None if state.cost_unpriced else state.cost_usd,
             error=error,
             resume_ref=state.end.resume_ref if state.end is not None else None,
         )

@@ -304,11 +304,13 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T8 审查后修复 — 完成，`make check` 全绿（298 个后端测试）：`SessionBus.subscribe()` 改成返回 `Subscription`（同步幂等 `close()`）的结构性修复替换了第一版依赖调度顺序的"预热"写法；补齐 HTTP 层测试（直接驱动 ASGI app，不再局限于生成器白盒测试）；`WIRE_EVENT_TYPES` 统一定义；模型配置不存在改成 400；`after_seq`/`Last-Event-ID` 非法输入改成 400；补了"项目忙不拒绝消息、只排队"的 api 测试（见本提交）。
 - 2026-09-27 — T9：ClaudeRuntime — 完成，`make check` 全绿（331 个后端测试，新增 29 个 ClaudeRuntime mock 测试）；新增依赖 `claude-agent-sdk 0.2.160`（内置 CLI 2.1.283）；references 中可由源码确认的条目已改为 ✅，其余标为 T15 实测（见本提交）。
 - 2026-09-27 — T10：OpenAIRuntime 与兜底文件工具 — 完成，`make check` 全绿（403 个后端测试，新增 72 个：OpenAIRuntime 35、ApplyPatchEditor 16、兜底工具 15、`files.delete_file` 5、启动注册 1）；新增依赖 `openai-agents[litellm] 0.22.3`（带入 `openai 3.19.2`、`litellm 1.83.0`，`websockets` 从 17.1 降到 16.1.1）；测试用 SDK 自带的 `agents.testing.ScriptedModel` 驱动真实 `Runner.run_streamed`（见本提交）。
+- 2026-09-27 — T10 审查后修复 — 完成，`make check` 全绿：Shell 命令结束后总是杀掉整个进程组（后台进程不再活过轮末快照）、输出边读边截超限即杀；`workspace.files` 写/删前规范化路径（`narrative/./timing.json` 不再绕过工具托管检查）；apply_patch 的 `ToolCall.args` 用规范化路径并带 `move_to`（TurnRunner 一并推送）；缺单价时 `Usage.priced=False` → TurnRunner 发一次 `cost_unpriced` 提示、turn 成本记空；非 strict 退回时记警告；`scripts/dev.sh` 导出 `backend/.env`（见本提交）。
 
 ## 下一步
 
 - 从 T11 开始：前端骨架与前端质量关口。
 - T15 需要实测 references 中标"⚠️ T15 实测"的 ClaudeRuntime 条目（登录模式置空变量是否生效、图片工具结果、hook 拒绝的表现、sandbox（R3）、`CLAUDE_CONFIG_DIR`（R4）、resume 后 `total_cost_usd` 是否带之前的累计值）。
+- T15：`make smoke` 目标要和 `scripts/dev.sh` 一样在运行前导出 `backend/.env`（`set -a; . backend/.env; set +a`），否则各运行时从 `os.environ` 读不到 key（pydantic-settings 不把 `.env` 写进环境变量）。缺单价的配置现在会产出 `cost_unpriced` 提示、turn 成本为空。
 - T15 的 OpenAI 部分：种子配置 `gpt`/`deepseek` 目前没有单价（`price_input`/`price_output` 为空），OpenAIRuntime 的成本 = token × 单价（美元/百万 token），**冒烟前必须给这两个配置填上单价并设 `max_cost_per_turn`**，否则成本预算不起作用（设了上限但缺单价时本轮会直接失败）。另需实测：strict schema 带 `default` 是否被接受、R1（DeepSeek 上的 `apply_patch`/`shell`）、R2（LiteLLM 路径的图片工具结果）、`OpenAIResponsesModel` 默认 `store` 下续轮是否正常。
 
 ## 决策记录
@@ -401,6 +403,12 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T10：Shell executor 不传名字含 KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL 的环境变量（避免 agent 的命令读到 API key）；单条命令默认超时 120 秒、上限 600 秒，超时杀整个进程组；非零退出码或超时的调用标为 `is_error`。
 - 2026-09-27 — T10：业务 `ToolSpec` → `FunctionTool` 优先用 strict schema，SDK 无法转换（`UserError`）时退回非 strict；每次调用的 `ToolResult` 按 `call_id` 暂存，事件转换时直接取用，保留 `is_error` 和原始图片。
 - 2026-09-27 — T10：`max_turns=200`（SDK 默认 10 太小，步数预算由 TurnRunner 按 `max_steps_per_turn` 强制）；`RunConfig(tracing_disabled=True)`（SDK 默认会把追踪上传到 OpenAI）。`openai-agents` 依赖写成 `>=0.22.3,<0.23`。
+- 2026-09-27 — T10 审查后：Shell executor 在命令结束（任何退出码）后总是 `killpg` 整个进程组，取消分支也会等进程退出——否则 `nohup … &` 这类后台进程能在轮末 `guard` 和快照之后改工作区，改动进入下一轮基线、永远不会被还原。等待 shell 退出改为轮询 `proc.returncode`（`proc.wait()` 要等管道关闭，会被后台进程拖住）；输出边读边截，超过上限（字符上限 ×4 字节）立即杀进程组并标为失败。
+- 2026-09-27 — T10 审查后：`workspace.files` 新增 `normalize_relpath`，`write_text`/`delete_file` 在 `safe_path` 和 `is_writable` 之前统一规范化（`narrative/./timing.json`、`narrative//timing.json` 原来能绕过 `tool_managed` 检查）；`apply_patch.to_workspace_relpath` 复用它，editor 与事件转换共用同一套路径规范。
+- 2026-09-27 — T10 审查后：apply_patch 的 `ToolCall.args` 用规范化后的工作区相对路径，并带上 `move_to`；TurnRunner 的 `workspace_changed` 同时推送 `path` 和 `move_to`（改名时两个路径都要刷新）。
+- 2026-09-27 — T10 审查后：缺单价用 `events.Usage.priced: bool = True` 表达（最小改动：`cost_usd` 保持 float，不影响 Claude/Fake 和 T6 的累加逻辑）。OpenAIRuntime 在配置缺单价时发 `priced=False`；TurnRunner 每轮第一次收到时落库一条 `notice`（`kind="cost_unpriced"`，"未配置单价，成本未统计"），turn 行的 `cost_usd` 记为空，界面不会显示成 $0。
+- 2026-09-27 — T10 审查后：`scripts/dev.sh` 在 `backend/.env` 存在时 `set -a; . backend/.env; set +a` 导出（控制者裁定；不新增依赖），dev-setup 已更新。
+- 2026-09-27 — T10 审查后：业务工具 schema 退回非 strict 时记一条警告日志；references 与代码注释写明环境变量过滤只减少 key 被意外打印、Shell 没有沙箱可读本机任意文件。
 
 ## 意外与发现
 
@@ -419,7 +427,8 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T9：`main` 总是注册 `claude` 之后，T8 的 `test_unregistered_runtime_is_400`（原来用 `claude-sonnet` 配置代表"未注册的运行时"）失败，改为临时插入一个 runtime 为 `unregistered` 的模型配置。
 - 2026-09-27 — T10：`openai-agents 0.22.3` 自带测试替身 `agents.testing.ScriptedModel`，可以直接驱动真实的 `Runner.run_streamed`（含 `apply_patch_call`），不需要自己 mock `Model` 接口；但它的自动流式不支持 `shell_call`，Shell 用例用 `ModelStep.stream([...])` 手写两条流事件。
 - 2026-09-27 — T10：`ToolCallItem.raw_item` 对 `apply_patch_call`/`shell_call` 是 dict，对 `function_call` 是 Pydantic 对象，转换时两种都要处理。`agents` 顶层没有导出 `ToolContext`（要从 `agents.tool_context` 导入）。
-- 2026-09-27 — T10：`uv add "openai-agents[litellm]"` 把 `websockets` 从 17.1 降到 16.1.1（litellm 的约束），`uvicorn[standard]` 仍可用，`make check` 全绿。
+- 2026-09-27 — T10：`uv add "openai-agents[litellm]"` 把 `websockets` 从 17.1 降到 16.1.1（原因是 `openai-agents 0.22.3` 自身声明了 `websockets>=15,<17`，不是 litellm；litellm 只在 `proxy` extra 里约束 websockets，本项目没装），`uvicorn[standard]` 仍可用，`make check` 全绿。
+- 2026-09-27 — T10 审查后：asyncio 的 `Process.wait()`/`communicate()` 要等所有管道关闭才返回，后台子进程继承 stdout 时会一直等到它结束——第一版"命令结束后 killpg"的修复因此对 `(sleep; touch) &` 无效（测试发现），改为轮询 `returncode`。已写进 references。
 
 ## 阻塞
 

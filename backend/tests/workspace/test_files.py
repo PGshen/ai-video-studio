@@ -8,6 +8,7 @@ from studio.workspace.files import (
     ScopeError,
     delete_file,
     list_tree,
+    normalize_relpath,
     read_bytes,
     read_text,
     safe_path,
@@ -176,3 +177,32 @@ class TestDeleteFile:
         (workdir / "topic" / "sub").mkdir(parents=True)
         with pytest.raises(IsADirectoryError):
             delete_file(workdir, "topic/sub", self._SCOPE)
+
+
+class TestNormalizedScopeChecks:
+    """Un-normalised spellings must not slip past the tool_managed check."""
+
+    _SCOPE = WriteScope(writable=["narrative/**"], tool_managed=["narrative/timing.json"])
+
+    @pytest.mark.parametrize(
+        "relpath", ["narrative/./timing.json", "narrative//timing.json", "./narrative/timing.json"]
+    )
+    def test_write_to_managed_file_via_odd_spelling_is_rejected(
+        self, workdir: Path, relpath: str
+    ) -> None:
+        with pytest.raises(ScopeError):
+            write_text(workdir, relpath, "{}", self._SCOPE)
+        assert not (workdir / "narrative" / "timing.json").exists()
+
+    def test_delete_managed_file_via_odd_spelling_is_rejected(self, workdir: Path) -> None:
+        _write(workdir / "narrative" / "timing.json", "{}")
+        with pytest.raises(ScopeError):
+            delete_file(workdir, "narrative/./timing.json", self._SCOPE)
+        assert (workdir / "narrative" / "timing.json").exists()
+
+    def test_normalize_relpath(self) -> None:
+        assert normalize_relpath("narrative/./a//b.json") == "narrative/a/b.json"
+        assert normalize_relpath("./topic/a.md") == "topic/a.md"
+        for bad in ("", ".", "/etc/passwd", "topic/../x"):
+            with pytest.raises(ScopeError):
+                normalize_relpath(bad)

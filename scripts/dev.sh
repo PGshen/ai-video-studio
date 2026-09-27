@@ -9,6 +9,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Claude Code 沙箱的 PATH 可能不包含 ~/.local/bin，这里主动定位（同 Makefile）。
 UV="${UV:-$(command -v uv 2>/dev/null || echo "$HOME/.local/bin/uv")}"
 
+# 模型 key 由各运行时从 os.environ 按模型配置的 api_key_env 读取，而 pydantic-settings
+# 只把 backend/.env 读进 Settings 字段、不写进 os.environ，所以这里整体导出。
+if [ -f "$ROOT_DIR/backend/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT_DIR/backend/.env"
+  set +a
+fi
+
 pids=()
 
 cleanup() {

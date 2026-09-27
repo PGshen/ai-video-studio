@@ -18,6 +18,19 @@ from studio.workspace.files import ScopeError
 from studio.workspace.scope import WriteScope, is_writable
 
 
+def to_workspace_relpath(workdir: Path, raw: str) -> str:
+    """模型给出的路径 → 规范化的工作区相对路径；绝对路径须落在 `workdir` 内。
+
+    不安全（越出工作区、含 `..`、空）时抛出 `ScopeError`。
+    """
+    if not PurePosixPath(raw).is_absolute():
+        return files.normalize_relpath(raw)
+    try:
+        return Path(raw).resolve().relative_to(workdir.resolve()).as_posix()
+    except ValueError as exc:
+        raise ScopeError(f"{raw} 在项目工作区之外") from exc
+
+
 class WorkspaceApplyPatchEditor:
     """实现 SDK 的 `ApplyPatchEditor` 协议；路径相对 `workdir`（绝对路径须落在其内）。"""
 
@@ -26,13 +39,7 @@ class WorkspaceApplyPatchEditor:
         self._scope = scope
 
     def _relpath(self, raw: str) -> str:
-        path = PurePosixPath(raw)
-        if not path.is_absolute():
-            return raw.removeprefix("./")
-        try:
-            return Path(raw).resolve().relative_to(self._workdir.resolve()).as_posix()
-        except ValueError as exc:
-            raise ScopeError(f"{raw} 在项目工作区之外") from exc
+        return to_workspace_relpath(self._workdir, raw)
 
     def _failed(self, raw_path: str, exc: Exception) -> ApplyPatchResult:
         allowed = "、".join(self._scope.writable) or "（无）"

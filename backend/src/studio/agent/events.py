@@ -105,6 +105,10 @@ class Usage:
     output_tokens: int
     cost_usd: float
     auth: AuthMode | None = None
+    priced: bool = True
+    """`False`：模型配置没有单价，`cost_usd` 只是 0 占位、没有统计成本（OpenAIRuntime，
+    T10 审查后修复）。TurnRunner 据此每轮发一次 `cost_unpriced` 提示，并把 turn 的
+    `cost_usd` 记为空，界面不会显示成 $0。"""
 
 
 @dataclass(frozen=True, slots=True)

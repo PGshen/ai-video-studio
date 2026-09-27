@@ -7,7 +7,7 @@ from pathlib import Path
 from agents import ApplyPatchOperation, ApplyPatchResult
 from agents.editor import ApplyPatchOperationType
 
-from studio.agent.apply_patch import WorkspaceApplyPatchEditor
+from studio.agent.apply_patch import WorkspaceApplyPatchEditor, to_workspace_relpath
 from studio.workspace.scope import WriteScope
 
 SCOPE = WriteScope(writable=["topic/**"], tool_managed=["topic/managed.json"])
@@ -144,3 +144,30 @@ class TestDelete:
 def test_results_are_sdk_result_objects(workdir: Path) -> None:
     result = _editor(workdir).create_file(_op("create_file", "topic/a.md", "+x"))
     assert isinstance(result, ApplyPatchResult)
+
+
+class TestNormalisedPaths:
+    def test_odd_spelling_of_managed_file_is_rejected(self, workdir: Path) -> None:
+        for path in ("topic/./managed.json", "topic//managed.json"):
+            result = _editor(workdir).create_file(_op("create_file", path, "+{}"))
+            assert result.status == "failed"
+        assert not (workdir / "topic" / "managed.json").exists()
+
+    def test_move_to_odd_spelling_of_managed_file_is_rejected(self, workdir: Path) -> None:
+        _write(workdir / "topic" / "a.md", "a\n")
+
+        result = _editor(workdir).update_file(
+            _op("update_file", "topic/a.md", "@@\n-a\n+b", move_to="topic/./managed.json")
+        )
+
+        assert result.status == "failed"
+        assert (workdir / "topic" / "a.md").exists()
+        assert not (workdir / "topic" / "managed.json").exists()
+
+    def test_success_message_uses_normalised_path(self, workdir: Path) -> None:
+        result = _editor(workdir).create_file(_op("create_file", "./topic//a.md", "+x"))
+        assert result.output == "已创建 topic/a.md"
+
+    def test_to_workspace_relpath(self, workdir: Path) -> None:
+        assert to_workspace_relpath(workdir, "./topic//a.md") == "topic/a.md"
+        assert to_workspace_relpath(workdir, str(workdir / "topic" / "b.md")) == "topic/b.md"
