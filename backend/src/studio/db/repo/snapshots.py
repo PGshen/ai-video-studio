@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, delete, select
 
 from studio.db.engine import session_scope
 from studio.db.models import Snapshot
@@ -80,3 +80,12 @@ def list_snapshots(engine: Engine, project_id: str) -> list[SnapshotValue]:
         )
         rows = session.scalars(stmt).all()
         return [_to_value(row) for row in rows]
+
+
+def delete_snapshots(engine: Engine, project_id: str) -> None:
+    """删除项目的全部快照行；不存在时是空操作（项目创建失败时的清理用，见
+    `api.projects`）。只删 `snapshots` 表的行，不动 `BlobStore` 里的内容——
+    blob 是内容寻址、可能被其他项目的快照共用，不能因为一个项目清理就删。
+    """
+    with session_scope(engine) as session:
+        session.execute(delete(Snapshot).where(Snapshot.project_id == project_id))

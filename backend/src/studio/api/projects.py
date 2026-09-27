@@ -7,7 +7,11 @@
    看不到它。
 2. 再插入 `projects` 行和三条 `project_stages` 行。这一步失败时（理论上
    只有数据库故障之类的极端情况）用 `except` 兜底清理：删工作区目录、删
-   可能已经插入的 `projects`/`project_stages` 行，再把错误转成 500。
+   可能已经插入的 `snapshots`（含步骤 1 建的 `init` 快照行）/`projects`/
+   `project_stages` 行，再把错误转成 500。`BlobStore` 里的内容不用清理：
+   blob 是内容寻址、可能被其他项目共用，孤儿内容不影响正确性，也没有
+   项目 id 可以定位删除。
+
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from studio.db.repo.projects import (
     get_project,
     list_projects,
 )
+from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
 from studio.workspace import BlobStore, create_snapshot, project_dir
 
@@ -75,6 +80,7 @@ def _init_workspace(
 
 def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str) -> None:
     shutil.rmtree(project_dir(settings.data_dir, project_id), ignore_errors=True)
+    delete_snapshots(engine, project_id)
     delete_stages(engine, project_id)
     delete_project(engine, project_id)
 

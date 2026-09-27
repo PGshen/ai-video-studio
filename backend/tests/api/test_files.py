@@ -161,6 +161,23 @@ class TestWriteFile:
 
         assert response.status_code == 400
 
+    async def test_symlink_is_rejected_with_400(self, api_env: ApiEnv) -> None:
+        pid = await _project(api_env)
+        workdir = api_env.workdir(pid)
+        (workdir / "topic").mkdir(parents=True, exist_ok=True)
+        target = workdir / "style" / "STYLE.md"
+        link = workdir / "topic" / "sneaky.md"
+        link.symlink_to(target)
+
+        response = await api_env.client.put(
+            f"/api/projects/{pid}/files/topic/sneaky.md",
+            params={"stage": "topic"},
+            json={"content": "改写"},
+        )
+
+        assert response.status_code == 400
+        assert_detail(response)
+
     async def test_unknown_stage_is_404(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)
 

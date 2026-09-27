@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.stages import list_stages
 
@@ -127,6 +129,9 @@ class TestCreateProjectFailureCleanup:
     ) -> None:
         from studio.api import projects as projects_module
 
+        fixed_id = UUID("11111111-1111-1111-1111-111111111111")
+        monkeypatch.setattr(projects_module, "uuid4", lambda: fixed_id)
+
         def boom(*args: object, **kwargs: object) -> None:
             raise RuntimeError("模拟阶段行创建失败")
 
@@ -139,3 +144,6 @@ class TestCreateProjectFailureCleanup:
         # every project row that might have been inserted before the failure is gone
         listing = await api_env.client.get("/api/projects")
         assert listing.json() == []
+        # the `init` snapshot created by `_init_workspace` before the DB rows
+        # is not left orphaned either (review finding: was previously leaked).
+        assert list_snapshots(api_env.app.state.engine, fixed_id.hex) == []

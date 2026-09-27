@@ -110,14 +110,14 @@ def write_file_endpoint(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"未知阶段：{stage}") from exc
 
-    if turn_runner.is_project_busy(project_id):
-        raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请稍后再试")
-
     workdir = project_dir(settings.data_dir, project_id)
     try:
         files.safe_path(workdir, path)
     except ScopeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if turn_runner.is_project_busy(project_id):
+        raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请稍后再试")
 
     scope = stage_definition.write_scope()
     if not is_writable(scope, path):
