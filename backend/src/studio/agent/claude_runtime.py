@@ -10,7 +10,9 @@
   本机登录模式：把 `LOGIN_BLANKED_ENV` 置空（SDK 把 `env` 合并在
   `os.environ` 之上，无法删除键，CLI 把空值当作未设置），不改
   `CLAUDE_CONFIG_DIR`（改了会读不到 macOS 钥匙串里的登录凭据），`Usage.auth`
-  标记为 `login`，成本只作参考。
+  标记为 `login`，成本只作参考。两种模式都先把父进程继承来的宿主变量置空
+  （`HOST_BLANKED_ENV`：Claude Code / 桌面版注入的 OAuth、会话、provider、模型覆盖等），
+  `make dev`/`make smoke` 从 Claude Code 里启动时也不会被宿主环境带偏。
 - **工具**：原生 Read/Write/Edit/Glob/Grep/Bash，`ctx.allow_web` 时加
   WebSearch/WebFetch；业务 `ToolSpec` 经 `create_sdk_mcp_server` 变成进程内 MCP
   工具，handler 走 `invoke_tool`，`ToolResult.images` → MCP image content。
@@ -79,6 +81,66 @@ _MCP_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 LOGIN_BLANKED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 """登录模式下置空的环境变量：任一有值都会覆盖本机登录凭据。"""
 
+DEFAULT_BASE_URL = "https://api.anthropic.com"
+"""继承来的 `ANTHROPIC_BASE_URL` 被替换成的值（模型配置没设 `base_url` 时）。不置空：
+CLI 里有 `process.env.X ?? process.env.ANTHROPIC_BASE_URL` 这样的写法，空串不算"未设置"。"""
+
+HOST_BLANKED_ENV = frozenset(
+    {
+        # Credentials / auth routing a parent shell may carry.
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_PROFILE",
+        "ANTHROPIC_UNIX_SOCKET",
+        "ANTHROPIC_CUSTOM_HEADERS",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+        "CLAUDE_CODE_OAUTH_SCOPES",
+        "CLAUDE_CODE_OAUTH_CLIENT_ID",
+        "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+        "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
+        "CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR",
+        "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+        # Model overrides (the profile's `model` must win).
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_FABLE_MODEL",
+        "ANTHROPIC_SMALL_FAST_MODEL",
+        # Provider switches (first-party API only in M1).
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_USE_VERTEX",
+        "CLAUDE_CODE_USE_FOUNDRY",
+        "CLAUDE_CODE_USE_GATEWAY",
+        "CLAUDE_CODE_USE_MANTLE",
+        "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+        "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
+        # Host-integration markers set by Claude Code / the desktop app.
+        "CLAUDE_CODE_EXECPATH",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+        "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES",
+        "CLAUDE_CODE_TERMINAL_MCP_TOOLS",
+        "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL",
+        "CLAUDE_CODE_REPORT_FINDINGS",
+        "CLAUDE_CODE_EAGER_FLUSH",
+    }
+)
+"""父进程（例如在 Claude Code / Claude 桌面版里启动的 shell）可能带着、会改变认证方式、
+模型、目标服务或宿主集成行为的变量；继承到的一律置空（CLI 按 JS 真值判断，空串即未设置）。
+不动 `CLAUDE_CODE_ENTRYPOINT`（SDK 自己设 `sdk-py`）、`CLAUDE_CODE_SDK_READS_SESSION_STATE`
+（SDK 只在键不存在时才设 `1`）、`CLAUDE_CONFIG_DIR`（登录模式靠它找到用户自己的登录凭据）。"""
+
+HOST_BLANKED_PREFIXES = (
+    "CLAUDE_CODE_HOST_",
+    "CLAUDE_CODE_SDK_HAS_",
+    "CLAUDE_CODE_MESSAGING_",
+    "CLAUDE_CODE_SESSION_",
+    "CLAUDE_CODE_REMOTE",
+    "CLAUDE_CODE_DESKTOP_",
+)
+"""按前缀置空的宿主集成变量（宿主会话 id、消息 socket、宿主代管的 OAuth 刷新等）。"""
+
 SANDBOX: SandboxSettings = {
     "enabled": True,
     "autoAllowBashIfSandboxed": True,
@@ -119,10 +181,20 @@ def build_env(
     environ: Mapping[str, str],
     claude_dir: Path,
 ) -> tuple[events.AuthMode, dict[str, str]]:
-    """返回认证方式和传给 CLI 子进程的 `env`（合并在 `os.environ` 之上）。"""
-    env: dict[str, str] = {}
+    """返回认证方式和传给 CLI 子进程的 `env`（合并在 `os.environ` 之上）。
+
+    继承来的宿主变量（`HOST_BLANKED_ENV`、`HOST_BLANKED_PREFIXES`）先置空，
+    `ANTHROPIC_BASE_URL` 换成模型配置的 `base_url` 或官方地址，再按认证方式覆盖。
+    """
+    env: dict[str, str] = {
+        name: ""
+        for name in environ
+        if name in HOST_BLANKED_ENV or name.startswith(HOST_BLANKED_PREFIXES)
+    }
     if base_url:
         env["ANTHROPIC_BASE_URL"] = base_url
+    elif "ANTHROPIC_BASE_URL" in environ:
+        env["ANTHROPIC_BASE_URL"] = DEFAULT_BASE_URL
     if api_key_env is None:
         env.update(dict.fromkeys(LOGIN_BLANKED_ENV, ""))
         return "login", env

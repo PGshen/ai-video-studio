@@ -26,8 +26,10 @@ from pydantic import BaseModel
 
 from studio.agent import events
 from studio.agent.claude_runtime import (
+    DEFAULT_BASE_URL,
     LOGIN_BLANKED_ENV,
     ClaudeRuntime,
+    build_env,
     build_sdk_tool,
     register_claude,
 )
@@ -291,6 +293,83 @@ class TestAuth:
         assert isinstance(end, events.TurnEnd)
         assert end.status == "failed"
         assert end.error is not None and "NOT_SET_KEY" in end.error
+
+
+# What a Claude Code / Claude desktop shell exports (values are dummies).
+_HOST_ENVIRON = {
+    "HOME": "/Users/me",
+    "PATH": "/usr/bin",
+    "ANTHROPIC_BASE_URL": "https://host-proxy.example",
+    "ANTHROPIC_AUTH_TOKEN": "host-token",
+    "ANTHROPIC_MODEL": "claude-opus-5",
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "CLAUDE_CODE_USE_VERTEX": "1",
+    "CLAUDE_CODE_OAUTH_TOKEN": "host-oauth",
+    "CLAUDE_CODE_OAUTH_SCOPES": "user:inference",
+    "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH": "1",
+    "CLAUDE_CODE_HOST_SESSION_ID": "h1",
+    "CLAUDE_CODE_SESSION_ID": "s1",
+    "CLAUDE_CODE_MESSAGING_SOCKET": "/tmp/sock",
+    "CLAUDE_CODE_MESSAGING_TOKEN": "t",
+    "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING": "true",
+    "CLAUDE_CODE_EXECPATH": "/Applications/Claude.app/claude",
+    # Must survive: the SDK sets these itself, or the user chose them.
+    "CLAUDE_CODE_ENTRYPOINT": "claude-desktop",
+    "CLAUDE_CODE_SDK_READS_SESSION_STATE": "1",
+    "CLAUDE_CONFIG_DIR": "/Users/me/.claude-work",
+}
+_HOST_ONLY = sorted(
+    set(_HOST_ENVIRON)
+    - {
+        "HOME",
+        "PATH",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_SDK_READS_SESSION_STATE",
+        "CLAUDE_CONFIG_DIR",
+    }
+)
+
+
+class TestBuildEnv:
+    @pytest.mark.parametrize("api_key_env", [None, "MY_KEY"])
+    def test_host_auth_and_target_vars_are_neutralised(
+        self, api_key_env: str | None, tmp_path: Path
+    ) -> None:
+        environ = {**_HOST_ENVIRON, "MY_KEY": "sk-mine"}
+        _auth, env = build_env(api_key_env, None, environ, tmp_path / "claude")
+        effective = {**environ, **env}
+        for name in _HOST_ONLY:
+            assert effective[name] == "", name
+        # A blank ANTHROPIC_BASE_URL is not "unset" everywhere in the CLI (`??`), so the
+        # host proxy is replaced by the public endpoint instead.
+        assert effective["ANTHROPIC_BASE_URL"] == DEFAULT_BASE_URL
+        assert effective["CLAUDE_CODE_SDK_READS_SESSION_STATE"] == "1"
+        assert "CLAUDE_CODE_ENTRYPOINT" not in env
+        assert "HOME" not in env and "PATH" not in env
+
+    def test_login_mode_keeps_config_dir_and_blanks_keys(self, tmp_path: Path) -> None:
+        environ = {**_HOST_ENVIRON, "ANTHROPIC_API_KEY": "sk-leak"}
+        auth, env = build_env(None, None, environ, tmp_path / "claude")
+        assert auth == "login"
+        effective = {**environ, **env}
+        assert effective["ANTHROPIC_API_KEY"] == ""
+        assert effective["CLAUDE_CONFIG_DIR"] == "/Users/me/.claude-work"
+
+    def test_api_key_mode_uses_profile_key_and_data_dir(self, tmp_path: Path) -> None:
+        environ = {**_HOST_ENVIRON, "MY_KEY": "sk-mine", "ANTHROPIC_API_KEY": "sk-other"}
+        auth, env = build_env("MY_KEY", None, environ, tmp_path / "claude")
+        assert auth == "api_key"
+        assert env["ANTHROPIC_API_KEY"] == "sk-mine"
+        assert env["CLAUDE_CONFIG_DIR"] == str(tmp_path / "claude")
+
+    def test_profile_base_url_wins(self, tmp_path: Path) -> None:
+        _auth, env = build_env(None, "https://mine.example", _HOST_ENVIRON, tmp_path)
+        assert env["ANTHROPIC_BASE_URL"] == "https://mine.example"
+
+    def test_clean_environment_adds_only_what_is_needed(self, tmp_path: Path) -> None:
+        _auth, env = build_env(None, None, {"HOME": "/Users/me"}, tmp_path)
+        assert env == dict.fromkeys(LOGIN_BLANKED_ENV, "")
 
 
 class TestEventConversion:

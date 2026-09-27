@@ -60,8 +60,17 @@ endif
 dev:
 	@bash scripts/dev.sh
 
-# 真实模型的冒烟测试（计划 T15）：和 scripts/dev.sh 一样先导出 backend/.env，
-# 各运行时才能从 os.environ 读到 key；缺 key 的用例自动跳过。默认 make check 不含它。
+# 真实模型的冒烟测试（计划 T15）：先导出 backend/.env（同 scripts/dev.sh），再用 env -i
+# 只带白名单变量运行 pytest——在 Claude Code 等宿主里执行时，宿主注入的 CLAUDE_CODE_* /
+# ANTHROPIC_BASE_URL 等变量不会带进用例。缺 key 的用例自动跳过。默认 make check 不含它。
+SMOKE_KEYS := ANTHROPIC_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY
+
 smoke:
-	set -a; [ -f backend/.env ] && . backend/.env; set +a; \
-	cd backend && $(UV) run pytest -m smoke -v -rs
+	@set -a; [ -f backend/.env ] && . backend/.env; set +a; \
+	args=(HOME="$$HOME" PATH="$$PATH" USER="$$USER" LANG="$${LANG:-en_US.UTF-8}" \
+	      TMPDIR="$${TMPDIR:-/tmp}" SHELL="$${SHELL:-/bin/bash}"); \
+	for v in $(SMOKE_KEYS) $$(compgen -e | grep '^STUDIO_'); do \
+	  [ -n "$${!v:-}" ] && args+=("$$v=$${!v}"); \
+	done; \
+	echo "make smoke: env -i + 白名单变量（$${#args[@]} 个）"; \
+	cd backend && env -i "$${args[@]}" $(UV) run pytest -m smoke -v -rs

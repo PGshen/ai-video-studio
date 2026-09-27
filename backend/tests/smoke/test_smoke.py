@@ -11,6 +11,7 @@ writes its observations to `data/evidence/m1/smoke/` (git-ignored).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 from collections.abc import Iterator
@@ -196,6 +197,8 @@ async def test_claude_login(harness: SmokeHarness) -> None:
         record_evidence("claude-login", evidence)
         for probe in probes:
             probe.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):  # kept only if something else is inside
+            outside_repo.rmdir()
 
 
 # ---- OpenAI Responses API --------------------------------------------------------

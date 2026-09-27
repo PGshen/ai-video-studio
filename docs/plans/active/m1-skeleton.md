@@ -448,6 +448,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T15：`smoke_image` 返回左蓝右黄的 64×32 PNG（标准库 `zlib`/`struct` 手写），工具文本不提颜色，要求模型说出两种颜色才算"看到"图片（R2）；Claude 与 OpenAI Responses 断言，LiteLLM 只记录（控制者裁定）。
 - 2026-09-28 — T15：种子配置按官方页面核实：`claude-sonnet-5` 有效（$2/$10）；`gpt-5` 仍在售（$1.25/$10）；`deepseek-chat` 已于 2026-07-24 停用，改为 `deepseek/deepseek-flash`（按高峰价 $0.30/$1.20 计）；四个真实配置 `supports_vision=True`（`deepseek-flash` 支持图片输入）。Claude 两个配置的单价只作参考（ClaudeRuntime 用 SDK 的 `total_cost_usd`，不用单价）。
 - 2026-09-28 — T15：R3 结论成立，保留 Bash + SDK sandbox（不启用设计 §9 的"关闭 Bash"对策）；R5 结论成立，不需要额外对策（事前 hook + 只读文件权限 + 事后 guard 三层）。
+- 2026-09-28 — T15 审查后修复：宿主环境变量的隔离从源头做，不再只靠文档里的手动 `env -i`。① `ClaudeRuntime.build_env` 两种认证模式都把继承来的宿主变量置空（`HOST_BLANKED_ENV` 明确列出的认证/provider/模型覆盖/宿主标记变量 + `HOST_BLANKED_PREFIXES` 前缀 `CLAUDE_CODE_HOST_`、`CLAUDE_CODE_SDK_HAS_`、`CLAUDE_CODE_MESSAGING_`、`CLAUDE_CODE_SESSION_`、`CLAUDE_CODE_REMOTE`、`CLAUDE_CODE_DESKTOP_`），`ANTHROPIC_BASE_URL` 没有配置 `base_url` 时换成 `https://api.anthropic.com`（CLI 里有 `??` 写法，空串不等于未设置）；不动 `CLAUDE_CODE_ENTRYPOINT`、`CLAUDE_CODE_SDK_READS_SESSION_STATE`（SDK 自己处理）和 `CLAUDE_CONFIG_DIR`（登录模式要用），覆盖 `make dev`。② `make smoke` 用 `env -i` 只带白名单变量（`HOME`/`PATH`/`USER`/`LANG`/`TMPDIR`/`SHELL` + 三个 key + `STUDIO_*`）运行 pytest。这一条同时关闭 T9 审查遗留的"env 泄漏"小问题。依据见 references（claude-agent-sdk.md 宿主变量一条）。
 
 ## 意外与发现
 
@@ -482,7 +483,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T15：真实模型（登录模式，`claude-sonnet-5`）在第一轮用 **Bash**（`printf > topic/smoke.md`）而不是 Write 建文件——Bash 写工作区内的文件既不经 `PreToolUse` hook 也不受沙箱限制，阶段可写范围只能靠轮末 guard 兜底（与设计一致，但说明 guard 在真实使用里是主力防线之一，不只是"兜底"）。
 - 2026-09-28 — T15：R5 实测中 Bash 写 `upstream/topic/smoke.md` 失败的原因是只读副本的文件权限 `0o444`（zsh 报 `permission denied`），不是沙箱（沙箱允许写 `cwd` 内）；Edit 被 hook 拒绝。两层都挡住了，guard 这次没有需要还原的东西（`guard_restored` 提示为空）；guard 还原 `upstream/` 漂移的路径由 T4/T6 契约测试覆盖。
 - 2026-09-28 — T15：登录模式下 result 的 `total_cost_usd` 不是 0，而是按 API 价估算的值（三轮约 $0.055、$0.016、$0.093），turn 的 `cost_usd` 照记但只作参考（`cost_advisory`）。
-- 2026-09-28 — T15：Claude Code 宿主给子进程注入了 `CLAUDECODE`、`CLAUDE_CODE_*`、`ANTHROPIC_BASE_URL` 等变量，SDK 的 `env` 只能覆盖不能删除；为了让登录用例代表普通终端里的 `make dev`，本次用 `env -i HOME=… PATH=… make smoke` 运行（写进了 verification runbook）。
+- 2026-09-28 — T15：Claude Code 宿主给子进程注入了 `CLAUDECODE`、`CLAUDE_CODE_*`、`ANTHROPIC_BASE_URL` 等变量，SDK 的 `env` 只能覆盖不能删除；为了让登录用例代表普通终端里的 `make dev`，本次用 `env -i HOME=… PATH=… make smoke` 运行（写进了 verification runbook）。（审查后修复：改为从源头处理，见决策记录。）
 - 2026-09-28 — T15：SDK 实际启动的是 wheel 内置 CLI 2.1.283，不是 `~/.local/bin/claude`（2.1.228）；冒烟用例用"能找到 `claude` CLI"作为"本机装过并登录过 Claude Code"的近似判断。
 - 2026-09-28 — T15：登录用例的 transcript 和工具结果图片会留在负责人的 `~/.claude/projects/<由临时工作区路径推出的目录>/` 下，测试不自动删除（不在测试里删用户配置目录的东西），runbook 里提示可手动清理。
 
@@ -512,3 +513,4 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T15 — R4（Claude 会话存储）：登录模式**按设计工作**——不改 `CLAUDE_CONFIG_DIR`，transcript 落在 `~/.claude/projects/<cwd 推出的 key>/<session_id>.jsonl`，`<data_dir>/claude/projects` 为空；第二轮 `resume` 后正确复述第一轮回答；成本账本显示恢复会话的 `total_cost_usd` 从 transcript 保存的累计值继续（0.055074 + 0.0157014 = 0.0707754）。API key 模式（`CLAUDE_CONFIG_DIR=<data_dir>/claude`）**未验证（缺 `ANTHROPIC_API_KEY`）**，`test_claude_api_key` 已写好断言。
 - 2026-09-28 — T15 — R5（读取 `upstream/` 后尝试写入）：**真实运行**了一轮叙事阶段 turn（登录模式；先把选题定稿，让 `upstream/topic/smoke.md` 出现），明确要求模型读取后用 Edit 追加、再用 Bash `echo >>` 追加：读取成功；Edit 被 `PreToolUse` hook 拒绝（`is_error=True`，内容 `PreToolUse:Edit hook error: upstream/topic/smoke.md 不在本阶段可写范围内…`）；Bash 因只读副本文件权限 `0o444` 失败；模型没有重试并如实报告；轮末文件内容仍是 `smoke ok`。未被要求时模型是否会主动写 `upstream/`：本次样本中没有观察到（第一、二轮都没碰 `upstream/`），但样本很小。guard 对 `upstream/` 漂移的还原由 T4/T6 契约测试覆盖（本次没有触发）。结论：成立，事前拦截返回错误、事后防线兜底，符合设计 §9。
 - 2026-09-28 — T15 — `make check`：全绿（后端 430 个测试 + 前端 116 个，后端新增 5 个：种子单价 1 个 + 冒烟辅助离线测试 4 个；4 个冒烟用例被 `-m 'not smoke'` 排除）。
+- 2026-09-28 — T15 审查后修复：`make check` 全绿（后端 436 个测试，新增 6 个 `build_env` 单测；前端 116 个）。按审查要求**没有**重跑 `make smoke`（M1 额度仍剩 4 次）；`make smoke` 的白名单环境用一个只打印环境变量名的假 `UV` 验证过：`STUDIO_SMOKE_SKIP_LOGIN=1 OPENAI_API_KEY='a b' make smoke UV=<假脚本>` → 子进程只看到 `HOME LANG OPENAI_API_KEY PATH PWD SHELL SHLVL STUDIO_SMOKE_SKIP_LOGIN TMPDIR USER`（`_`/`PWD`/`SHLVL` 由 shell 自动设置），含空格的值没有被拆开。登录用例在 `finally` 里删掉空的 `data/evidence/m1/r3-scratch/` 目录（本次残留的空目录已手动删除）。
