@@ -92,7 +92,10 @@ const canvasBusy = computed(() =>
               :stage="stage"
               :busy="canvasBusy"
             />
-            <SnapshotTimeline :project-id="projectId" />
+            <SnapshotTimeline
+              :project-id="projectId"
+              :busy="canvasBusy"
+            />
           </CardContent>
         </Card>
       </div>

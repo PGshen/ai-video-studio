@@ -24,9 +24,18 @@ import {
 } from '@/composables/queries'
 import { ApiError } from '@/api/http'
 import { snapshotReasonLabel } from './snapshotReason'
-import { computeDiffParams, toggleSnapshotSelection } from './snapshotSelection'
+import { canRollback, computeDiffParams, toggleSnapshotSelection } from './snapshotSelection'
 
-const props = defineProps<{ projectId: string }>()
+const props = defineProps<{
+  projectId: string
+  /**
+   * 项目是否忙（`ProjectWorkbenchPage` 传入的 `combineBusy` 结果，见该
+   * 页面的文档注释）。T14 审查修复：[回滚到此] 原来一直可点，agent 运行
+   * 中点开二次确认弹窗、提交时才被后端 409 拒绝；现在提前禁用。
+   * [对比]（选中快照看 diff）不受影响，busy 时也能看。
+   */
+  busy: boolean
+}>()
 
 const { data: snapshots } = useSnapshotsQuery(() => props.projectId)
 // 后端按创建时间升序返回；这里统一转成"最新在前"用于展示和 diff 参数计算。
@@ -45,6 +54,7 @@ const { data: diffResult, isPending: diffPending } = useSnapshotDiffQuery(
 )
 
 const rollbackMutation = useRollbackSnapshotMutation(() => props.projectId)
+const rollbackEnabled = computed(() => canRollback(props.busy, rollbackMutation.isPending.value))
 const rollbackTarget = ref<string | null>(null)
 const rollbackError = ref<string | null>(null)
 // `AlertDialogAction` 底层是 reka-ui 的 `DialogClose`：点击时它自己的
@@ -99,7 +109,7 @@ async function confirmRollback(): Promise<void> {
         快照时间线
       </p>
       <p class="text-muted-foreground text-xs">
-        选中两个快照可以对比
+        {{ busy ? 'agent 运行中，暂不能回滚' : '选中两个快照可以对比' }}
       </p>
     </div>
 
@@ -125,6 +135,8 @@ async function confirmRollback(): Promise<void> {
         <Button
           size="sm"
           variant="outline"
+          :disabled="!rollbackEnabled"
+          :title="busy ? 'agent 运行中' : undefined"
           @click="openRollbackDialog(snapshot.id)"
         >
           回滚到此
@@ -203,7 +215,7 @@ async function confirmRollback(): Promise<void> {
             取消
           </AlertDialogCancel>
           <AlertDialogAction
-            :disabled="rollbackMutation.isPending.value"
+            :disabled="!rollbackEnabled"
             @click="confirmRollback"
           >
             确认回滚

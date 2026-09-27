@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeDiffParams, toggleSnapshotSelection } from './snapshotSelection'
+import { canRollback, computeDiffParams, toggleSnapshotSelection } from './snapshotSelection'
 
 describe('toggleSnapshotSelection', () => {
   it('从空选中一个', () => {
@@ -35,5 +35,23 @@ describe('computeDiffParams', () => {
   it('按列表顺序算出 from（较早）/to（较晚），与选择顺序无关', () => {
     expect(computeDiffParams(snapshots, ['s1', 's3'])).toEqual({ from: 's1', to: 's3' })
     expect(computeDiffParams(snapshots, ['s3', 's1'])).toEqual({ from: 's1', to: 's3' })
+  })
+})
+
+describe('canRollback', () => {
+  it('既不忙、也没有请求在飞：可以回滚', () => {
+    expect(canRollback(false, false)).toBe(true)
+  })
+
+  it('agent 正在运行：不能回滚', () => {
+    expect(canRollback(true, false)).toBe(false)
+  })
+
+  it('回滚请求本身还在飞：不能再点一次', () => {
+    expect(canRollback(false, true)).toBe(false)
+  })
+
+  it('两者都成立：不能回滚', () => {
+    expect(canRollback(true, true)).toBe(false)
   })
 })

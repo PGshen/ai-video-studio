@@ -34,3 +34,13 @@ export function computeDiffParams(
   // 列表最新在前：下标更小 = 更新。from 取较早（下标更大）的一个。
   return indexA < indexB ? { from: b, to: a } : { from: a, to: b }
 }
+
+/**
+ * [回滚到此] 是否可点（T14 审查修复：原来一直可点，即使 agent 正在运行
+ * 也能点开二次确认弹窗，后端才会在真正提交时返回 409）。`[对比]`
+ * （`toggle`）不受这个限制——只是选中快照、本地算 diff，不改工作区，
+ * `busy` 时也可以看。
+ */
+export function canRollback(busy: boolean, isPending: boolean): boolean {
+  return !busy && !isPending
+}
