@@ -234,7 +234,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿；`make dev` 能打开外壳页面。
 - **验证命令**：`make check`
 
-### T12：前端 API 客户端与 SSE 客户端（待开始）
+### T12：前端 API 客户端与 SSE 客户端（完成）
 
 - **目标**：类型化的 HTTP 客户端和支持续传的 SSE 客户端。
 - **涉及文件**：`frontend/src/api/{http,sse,endpoints}.ts`、`frontend/src/types/`、`frontend/src/composables/{useSessionStream,queries}.ts`、对应 `*.spec.ts`。
@@ -306,10 +306,12 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T10：OpenAIRuntime 与兜底文件工具 — 完成，`make check` 全绿（403 个后端测试，新增 72 个：OpenAIRuntime 35、ApplyPatchEditor 16、兜底工具 15、`files.delete_file` 5、启动注册 1）；新增依赖 `openai-agents[litellm] 0.22.3`（带入 `openai 3.19.2`、`litellm 1.83.0`，`websockets` 从 17.1 降到 16.1.1）；测试用 SDK 自带的 `agents.testing.ScriptedModel` 驱动真实 `Runner.run_streamed`（见本提交）。
 - 2026-09-27 — T10 审查后修复 — 完成，`make check` 全绿：Shell 命令结束后总是杀掉整个进程组（后台进程不再活过轮末快照）、输出边读边截超限即杀；`workspace.files` 写/删前规范化路径（`narrative/./timing.json` 不再绕过工具托管检查）；apply_patch 的 `ToolCall.args` 用规范化路径并带 `move_to`（TurnRunner 一并推送）；缺单价时 `Usage.priced=False` → TurnRunner 发一次 `cost_unpriced` 提示、turn 成本记空；非 strict 退回时记警告；`scripts/dev.sh` 导出 `backend/.env`（见本提交）。
 - 2026-09-27 — T11：前端骨架与前端质量关口 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 5 个路由 vitest）；`frontend/` 用 `pnpm create vite frontend --template vue-ts` + `shadcn-vue init`（`style` 手动改成 `new-york-v4`，默认的 `reka-nova` 没有 `dashboard-01`）+ `add dashboard-01` + 5 个 `@ai-elements` 组件搭起来；删掉了 dashboard-01 自带的图表/数据表/云文档 demo 内容（连带卸载 `@tanstack/vue-table`、`@unovis/ts`、`@unovis/vue`），保留侧边栏+顶栏外壳，导航指向真实路由；新增 `src/pages/`（路由页面组合层）与 `src/features/projects/`；ESLint 分层规则用 `no-restricted-imports` 实现（未引入 `eslint-plugin-boundaries`）；`make dev` 实测能同时起后端和前端，`curl http://127.0.0.1:5173/`、`curl http://127.0.0.1:5173/api/health`（经 vite 代理）均返回预期内容（见本提交）。
+- 2026-09-27 — T12：前端 API 客户端与 SSE 客户端 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 28 个 vitest：`sse.spec.ts` 12、`http.spec.ts` 7、`useSessionStream.spec.ts` 7、`queries.spec.ts` 2，共 33 个前端测试）；新增 `frontend/src/types/{api,events}.ts`（手写，对应 `api/schemas.py` 和 `runner.py` 的事件 payload）、`api/{http,endpoints,sse}.ts`、`composables/{queries,useSessionStream}.ts`；`sse.ts` 自实现的 `SseFrameParser` 支持跨 chunk 断行/断事件、多行 `data`、CRLF、注释行（`sse-starlette` 心跳）；`openStream` 重连按 `after_seq` 续传并在客户端再做一次 seq 去重（服务端已经去重，双保险）、4xx 不重连、指数退避（1s→2s→4s→8s→10s）；`useSessionStream` 的历史拼接方式见该文件顶部文档：`GET /sessions/{id}` 补 `user_message`/初始 `status`（这两项不在 SSE 回放里），SSE 从 `after_seq=0` 回放拿到全部持久事件按 `turn_id` 归位，见到某个 turn 的第一条事件时才插入它的用户消息；`queries.ts` 的 query-key 工厂和 `useSessionStream` 共用同一套 key（`invalidateWorkspace`）。T12 实测项：起 `STUDIO_ENABLE_FAKE_RUNTIME=true` 的后端 + `pnpm run dev` 前端，经 vite 代理创建项目/会话、发消息，确认 SSE 事件在连接存活期间（心跳之前）就送达而非缓冲到连接关闭，`after_seq` 续传经代理正常；`docs/references/frontend-stack.md` 对应行改 ✅，`docs/references/sse-starlette.md` 补心跳帧格式（见本提交）。
 
 ## 下一步
 
-- 从 T12 开始：前端 API 客户端与 SSE 客户端。
+- 从 T13 开始：工作台——项目列表、阶段导航、会话面板。
+- T13 落地会话面板时要处理 T12 文档记录的已知限制：`useSessionStream` 对"挂载之后才发出的新消息"拿不到 `user_message` 文本（`ensureUserMessage` 只能从挂载时的 `GET /sessions/{id}` 里查，查不到就插空文本占位）——真实文本在调用 `sendMessage` 的那一层手头就有，应该由 T13 的会话面板在乐观更新时直接把这条 `UserMessageItem` 塞进时间线，而不是指望 `useSessionStream` 通用逻辑猜出来。
 - T15 需要实测 references 中标"⚠️ T15 实测"的 ClaudeRuntime 条目（登录模式置空变量是否生效、图片工具结果、hook 拒绝的表现、sandbox（R3）、`CLAUDE_CONFIG_DIR`（R4）、resume 后 `total_cost_usd` 是否带之前的累计值）。
 - T15：`make smoke` 目标要和 `scripts/dev.sh` 一样在运行前导出 `backend/.env`（`set -a; . backend/.env; set +a`），否则各运行时从 `os.environ` 读不到 key（pydantic-settings 不把 `.env` 写进环境变量）。缺单价的配置现在会产出 `cost_unpriced` 提示、turn 成本为空。
 - T15 的 OpenAI 部分：种子配置 `gpt`/`deepseek` 目前没有单价（`price_input`/`price_output` 为空），OpenAIRuntime 的成本 = token × 单价（美元/百万 token），**冒烟前必须给这两个配置填上单价并设 `max_cost_per_turn`**，否则成本预算不起作用（设了上限但缺单价时本轮会直接失败）。另需实测：strict schema 带 `default` 是否被接受、R1（DeepSeek 上的 `apply_patch`/`shell`）、R2（LiteLLM 路径的图片工具结果）、`OpenAIResponsesModel` 默认 `store` 下续轮是否正常。
@@ -415,6 +417,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T11：`tsconfig.json`/`tsconfig.app.json` 的路径别名只写 `paths`、不写 `baseUrl`（TS 6.0 起 `baseUrl` 已废弃报 `TS5101`，`paths` 单独生效）。
 - 2026-09-27 — T11：ESLint flat config 直接用 `eslint.config.ts`（未加 `jiti`，Node 24.11 原生能跑）；分层规则用 `no-restricted-imports` 的 `patterns` 实现，不引入 `eslint-plugin-boundaries`（依赖清单之外）。
 - 2026-09-27 — T11 审查后修复：分层规则只匹配 `@/...` 别名时相对路径（`../projects/X.vue`）能绕过检查，改成同一个 `no-restricted-imports` 调用里同时列出别名 pattern 和"禁止任何向上跳出当前目录的相对 import"pattern（`../*` 到 `../*/*/*/*/*`，覆盖 5 层）；`composables/`、`api/`、`types/` 也补了同样的向上跳转限制。细节和验证输出见 `.superpowers/sdd/m1-skeleton/task-11-report.md`「审查后的修复」。
+- 2026-09-27 — T12：SSE 客户端的重连去重两道保险——服务端已经按 `seq <= last_seq` 去重（T8），`sse.ts` 的 `openStream` 在客户端再按 payload 里的 `seq` 做一次同样的判断（`seq` 非空且 `<= 上次记的 seq` 就丢弃）——不是不信任后端，是防御性编程：`after_seq` 本来就是前端自己维护、自己传回去的状态，客户端측按同一个字段再核一遍成本几乎为零，能防住"服务端某次实现改动/边界条件回归"这类问题继续传播到 UI。
+- 2026-09-27 — T12：`useSessionStream` 不把用户消息文本放进 SSE 事件、也不改后端补发——后端从未把 `user_message` 当作一种事件发布（`TurnRunner._persist`/`_publish` 只发 `text`/`tool_call`/… 这几种"agent 产出"，用户自己发的文本只落在 `turns.user_message` 列）；改成"见到某个 turn 的第一条事件才插入这个 turn 的用户消息"，数据来自挂载时一次性的 `GET /sessions/{id}`。已知代价：挂载之后才发的新消息，这个 turn 还没被 `GET` 拉到过，`ensureUserMessage` 只能插空文本占位——记入「下一步」，留给 T13 的发送逻辑做乐观更新。
+- 2026-09-27 — T12：`sse.ts` 的重连退避 `sleep()` 即使延迟是 0ms 也强制走一次真正的 `setTimeout`宏任务，不用 `Promise.resolve()` 的快速路径——vitest 测试里用 mock fetch 连续制造"立刻失败/立刻结束"的场景时，纯微任务的 `Promise.resolve()` 会让重连循环变成不给事件循环宏任务（定时器）任何执行机会的忙循环，饿死测试自己用来轮询断言/触发 abort 的定时器，实测直接把 worker 进程点到 OOM（`Reached heap limit`）；换成真定时器后同样的测试用例正常在数百毫秒内跑完。
 
 ## 意外与发现
 
@@ -438,6 +443,8 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T11：`pnpm create vite@latest frontend -- --template vue-ts`（简报里的写法）实测生成的是 vanilla-ts 模板，不是 vue-ts——`create-vite` 不认识 `pnpm create` 通过 `--` 转发的参数形式；换成 `pnpm create vite@latest frontend --template vue-ts`（`--template` 直接跟在包名后面，不经过 `--`）才生效。已记入 frontend-stack.md。
 - 2026-09-27 — T11：`shadcn-vue add dashboard-01` 只落地了区块引用的组件文件，没有落地 `page.vue`（它的 `target` 是 Nuxt/Next 风格的 `pages/dashboard/index.vue`，纯 Vite 项目没有匹配目录，CLI 静默跳过）——外壳页面（`SidebarProvider`+`AppSidebar`+`SidebarInset`+`SiteHeader`+`<router-view>`）是本任务手写组装的，不是 CLI 生成物。已记入 frontend-stack.md。
 - 2026-09-27 — T11：dashboard-01 注册表声明依赖 `@tabler/icons-vue`，但这次 `shadcn-vue add` 执行中该包实际没有被装进 `package.json`（怀疑是过程中出现的 `ECONNRESET` 重试导致某个子步骤被跳过，CLI 没有报错）——发现时机是删除 demo 内容、改写图标导入之后已经不再需要这个包，未进一步排查是否是 CLI 或网络的偶发问题；如果后续任务需要装它，先确认是否已在 `package.json` 里。
+- 2026-09-27 — T12：实测确认 vite 的 `http-proxy` 对 SSE 接口不缓冲——起临时数据目录的 fake 运行时后端 + `pnpm run dev` 前端，经代理创建项目/会话、发一条消息，`turn_status`/`text`/`tool_call`/`tool_result`/`workspace_changed`/`snapshot` 全部在发消息后 ~80ms 内送达，而这条 SSE 连接在此之后又存活了 7 秒多（期间收到 `sse-starlette` 的心跳 `: ping - <时间戳>`）才被主动关闭；如果代理缓冲到连接关闭才转发，事件不可能提前 7 秒被读到。心跳帧格式（注释行）此前没有记录，一并补进 `docs/references/sse-starlette.md`。`docs/references/frontend-stack.md` 对应的 "⚠️ T12 实测" 行改为 ✅。
+- 2026-09-27 — T12：`useSessionStream` 的测试里给 `openStream` 打桩后用 `vi.spyOn(queryClient, 'invalidateQueries')` 断言失效的 query key——TanStack Query v5 的 `invalidateQueries` 默认按前缀模糊匹配，测试直接比较 `call[0]?.queryKey` 和 `queryKeys.fileTree(projectId)`/`queryKeys.snapshots(projectId)` 的字面量数组即可，不需要真的往 `QueryClient` 里塞数据。
 
 ## 阻塞
 
