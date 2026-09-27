@@ -219,7 +219,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿；references 与 legacy-assets 已更新。
 - **验证命令**：`make check`
 
-### T11：前端骨架与前端质量关口（待开始）
+### T11：前端骨架与前端质量关口（完成）
 
 - **目标**：`frontend/` 可安装、可启动、可检查，外壳就位。
 - **涉及文件**：`frontend/`（Vite 工程、`src/main.ts`、`src/router.ts`、`src/App.vue`、`components.json`、`src/components/ui/`、`src/components/ai-elements/`、`eslint.config.ts`、`vitest` 配置）、`Makefile`、`scripts/dev.sh`、`docs/references/frontend-stack.md`。
@@ -305,10 +305,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T9：ClaudeRuntime — 完成，`make check` 全绿（331 个后端测试，新增 29 个 ClaudeRuntime mock 测试）；新增依赖 `claude-agent-sdk 0.2.160`（内置 CLI 2.1.283）；references 中可由源码确认的条目已改为 ✅，其余标为 T15 实测（见本提交）。
 - 2026-09-27 — T10：OpenAIRuntime 与兜底文件工具 — 完成，`make check` 全绿（403 个后端测试，新增 72 个：OpenAIRuntime 35、ApplyPatchEditor 16、兜底工具 15、`files.delete_file` 5、启动注册 1）；新增依赖 `openai-agents[litellm] 0.22.3`（带入 `openai 3.19.2`、`litellm 1.83.0`，`websockets` 从 17.1 降到 16.1.1）；测试用 SDK 自带的 `agents.testing.ScriptedModel` 驱动真实 `Runner.run_streamed`（见本提交）。
 - 2026-09-27 — T10 审查后修复 — 完成，`make check` 全绿：Shell 命令结束后总是杀掉整个进程组（后台进程不再活过轮末快照）、输出边读边截超限即杀；`workspace.files` 写/删前规范化路径（`narrative/./timing.json` 不再绕过工具托管检查）；apply_patch 的 `ToolCall.args` 用规范化路径并带 `move_to`（TurnRunner 一并推送）；缺单价时 `Usage.priced=False` → TurnRunner 发一次 `cost_unpriced` 提示、turn 成本记空；非 strict 退回时记警告；`scripts/dev.sh` 导出 `backend/.env`（见本提交）。
+- 2026-09-27 — T11：前端骨架与前端质量关口 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 5 个路由 vitest）；`frontend/` 用 `pnpm create vite frontend --template vue-ts` + `shadcn-vue init`（`style` 手动改成 `new-york-v4`，默认的 `reka-nova` 没有 `dashboard-01`）+ `add dashboard-01` + 5 个 `@ai-elements` 组件搭起来；删掉了 dashboard-01 自带的图表/数据表/云文档 demo 内容（连带卸载 `@tanstack/vue-table`、`@unovis/ts`、`@unovis/vue`），保留侧边栏+顶栏外壳，导航指向真实路由；新增 `src/pages/`（路由页面组合层）与 `src/features/projects/`；ESLint 分层规则用 `no-restricted-imports` 实现（未引入 `eslint-plugin-boundaries`）；`make dev` 实测能同时起后端和前端，`curl http://127.0.0.1:5173/`、`curl http://127.0.0.1:5173/api/health`（经 vite 代理）均返回预期内容（见本提交）。
 
 ## 下一步
 
-- 从 T11 开始：前端骨架与前端质量关口。
+- 从 T12 开始：前端 API 客户端与 SSE 客户端。
 - T15 需要实测 references 中标"⚠️ T15 实测"的 ClaudeRuntime 条目（登录模式置空变量是否生效、图片工具结果、hook 拒绝的表现、sandbox（R3）、`CLAUDE_CONFIG_DIR`（R4）、resume 后 `total_cost_usd` 是否带之前的累计值）。
 - T15：`make smoke` 目标要和 `scripts/dev.sh` 一样在运行前导出 `backend/.env`（`set -a; . backend/.env; set +a`），否则各运行时从 `os.environ` 读不到 key（pydantic-settings 不把 `.env` 写进环境变量）。缺单价的配置现在会产出 `cost_unpriced` 提示、turn 成本为空。
 - T15 的 OpenAI 部分：种子配置 `gpt`/`deepseek` 目前没有单价（`price_input`/`price_output` 为空），OpenAIRuntime 的成本 = token × 单价（美元/百万 token），**冒烟前必须给这两个配置填上单价并设 `max_cost_per_turn`**，否则成本预算不起作用（设了上限但缺单价时本轮会直接失败）。另需实测：strict schema 带 `default` 是否被接受、R1（DeepSeek 上的 `apply_patch`/`shell`）、R2（LiteLLM 路径的图片工具结果）、`OpenAIResponsesModel` 默认 `store` 下续轮是否正常。
@@ -409,6 +410,10 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T10 审查后：缺单价用 `events.Usage.priced: bool = True` 表达（最小改动：`cost_usd` 保持 float，不影响 Claude/Fake 和 T6 的累加逻辑）。OpenAIRuntime 在配置缺单价时发 `priced=False`；TurnRunner 每轮第一次收到时落库一条 `notice`（`kind="cost_unpriced"`，"未配置单价，成本未统计"），turn 行的 `cost_usd` 记为空，界面不会显示成 $0。
 - 2026-09-27 — T10 审查后：`scripts/dev.sh` 在 `backend/.env` 存在时 `set -a; . backend/.env; set +a` 导出（控制者裁定；不新增依赖），dev-setup 已更新。
 - 2026-09-27 — T10 审查后：业务工具 schema 退回非 strict 时记一条警告日志；references 与代码注释写明环境变量过滤只减少 key 被意外打印、Shell 没有沙箱可读本机任意文件。
+- 2026-09-27 — T11：`components.json` 的 `style` 手动改成 `new-york-v4`（CLI `--defaults` 给的 `reka-nova` 没有 `dashboard-01`），`registries` 加 `@ai-elements` 指向 `https://registry.ai-elements-vue.com/{name}.json`——细节和实测过程见 `docs/references/frontend-stack.md`。
+- 2026-09-27 — T11：dashboard-01 区块里的图表（`ChartAreaInteractive`）、数据表（`DataTable`/`DragHandle`/`DraggableRow`/`features.ts`）、云文档分组（`NavDocuments`/`NavSecondary`）判定为与本项目无关的 demo 内容，删除并卸载对应依赖（`@tanstack/vue-table`、`@unovis/ts`、`@unovis/vue`）；`AppSidebar`/`NavMain`/`NavUser`/`SiteHeader` 改写为使用真实路由（`/projects`、`/ideas`、`/settings`）和 `@lucide/vue` 图标（`@tabler/icons-vue` 未装上，见下方「意外与发现」），保留侧边栏+顶栏外壳结构。
+- 2026-09-27 — T11：`tsconfig.json`/`tsconfig.app.json` 的路径别名只写 `paths`、不写 `baseUrl`（TS 6.0 起 `baseUrl` 已废弃报 `TS5101`，`paths` 单独生效）。
+- 2026-09-27 — T11：ESLint flat config 直接用 `eslint.config.ts`（未加 `jiti`，Node 24.11 原生能跑）；分层规则用 `no-restricted-imports` 的 `patterns` 实现，不引入 `eslint-plugin-boundaries`（依赖清单之外）。
 
 ## 意外与发现
 
@@ -429,6 +434,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T10：`ToolCallItem.raw_item` 对 `apply_patch_call`/`shell_call` 是 dict，对 `function_call` 是 Pydantic 对象，转换时两种都要处理。`agents` 顶层没有导出 `ToolContext`（要从 `agents.tool_context` 导入）。
 - 2026-09-27 — T10：`uv add "openai-agents[litellm]"` 把 `websockets` 从 17.1 降到 16.1.1（原因是 `openai-agents 0.22.3` 自身声明了 `websockets>=15,<17`，不是 litellm；litellm 只在 `proxy` extra 里约束 websockets，本项目没装），`uvicorn[standard]` 仍可用，`make check` 全绿。
 - 2026-09-27 — T10 审查后：asyncio 的 `Process.wait()`/`communicate()` 要等所有管道关闭才返回，后台子进程继承 stdout 时会一直等到它结束——第一版"命令结束后 killpg"的修复因此对 `(sleep; touch) &` 无效（测试发现），改为轮询 `returncode`。已写进 references。
+- 2026-09-27 — T11：`pnpm create vite@latest frontend -- --template vue-ts`（简报里的写法）实测生成的是 vanilla-ts 模板，不是 vue-ts——`create-vite` 不认识 `pnpm create` 通过 `--` 转发的参数形式；换成 `pnpm create vite@latest frontend --template vue-ts`（`--template` 直接跟在包名后面，不经过 `--`）才生效。已记入 frontend-stack.md。
+- 2026-09-27 — T11：`shadcn-vue add dashboard-01` 只落地了区块引用的组件文件，没有落地 `page.vue`（它的 `target` 是 Nuxt/Next 风格的 `pages/dashboard/index.vue`，纯 Vite 项目没有匹配目录，CLI 静默跳过）——外壳页面（`SidebarProvider`+`AppSidebar`+`SidebarInset`+`SiteHeader`+`<router-view>`）是本任务手写组装的，不是 CLI 生成物。已记入 frontend-stack.md。
+- 2026-09-27 — T11：dashboard-01 注册表声明依赖 `@tabler/icons-vue`，但这次 `shadcn-vue add` 执行中该包实际没有被装进 `package.json`（怀疑是过程中出现的 `ECONNRESET` 重试导致某个子步骤被跳过，CLI 没有报错）——发现时机是删除 demo 内容、改写图标导入之后已经不再需要这个包，未进一步排查是否是 CLI 或网络的偶发问题；如果后续任务需要装它，先确认是否已在 `package.json` 里。
 
 ## 阻塞
 

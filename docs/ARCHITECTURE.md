@@ -50,17 +50,19 @@ ai-video-studio/
 
 | 目录 | 职责 |
 |---|---|
+| `pages/` | 路由页面（组合层）：`router.ts` 指向这里；可以 import 多个 `features/`，把它们拼成一个页面 |
 | `api/` | 类型化的 HTTP 客户端和 SSE 客户端（支持 `after_seq` 续传） |
 | `types/` | 与后端 schema 对应的 TS 类型 |
 | `composables/` | TanStack Query hooks 和会话流状态 |
+| `features/projects/` | 项目列表、新建项目 |
 | `features/ideas/` | 选题池和头脑风暴 |
 | `features/workbench/` | 项目工作台外壳：阶段导航、对话面板、快照时间线 |
 | `features/canvas/<topic\|narrative\|animation>/` | 各阶段的画布 |
 | `features/settings/` | 模型配置、风格库、TTS 音色 |
 | `components/ui/` | shadcn-vue 生成的组件（通过 CLI 添加，尽量不手改） |
-| `components/ai-elements/` | @ai-elements 生成的组件 |
+| `components/ai-elements/` | @ai-elements 生成的组件（通过 CLI 添加，尽量不手改） |
 
-规则：`features/*` 之间不互相 import，共用的内容放进 `components/` 或 `composables/`。`components/` 不 import `features/`。（由 ESLint 的 import 规则检查，M1 接入。）
+规则：`features/*` 之间不互相 import，共用的内容放进 `components/` 或 `composables/`。`components/` 不 import `features/` 或 `pages/`。`pages/` 可以 import `features/`（组合层）。由 `frontend/eslint.config.ts` 中的 `no-restricted-imports` 规则检查（T11 接入；未用 `eslint-plugin-boundaries`，格式规则对 `components/ui`、`components/ai-elements` 下的生成代码放宽）。
 
 ## 4. 进程与数据流
 

@@ -4,7 +4,22 @@
 
 | 状态 | 内容 | 来源 |
 |---|---|---|
-| ⚠️ 待验证 | shadcn-vue 的 registry 已包含 `@ai-elements`，提供 AI 原生的 conversation、message 等组件 | 负责人提供（2026-09-26）；M1 初始化时确认组件清单并补充到这里 |
-| ⚠️ 待验证 | 工作台外壳可以用 `npx shadcn-vue@latest add dashboard-01` 初始化 | 负责人提供（2026-09-26）；M1 验证 |
-| ⚠️ 待验证 | Tailwind v4 不需要 `tailwind.config.js`，在 CSS 中通过 `@import "tailwindcss"` 配置 | 旧项目经验（React 版）；M1 验证 |
-| ⚠️ 待验证 | 浏览器原生的 `EventSource` 不能设置请求头，而且不能控制重连时的 `after_seq`，所以用基于 fetch 的 SSE 客户端 | 通用知识；M1 选定具体的库后在这里记录 |
+| ✅ | 用 `pnpm create vite frontend --template vue-ts` 生成骨架（`pnpm create vite@latest frontend -- --template vue-ts` 里的 `--` 传参方式在实测中被忽略，退化成默认的 vanilla-ts 模板；直接把 `--template vue-ts` 跟在包名后面才生效） | T11 实测（2026-09-27） |
+| ✅ | 实测锁定版本：`vue 3.5.43`、`vue-router 5.3.1`（Vue 3 对应的大版本已升到 5.x）、`vite 8.3.1`、`typescript 6.0.3`、`vue-tsc 3.3.11`、`vitest 5.0.2`、`eslint 10.11.0`、`shadcn-vue 2.8.2` | T11 实测（2026-09-27），以 `frontend/package.json`/`pnpm-lock.yaml` 为准 |
+| ✅ | Tailwind v4 不需要 `tailwind.config.js`：`vite.config.ts` 里加 `@tailwindcss/vite` 插件，`src/style.css` 顶部 `@import "tailwindcss"`；`shadcn-vue init` 额外写入 `@import "tw-animate-css"`、`@import "shadcn-vue/tailwind.css"`、`@custom-variant dark (&:is(.dark *))`、`@theme inline { ... }` 和一批 CSS 变量（`:root`/`.dark`），不需要手写 | T11 实测（2026-09-27） |
+| ✅ | `npx shadcn-vue@latest init --defaults --base-color neutral` 可以非交互跑完，但**默认 `style` 是 `reka-nova`**，这个 style 下没有 `dashboard-01` 区块（`GET /r/styles/reka-nova/dashboard-01.json` 404）。必须把 `components.json` 的 `"style"` 手动改成 `"new-york-v4"`（`shadcn-vue.com/r/styles/new-york-v4/dashboard-01.json` 才是 200）再 `add dashboard-01` | T11 实测（2026-09-27） |
+| ✅ | `dashboard-01` 是一个 `registry:block`，它的 `page.vue` 文件 `target` 是 `pages/dashboard/index.vue`（Nuxt/Next 的目录约定），在纯 Vite 项目里 CLI **不会**落地这个文件（没有匹配的目标目录），只会落地它依赖的组件（`AppSidebar`、`SiteHeader`、`NavMain`、`NavUser`、`NavDocuments`、`NavSecondary`、`SectionCards`、`ChartAreaInteractive`、`DataTable`、`DragHandle`、`DraggableRow`、`features.ts`）和它们各自的 `registryDependencies`（sidebar/chart/card/select/badge/button/checkbox/dropdown-menu/label/table/tabs/avatar/separator 等 `components/ui/*`）。壳层页面（`SidebarProvider` + `AppSidebar` + `SidebarInset` + `SiteHeader` + `<router-view>`）需要自己在 `src/App.vue` 里组装 | T11 实测（2026-09-27） |
+| ✅ | `dashboard-01` 声明的依赖是 `["@unovis/vue", "@unovis/ts", "@tanstack/vue-table", "@tabler/icons-vue"]`（图表、数据表、图标库）。本项目按 T11 简报要求删除了图表（`ChartAreaInteractive.vue`）、数据表（`DataTable.vue`/`DragHandle.vue`/`DraggableRow.vue`/`features.ts`）和云文档分组（`NavDocuments.vue`/`NavSecondary.vue`）等 demo 内容，只保留外壳布局；相应地卸载了 `@tanstack/vue-table`、`@unovis/ts`、`@unovis/vue`（`@tabler/icons-vue` 因网络原因 CLI 本次没装上，删除引用后无需再装），图标改用 `shadcn-vue init` 一并装好的 `@lucide/vue` | T11 实测（2026-09-27） |
+| ✅ | `components.json` 的 `registries` 字段登记 `@ai-elements`：`{"@ai-elements": "https://registry.ai-elements-vue.com/{name}.json"}`；用 `pnpm dlx shadcn-vue@latest add @ai-elements/<name>` 安装（`<name>` 前必须带 `@ai-elements/` 前缀，不能只写组件名，否则 CLI 会去默认 registry 找） | T11 实测（2026-09-27），来源同前次记录的 `apps/v4/public/r/registries.json` |
+| ✅ | 已装的 @ai-elements 组件：`conversation`、`message`、`prompt-input`、`tool`、`code-block`（与简报列的名称一致，均可用）。这批组件额外带入的依赖：`ai`（Vercel AI SDK 的类型/工具函数）、`shiki`（`code-block` 的语法高亮，体积较大但 CLI 必需）、`vue-stream-markdown`（`message` 里渲染流式 Markdown）、`vue-stick-to-bottom`（`conversation` 的自动吸底滚动）、`nanoid`；另外 `tool` 组件依赖的 `code-block` 相关部分带来了 `components/ui/command`（用 `reka-ui` 的 `ListboxRoot` 实现，没有再引入额外依赖，如 React 生态的 `cmdk`） | T11 实测（2026-09-27） |
+| ✅ | 浏览器原生的 `EventSource` 不能设置请求头、也不能控制重连时的 `after_seq`；后端 SSE 客户端计划在 T12 用基于 `fetch` 的解析器自己实现（不引入第三方 SSE 库，见 `docs/plans/active/m1-skeleton.md` 依赖清单） | 通用知识 + 计划裁定；T12 落地后在这里补充实测细节 |
+| ✅ | Vite dev server：`vite.config.ts` 绑定 `host: '127.0.0.1'`、`port: 5173`、`strictPort: true`；`server.proxy['/api']` 转发到 `http://127.0.0.1:8000`（`changeOrigin: true`）。Vite 内置的 `http-proxy` 默认按块转发响应体，未加任何缓冲逻辑，`curl -N http://127.0.0.1:5173/api/...`（SSE 接口）经代理能拿到与直连后端一致的流式输出（T11 用 `/api/health` 验证了非流式路径；流式路径的端到端验证见 T12） | T11 实测（2026-09-27） |
+| ✅ | TypeScript 6.0（本次安装的版本）里 `baseUrl` 已废弃（`TS5101`），`paths` 别名不再需要配 `baseUrl`（4.1+ 起 `paths` 可以独立生效，相对 `tsconfig.json` 自身的目录解析）；`tsconfig.json`、`tsconfig.app.json` 都只写 `"paths": {"@/*": ["./src/*"]}` | T11 实测（2026-09-27） |
+| ✅ | ESLint flat config 用 `.ts` 后缀（`eslint.config.ts`）在 Node 24.11 下可以直接被 `eslint` CLI 加载，不需要额外装 `jiti` | T11 实测（2026-09-27） |
+| ✅ | 前端分层规则（ARCHITECTURE §3）用 `eslint.config.ts` 里的 `no-restricted-imports`（`patterns`）实现，没有引入 `eslint-plugin-boundaries`；对 `src/components/ui/**` 和 `src/components/ai-elements/**` 单独放宽了格式类规则（`vue/multi-word-component-names` 等），因为这两个目录是 CLI 生成代码 | T11 实测（2026-09-27） |
+
+## 组件清单（T11 落地时的实际状态）
+
+- `components/ui/`：`avatar`、`badge`、`button`、`card`、`input`、`label`、`separator`、`sheet`、`sidebar`、`skeleton`、`tooltip`、`command`（由 ai-elements 的 `code-block` 带入）。
+- `components/ai-elements/`：`conversation`、`message`、`prompt-input`、`tool`、`code-block`。
+- `components/`（手写，非生成代码）：`AppSidebar.vue`、`NavMain.vue`、`NavUser.vue`、`SiteHeader.vue`——从 dashboard-01 区块改写而来，替换了 demo 数据（导航项指向本项目真实路由 `/projects`、`/ideas`、`/settings`），去掉了图表/数据表/账号菜单等用不到的部分。

@@ -1,6 +1,6 @@
 # 开发环境搭建
 
-> 本文件描述的是目标环境。T1 已校对后端部分；前端部分在 T11 落地后再校对。
+> 本文件描述的是目标环境。T1 已校对后端部分；T11 已校对前端部分。
 
 ## 前置依赖（macOS）
 
@@ -37,8 +37,8 @@ make setup
 make dev
 ```
 
-会执行 `scripts/dev.sh`：目前只启动后端（`uvicorn studio.main:app --reload --reload-dir <绝对路径>/backend/src`），前端在 T11 加入后同时启动。
+会执行 `scripts/dev.sh`：同时启动后端（`uvicorn studio.main:app --reload --reload-dir <绝对路径>/backend/src`）和前端（`cd frontend && pnpm run dev`），两者共用一个 trap，`Ctrl+C` 会一起结束。
 
 启动后可以访问：
 - 后端：http://127.0.0.1:8000（健康检查 `/api/health`，OpenAPI 文档在 `/docs`）
-- 前端（T11 起）：http://127.0.0.1:5173
+- 前端：http://127.0.0.1:5173（`vite.config.ts` 绑定 `127.0.0.1:5173`、`strictPort: true`，并把 `/api` 代理到 `http://127.0.0.1:8000`，SSE 接口也经代理透传，不缓冲）

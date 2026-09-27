@@ -25,10 +25,13 @@ endif
 check: check-docs check-backend check-frontend
 	@echo "make check 全部通过"
 
-# pre-commit 运行的快速子集：前端 lint 在 T11 接入后补充进来。
+# pre-commit 运行的快速子集。
 check-fast: check-docs
 ifneq ($(HAS_BACKEND),)
 	cd backend && $(UV) run ruff check .
+endif
+ifneq ($(HAS_FRONTEND),)
+	cd frontend && $(PNPM) run lint
 endif
 
 check-docs:
@@ -47,7 +50,9 @@ endif
 
 check-frontend:
 ifneq ($(HAS_FRONTEND),)
-	@echo "TODO(M1): 接入 eslint、vue-tsc、vitest" && exit 1
+	cd frontend && $(PNPM) run lint
+	cd frontend && $(PNPM) run typecheck
+	cd frontend && $(PNPM) exec vitest run
 else
 	@echo "跳过前端检查：frontend/ 尚未创建"
 endif
