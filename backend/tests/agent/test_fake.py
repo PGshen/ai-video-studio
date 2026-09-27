@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel
 
 from studio.agent import events
-from studio.agent.fake import FakeRuntime, default_fake_script
-from studio.agent.runtime import Budget, CancelToken, TurnContext, UserInput
+from studio.agent.fake import FakeRuntime, default_fake_script, register_fake
+from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.db.repo.profiles import ModelProfileValue
 from studio.workspace.scope import WriteScope
@@ -28,6 +29,10 @@ _FAKE_PROFILE = ModelProfileValue(
 )
 
 
+def _noop_record_tool_write(relpath: str, sha256: str) -> None:
+    return None
+
+
 def _make_ctx(
     workdir: Path,
     *,
@@ -35,6 +40,9 @@ def _make_ctx(
     tools: list[ToolSpec] | None = None,
     budget: Budget | None = None,
     cancel_token: CancelToken | None = None,
+    project_id: str = "proj-1",
+    stage: str = "topic",
+    record_tool_write: Callable[[str, str], None] | None = None,
 ) -> TurnContext:
     return TurnContext(
         system_prompt="占位提示词",
@@ -46,6 +54,9 @@ def _make_ctx(
         cancel_token=cancel_token or CancelToken(),
         budget=budget or Budget(),
         write_scope=write_scope,
+        project_id=project_id,
+        stage=stage,
+        record_tool_write=record_tool_write or _noop_record_tool_write,
     )
 
 
@@ -125,6 +136,16 @@ def _greet_handler(ctx: ToolContext, args: _GreetArgs) -> ToolResult:
     return ToolResult(text=f"你好，{args.name}")
 
 
+class _RecordingArgs(BaseModel):
+    relpath: str
+    sha256: str
+
+
+def _recording_handler(ctx: ToolContext, args: _RecordingArgs) -> ToolResult:
+    ctx.record_tool_write(args.relpath, args.sha256)
+    return ToolResult(text=f"project={ctx.project_id} stage={ctx.stage}")
+
+
 class TestCallTool:
     async def test_call_tool_invokes_matching_spec(self, workdir: Path) -> None:
         from studio.agent import fake
@@ -164,6 +185,41 @@ class TestCallTool:
         _call, tool_result, _turn_end = result
         assert isinstance(tool_result, events.ToolResult)
         assert tool_result.is_error is True
+
+    async def test_call_tool_builds_tool_context_from_turn_context(self, workdir: Path) -> None:
+        """`ToolContext(project_id, stage, workdir, record_tool_write)` 必须
+        取自 `ctx`（审查后修复：不再是 `FakeRuntime` 构造参数），验证
+        handler 收到的 `project_id`/`stage` 和调用 `record_tool_write` 都
+        来自传给 `run_turn` 的 `TurnContext`。
+        """
+        from studio.agent import fake
+
+        spec = ToolSpec(
+            name="record",
+            description="记录一次工具写入",
+            input_model=_RecordingArgs,
+            stages={"narrative"},
+            handler=_recording_handler,
+        )
+        recorded: list[tuple[str, str]] = []
+        runtime = FakeRuntime(
+            [fake.call_tool("record", {"relpath": "narrative/timing.json", "sha256": "abc"})]
+        )
+        ctx = _make_ctx(
+            workdir,
+            write_scope=WriteScope(writable=["narrative/narrative.json"], tool_managed=[]),
+            tools=[spec],
+            project_id="proj-42",
+            stage="narrative",
+            record_tool_write=lambda relpath, sha256: recorded.append((relpath, sha256)),
+        )
+
+        result = await _run(runtime, ctx)
+
+        _call, tool_result, _turn_end = result
+        assert isinstance(tool_result, events.ToolResult)
+        assert tool_result.text == "project=proj-42 stage=narrative"
+        assert recorded == [("narrative/timing.json", "abc")]
 
 
 class TestFail:
@@ -305,6 +361,36 @@ class TestDefaultFakeScript:
         runtime = FakeRuntime(script)
         ctx = _make_ctx(workdir, write_scope=scope)
 
+        result = await _run(runtime, ctx)
+
+        assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
+        assert (workdir / "topic" / "fake-note.md").exists()
+
+    async def test_zero_arg_constructor_builds_default_script_from_ctx(self, workdir: Path) -> None:
+        """`FakeRuntime()`（不传脚本）必须在 `run_turn` 时才用 `ctx` 现场生成
+        默认脚本，而不是构造时就固定——这是 `register_fake` 能把 `FakeRuntime`
+        直接注册进 `RuntimeFactory`（零参数构造函数）的前提。
+        """
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        runtime = FakeRuntime()
+        ctx = _make_ctx(workdir, write_scope=scope)
+
+        result = await _run(runtime, ctx)
+
+        assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
+        assert (workdir / "topic" / "fake-note.md").read_text(encoding="utf-8") == "echo: 你好\n"
+
+
+class TestRegisterFake:
+    async def test_registers_fake_runtime_that_runs_default_script(self, workdir: Path) -> None:
+        factory = RuntimeFactory()
+
+        register_fake(factory)
+        runtime = factory.create("fake")
+
+        assert isinstance(runtime, FakeRuntime)
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        ctx = _make_ctx(workdir, write_scope=scope)
         result = await _run(runtime, ctx)
 
         assert result[-1] == events.TurnEnd(resume_ref=None, status="done")

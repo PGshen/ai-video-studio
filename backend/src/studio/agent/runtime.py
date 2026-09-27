@@ -51,7 +51,17 @@ class CancelToken:
 
 @dataclass(frozen=True, slots=True)
 class TurnContext:
-    """`AgentRuntime.run_turn` 的输入（设计 §4.1）。"""
+    """`AgentRuntime.run_turn` 的输入（设计 §4.1）。
+
+    `project_id`/`stage`/`record_tool_write` 是设计 §4.1 原始字段列表之外
+    的补充（审查后修复，见计划决策记录）：运行时在处理业务工具调用时需要
+    构造 `tools.ToolContext(project_id, stage, workdir, record_tool_write)`
+    才能调用 `tools.invoke_tool`，这三项和 `ToolContext` 的字段一一对应，
+    直接放进 `TurnContext` 比额外引入一个 `make_tool_context` 工厂函数更
+    简单——`TurnRunner`（T6）本来就持有这些值，构造 `TurnContext` 时一并
+    传入即可，运行时（`FakeRuntime`/`ClaudeRuntime`/`OpenAIRuntime`）不需要
+    再从别处取它们。
+    """
 
     system_prompt: str
     user_input: UserInput
@@ -62,6 +72,9 @@ class TurnContext:
     cancel_token: CancelToken
     budget: Budget
     write_scope: WriteScope
+    project_id: str
+    stage: str
+    record_tool_write: Callable[[str, str], None]
 
 
 @runtime_checkable
@@ -79,8 +92,9 @@ RuntimeConstructor = Callable[[], AgentRuntime]
 class RuntimeFactory:
     """runtime 名 → 构造函数的注册表（控制者裁定 R2）。
 
-    本任务只注册 `fake`；`claude`/`openai` 由 `main` 在启动时用各自的
-    `model_profile` 配置构造好适配器后调用 `register` 接入（T9/T10）。
+    本任务只提供注册表本身和 `fake` 的注册函数（`studio.agent.fake.register_fake`）；
+    `claude`/`openai` 由 `main` 在启动时用各自的 `model_profile` 配置构造好
+    适配器后调用 `register` 接入（T9/T10）。
     """
 
     def __init__(self) -> None:

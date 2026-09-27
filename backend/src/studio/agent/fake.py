@@ -19,6 +19,10 @@
 `ToolCall.name` 分别是 `"write_file"`、`"shell"`，都属于
 `events.FILE_TOOL_NAMES`，T6 的 TurnRunner 据此判断是否需要推送
 `workspace_changed`。
+
+`register_fake(factory)` 把 `fake` 注册进 `RuntimeFactory`（控制者裁定
+R2）：`FakeRuntime()` 不传脚本时，`run_turn` 用当轮的 `ctx.write_scope` +
+`ctx.user_input.text` 现场生成 `default_fake_script`。
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from studio.agent import events
-from studio.agent.runtime import TurnContext
+from studio.agent.runtime import RuntimeFactory, TurnContext
 from studio.agent.tools import ToolContext, invoke_tool
 from studio.workspace import files
 from studio.workspace.scope import WriteScope, is_writable
@@ -108,31 +112,33 @@ def use_cost(usd: float) -> UseCost:
 class FakeRuntime:
     """按脚本产出事件的测试运行时。
 
-    `project_id`/`stage`/`record_tool_write` 只在脚本包含 `call_tool` 步骤
-    时才用得到（构造调用 handler 需要的 `ToolContext`）；`TurnContext` 本身
-    不携带这几项（设计 §4.1），真正的运行时如何取得它们是 T9/T10 的实现
-    细节，这里用构造参数加合理默认值即可满足测试需要。
+    `script` 为 `None`（包括零参数构造 `FakeRuntime()`，供
+    `register_fake` 注册进 `RuntimeFactory` 使用，见控制者裁定）时，
+    `run_turn` 在拿到 `ctx` 之后才用 `default_fake_script(ctx.write_scope,
+    ctx.user_input.text)` 现场生成脚本——这样 `FakeRuntime` 能满足
+    `RuntimeFactory` 的零参数 `RuntimeConstructor` 签名，同时仍然对每一轮
+    的实际 `write_scope`/用户消息作出正确的回显（而不是构造时就固定死）。
+
+    `call_tool` 步骤需要的 `ToolContext(project_id, stage, workdir,
+    record_tool_write)` 直接从 `ctx.project_id`/`ctx.stage`/
+    `ctx.record_tool_write` 取（审查后修复：这几项本来是 `FakeRuntime`
+    构造参数，现在改为 `TurnContext` 的字段，`TurnRunner`——T6——构造
+    `TurnContext` 时统一提供，`FakeRuntime` 不再需要自己的默认值）。
     """
 
-    def __init__(
-        self,
-        script: list[FakeStep],
-        *,
-        project_id: str = "fake-project",
-        stage: str = "fake-stage",
-        record_tool_write: Any = None,
-    ) -> None:
+    def __init__(self, script: list[FakeStep] | None = None) -> None:
         self._script = script
-        self._project_id = project_id
-        self._stage = stage
-        self._record_tool_write = record_tool_write or (lambda relpath, sha256: None)
 
     async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+        script = self._script
+        if script is None:
+            script = default_fake_script(ctx.write_scope, ctx.user_input.text)
+
         call_counter = 0
         step_count = 0
         total_cost = 0.0
 
-        for step in self._script:
+        for step in script:
             if ctx.cancel_token.is_cancelled:
                 yield events.TurnEnd(resume_ref=ctx.resume_ref, status="cancelled")
                 return
@@ -183,10 +189,10 @@ class FakeRuntime:
                     )
                     continue
                 tool_ctx = ToolContext(
-                    project_id=self._project_id,
-                    stage=self._stage,
+                    project_id=ctx.project_id,
+                    stage=ctx.stage,
                     workdir=ctx.workdir,
-                    record_tool_write=self._record_tool_write,
+                    record_tool_write=ctx.record_tool_write,
                 )
                 result = await invoke_tool(spec, tool_ctx, step.args)
                 yield events.ToolResult(
@@ -244,3 +250,15 @@ def default_fake_script(write_scope: WriteScope, user_text: str) -> list[FakeSte
         say(f"收到：{user_text}"),
         write(f"{target_dir}/fake-note.md", f"echo: {user_text}\n"),
     ]
+
+
+def register_fake(factory: RuntimeFactory) -> None:
+    """把 `fake` 运行时注册进 `factory`（控制者裁定：满足 R2——
+    `RuntimeFactory` 只是注册表，T5 不预置任何注册，由各运行时各自的模块
+    导出注册函数）。
+
+    `main`（T7 之后）在 `settings.enable_fake_runtime` 为真时调用它。注册的
+    构造函数是零参数的 `FakeRuntime()`（`script=None`），每一轮都会在
+    `run_turn` 里用当轮的 `ctx` 现场生成默认脚本。
+    """
+    factory.register("fake", FakeRuntime)

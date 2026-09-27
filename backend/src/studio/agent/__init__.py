@@ -6,3 +6,7 @@
 """
 
 from __future__ import annotations
+
+from studio.agent.fake import register_fake
+
+__all__ = ["register_fake"]

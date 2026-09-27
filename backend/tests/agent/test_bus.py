@@ -86,25 +86,55 @@ class TestSessionBusSlowSubscriber:
 
         bus.publish("session-1", BusEvent(type="text_delta", payload={"i": 0}))
         bus.publish("session-1", BusEvent(type="text_delta", payload={"i": 1}))
-        # 队列已满（2 条瞬时事件），此时发布一条持久事件必须仍然送达。
+        # 瞬时事件的队列已满（2 条），此时发布一条持久事件必须仍然送达——
+        # 持久事件走独立的无界队列，不受瞬时队列容量影响。
         bus.publish("session-1", BusEvent(type="text", payload={"text": "important"}, seq=1))
 
-        delivered = [await _next(subscriber) for _ in range(2)]
+        delivered = [await _next(subscriber) for _ in range(3)]
         persistent = [e for e in delivered if not e.is_transient]
         assert len(persistent) == 1
         assert persistent[0].payload == {"text": "important"}
 
-    async def test_persistent_events_are_never_dropped_for_each_other(self) -> None:
-        bus = SessionBus(queue_size=2)
+    async def test_persistent_event_overtakes_evicted_transient_events(self) -> None:
+        # 瞬时事件即使被挤掉，持久事件也不会因此"排在被挤掉的瞬时事件后面"
+        # 卡住——一旦瞬时事件被丢弃，它就不再参与顺序合并。
+        bus = SessionBus(queue_size=1)
         subscriber = bus.subscribe("session-1")
 
-        for i in range(4):
+        bus.publish("session-1", BusEvent(type="text_delta", payload={"i": 0}))
+        bus.publish("session-1", BusEvent(type="text_delta", payload={"i": 1}))  # 挤掉 i=0
+        bus.publish("session-1", BusEvent(type="text", payload={"text": "important"}, seq=1))
+
+        first = await _next(subscriber)
+        second = await _next(subscriber)
+        assert first.payload == {"i": 1}
+        assert second.payload == {"text": "important"}
+
+    async def test_persistent_events_are_never_dropped_under_overload(self) -> None:
+        # 队列容量只有 2，但发布的持久事件远超容量：持久事件不受容量限制，
+        # 必须一条不少地全部送达（控制者裁定：永不丢弃持久事件）。
+        bus = SessionBus(queue_size=2)
+        subscriber = bus.subscribe("session-1")
+        total = 50
+
+        for i in range(total):
             bus.publish("session-1", BusEvent(type="text", payload={"i": i}, seq=i))
 
-        delivered = [await _next(subscriber) for _ in range(2)]
-        # 队列容量为 2 且全是持久事件：新事件到达时必须挤掉最旧的一条持久事件，
-        # 而不能丢弃新事件或无限增长队列。
-        assert [e.payload["i"] for e in delivered] == [2, 3]
+        delivered = [await _next(subscriber) for _ in range(total)]
+        assert [e.payload["i"] for e in delivered] == list(range(total))
+
+    async def test_persistent_events_keep_relative_order_around_dropped_transient(self) -> None:
+        # 持久事件和瞬时事件混合发布时，只要没有事件被丢弃，相对到达顺序应该
+        # 保持；这里瞬时事件的队列足够大（未触发丢弃），用来验证合并顺序。
+        bus = SessionBus(queue_size=10)
+        subscriber = bus.subscribe("session-1")
+
+        bus.publish("session-1", BusEvent(type="text", payload={"label": "p1"}, seq=1))
+        bus.publish("session-1", BusEvent(type="text_delta", payload={"label": "t1"}))
+        bus.publish("session-1", BusEvent(type="text", payload={"label": "p2"}, seq=2))
+
+        delivered = [await _next(subscriber) for _ in range(3)]
+        assert [e.payload["label"] for e in delivered] == ["p1", "t1", "p2"]
 
     async def test_unsubscribed_queue_stops_receiving_after_generator_closed(self) -> None:
         bus = SessionBus()
