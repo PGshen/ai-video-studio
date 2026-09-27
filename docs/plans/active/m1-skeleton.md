@@ -414,6 +414,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T11：dashboard-01 区块里的图表（`ChartAreaInteractive`）、数据表（`DataTable`/`DragHandle`/`DraggableRow`/`features.ts`）、云文档分组（`NavDocuments`/`NavSecondary`）判定为与本项目无关的 demo 内容，删除并卸载对应依赖（`@tanstack/vue-table`、`@unovis/ts`、`@unovis/vue`）；`AppSidebar`/`NavMain`/`NavUser`/`SiteHeader` 改写为使用真实路由（`/projects`、`/ideas`、`/settings`）和 `@lucide/vue` 图标（`@tabler/icons-vue` 未装上，见下方「意外与发现」），保留侧边栏+顶栏外壳结构。
 - 2026-09-27 — T11：`tsconfig.json`/`tsconfig.app.json` 的路径别名只写 `paths`、不写 `baseUrl`（TS 6.0 起 `baseUrl` 已废弃报 `TS5101`，`paths` 单独生效）。
 - 2026-09-27 — T11：ESLint flat config 直接用 `eslint.config.ts`（未加 `jiti`，Node 24.11 原生能跑）；分层规则用 `no-restricted-imports` 的 `patterns` 实现，不引入 `eslint-plugin-boundaries`（依赖清单之外）。
+- 2026-09-27 — T11 审查后修复：分层规则只匹配 `@/...` 别名时相对路径（`../projects/X.vue`）能绕过检查，改成同一个 `no-restricted-imports` 调用里同时列出别名 pattern 和"禁止任何向上跳出当前目录的相对 import"pattern（`../*` 到 `../*/*/*/*/*`，覆盖 5 层）；`composables/`、`api/`、`types/` 也补了同样的向上跳转限制。细节和验证输出见 `.superpowers/sdd/m1-skeleton/task-11-report.md`「审查后的修复」。
 
 ## 意外与发现
 
