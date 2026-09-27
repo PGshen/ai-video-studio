@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待负责人验收 |
 | 里程碑 | M1 |
 | 设计依据 | [架构设计 §2–§4、§6、§7、§9、§10](../../design/2026-09-26-architecture.md)；模块与分层见 [ARCHITECTURE.md](../../ARCHITECTURE.md) |
 | 分支 | `m1-skeleton` |
@@ -58,15 +58,15 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 ## 验收标准
 
-- [ ] AC1：`make check` 为绿，且包含后端 ruff / pyright / import-linter / pytest、前端 eslint / vue-tsc / vitest、文档检查；`make check-fast` 包含 ruff 和 eslint。（验证：运行命令，贴输出摘要）
-- [ ] AC2：import-linter 契约强制 ARCHITECTURE §2 的分层规则 1–5；故意加一条违规 import 时 `make check` 失败。（验证：临时改动 + 输出）
-- [ ] AC3：`make setup && make dev` 后，api 监听 `127.0.0.1:8000`，前端监听 `127.0.0.1:5173`；uvicorn reload 只监听 `backend/src`，agent 写工作区文件不会触发重启。（验证：L3，观察日志）
+- [x] AC1：`make check` 为绿，且包含后端 ruff / pyright / import-linter / pytest、前端 eslint / vue-tsc / vitest、文档检查；`make check-fast` 包含 ruff 和 eslint。（验证：运行命令，贴输出摘要）
+- [x] AC2：import-linter 契约强制 ARCHITECTURE §2 的分层规则 1–5；故意加一条违规 import 时 `make check` 失败。（验证：临时改动 + 输出）
+- [x] AC3：`make setup && make dev` 后，api 监听 `127.0.0.1:8000`，前端监听 `127.0.0.1:5173`；uvicorn reload 只监听 `backend/src`，agent 写工作区文件不会触发重启。（验证：L3，观察日志）
 - [ ] AC4：使用 Fake 模型配置，在浏览器中完成：创建项目 → 进入选题阶段 → 发消息 → 看到流式文本和可折叠的工具调用 → 画布出现 agent 写入的文件 → 时间线出现新快照 → 对比 → 回滚 → 手动编辑并保存。（验证：L4 截图，存 `data/evidence/m1/`）
-- [ ] AC5：SSE 续传：`curl -N .../stream?after_seq=N` 只回放 seq > N 的已落库事件，然后接实时流。（验证：L3）
-- [ ] AC6：越界写入（包括通过 Shell、写入 `upstream/`、改工具托管文件）在本轮结束时被还原，下一轮前言中列出被还原的路径。（验证：L2 契约测试）
-- [ ] AC7：用户手动编辑后发下一条消息，先产生 `user_edit` 快照，前言包含 diff 摘要；回滚后前言包含回滚通知。（验证：L2）
-- [ ] AC8：一轮的各种结束方式——完成、失败（`partial` 快照）、用户取消、超出预算、进程重启后 `interrupted`——状态和快照都正确，并能"继续"。（验证：L2 + L3 重启 api）
-- [ ] AC9：ClaudeRuntime、OpenAIRuntime 用 mock 的 SDK 通过事件转换、业务工具转换（含图片结果）、会话恢复、取消、预算的测试。（验证：L2）
+- [x] AC5：SSE 续传：`curl -N .../stream?after_seq=N` 只回放 seq > N 的已落库事件，然后接实时流。（验证：L3）
+- [x] AC6：越界写入（包括通过 Shell、写入 `upstream/`、改工具托管文件）在本轮结束时被还原，下一轮前言中列出被还原的路径。（验证：L2 契约测试）
+- [x] AC7：用户手动编辑后发下一条消息，先产生 `user_edit` 快照，前言包含 diff 摘要；回滚后前言包含回滚通知。（验证：L2）
+- [x] AC8：一轮的各种结束方式——完成、失败（`partial` 快照）、用户取消、超出预算、进程重启后 `interrupted`——状态和快照都正确，并能"继续"。（验证：L2 + L3 重启 api）
+- [x] AC9：ClaudeRuntime、OpenAIRuntime 用 mock 的 SDK 通过事件转换、业务工具转换（含图片结果）、会话恢复、取消、预算的测试。（验证：L2）
 - [ ] AC10：`make smoke` 中 Claude（API key 与本机登录两种方式）、OpenAI（Responses API）、DeepSeek（LiteLLM）各跑通一轮最小对话：写一个文件、调用一个返回图片的业务工具；R1–R5 每项都有结论和证据，不成立的项已按设计 §9 的对策落地；`references/` 相应条目改为 ✅ 或 ❌ 并注明版本和日期。（验证：L5）
 
 ## 任务
@@ -314,22 +314,14 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T14 审查后修复 — 完成，`make check` 全绿（后端 425 个测试：新增 `GET /projects/{id}` 的 `busy` 字段 2 个；前端 112 个 vitest：`editorReadonly.spec.ts` 4、`conflictState.spec.ts` 9、`fileKind.spec.ts` 3、`snapshotSelection.spec.ts` 6、`snapshotReason.spec.ts` 6、`turnControls.spec.ts` 新增 `isBusyStatus` 6 + `combineBusy` 4，共比 T13 多 44 个）：① 画布/时间线只读原来只看当前选中会话的 turn 状态，但后端按**项目**串行（任一会话有 turn 在跑就该只读）——`ProjectDetailOut` 新增 `busy: bool`（`api/projects.py` 用 `turn_runner.is_project_busy`），`useProjectQuery` 加 3 秒 `refetchInterval`（覆盖"其他会话/其他标签页"），`useSessionStream` 在当前会话 `turn_status` 到达时让项目查询立刻失效（覆盖"当前会话"，不等轮询），新增 `turnControls.combineBusy(projectBusy, sessionStatus)` 取或；② 撤销了此前"修复 make check 基线"的 4 处改动——那不是真的基线问题，是本地 `vue-tsc` 增量缓存导致的假阳性（详见下面「决策记录」对应条目），`api/sse.ts`/`PromptInput.vue`/两个 `.spec.ts` 已改回 T13 原样；③ `SnapshotTimeline` 的 [取消]/[确认回滚] 在 `rollbackMutation` pending 时禁用，避免重复点击导致两次 POST；④ `pendingRollbackId` 补充注释说明"为什么故意不是 `ref`"，并在 [取消] 点击时显式清空（`update:open` 的通用关闭回调不能碰它——`AlertDialogAction` 触发的关闭一定先于它自己的 `@click` 执行，在那个回调里清空会重新引入原来的竞态，只有独立于该竞态路径的 [取消] 按钮自己的 `@click` 才安全）。
 - 2026-09-28 — T14 审查后修复（第二轮）— 完成，`make check` 全绿（后端 425 个测试不变；前端 116 个 vitest，新增 `snapshotSelection.spec.ts` 的 `canRollback` 4 条）：第一轮只在 `FileCanvas` 接了 `combineBusy` 的结果，`SnapshotTimeline` 没接——`ProjectWorkbenchPage.vue` 之前没传 `busy` prop 给它，[回滚到此] 一直可点，agent 运行中点开二次确认弹窗、真正提交时才被后端 409 拒绝。补上：`SnapshotTimeline` 新增 `busy: boolean` prop（`ProjectWorkbenchPage` 传 `canvasBusy`），新增纯函数 `snapshotSelection.canRollback(busy, isPending)`（`!busy && !isPending`），[回滚到此] 按钮和弹窗里的 [确认回滚] 都用它算 `disabled`；忙时头部提示文案从"选中两个快照可以对比"换成"agent 运行中，暂不能回滚"。[对比]（选快照看 diff）不受影响，busy 时也能看——不改工作区，没有 409 风险。
 
-- 2026-09-28 — T15：冒烟测试与 R1–R5 验证 — 完成（部分未验证）：`make smoke` 目标与 `backend/tests/smoke/`（4 个用例 + 4 个离线辅助测试）落地；种子配置核实并更新模型名/单价（`deepseek/deepseek-flash`，四个真实配置都填了单价与 `supports_vision`）；`make smoke` 第 1 次运行（本 M1 共用 5 次额度中的 1 次）：`test_claude_login` 通过，其余 3 个缺 key 跳过；R3、R5、Claude 侧 R2、登录模式 R4 有结论，R1、OpenAI/LiteLLM 侧 R2、API key 模式 R4 未验证；`make check` 全绿（见本提交）。
+- 2026-09-28 — T15：冒烟测试与 R1–R5 验证 — 完成（部分未验证）：`make smoke` 目标与 `backend/tests/smoke/`（4 个用例 + 4 个离线辅助测试）落地；种子配置核实并更新模型名/单价（`deepseek/deepseek-flash`，四个真实配置都填了单价与 `supports_vision`）；`make smoke` 第 1 次运行（本 M1 共用 5 次额度中的 1 次）：`test_claude_login` 通过，其余 3 个缺 key 跳过；R3、R5、Claude 侧 R2、登录模式 R4 有结论，R1、OpenAI/LiteLLM 侧 R2、API key 模式 R4 未验证；`make check` 全绿（见本提交）。- 2026-09-28 — M1 最终整体审查修复（C1、I2–I7、M1–M12）— 完成，`make check` 全绿（后端 490 个测试、前端 125 个 vitest、import-linter 15 条契约）；AC1–AC3、AC5–AC9 补齐证据并勾选，见「验证记录」；报告见 `.superpowers/sdd/m1-skeleton/final-fix-report.md`（见本提交及之前 8 个修复提交）。
+
 ## 下一步
 
-- M1 的全部任务已完成，进入 SOP 的最终审查/验收。AC10 只完成了本机登录部分：负责人在 `backend/.env` 提供 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY` 后再跑一次 `make smoke`（M1 额度还剩 4 次），补齐：Claude API key 模式的最小对话与 R4（`CLAUDE_CONFIG_DIR=data/claude` 下会话创建/恢复）、OpenAI Responses 的最小对话（含 strict schema 带 `default` 是否被接受、默认 `store` 下续轮）、DeepSeek（LiteLLM）的最小对话与 R2 观察。R1（DeepSeek 上的原生 `apply_patch`/`shell`）不在自动用例里：LiteLLM 路径默认就是兜底文件工具集（设计 §9 的对策已是现状），如需结论，要临时给 LiteLLM 路径接上原生工具手动试一次。
-- R2 在 LiteLLM 路径上若观察到模型看不到图片（证据文件 `r2_saw_colours: false`），按设计 §9 实现"文本说明 + 图片作为下一条输入消息"的对策（按模型配置 `supports_vision` 和运行时决定）；T15 按控制者裁定没有预先实现。
-- 已有的 `data/studio.db`（T13/T14 走查时建的）里 `deepseek` 配置仍是 `deepseek/deepseek-chat`、没有单价——种子只插入不更新；这个模型名已停用，需要删掉旧库重建或手动改行（M5 设置页之前没有界面可改）。
-- T14 走查时同样没能截到"运行中→画布只读"这一帧（fake runtime 一轮
-  太快）；`editorReadonly.ts` 的 `busy` 分支只有 vitest 覆盖，`busy`
-  从 `ProjectWorkbenchPage` 经 `isBusyStatus(turnStatus)` 传到
-  `FileCanvas` 的链路只做了类型检查/走查代码路径，没有浏览器实测
-  截图。未保存修改的冲突横幅（`workspace_changed` 到达时缓冲区脏）
-  同理：`conflictState.ts` 单测完整，但没有构造出真实并发场景做端到端
-  截图验证。如果 T15 或后续任务需要展示这两条路径，同样可以考虑给
-  FakeRuntime 加可配置延迟。
-- T13 走查时 fake 运行时完成一轮的速度过快，没能在浏览器里实际观察到"运行中"状态下输入框禁用、[停止] 按钮出现的真实渲染（`computeTurnControls` 的对应分支只有 vitest 覆盖，没有浏览器实测）；409"会话忙"和 400"运行时未注册"的错误提示同样只做了代码走查、没有在浏览器里人工触发。T14/T15 如果需要展示这些路径，可以考虑给 FakeRuntime 加一个可配置延迟，或者直接在 T15 用真实模型验证。
-- （T14 已确认并沿用）`Claude_Browser` 的 `computer screenshot` 只把图片内嵌回当前对话，没有导出文件到磁盘的接口；T14 按简报"截图或至少写一份文字记录"的兜底条款，改成把走查步骤、观察结果、发现的 bug 写成 `data/evidence/m1/t14-ac4-walkthrough.md`。后续任务如果同样要求"保存截图"，沿用这个折中方案即可。
+- **等待负责人验收 M1**（SOP 最终审查已完成，修复见上一条进度）。验收时关注：AC4（浏览器全流程，T14 已走查）与 AC10（`make smoke` 只跑了登录模式）仍未勾选。
+- AC10 待补：负责人在 `backend/.env` 提供 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY` 后再跑一次 `make smoke`（M1 额度还剩 4 次），补齐 Claude API key 模式与 R4、OpenAI Responses、DeepSeek（LiteLLM）与 R2；R1 需要临时给 LiteLLM 接原生工具手动试。R2 在 LiteLLM 上不成立时按设计 §9 实现"文本说明 + 图片作为下一条输入"的对策。
+- 已有的 `data/studio.db` 里 `deepseek` 配置仍是旧模型名、无单价（种子只插不更），需要删库重建或手动改行。
+- 延后的技术债已登记到 `docs/quality/tech-debt.md`（TD-1…TD-24），M2 开始前挑选处理；模块评级见 `docs/quality/QUALITY.md`。
 
 ## 决策记录
 
@@ -487,6 +479,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T15：SDK 实际启动的是 wheel 内置 CLI 2.1.283，不是 `~/.local/bin/claude`（2.1.228）；冒烟用例用"能找到 `claude` CLI"作为"本机装过并登录过 Claude Code"的近似判断。
 - 2026-09-28 — T15：登录用例的 transcript 和工具结果图片会留在负责人的 `~/.claude/projects/<由临时工作区路径推出的目录>/` 下，测试不自动删除（不在测试里删用户配置目录的东西），runbook 里提示可手动清理。
 
+- 2026-09-28 — （最终审查 L3）vite 开发代理（http-proxy）在后端进程被杀后**不会结束**已经在转发的 SSE 响应：经 5173 的 `curl -N` 一直挂到 `--max-time`（退出码 28），浏览器永远不进入重连，I3 的"重连后刷新 turn 状态"也就不会触发。修复：`vite.config.ts` 的 proxy `configure` 里上游响应 `close` 时 `res.destroy()`；复测 kill 的同一秒客户端连接结束（退出码 52），页面经 502 退避后重连并刷新为 `interrupted`。
+- 2026-09-28 — （最终审查 L3）uvicorn 收到 SIGTERM 后先等待所有连接（包括浏览器的 SSE）关闭，再执行 lifespan 关闭；实测运行中的 Fake turn 在等待期间自然跑完成 `done`，lifespan 的 interrupted 收尾没有机会触发（L2 已覆盖该路径）。登记为 TD-22。
+- 2026-09-28 — （最终审查 AC5）sse-starlette 的帧以 CRLF 结尾，shell 里用 `grep '^id:' | awk` 取出的 seq 带 `\r`，拼进 URL 后请求静默失败；验证脚本要先 `tr -d '\r'`。
+- 2026-09-28 — （最终审查 I6）修复前的 import-linter 契约下，`workspace→agent`、`db→workspace`、`config→workspace`、`stages→db.models` 四种违规全部通过（13 kept, 0 broken）；新增 `layers` 契约与 stages 的规则 5 后四种各自失败。
+
 ## 已知限制（非本任务缺陷，留给后续任务）
 
 - `useSessionStream` 的 `items` 数组只增不减，长会话（很多轮 turn）会让这个数组无限增长，没有做虚拟滚动或历史裁剪——T13 接入真实会话面板、出现长会话性能问题时再按需处理（比如只保留最近 N 轮 + "加载更早"的分页）。
@@ -514,3 +511,12 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T15 — R5（读取 `upstream/` 后尝试写入）：**真实运行**了一轮叙事阶段 turn（登录模式；先把选题定稿，让 `upstream/topic/smoke.md` 出现），明确要求模型读取后用 Edit 追加、再用 Bash `echo >>` 追加：读取成功；Edit 被 `PreToolUse` hook 拒绝（`is_error=True`，内容 `PreToolUse:Edit hook error: upstream/topic/smoke.md 不在本阶段可写范围内…`）；Bash 因只读副本文件权限 `0o444` 失败；模型没有重试并如实报告；轮末文件内容仍是 `smoke ok`。未被要求时模型是否会主动写 `upstream/`：本次样本中没有观察到（第一、二轮都没碰 `upstream/`），但样本很小。guard 对 `upstream/` 漂移的还原由 T4/T6 契约测试覆盖（本次没有触发）。结论：成立，事前拦截返回错误、事后防线兜底，符合设计 §9。
 - 2026-09-28 — T15 — `make check`：全绿（后端 430 个测试 + 前端 116 个，后端新增 5 个：种子单价 1 个 + 冒烟辅助离线测试 4 个；4 个冒烟用例被 `-m 'not smoke'` 排除）。
 - 2026-09-28 — T15 审查后修复：`make check` 全绿（后端 436 个测试，新增 6 个 `build_env` 单测；前端 116 个）。按审查要求**没有**重跑 `make smoke`（M1 额度仍剩 4 次）；`make smoke` 的白名单环境用一个只打印环境变量名的假 `UV` 验证过：`STUDIO_SMOKE_SKIP_LOGIN=1 OPENAI_API_KEY='a b' make smoke UV=<假脚本>` → 子进程只看到 `HOME LANG OPENAI_API_KEY PATH PWD SHELL SHLVL STUDIO_SMOKE_SKIP_LOGIN TMPDIR USER`（`_`/`PWD`/`SHLVL` 由 shell 自动设置），含空格的值没有被拆开。登录用例在 `finally` 里删掉空的 `data/evidence/m1/r3-scratch/` 目录（本次残留的空目录已手动删除）。
+- 2026-09-28 — 最终审查修复 — AC1：`make check` → ruff、ruff format、pyright（0 errors）、lint-imports（15 kept, 0 broken）、pytest（490 passed, 4 deselected）、eslint、vue-tsc、vitest（15 文件 125 个）、文档检查，`make check 全部通过`，退出码 0；`make check-fast` → 文档检查 + `ruff check` + `eslint`，退出码 0。输出：`data/evidence/m1/ac1-make-check.txt`、`ac1-make-check-fast.txt`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC2：新增 `layers` 契约（main > api > stages > agent > workspace > db > config）与"stages 不直接 import db.models"。临时在 `workspace/layout.py`、`db/engine.py`、`config.py`、`stages/topic/__init__.py` 末尾分别加 `import studio.agent.events`、`import studio.workspace.layout`、`import studio.workspace.layout`、`import studio.db.models`，每次 `lint-imports` 都是 `14 kept, 1 broken`、退出码 1（`make check` 因此失败）；改动已还原。对照：旧契约下四处违规都是 `13 kept, 0 broken`。输出：`data/evidence/m1/ac2-import-linter-violations.txt`。结论：通过（规则 4 的 engines/search 尚不存在）。
+- 2026-09-28 — 最终审查修复 — AC3（L3）：`STUDIO_DATA_DIR=<scratchpad>/m1-final-data STUDIO_ENABLE_FAKE_RUNTIME=true STUDIO_FAKE_DELAY_SECONDS=8 make dev` → uvicorn 日志 `Will watch for changes in these directories: ['…/backend/src']`，`lsof` 显示 `127.0.0.1:8000` 与 `127.0.0.1:5173` 在监听；期间 Fake agent 跑了 10 轮（每轮写 `topic/fake-note.md`）外加手动 PUT 与回滚，日志中 reload 相关行 0 条、`Started server process` 1 次。输出：`data/evidence/m1/ac3-make-dev.txt`。结论：通过（`make setup` 本次未重跑，T1/T11 已验证）。
+- 2026-09-28 — 最终审查修复 — AC5（L3）：同一会话已有 32 条持久事件；`curl -N ".../stream?after_seq=29"` 只回放 id 30–32；`Last-Event-ID: 29` 结果相同；`after_seq=36` 连上后 1 秒发消息，逐行时间戳显示 `turn_status×2`、`id 37 text` 立即到达，8 秒后 `id 38–40` 与 `workspace_changed`、`turn_status(done)` 到达（实时流，不是连接关闭时一次性吐出）。输出：`data/evidence/m1/ac5-sse-resume.txt`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC6（L2）：`pytest tests/agent/test_runner.py::TestGuard tests/workspace/test_scope.py tests/workspace/test_upstream.py` → 30 passed（含 Shell 越界写入还原并在下一轮前言列出、写 `upstream/` 还原、工具托管文件改写还原，及本次新增的符号链接目录写穿、目录挡路、`upstream` 为符号链接/普通文件/`chmod 000`、不可读文件计为漂移）。输出：`data/evidence/m1/l2-ac6-ac9-tests.txt`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC7（L2）：`pytest tests/agent/test_runner.py::TestPreambleAcrossTurns tests/workspace/test_snapshot.py::TestRollback tests/api/test_snapshots.py::TestRollback` → 17 passed（`user_edit` 快照与前言 diff、回滚通知、回滚前先快照手动编辑且回滚可撤销）。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC8（L2 + L3）：L2 `pytest …TestNormalTurn …TestFailureAndCancel …TestBudget …TestRecovery …TestShutdown tests/api/test_lifespan.py tests/api/test_sessions.py` → 36 passed（完成、失败 `partial`、取消、步数/成本超预算、重启恢复 `interrupted`、关闭收尾、`/continue` 只对 `interrupted`/`budget_exceeded` 开放）。L3：Fake 8 秒延迟，发消息 2 秒后 `kill -9` api（SQLite 中 turn 为 `running`），重启后 `GET /sessions` 该 turn 为 `interrupted`（有 end_snapshot）；第二次在浏览器同时打开该会话时重复，页面重连后显示 [继续]，点击后乐观插入"继续"，新一轮 `done`。SIGTERM 场景见「意外与发现」（TD-22）。输出：`data/evidence/m1/ac8-restart.txt`、`m6-l4-running-state.md`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC9（L2）：`pytest tests/agent/test_claude_runtime.py tests/agent/test_openai_runtime.py tests/agent/test_apply_patch.py tests/agent/test_fallback_tools.py` → 136 passed（事件转换、业务工具含图片结果、会话恢复、取消、预算；新增密钥置空、读取范围 hook、缺 mimeType 图片块、客户端构造异常、Shell 用注入的 environ）。结论：通过。
+- 2026-09-28 — 最终审查修复 — M6 / T13 / T14 补验（L4）：`STUDIO_FAKE_DELAY_SECONDS=8`，内置浏览器（面板隐藏，交互用页面内 JS 驱动、DOM 读取状态，无截图）。运行中：输入框禁用、[停止] 出现、CodeMirror `contenteditable=false`、全部 [回滚到此] 禁用、提示"agent 运行中，暂不能回滚"；结束后全部恢复。接口层运行中 PUT/回滚/定稿/同会话再发消息均 409，`Host: evil.example` → 400。时间线里 `created=false` 的快照显示"本轮没有改动文件，未创建新快照"。未验证：未保存修改的冲突横幅（没有构造并发编辑场景）。输出：`data/evidence/m1/m6-l4-running-state.md`。
