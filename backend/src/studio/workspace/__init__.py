@@ -9,9 +9,11 @@ from __future__ import annotations
 from studio.workspace.blobs import BlobStore
 from studio.workspace.files import (
     ScopeError,
+    init_workspace,
     list_tree,
     read_bytes,
     read_text,
+    remove_workspace,
     safe_path,
     write_text,
     write_text_unscoped,
@@ -44,6 +46,7 @@ __all__ = [
     "create_snapshot",
     "diff",
     "guard",
+    "init_workspace",
     "is_writable",
     "list_tree",
     "materialize_upstream",
@@ -51,6 +54,7 @@ __all__ = [
     "read_bytes",
     "read_file_at",
     "read_text",
+    "remove_workspace",
     "rollback",
     "safe_path",
     "scan",

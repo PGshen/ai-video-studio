@@ -205,6 +205,10 @@ class TurnRunner:
             await job.done.wait()
 
     def is_project_busy(self, project_id: str) -> bool:
+        """项目是否有 turn 在跑。只能在事件循环线程上调用（I4）：`_running` 和排队
+        调度都在事件循环上修改，调用方（api 的 `async def` 端点）在检查与写工作区
+        之间不 `await`，相对调度器就是原子的。
+        """
         return any(job.project_id == project_id for job in self._running.values())
 
     def recover_on_startup(self) -> None:

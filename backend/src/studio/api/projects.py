@@ -12,11 +12,15 @@
    blob 是内容寻址、可能被其他项目共用，孤儿内容不影响正确性，也没有
    项目 id 可以定位删除。
 
+项目级串行（I4）：凡是"先查 `is_project_busy` 再写工作区"的端点都写成
+`async def`，在事件循环线程上执行，检查与写入之间不 `await`——`TurnRunner`
+也在事件循环上改 `_running`、调度排队的 turn，两者不会交错。同步 `def` 端点
+会跑在线程池里，出现检查通过后被调度器插队的竞态。代价是这些端点里的
+短小同步 IO（SQLite、写文件、回滚）会占用事件循环片刻，单人本地可接受。
 """
 
 from __future__ import annotations
 
-import shutil
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -37,7 +41,7 @@ from studio.db.repo.projects import (
 )
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
-from studio.workspace import BlobStore, create_snapshot, project_dir
+from studio.workspace import BlobStore, create_snapshot, init_workspace, remove_workspace
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -71,15 +75,13 @@ def _stage_out(value: StageValue) -> StageOut:
 def _init_workspace(
     engine: Engine, blobs: BlobStore, settings: Settings, project_id: str, title: str
 ) -> None:
-    workdir = project_dir(settings.data_dir, project_id)
-    style_path = workdir / "style" / "STYLE.md"
-    style_path.parent.mkdir(parents=True, exist_ok=True)
-    style_path.write_text(f"# {title}\n\n（风格占位，风格库在 M5 实现）\n", encoding="utf-8")
+    style = f"# {title}\n\n（风格占位，风格库在 M5 实现）\n"
+    init_workspace(settings.data_dir, project_id, {"style/STYLE.md": style})
     create_snapshot(engine, blobs, project_id, reason="init")
 
 
 def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str) -> None:
-    shutil.rmtree(project_dir(settings.data_dir, project_id), ignore_errors=True)
+    remove_workspace(settings.data_dir, project_id)
     delete_snapshots(engine, project_id)
     delete_stages(engine, project_id)
     delete_project(engine, project_id)
@@ -117,7 +119,7 @@ def _require_project(engine: Engine, project_id: str) -> ProjectValue:
 
 
 @router.get("/projects/{project_id}", response_model=ProjectDetailOut)
-def get_project_endpoint(
+async def get_project_endpoint(
     project_id: str,
     engine: Engine = Depends(get_engine),
     turn_runner: TurnRunner = Depends(get_turn_runner),
@@ -141,7 +143,7 @@ def _require_not_busy(turn_runner: TurnRunner, project_id: str) -> None:
 
 
 @router.post("/projects/{project_id}/stages/{stage}/finalize", response_model=StageOut)
-def finalize_stage_endpoint(
+async def finalize_stage_endpoint(
     project_id: str,
     stage: str,
     engine: Engine = Depends(get_engine),
@@ -160,7 +162,7 @@ def finalize_stage_endpoint(
 
 
 @router.post("/projects/{project_id}/stages/{stage}/reopen", response_model=StageOut)
-def reopen_stage_endpoint(
+async def reopen_stage_endpoint(
     project_id: str,
     stage: str,
     engine: Engine = Depends(get_engine),

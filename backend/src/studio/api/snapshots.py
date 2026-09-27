@@ -1,4 +1,11 @@
-"""`/api/projects/{id}/snapshots*`（任务简报 T7）。"""
+"""`/api/projects/{id}/snapshots*`（任务简报 T7）。
+
+项目级串行（I4）：凡是"先查 `is_project_busy` 再写工作区"的端点都写成
+`async def`，在事件循环线程上执行，检查与写入之间不 `await`——`TurnRunner`
+也在事件循环上改 `_running`、调度排队的 turn，两者不会交错。同步 `def` 端点
+会跑在线程池里，出现检查通过后被调度器插队的竞态。代价是这些端点里的
+短小同步 IO（SQLite、写文件、回滚）会占用事件循环片刻，单人本地可接受。
+"""
 
 from __future__ import annotations
 
@@ -63,7 +70,7 @@ def diff_snapshots_endpoint(
 
 
 @router.post("/projects/{project_id}/snapshots/{snapshot_id}/rollback", response_model=SnapshotOut)
-def rollback_endpoint(
+async def rollback_endpoint(
     project_id: str,
     snapshot_id: str,
     engine: Engine = Depends(get_engine),

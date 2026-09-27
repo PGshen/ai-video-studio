@@ -13,6 +13,12 @@
   链接、越出工作区）→ 400；合法但不在指定 `stage` 的可写范围内（含
   `upstream/`、阶段的 `tool_managed` 文件）→ 403；未知阶段名 → 404；项目
   正在跑一轮 → 409。
+
+项目级串行（I4）：凡是"先查 `is_project_busy` 再写工作区"的端点都写成
+`async def`，在事件循环线程上执行，检查与写入之间不 `await`——`TurnRunner`
+也在事件循环上改 `_running`、调度排队的 turn，两者不会交错。同步 `def` 端点
+会跑在线程池里，出现检查通过后被调度器插队的竞态。代价是这些端点里的
+短小同步 IO（SQLite、写文件、回滚）会占用事件循环片刻，单人本地可接受。
 """
 
 from __future__ import annotations
@@ -82,6 +88,7 @@ def read_file_endpoint(
     _require_project(engine, project_id)
     workdir = project_dir(settings.data_dir, project_id)
     try:
+        path = files.normalize_relpath(path)
         abs_path = files.safe_path(workdir, path)
     except ScopeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -94,7 +101,7 @@ def read_file_endpoint(
 
 
 @router.put("/projects/{project_id}/files/{path:path}", response_model=FileWriteResult)
-def write_file_endpoint(
+async def write_file_endpoint(
     project_id: str,
     path: str,
     stage: str,
@@ -112,6 +119,9 @@ def write_file_endpoint(
 
     workdir = project_dir(settings.data_dir, project_id)
     try:
+        # Normalize first so the scope check sees the same path that is written
+        # (`narrative/./x` and `narrative//x` must not slip past the globs).
+        path = files.normalize_relpath(path)
         files.safe_path(workdir, path)
     except ScopeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -9,9 +9,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path, PurePosixPath
 
-from studio.workspace.layout import PathEscapesWorkdir, resolve_relpath
+from studio.workspace.layout import PathEscapesWorkdir, project_dir, resolve_relpath
 from studio.workspace.scope import WriteScope, is_writable
 
 
@@ -139,3 +140,20 @@ def write_text_unscoped(workdir: Path | str, relpath: str, content: str) -> None
     path = safe_path(workdir, relpath)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def init_workspace(data_dir: Path | str, project_id: str, initial_files: dict[str, str]) -> Path:
+    """创建项目工作区并写入初始文本文件（例如 `style/STYLE.md` 占位），返回工作区目录。
+
+    不检查可写范围（建项目时由 api 决定写什么），但仍用 `safe_path` 拒绝不安全路径。
+    """
+    workdir = project_dir(data_dir, project_id)
+    workdir.mkdir(parents=True, exist_ok=True)
+    for relpath, content in initial_files.items():
+        write_text_unscoped(workdir, relpath, content)
+    return workdir
+
+
+def remove_workspace(data_dir: Path | str, project_id: str) -> None:
+    """删除整个项目工作区（建项目失败时清理用）；目录不存在时什么都不做。"""
+    shutil.rmtree(project_dir(data_dir, project_id), ignore_errors=True)

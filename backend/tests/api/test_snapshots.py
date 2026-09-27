@@ -90,6 +90,40 @@ class TestRollback:
         assert response.json()["reason"] == "rollback"
         assert not (api_env.workdir(pid) / "topic" / "brief.md").exists()
 
+    async def test_manual_edit_survives_rollback_and_rollback_is_undoable(
+        self, api_env: ApiEnv
+    ) -> None:
+        """C1: v1 -> v2 -> manual PUT (no snapshot) -> rollback to v1 must not lose the edit."""
+        from studio.workspace import create_snapshot
+
+        engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
+        pid = await _project(api_env)
+        brief = api_env.workdir(pid) / "topic" / "brief.md"
+        brief.parent.mkdir(parents=True, exist_ok=True)
+        brief.write_text("v1", encoding="utf-8")
+        v1 = create_snapshot(engine, blobs, pid, "turn")
+        brief.write_text("v2", encoding="utf-8")
+        create_snapshot(engine, blobs, pid, "turn")
+        put = await api_env.client.put(
+            f"/api/projects/{pid}/files/topic/brief.md",
+            params={"stage": "topic"},
+            json={"content": "manual"},
+        )
+        assert put.status_code == 200
+
+        response = await api_env.client.post(f"/api/projects/{pid}/snapshots/{v1.id}/rollback")
+        assert response.status_code == 200
+        assert brief.read_text(encoding="utf-8") == "v1"
+
+        snaps = list_snapshots(engine, pid)
+        assert [s.reason for s in snaps[-2:]] == ["user_edit", "rollback"]
+        manual = snaps[-2]
+        assert blobs.get(manual.manifest["topic/brief.md"]) == b"manual"
+
+        undo = await api_env.client.post(f"/api/projects/{pid}/snapshots/{manual.id}/rollback")
+        assert undo.status_code == 200
+        assert brief.read_text(encoding="utf-8") == "manual"
+
     async def test_unknown_snapshot_is_404(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)
 

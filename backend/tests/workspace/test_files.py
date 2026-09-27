@@ -7,10 +7,12 @@ import pytest
 from studio.workspace.files import (
     ScopeError,
     delete_file,
+    init_workspace,
     list_tree,
     normalize_relpath,
     read_bytes,
     read_text,
+    remove_workspace,
     safe_path,
     write_text,
     write_text_unscoped,
@@ -206,3 +208,26 @@ class TestNormalizedScopeChecks:
         for bad in ("", ".", "/etc/passwd", "topic/../x"):
             with pytest.raises(ScopeError):
                 normalize_relpath(bad)
+
+
+class TestInitAndRemoveWorkspace:
+    def test_init_creates_workdir_with_initial_files(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+
+        workdir = init_workspace(data_dir, "p1", {"style/STYLE.md": "# style\n"})
+
+        assert workdir == data_dir / "projects" / "p1"
+        assert (workdir / "style" / "STYLE.md").read_text(encoding="utf-8") == "# style\n"
+
+    def test_init_rejects_unsafe_paths(self, tmp_path: Path) -> None:
+        with pytest.raises(ScopeError):
+            init_workspace(tmp_path / "data", "p1", {"../escape.md": "x"})
+
+    def test_remove_deletes_workdir_and_tolerates_missing(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        workdir = init_workspace(data_dir, "p1", {"style/STYLE.md": "x"})
+
+        remove_workspace(data_dir, "p1")
+        remove_workspace(data_dir, "p1")
+
+        assert not workdir.exists()

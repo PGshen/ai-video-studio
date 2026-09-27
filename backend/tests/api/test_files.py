@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from .conftest import ApiEnv, assert_detail
 
 
@@ -149,6 +151,43 @@ class TestWriteFile:
         )
 
         assert response.status_code == 403
+
+    @pytest.mark.parametrize("raw_path", ["narrative/%2e/timing.json", "narrative//timing.json"])
+    async def test_non_normalized_tool_managed_path_is_403(
+        self, api_env: ApiEnv, raw_path: str
+    ) -> None:
+        pid = await _project(api_env)
+
+        response = await api_env.client.put(
+            f"/api/projects/{pid}/files/{raw_path}",
+            params={"stage": "narrative"},
+            json={"content": "{}"},
+        )
+
+        assert response.status_code == 403
+        assert not (api_env.workdir(pid) / "narrative" / "timing.json").exists()
+
+    @pytest.mark.parametrize(
+        ("stage", "raw_path", "normalized"),
+        [
+            ("topic", "topic/%2e/brief.md", "topic/brief.md"),
+            ("narrative", "narrative/%2e/narrative.json", "narrative/narrative.json"),
+        ],
+    )
+    async def test_non_normalized_writable_path_writes_normalized_file(
+        self, api_env: ApiEnv, stage: str, raw_path: str, normalized: str
+    ) -> None:
+        pid = await _project(api_env)
+
+        response = await api_env.client.put(
+            f"/api/projects/{pid}/files/{raw_path}",
+            params={"stage": stage},
+            json={"content": "x"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["path"] == normalized
+        assert (api_env.workdir(pid) / normalized).read_text(encoding="utf-8") == "x"
 
     async def test_invalid_path_is_400(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)
