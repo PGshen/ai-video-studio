@@ -1,8 +1,11 @@
 """`/api/projects/{id}/stages/{stage}/sessions`、`/api/sessions/{id}*`、SSE（任务简报 T8）。
 
-会话创建（控制者裁定 1）：`model_profile.runtime` 必须已经在 `RuntimeFactory`
-里注册（`enable_fake_runtime` 时的 `fake`，或 T9/T10 之后由 `main` 注册的
-`claude`/`openai`），否则新会话开局即无法运行任何一轮，直接 400。
+会话创建（控制者裁定 1）：必须存在对应的模型配置，且 `model_profile.runtime`
+已经在 `RuntimeFactory` 里注册（`enable_fake_runtime` 时的 `fake`，或
+T9/T10 之后由 `main` 注册的 `claude`/`openai`）——两种情况都属于"这个会话
+开局就无法运行任何一轮"，统一给 400（不是 404：模型配置本身可能存在，只是
+当前进程没有启用对应运行时；调用方看到 400 就知道是配置/环境问题，而不是
+"这个 id 不存在"）。
 
 忙的语义（控制者裁定 3）：`TurnRunner.start_turn` 只在**同一会话**已有
 `queued`/`running` 的 turn 时抛 `SessionBusyError`（→ 409）。项目级的串行化
@@ -13,25 +16,31 @@
 `budget_exceeded` 的会话开放，发送固定文本"继续"；否则 409。
 
 SSE（`GET /sessions/{id}/stream`，控制者裁定 4）：`_stream_events` 是这个
-端点的核心逻辑，刻意写成一个独立的模块级异步生成器，方便测试直接调用
-（不经过 HTTP 层）——httpx 的 `ASGITransport` 会在返回响应前把整个 ASGI 应用
-调用跑到完成（参见 `docs/references/sse-starlette.md` 的实测记录），对于
-一个不会自己结束的 SSE 流，这意味着经 HTTP 层做"收到几条事件后断开重连"
-的用例在测试里永远拿不到任何中间数据，只能超时；因此这类断线重连场景的
-测试直接调用 `_stream_events`。
+端点的核心逻辑，写成一个独立的模块级异步生成器，方便测试直接调用（不经过
+HTTP 层）。顺序：先 `bus.subscribe`（同步完成的注册，返回
+`agent.bus.Subscription`，见该模块文档——`close()` 是同步、幂等的，不依赖
+这个订阅有没有被迭代过），再查 `seq > after_seq` 的已落库事件重放
+（`id` = seq），最后转发总线的实时事件；持久事件在重放和实时交界处按 seq
+去重（`last_seq` 只增不减）。瞬时事件（`text_delta`/`workspace_changed`/
+`turn_status`）没有 `seq`，不去重、不重放、SSE 消息不带 `id`。
 
-顺序：先 `bus.subscribe`（同步完成的注册，见 `agent.bus` 模块文档），再查
-`seq > after_seq` 的已落库事件重放（`id` = seq），最后转发总线的实时事件；
-持久事件在重放和实时交界处按 seq 去重（`last_seq` 只增不减）。瞬时事件
-（`text_delta`/`workspace_changed`/`turn_status`）没有 `seq`，不去重、不重放、
-SSE 消息不带 `id`。
+线上事件名（`WIRE_EVENT_TYPES`）直接复用 `TurnRunner`/`SessionBus` 已经在
+用的 `type` 字符串，这里不做二次映射，只做一次白名单校验：出现列表之外的
+`type`（理论上不应该发生，防御性检查）时跳过并记日志，不把未知类型透传给
+前端。
+
+关于测试：httpx 的 `AsyncClient` + `ASGITransport`（本项目 api 测试的标准
+夹具）会在返回响应前把整个 ASGI 应用调用跑到完成才把数据交还调用方，不支持
+真正的增量流式读取；但直接驱动 `app(scope, receive, send)`（自己实现
+`receive`/`send`）可以拿到真实的逐块响应，`backend/tests/api/test_stream.py`
+的 HTTP 层测试用这种方式验证响应头、SSE 帧格式、真实断线时的清理。详见
+`docs/references/sse-starlette.md`。
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -39,7 +48,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import Engine
 from sse_starlette.sse import EventSourceResponse
 
-from studio.agent.bus import BusEvent, SessionBus
+from studio.agent.bus import SessionBus
 from studio.agent.runner import SessionBusyError, TurnRunner
 from studio.agent.runtime import RuntimeFactory, UserInput
 from studio.agent.stage import StageRegistry
@@ -58,10 +67,31 @@ from studio.db.repo.projects import get_project
 from studio.db.repo.sessions import SessionValue, create_session, get_session, list_sessions
 from studio.db.repo.turns import TurnValue
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api", tags=["sessions"])
 
 CONTINUE_TEXT = "继续"
 """控制者裁定 2：`.../continue` 固定发送这条中文文本作为用户消息。"""
+
+WIRE_EVENT_TYPES = frozenset(
+    {
+        "text_delta",
+        "text",
+        "tool_call",
+        "tool_result",
+        "snapshot",
+        "notice",
+        "error",
+        "workspace_changed",
+        "turn_status",
+    }
+)
+"""SSE 上实际会出现的全部事件名（任务简报列出的 9 种），在一个地方统一定义
+（控制者裁定 6）。`_stream_events` 用它过滤——出现列表之外的 `type` 只在
+`TurnRunner`/`SessionBus` 出现新 bug 时才可能发生，属于防御性检查，不是
+正常路径。
+"""
 
 _RESUMABLE_TURN_STATUSES = ("interrupted", "budget_exceeded")
 _CANCELLABLE_TURN_STATUSES = ("queued", "running")
@@ -131,7 +161,7 @@ def create_session_endpoint(
     _require_stage(stage, registry)
     profile = get_model_profile_by_id(engine, body.model_profile_id)
     if profile is None:
-        raise HTTPException(status_code=404, detail=f"模型配置不存在：{body.model_profile_id}")
+        raise HTTPException(status_code=400, detail=f"模型配置不存在：{body.model_profile_id}")
     if not runtime_factory.has(profile.runtime):
         raise HTTPException(status_code=400, detail=f"运行时未启用：{profile.runtime}")
     session = create_session(
@@ -206,7 +236,12 @@ async def continue_session_endpoint(
     return TurnAccepted(turn_id=turn_id)
 
 
-def _sse_message(event_type: str, payload: dict[str, Any], seq: int | None) -> dict[str, Any]:
+def _sse_message(
+    event_type: str, payload: dict[str, Any], seq: int | None
+) -> dict[str, Any] | None:
+    if event_type not in WIRE_EVENT_TYPES:
+        logger.warning("跳过未知的 SSE 事件类型：%s", event_type)
+        return None
     message: dict[str, Any] = {"event": event_type, "data": json.dumps({**payload, "seq": seq})}
     if seq is not None:
         message["id"] = str(seq)
@@ -217,49 +252,47 @@ async def _stream_events(
     engine: Engine, bus: SessionBus, session_id: str, after_seq: int
 ) -> AsyncGenerator[dict[str, Any], None]:
     subscription = bus.subscribe(session_id)  # 必须先订阅，再查回放范围（控制者裁定 4）。
-    # 立刻在后台把 `subscription` 这个异步生成器"跑起来"（`ensure_future` 调度
-    # 它的第一步，比如 `_pump` 内部真正挂起在 `await _has_data.wait()`）。
-    # 原因（审查后修复）：Python 的异步生成器完全惰性——如果这一轮客户端只
-    # 消费了回放里的历史事件就断线，`async for bus_event in subscription`
-    # 这一行永远不会执行，`subscription` 也就从未真正启动过；这时对一个
-    # "冷"的（从未 `__anext__` 过的）异步生成器调用 `aclose()` 是纯粹的空
-    # 操作，不会跑它的 `finally`（`SessionBus._pump` 里把订阅者从列表移除的
-    # 那段代码），订阅会永远留在 `SessionBus` 里（评审关注点 2 明确要求避免
-    # 的订阅者泄漏）。提前把它排进事件循环，能保证不管回放阶段消费了几条、
-    # 有没有真正走到实时转发，`finally` 里的 `live_next.cancel()` 都能命中
-    # 一个已经真正开始执行、挂起在总线等待点上的任务，从而正确触发取消订阅。
-    live_next: asyncio.Task[BusEvent] = asyncio.ensure_future(subscription.__anext__())
     try:
-        # `timeout=0` 只给 `live_next` 一次调度机会：足够让它推进到自己真正的
-        # 挂起点（`_pump` 内部 `await _has_data.wait()`），但不会等它真的产出
-        # 一个事件；`shield` 防止这里的超时连带取消 `live_next` 本身。这样不管
-        # 下面回放阶段消费了几条就断线，`finally` 里 `live_next.cancel()` 命中
-        # 的都是一个已经真正开始执行的任务，取消才能传播到 `_pump` 的
-        # `finally`（这段必须写在 `try` 里面：万一取消恰好发生在这一步本身，
-        # 也要能落到下面的 `finally` 做清理，而不是整段被跳过）。
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(asyncio.shield(live_next), timeout=0)
-
         last_seq = after_seq
         for event in turns_repo.list_events(engine, session_id, after_seq=after_seq):
             last_seq = event.seq
-            yield _sse_message(event.type, event.payload, event.seq)
+            message = _sse_message(event.type, event.payload, event.seq)
+            if message is not None:
+                yield message
 
-        while True:
-            bus_event = await live_next
-            live_next = asyncio.ensure_future(subscription.__anext__())
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(asyncio.shield(live_next), timeout=0)
+        async for bus_event in subscription:
             if bus_event.seq is not None:
                 if bus_event.seq <= last_seq:
                     continue  # 回放/实时交界处的持久事件去重。
                 last_seq = bus_event.seq
-            yield _sse_message(bus_event.type, bus_event.payload, bus_event.seq)
+            message = _sse_message(bus_event.type, bus_event.payload, bus_event.seq)
+            if message is not None:
+                yield message
     finally:
-        live_next.cancel()
-        with contextlib.suppress(BaseException):
-            await live_next
-        await subscription.aclose()
+        # 同步、幂等：不管上面有没有真正走到 `async for`（比如客户端只消费了
+        # 回放就断线），都能正确摘除订阅（见 `agent.bus.Subscription` 文档）。
+        subscription.close()
+
+
+def _parse_after_seq(after_seq: int | None, last_event_id: str | None) -> int:
+    """`after_seq` 查询参数优先于标准 `Last-Event-ID` 请求头；两者都缺省时从
+    头开始。非法值（非数字、负数）→ 400，而不是让 `int()` 抛出的
+    `ValueError` 变成未处理的 500。
+    """
+    if after_seq is not None:
+        value = after_seq
+    elif last_event_id is not None:
+        try:
+            value = int(last_event_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"非法的 Last-Event-ID：{last_event_id}"
+            ) from exc
+    else:
+        return 0
+    if value < 0:
+        raise HTTPException(status_code=400, detail=f"after_seq 不能为负数：{value}")
+    return value
 
 
 @router.get("/sessions/{session_id}/stream")
@@ -271,7 +304,5 @@ async def stream_session_endpoint(
     bus: SessionBus = Depends(get_bus),
 ) -> EventSourceResponse:
     _require_session(engine, session_id)
-    if after_seq is None:
-        last_event_id = request.headers.get("last-event-id")
-        after_seq = int(last_event_id) if last_event_id is not None else 0
-    return EventSourceResponse(_stream_events(engine, bus, session_id, after_seq))
+    resolved_after_seq = _parse_after_seq(after_seq, request.headers.get("last-event-id"))
+    return EventSourceResponse(_stream_events(engine, bus, session_id, resolved_after_seq))

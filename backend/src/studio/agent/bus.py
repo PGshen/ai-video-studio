@@ -2,10 +2,13 @@
 
 `BusEvent` 是推给 SSE 的信封：持久事件（对应 `turn_events` 表：
 `text`/`tool_call`/`tool_result`/`snapshot`/`suggestion`/`notice`/`error`，
-由 TurnRunner 落库后再发布）带会话内单调递增的 `seq`，用于断线重连的
-`after_seq` 续传；瞬时事件（`text_delta` token 级增量、`workspace_changed`
-文件类工具调用后的提示、`turn_status` turn 状态变化）不落库，`seq=None`，
-重连后不回放（计划决策记录 2026-09-26）。
+由 TurnRunner 落库后再发布；`suggestion` 是设计 §3.1 列出的持久事件类型，
+M1 还没有任何代码产出它——回退建议在 M4 才实现，见 `docs/glossary.md`）带
+会话内单调递增的 `seq`，用于断线重连的 `after_seq` 续传；瞬时事件
+（`text_delta` token 级增量、`workspace_changed` 文件类工具调用后的提示、
+`turn_status` turn 状态变化）不落库，`seq=None`，重连后不回放（计划决策记录
+2026-09-26）。T8 的 SSE 端点实际转发的 9 种线上事件名见
+`studio.api.sessions.WIRE_EVENT_TYPES`。
 
 订阅者慢（SSE 连接处理跟不上）时的兜底策略（审查后修复，控制者裁定）：
 **持久事件永不因为容量限制被丢弃**——每个订阅者内部拆成两条队列：
@@ -17,10 +20,21 @@
 
 两条队列合并的顺序：每个事件在 `publish` 时打上一个总线全局的单调递增
 内部序号（和 `BusEvent.seq`——会话内的持久事件序号——是两个不同的概念），
-订阅者的抽取协程（`_pump`）总是从两条队列的队首中选内部序号更小的一个先
-产出，这样"瞬时事件和持久事件之间的相对到达顺序"在没有事件被丢弃的情况下
-能尽量保持；瞬时事件本身因为丢弃可能出现顺序上的空洞，这是设计允许的
-（瞬时事件不保证送达）。
+订阅者的抽取协程（`_Subscriber.pump`）总是从两条队列的队首中选内部序号更小
+的一个先产出，这样"瞬时事件和持久事件之间的相对到达顺序"在没有事件被丢弃
+的情况下能尽量保持；瞬时事件本身因为丢弃可能出现顺序上的空洞，这是设计
+允许的（瞬时事件不保证送达）。
+
+`subscribe()` 返回的是 `Subscription`（不是裸的异步生成器）：`close()` 是
+**同步、幂等**的方法，直接把订阅者从 `_subscribers` 列表里摘掉，不依赖
+"这个订阅有没有被迭代过"（T8 审查发现的真实 bug：早期实现让 `subscribe()`
+直接返回一个包了 `try/finally` 的异步生成器，`finally` 里做取消订阅——但
+Python 对一个从未 `__anext__()` 过的"冷"异步生成器调用 `aclose()` 是空
+操作，不会跑它的 `finally`；如果一次 SSE 连接的全部数据都靠回放已落库
+事件满足、从未真正走到订阅总线取实时事件那一步就断开，订阅就会永久残留）。
+`Subscription` 把"清理"和"生成器有没有被驱动过"彻底解耦，调用方（`_stream_events`
+的 `finally`）无论有没有真正消费过任何一条实时事件，调用一次 `close()` 都
+能正确摘除订阅。
 """
 
 from __future__ import annotations
@@ -28,7 +42,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 from collections import deque
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -88,6 +102,40 @@ class _Subscriber:
             yield event
 
 
+class Subscription:
+    """`SessionBus.subscribe()` 返回的句柄：异步迭代事件 + 同步取消订阅。
+
+    `close()` 是同步、幂等的方法：不管这个订阅有没有被迭代过、迭代了几次，
+    调用一次就能把对应的 `_Subscriber` 从总线的 `_subscribers` 列表里摘掉。
+    不通过关闭某个异步生成器来触发清理，因此不受"异步生成器从未
+    `__anext__()` 过时 `aclose()` 是空操作"这条 Python 行为的影响（T8 审查
+    发现的真实 bug，见模块文档）。
+    """
+
+    def __init__(self, bus: SessionBus, session_id: str, subscriber: _Subscriber) -> None:
+        self._bus = bus
+        self._session_id = session_id
+        self._subscriber = subscriber
+        self._pump = subscriber.pump()
+        self._closed = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        subscribers = self._bus._subscribers.get(self._session_id)
+        if subscribers is not None and self._subscriber in subscribers:
+            subscribers.remove(self._subscriber)
+
+    def __aiter__(self) -> AsyncIterator[BusEvent]:
+        return self
+
+    async def __anext__(self) -> BusEvent:
+        if self._closed:
+            raise StopAsyncIteration
+        return await self._pump.__anext__()
+
+
 class SessionBus:
     """按 `session_id` 分组的发布/订阅总线，进程内内存实现（设计 §2.1）。"""
 
@@ -104,28 +152,14 @@ class SessionBus:
         for subscriber in self._subscribers.get(session_id, []):
             subscriber.push(order, event)
 
-    def subscribe(self, session_id: str) -> AsyncGenerator[BusEvent, None]:
-        """注册一个新订阅者并返回事件流。
+    def subscribe(self, session_id: str) -> Subscription:
+        """注册一个新订阅者并返回 `Subscription`。
 
-        注意：注册（把订阅者加进 `self._subscribers`）在这个方法里**同步**
-        发生，不是异步生成器函数——如果把注册逻辑写在 `async def` 生成器
-        函数体内，Python 不会执行函数体直到第一次 `__anext__()`，那样
-        `publish` 在订阅者第一次迭代之前发布的事件就会丢失（因为订阅者还没
-        注册进去）。这里拆成同步的注册 + 单独的异步生成器负责取事件。
-        返回类型用 `AsyncGenerator` 而不是更宽泛的 `AsyncIterator`，让调用方
-        （包括测试）能用 `aclose()` 主动结束订阅、触发下面的取消订阅逻辑。
+        注册（把订阅者加进 `self._subscribers`）在这个方法里**同步**发生——
+        如果注册逻辑写在异步生成器函数体内，Python 不会执行函数体直到第
+        一次 `__anext__()`，那样 `publish` 在订阅者第一次迭代之前发布的
+        事件就会丢失（因为订阅者还没注册进去）。
         """
         subscriber = _Subscriber(self._queue_size)
         self._subscribers.setdefault(session_id, []).append(subscriber)
-        return self._pump(session_id, subscriber)
-
-    async def _pump(
-        self, session_id: str, subscriber: _Subscriber
-    ) -> AsyncGenerator[BusEvent, None]:
-        try:
-            async for event in subscriber.pump():
-                yield event
-        finally:
-            subscribers = self._subscribers.get(session_id)
-            if subscribers is not None and subscriber in subscribers:
-                subscribers.remove(subscriber)
+        return Subscription(self, session_id, subscriber)

@@ -136,15 +136,37 @@ class TestSessionBusSlowSubscriber:
         delivered = [await _next(subscriber) for _ in range(3)]
         assert [e.payload["label"] for e in delivered] == ["p1", "t1", "p2"]
 
-    async def test_unsubscribed_queue_stops_receiving_after_generator_closed(self) -> None:
+    async def test_close_after_partial_iteration_unsubscribes(self) -> None:
         bus = SessionBus()
         subscriber = bus.subscribe("session-1")
-        # 先消费一条，让生成器真正启动（挂起在下一次 `await queue.get()`），
-        # 再 `aclose()` 才会触发 `finally` 里的取消订阅逻辑。
         bus.publish("session-1", BusEvent(type="text", payload={}, seq=1))
         await _next(subscriber)
-        await subscriber.aclose()
+        subscriber.close()
 
         assert bus.subscriber_count("session-1") == 0
         # 关闭后再发布不应该抛异常（订阅者列表里已经移除了这个队列）。
         bus.publish("session-1", BusEvent(type="text", payload={}, seq=2))
+
+    async def test_close_without_ever_iterating_unsubscribes(self) -> None:
+        # T8 审查发现的真实 bug：早期实现里 `subscribe()` 返回一个裸的异步
+        # 生成器，取消订阅的逻辑写在它的 `finally` 里；Python 对一个从未
+        # `__anext__()` 过的"冷"异步生成器调用 `aclose()` 是空操作，不会跑
+        # `finally`，导致这种"订阅后从未真正消费任何一条实时事件就断线"的
+        # 场景下订阅永久残留。`Subscription.close()` 是同步、直接摘除，不
+        # 依赖有没有迭代过，必须在这种最简单的场景下也能归零。
+        bus = SessionBus()
+        subscriber = bus.subscribe("session-1")
+
+        subscriber.close()
+
+        assert bus.subscriber_count("session-1") == 0
+
+    async def test_close_is_idempotent_and_does_not_touch_other_subscribers(self) -> None:
+        bus = SessionBus()
+        first = bus.subscribe("session-1")
+        bus.subscribe("session-1")  # 同一会话的第二个订阅者，验证不被误删。
+
+        first.close()
+        first.close()  # 第二次调用不应该抛异常。
+
+        assert bus.subscriber_count("session-1") == 1

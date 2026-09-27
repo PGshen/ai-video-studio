@@ -92,13 +92,13 @@ class TestCreateSession:
         )
         assert response.status_code == 404
 
-    async def test_unknown_model_profile_is_404(self, api_env: ApiEnv) -> None:
+    async def test_unknown_model_profile_is_400(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)
         response = await api_env.client.post(
             f"/api/projects/{pid}/stages/topic/sessions",
             json={"model_profile_id": "does-not-exist"},
         )
-        assert response.status_code == 404
+        assert response.status_code == 400
         assert_detail(response)
 
     async def test_unregistered_runtime_is_400(self, api_env: ApiEnv) -> None:
@@ -204,6 +204,38 @@ class TestSendMessage:
         assert response.status_code == 409
         assert_detail(response)
         await _release_busy_session(api_env, turn_id)
+
+    async def test_other_session_of_busy_project_is_queued_not_rejected(
+        self, api_env: ApiEnv
+    ) -> None:
+        """控制者裁定 3：项目忙不拒绝消息——`TurnRunner` 内部排队，202。"""
+        pid = await _project(api_env)
+        busy_session_id, busy_turn_id = await _make_busy_session(api_env, pid, stage="topic")
+        other_created = await api_env.client.post(
+            f"/api/projects/{pid}/stages/narrative/sessions",
+            json={"model_profile_id": _fake_profile_id(api_env)},
+        )
+        other_session_id = other_created.json()["id"]
+
+        response = await api_env.client.post(
+            f"/api/sessions/{other_session_id}/messages", json={"text": "另一个阶段的消息"}
+        )
+
+        assert response.status_code == 202, response.text
+        other_turn_id = response.json()["turn_id"]
+        # 项目还在忙，这个 turn 只能排队，不会立刻运行。
+        detail = await api_env.client.get(f"/api/sessions/{other_session_id}")
+        assert detail.json()["turns"][0]["status"] == "queued"
+
+        # 先复位 `fake` 注册，再释放忙会话——这样不管 `other_turn_id` 什么时候
+        # 真正开始执行（`TurnRunner._schedule` 何时把它排上，不受本测试控制），
+        # 拿到的都是默认的（秒结束的）fake 脚本，不会被 `sleep(30)` 卡住。
+        register_fake(api_env.app.state.runtime_factory)
+        api_env.app.state.turn_runner.cancel(busy_turn_id)
+        await api_env.app.state.turn_runner.wait(busy_turn_id)
+        await api_env.app.state.turn_runner.wait(other_turn_id)
+        detail = await api_env.client.get(f"/api/sessions/{other_session_id}")
+        assert detail.json()["turns"][0]["status"] == "done"
 
 
 class TestCancelSession:
