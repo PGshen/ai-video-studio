@@ -84,3 +84,37 @@ name = "workspace 不依赖 main（组装层不能被下层反向依赖）"
 type = "forbidden"
 source_modules = ["studio.workspace"]
 forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "agent 不 import stages（规则 2）：TurnRunner 只认识阶段定义协议"
+type = "forbidden"
+source_modules = ["studio.agent"]
+forbidden_modules = ["studio.stages"]
+
+[[tool.importlinter.contracts]]
+name = "agent 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.agent"]
+forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "agent 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.agent"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "各阶段之间互不 import（规则 3）：共用代码放进 stages.common"
+type = "independence"
+modules = [
+    "studio.stages.topic",
+    "studio.stages.narrative",
+    "studio.stages.animation",
+]
+
+[[tool.importlinter.contracts]]
+name = "stages 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.stages"]
+forbidden_modules = ["studio.main"]

@@ -130,7 +130,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿。
 - **验证命令**：`make check`
 
-### T5：agent 核心类型、阶段协议、会话总线、FakeRuntime（待开始）
+### T5：agent 核心类型、阶段协议、会话总线、FakeRuntime（完成）
 
 - **目标**：运行时无关的核心抽象，以及可编排的测试运行时。
 - **涉及文件**：`backend/src/studio/agent/{__init__,events,tools,runtime,stage,bus,fake}.py`、`backend/src/studio/stages/{common,topic,narrative,animation}/`（`__init__.py` + `prompt.md` 占位）、`backend/tests/agent/test_{bus,fake,tools}.py`。
@@ -297,10 +297,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T2：数据库与迁移 — 完成，`make check` 全绿（见本提交）。
 - 2026-09-27 — T3：快照库 — 完成，`make check` 全绿（见本提交）。
 - 2026-09-27 — T4：越界检查、上游只读副本、受控文件读写 — 完成，`make check` 全绿（见本提交）。
+- 2026-09-27 — T5：agent 核心类型、阶段协议、会话总线、FakeRuntime — 完成，`make check` 全绿（含新增的 import-linter 规则 2、3）（见本提交）。
 
 ## 下一步
 
-- 从 T5 开始：agent 核心类型、阶段协议、会话总线、FakeRuntime。
+- 从 T6 开始：TurnRunner 与上下文前言。
 
 ## 决策记录
 
@@ -330,6 +331,13 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T4：`guard` 除了按 `before`/`after`/`tool_writes` 还原越界改动外，额外扫描并删除工作区里排除目录（`EXCLUDED_TOP_DIRS`）之外的所有符号链接（控制者裁定）——`scan()` 天然忽略符号链接，如果 `guard` 不清理，agent 建的符号链接会一直留在工作区（不进快照、不受越界检查约束），可能被用作绕过下一轮检查的手段；删除的符号链接路径计入 `GuardReport.restored`。
 - 2026-09-27 — T4：`snapshot._data_dir_of` 增加防御性检查，`blobs.root.name != "blobs"` 时抛 `ValueError`（控制者裁定）——`_data_dir_of` 靠"约定" `<data_dir>/blobs/` 反推 `data_dir`，这个假设一旦被调用方传错（例如误传了别的目录当 `BlobStore.root`）会静默算出错误的工作区路径，进而让 `create_snapshot`/`rollback` 操作到错误的位置；提前失败比静默算错更安全。
 - 2026-09-27 — T4：`materialize_upstream` 的 `sources[stage]` 约定为该阶段定稿快照的**完整清单**（可能含 `style/` 等其他路径），函数内部按 `<stage>/` 前缀过滤后再落盘到 `upstream/<stage>/`——这样调用方（T6 的 TurnRunner）不需要预先按目录切分清单，直接把定稿快照的 manifest 传进来即可，防御性地保证只有属于该阶段产物目录的文件被物化。
+- 2026-09-27 — T5：`SessionBus.subscribe` 慢订阅者队列写满时的兜底策略——新事件是瞬时的（`text_delta`/`workspace_changed`/`turn_status`）就丢弃队列里最旧的一条瞬时事件腾位置（找不到瞬时事件、即队列全是持久事件时，直接丢弃这条新的瞬时事件，一个持久事件都不动）；新事件是持久的，则丢弃队列里最旧的一条瞬时事件腾位置，队列里恰好全是持久事件（正常场景很少见）时退化为丢弃最旧的一条持久事件——保证持久事件永不因为“新事件到达时腾不出位置”而被拒绝在外，`publish` 本身不阻塞、不抛异常。三种场景（丢瞬时保新瞬时、挤瞬时腾出位置给持久、全持久时挤最旧持久）都有测试覆盖。
+- 2026-09-27 — T5：`SessionBus.subscribe` 的注册（把队列加进 `_subscribers`）必须在**同步**代码里完成，不能写在 `async def` 生成器函数体内——`async def` 生成器函数体在第一次 `__anext__()` 之前完全不执行，如果注册逻辑在里面，`subscribe()` 调用后、订阅者第一次迭代前发布的事件会因为队列还没登记而丢失。拆成同步的 `subscribe()`（创建队列、登记、返回一个独立的异步生成器）+ `_pump()`（只负责从队列取事件、`finally` 里注销）解决；`subscribe` 的返回类型标注为 `AsyncGenerator` 而不是 `AsyncIterator`，因为调用方（T6/T8 的 SSE 端点、测试）需要在断开连接时调用 `aclose()` 主动触发注销。
+- 2026-09-27 — T5：`fake.shell_write(path, content="")` 模拟 Shell 类原生工具绕过事前拦截的写入，直接调用新增的 `workspace.files.write_text_unscoped`（只做 `safe_path` 的路径安全校验，不检查 `WriteScope`）——设计 §4.3 里 Shell 的越界写入本就只靠回合结束时的 `scope.guard` 事后兜底，`FakeRuntime` 需要一种"跳过事前拦截"的写入方式来让 T6 能测试这条防线；没有复用 `write_text`（会因为越界而抛 `ScopeError`），而是在 `workspace` 模块（唯一读写工作区文件的模块，规则 6）里新增一个显式跳过范围检查的函数，供 `fake.py` 调用，避免在 `agent` 里绕过 `workspace` 直接操作文件系统。
+- 2026-09-27 — T5：`FakeRuntime(script, *, project_id=..., stage=..., record_tool_write=...)` 在简报要求的 `FakeRuntime(script)` 之外增加了三个可选构造参数——`TurnContext`（设计 §4.1）不携带 `project_id`/`stage`，但 `call_tool` 步骤需要构造 `ToolContext(project_id, stage, workdir, record_tool_write)` 才能调用 `invoke_tool`；真实运行时（T9/T10）如何取得这几项是这两个任务的实现细节，`FakeRuntime` 用带默认值的可选构造参数满足测试需要，不影响 `FakeRuntime(script)` 这个主要调用方式。
+- 2026-09-27 — T5：`FakeRuntime` 按脚本步数（不区分步骤类型）和累计 `use_cost` 总额分别检查 `ctx.budget.max_steps`/`max_cost_usd`，超限时提前产出 `TurnEnd(status="budget_exceeded")` 并停止——`Budget` 字段在设计 §4.1 就存在，`TurnStatus` 也包含 `budget_exceeded`，作为测试运行时如果完全不响应预算配置，T6 就没有办法用 `FakeRuntime` 测试 TurnRunner 的预算超限路径；真实运行时按步数/成本判断超限的具体时机由 T9/T10 决定。
+- 2026-09-27 — T5：`agent.tools.ToolHandler` 的参数类型标注用 `Any` 而不是 `BaseModel`——`Callable` 的参数位置是逆变的，如果标成 `Callable[[ToolContext, BaseModel], ...]`，任何接受更具体子类型（例如 `_EchoArgs`）的 handler 函数赋值给 `ToolSpec.handler` 时都会被 pyright 判定类型不兼容（`ToolSpec` 要放进同一个 `list[ToolSpec]`，各自的 `input_model` 不同，静态类型没法逐个精确标注）；运行时的实际类型安全由 `invoke_tool` 里的 `spec.input_model.model_validate` 保证。
+- 2026-09-27 — T5：本任务除了简报「涉及文件」里列出的 `tests/agent/test_{bus,fake,tools}.py`，还补充了 `tests/agent/test_{runtime,stage}.py` 和 `tests/stages/test_placeholders.py`——`CancelToken`、`RuntimeFactory`、`StageRegistry`、三个阶段占位定义的可写范围/上游/产物目录都是简报里写了精确值、但仅靠 `test_bus`/`test_fake`/`test_tools` 不会被直接测到的逻辑（`test_fake` 只经三个阶段的 `write_scope()` 间接用到占位定义，不校验它们自身的字段），按"测试先行"的项目约定为它们各自补了最小单测；同时给新增的 `workspace.files.write_text_unscoped` 补了 `tests/workspace/test_files.py::TestWriteTextUnscoped`。这些都是新增测试文件，不算改变已完成任务（T1–T4）的范围。
 
 ## 意外与发现
 

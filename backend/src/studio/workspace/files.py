@@ -84,3 +84,18 @@ def write_text(workdir: Path | str, relpath: str, content: str, scope: WriteScop
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def write_text_unscoped(workdir: Path | str, relpath: str, content: str) -> None:
+    """写入文本（UTF-8），不检查可写范围（T5 决策记录：模拟 Shell 等绕过
+    事前拦截的原生工具——真实的 Shell 能写工作区内任意路径，不会经过这里
+    的任何检查；这个函数只是测试场景下"合法工作区路径、越界可写范围"这种
+    写入的最小实现，仍然复用 `safe_path` 拒绝路径遍历和符号链接，避免测试
+    代码本身把文件写出工作区）。
+
+    路径不安全（绝对路径、`..`、经过符号链接、越出工作区）时抛出
+    `ScopeError`；不检查 `WriteScope`。
+    """
+    path = safe_path(workdir, relpath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")

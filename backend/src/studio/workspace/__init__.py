@@ -7,7 +7,14 @@
 from __future__ import annotations
 
 from studio.workspace.blobs import BlobStore
-from studio.workspace.files import ScopeError, list_tree, read_text, safe_path, write_text
+from studio.workspace.files import (
+    ScopeError,
+    list_tree,
+    read_text,
+    safe_path,
+    write_text,
+    write_text_unscoped,
+)
 from studio.workspace.layout import EXCLUDED_TOP_DIRS, project_dir
 from studio.workspace.scope import GuardReport, WriteScope, guard, is_writable
 from studio.workspace.snapshot import (
@@ -46,4 +53,5 @@ __all__ = [
     "safe_path",
     "scan",
     "write_text",
+    "write_text_unscoped",
 ]

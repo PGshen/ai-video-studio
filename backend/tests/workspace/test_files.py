@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from studio.workspace.files import ScopeError, list_tree, read_text, safe_path, write_text
+from studio.workspace.files import (
+    ScopeError,
+    list_tree,
+    read_text,
+    safe_path,
+    write_text,
+    write_text_unscoped,
+)
 from studio.workspace.scope import WriteScope
 
 
@@ -116,3 +123,14 @@ class TestWriteText:
 
         with pytest.raises(ScopeError):
             write_text(workdir, "../outside.md", "hacked", scope)
+
+
+class TestWriteTextUnscoped:
+    def test_writes_outside_any_scope(self, workdir: Path) -> None:
+        write_text_unscoped(workdir, "style/STYLE.md", "hacked via shell")
+
+        assert (workdir / "style" / "STYLE.md").read_text(encoding="utf-8") == "hacked via shell"
+
+    def test_still_rejects_unsafe_path(self, workdir: Path) -> None:
+        with pytest.raises(ScopeError):
+            write_text_unscoped(workdir, "../outside.md", "hacked")
