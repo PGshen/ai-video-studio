@@ -590,6 +590,19 @@ class TestShellExecutor:
         )
         return ShellCommandRequest(ctx_wrapper=RunContextWrapper(context=None), data=data)
 
+    async def test_uses_injected_environ_without_secrets(
+        self, workdir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("STUDIO_ONLY_IN_PROCESS_ENV", "leak")
+        environ = {"PATH": os.environ["PATH"], "FOO": "bar", "MY_TOKEN": "secret"}
+        executor = LocalShellExecutor(workdir, set(), environ=environ)
+
+        result = await executor(
+            self._request(['echo "$FOO|$MY_TOKEN|$STUDIO_ONLY_IN_PROCESS_ENV"'])
+        )
+
+        assert result.output[0].stdout.strip() == "bar||"
+
     async def test_runs_in_workdir_and_captures_output(self, workdir: Path) -> None:
         failed: set[str] = set()
         result = await LocalShellExecutor(workdir, failed)(self._request(["pwd", "echo err >&2"]))

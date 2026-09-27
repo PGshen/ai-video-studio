@@ -17,7 +17,10 @@
   WebSearch/WebFetch；业务 `ToolSpec` 经 `create_sdk_mcp_server` 变成进程内 MCP
   工具，handler 走 `invoke_tool`，`ToolResult.images` → MCP image content。
 - **权限**：`PreToolUse` hook 拒绝写到 `ctx.write_scope` 之外的 Write/Edit/
-  MultiEdit/NotebookEdit；Bash 不做事前检查（开 SDK sandbox，事后 `guard` 兜底）。
+  MultiEdit/NotebookEdit，拒绝读工作区之外的 Read/Glob/Grep；Bash 不做事前检查
+  （开 SDK sandbox，事后 `guard` 兜底）。继承来的名字像密钥的环境变量一律置空。
+  剩余风险（WebFetch 放行所有域名、sandbox 只管 Bash 且不限制读）见
+  docs/references/claude-agent-sdk.md。
 - **用量**：result 消息的 `total_cost_usd` 在恢复的会话里是累计值，这里按
   `CostLedger` 记录的上次累计值求差，`Usage` 是本轮的值。
 - **取消/预算**：取消令牌置位或步数超限 → `interrupt()`；成本上限交给 SDK 的
@@ -141,6 +144,15 @@ HOST_BLANKED_PREFIXES = (
 )
 """按前缀置空的宿主集成变量（宿主会话 id、消息 socket、宿主代管的 OAuth 刷新等）。"""
 
+SECRET_NAME_RE = re.compile(r"(?:^|_)(?:API_?KEY|KEY|TOKEN|SECRET|PASSWORD|PASSWD)S?(?:_|$)")
+"""名字像密钥的环境变量（按下划线分段匹配，大小写不敏感）：继承来的一律置空，
+agent 的 Bash 就读不到其他服务的 key（例如 `OPENAI_API_KEY`、`DEEPSEEK_API_KEY`），
+再经 WebFetch 外发（I5）。按段匹配是为了不误伤 `SSH_AUTH_SOCK`、`KEYCHAIN_*` 之类。
+当前配置用到的 `ANTHROPIC_API_KEY` 在 API key 模式下随后被重新写入。"""
+
+READ_TOOLS = ("Read", "Glob", "Grep")
+"""受读取范围 hook 约束的原生只读工具：路径必须落在工作区内（含 `upstream/`）。"""
+
 SANDBOX: SandboxSettings = {
     "enabled": True,
     "autoAllowBashIfSandboxed": True,
@@ -183,13 +195,16 @@ def build_env(
 ) -> tuple[events.AuthMode, dict[str, str]]:
     """返回认证方式和传给 CLI 子进程的 `env`（合并在 `os.environ` 之上）。
 
-    继承来的宿主变量（`HOST_BLANKED_ENV`、`HOST_BLANKED_PREFIXES`）先置空，
+    继承来的宿主变量（`HOST_BLANKED_ENV`、`HOST_BLANKED_PREFIXES`）和名字像密钥的
+    变量（`SECRET_NAME_RE`，含模型配置的 `api_key_env` 本身）先置空，
     `ANTHROPIC_BASE_URL` 换成模型配置的 `base_url` 或官方地址，再按认证方式覆盖。
     """
     env: dict[str, str] = {
         name: ""
         for name in environ
-        if name in HOST_BLANKED_ENV or name.startswith(HOST_BLANKED_PREFIXES)
+        if name in HOST_BLANKED_ENV
+        or name.startswith(HOST_BLANKED_PREFIXES)
+        or SECRET_NAME_RE.search(name.upper())
     }
     if base_url:
         env["ANTHROPIC_BASE_URL"] = base_url
@@ -259,6 +274,58 @@ def write_denial_reason(workdir: Path, scope: WriteScope, tool_input: dict[str, 
     if not is_writable(scope, relpath):
         return f"{relpath} 不在本阶段可写范围内，已拒绝。本阶段可写：{allowed}"
     return None
+
+
+def _escapes(workdir: Path, raw: str) -> bool:
+    """`raw`（相对 `workdir` 或绝对路径）解析符号链接和 `..` 之后是否落在 `workdir` 外。"""
+    target = Path(raw)
+    if not target.is_absolute():
+        target = workdir / target
+    resolved = target.resolve()
+    return resolved != workdir and workdir not in resolved.parents
+
+
+def read_denial_reason(workdir: Path, tool_name: str, tool_input: dict[str, Any]) -> str | None:
+    """Read/Glob/Grep 的目标不在工作区内时返回拒绝原因，否则 `None`（I5）。
+
+    - Read：`file_path` 必填，解析后必须在工作区内；
+    - Glob/Grep：`path` 缺省即工作区（cwd），给了就必须在工作区内；glob 模式
+      （Glob 的 `pattern`、Grep 的 `glob`）不能是绝对路径或含 `..`。
+    """
+    refuse = "只能读取项目工作区内的文件，已拒绝：{}"
+    if tool_name == "Read":
+        raw = tool_input.get("file_path")
+        if not isinstance(raw, str) or not raw:
+            return refuse.format("无法确定读取路径")
+        return refuse.format(raw) if _escapes(workdir, raw) else None
+
+    raw_path = tool_input.get("path")
+    if raw_path is not None and (not isinstance(raw_path, str) or _escapes(workdir, raw_path)):
+        return refuse.format(raw_path)
+    pattern = tool_input.get("pattern" if tool_name == "Glob" else "glob")
+    if isinstance(pattern, str) and (pattern.startswith(("/", "~")) or ".." in Path(pattern).parts):
+        return refuse.format(pattern)
+    return None
+
+
+def _read_scope_hook(workdir: Path) -> HookCallback:
+    async def hook(
+        input_data: HookInput, tool_use_id: str | None, context: HookContext
+    ) -> HookJSONOutput:
+        if input_data["hook_event_name"] != "PreToolUse":
+            return {}
+        reason = read_denial_reason(workdir, input_data["tool_name"], input_data["tool_input"])
+        if reason is None:
+            return {}
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }
+        }
+
+    return hook
 
 
 def _write_scope_hook(workdir: Path, scope: WriteScope) -> HookCallback:
@@ -349,9 +416,13 @@ def _tool_result_content(
         elif kind == "image":
             source = block.get("source")
             if isinstance(source, dict):  # Anthropic API shape
-                images.append(events.ImageData(source["media_type"], source["data"]))
+                media_type, data = source.get("media_type"), source.get("data")
             else:  # MCP shape
-                images.append(events.ImageData(block["mimeType"], block["data"]))
+                media_type, data = block.get("mimeType"), block.get("data")
+            if isinstance(media_type, str) and isinstance(data, str):
+                images.append(events.ImageData(media_type, data))
+            else:
+                logger.warning("跳过缺少 media type 或数据的图片块：%s", sorted(block))
     return "\n".join(texts), images
 
 
@@ -443,10 +514,12 @@ class ClaudeRuntime:
             sdk_tools = [build_sdk_tool(spec, ctx) for spec in ctx.tools]
             mcp_servers[MCP_SERVER_NAME] = create_sdk_mcp_server(MCP_SERVER_NAME, tools=sdk_tools)
             mcp_tool_names = [_MCP_PREFIX + spec.name for spec in ctx.tools]
-        hook = HookMatcher(
+        workdir = ctx.workdir.resolve()
+        write_hook = HookMatcher(
             matcher="|".join(GUARDED_WRITE_TOOLS),
-            hooks=[_write_scope_hook(ctx.workdir.resolve(), ctx.write_scope)],
+            hooks=[_write_scope_hook(workdir, ctx.write_scope)],
         )
+        read_hook = HookMatcher(matcher="|".join(READ_TOOLS), hooks=[_read_scope_hook(workdir)])
         return ClaudeAgentOptions(
             model=ctx.model_profile.model,
             cwd=ctx.workdir,
@@ -459,7 +532,7 @@ class ClaudeRuntime:
             permission_mode="acceptEdits",
             resume=ctx.resume_ref,
             env=env,
-            hooks={"PreToolUse": [hook]},
+            hooks={"PreToolUse": [write_hook, read_hook]},
             sandbox=SANDBOX,
             include_partial_messages=True,
             # The prompt embeds workspace-derived text (preamble); never expand @paths in it.
@@ -477,11 +550,12 @@ class ClaudeRuntime:
             yield events.TurnEnd(resume_ref=ctx.resume_ref, status="failed", error=str(exc))
             return
 
-        client = self._client_factory(self._options(ctx, auth, env))
         turn = _Turn(session_id=ctx.resume_ref)
         watcher: asyncio.Task[None] | None = None
         max_steps = ctx.budget.max_steps
+        client: SdkClient | None = None
         try:
+            client = self._client_factory(self._options(ctx, auth, env))
             await client.connect()
             watcher = asyncio.create_task(_interrupt_on_cancel(ctx.cancel_token, client, turn))
             await client.query(_prompt(ctx.user_input))
@@ -506,8 +580,9 @@ class ClaudeRuntime:
         finally:
             if watcher is not None:
                 watcher.cancel()
-            with contextlib.suppress(Exception):
-                await client.disconnect()
+            if client is not None:
+                with contextlib.suppress(Exception):
+                    await client.disconnect()
 
         for event in self._finish(ctx, auth, turn):
             yield event

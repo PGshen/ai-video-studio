@@ -367,6 +367,39 @@ class TestBuildEnv:
         _auth, env = build_env(None, "https://mine.example", _HOST_ENVIRON, tmp_path)
         assert env["ANTHROPIC_BASE_URL"] == "https://mine.example"
 
+    @pytest.mark.parametrize("api_key_env", [None, "MY_KEY"])
+    def test_unrelated_secrets_are_blanked(self, api_key_env: str | None, tmp_path: Path) -> None:
+        environ = {
+            **_HOST_ENVIRON,
+            "MY_KEY": "sk-mine",
+            "OPENAI_API_KEY": "sk-openai",
+            "DEEPSEEK_API_KEY": "sk-deepseek",
+            "GITHUB_TOKEN": "ghp",
+            "AWS_SECRET_ACCESS_KEY": "aws",
+            "DB_PASSWORD": "pw",
+            "tavily_api_key": "tv",
+            # Must survive: not secrets, even though they contain similar letters.
+            "SSH_AUTH_SOCK": "/tmp/ssh",
+            "KEYCHAIN_PROFILE": "default",
+            "MONKEY_BUSINESS": "1",
+        }
+        _auth, env = build_env(api_key_env, None, environ, tmp_path / "claude")
+        effective = {**environ, **env}
+        for name in (
+            "MY_KEY",
+            "OPENAI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "GITHUB_TOKEN",
+            "AWS_SECRET_ACCESS_KEY",
+            "DB_PASSWORD",
+            "tavily_api_key",
+        ):
+            assert effective[name] == "", name
+        for name in ("SSH_AUTH_SOCK", "KEYCHAIN_PROFILE", "MONKEY_BUSINESS", "HOME", "PATH"):
+            assert name not in env, name
+        if api_key_env is not None:
+            assert effective["ANTHROPIC_API_KEY"] == "sk-mine"
+
     def test_clean_environment_adds_only_what_is_needed(self, tmp_path: Path) -> None:
         _auth, env = build_env(None, None, {"HOME": "/Users/me"}, tmp_path)
         assert env == dict.fromkeys(LOGIN_BLANKED_ENV, "")
@@ -468,6 +501,43 @@ class TestEventConversion:
         assert end.resume_ref == SESSION
         assert clients.last.disconnected
 
+    async def test_client_factory_exception_fails_turn(self, workdir: Path, data_dir: Path) -> None:
+        def broken_factory(options: ClaudeAgentOptions) -> FakeClient:
+            raise RuntimeError("找不到 CLI")
+
+        runtime = ClaudeRuntime(data_dir, client_factory=broken_factory, environ=_ENVIRON)
+        result = await _run(runtime, _ctx(workdir, resume_ref=SESSION))
+
+        (end,) = result
+        assert isinstance(end, events.TurnEnd)
+        assert end.status == "failed" and end.error is not None and "找不到 CLI" in end.error
+        assert end.resume_ref == SESSION
+
+    async def test_image_block_without_mime_type_is_skipped(
+        self, workdir: Path, data_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        messages: list[Message] = [
+            UserMessage(
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="t1",
+                        content=[
+                            {"type": "text", "text": "ok"},
+                            {"type": "image", "data": "AAAA"},
+                            {"type": "image", "mimeType": "image/png", "data": "BBBB"},
+                        ],
+                    )
+                ]
+            ),
+            _result(0.0),
+        ]
+        result = await _run(_runtime(data_dir, Clients(messages)), _ctx(workdir))
+
+        (tool_result,) = [e for e in result if isinstance(e, events.ToolResult)]
+        assert tool_result.text == "ok"
+        assert tool_result.images == [events.ImageData("image/png", "BBBB")]
+        assert "图片" in caplog.text
+
 
 class TestUsageDelta:
     async def test_resumed_session_reports_per_turn_delta(
@@ -540,8 +610,11 @@ class TestWriteScopeHook:
         await _run(_runtime(data_dir, clients), _ctx(workdir))
         hooks = clients.last.options.hooks
         assert hooks is not None
-        (matcher,) = hooks["PreToolUse"]
-        assert matcher.matcher is not None and tool_name in matcher.matcher.split("|")
+        (matcher,) = [
+            m
+            for m in hooks["PreToolUse"]
+            if m.matcher is not None and tool_name in m.matcher.split("|")
+        ]
         hook_input: PreToolUseHookInput = {
             "session_id": SESSION,
             "transcript_path": "",
@@ -584,6 +657,67 @@ class TestWriteScopeHook:
         assert specific["hookEventName"] == "PreToolUse"
         assert specific["permissionDecision"] == "deny"
         assert specific["permissionDecisionReason"]
+
+
+class TestReadScopeHook:
+    _decide = TestWriteScopeHook._decide
+
+    @pytest.mark.parametrize(
+        ("tool_name", "tool_input"),
+        [
+            ("Read", {"file_path": "topic/brief.md"}),
+            ("Read", {"file_path": "upstream/topic/brief.md"}),
+            ("Read", {"file_path": "style/STYLE.md"}),
+            ("Glob", {"pattern": "**/*.md"}),
+            ("Glob", {"pattern": "*.md", "path": "topic"}),
+            ("Grep", {"pattern": "foo"}),
+            ("Grep", {"pattern": "foo", "path": ".", "glob": "*.md"}),
+        ],
+    )
+    async def test_inside_workspace_allowed(
+        self, workdir: Path, data_dir: Path, tool_name: str, tool_input: dict[str, Any]
+    ) -> None:
+        output = await self._decide(workdir, data_dir, tool_name, tool_input)
+        assert "hookSpecificOutput" not in output
+
+    async def test_absolute_path_inside_workspace_allowed(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        output = await self._decide(
+            workdir, data_dir, "Read", {"file_path": str(workdir / "topic" / "brief.md")}
+        )
+        assert "hookSpecificOutput" not in output
+
+    @pytest.mark.parametrize(
+        ("tool_name", "tool_input"),
+        [
+            ("Read", {"file_path": "/etc/passwd"}),
+            ("Read", {"file_path": "../../backend/.env"}),
+            ("Read", {}),
+            ("Glob", {"pattern": "*", "path": "/Users"}),
+            ("Glob", {"pattern": "../**/.env"}),
+            ("Glob", {"pattern": "/Users/**/.env"}),
+            ("Grep", {"pattern": "KEY", "path": ".."}),
+            ("Grep", {"pattern": "KEY", "glob": "../**"}),
+        ],
+    )
+    async def test_outside_workspace_denied(
+        self, workdir: Path, data_dir: Path, tool_name: str, tool_input: dict[str, Any]
+    ) -> None:
+        output = await self._decide(workdir, data_dir, tool_name, tool_input)
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    async def test_symlink_escaping_workspace_denied(
+        self, workdir: Path, data_dir: Path, tmp_path: Path
+    ) -> None:
+        secret = tmp_path / "secret.env"
+        secret.write_text("KEY=1", encoding="utf-8")
+        (workdir / "topic").mkdir(parents=True, exist_ok=True)
+        (workdir / "topic" / "link.md").symlink_to(secret)
+
+        output = await self._decide(workdir, data_dir, "Read", {"file_path": "topic/link.md"})
+
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 class TestCancelAndBudget:

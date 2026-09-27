@@ -159,8 +159,8 @@ def _api_key(profile: ModelProfileValue, environ: Mapping[str, str]) -> str:
 # ---- shell --------------------------------------------------------------
 
 
-def _shell_env() -> dict[str, str]:
-    return {name: value for name, value in os.environ.items() if not _SECRET_ENV_RE.search(name)}
+def _shell_env(environ: Mapping[str, str]) -> dict[str, str]:
+    return {name: value for name, value in environ.items() if not _SECRET_ENV_RE.search(name)}
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -238,8 +238,10 @@ class LocalShellExecutor:
         *,
         default_timeout_s: float = SHELL_DEFAULT_TIMEOUT_S,
         max_output_chars: int = SHELL_MAX_OUTPUT_CHARS,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
         self._workdir = workdir
+        self._environ = environ if environ is not None else os.environ
         self._failed = failed
         self._default_timeout_s = default_timeout_s
         self._max_output_chars = max_output_chars
@@ -268,7 +270,7 @@ class LocalShellExecutor:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_shell_env(),
+            env=_shell_env(self._environ),
             start_new_session=True,
         )
         overflowed = False
@@ -595,7 +597,13 @@ class OpenAIRuntime:
             native.append(
                 ApplyPatchTool(editor=WorkspaceApplyPatchEditor(ctx.workdir, ctx.write_scope))
             )
-            native.append(ShellTool(executor=LocalShellExecutor(ctx.workdir, turn.failed_calls)))
+            native.append(
+                ShellTool(
+                    executor=LocalShellExecutor(
+                        ctx.workdir, turn.failed_calls, environ=self._environ
+                    )
+                )
+            )
             if ctx.allow_web:
                 native.append(WebSearchTool())
         else:
