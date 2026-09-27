@@ -160,7 +160,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿。
 - **验证命令**：`make check`
 
-### T7：API——项目、阶段、文件、快照、模型配置（待开始）
+### T7：API——项目、阶段、文件、快照、模型配置（完成）
 
 - **目标**：非会话类接口。
 - **涉及文件**：`backend/src/studio/api/{__init__,deps,schemas,projects,files,snapshots,profiles}.py`、`backend/src/studio/main.py`、`backend/tests/api/`。
@@ -299,10 +299,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T4：越界检查、上游只读副本、受控文件读写 — 完成，`make check` 全绿（见本提交）。
 - 2026-09-27 — T5：agent 核心类型、阶段协议、会话总线、FakeRuntime — 完成，`make check` 全绿（含新增的 import-linter 规则 2、3）（见本提交）。
 - 2026-09-27 — T6：TurnRunner 与上下文前言 — 完成，`make check` 全绿（审查修复后 205 个测试）；`runner.py` 约 516 行，超出预期的 400 行，未自行拆分，交控制者决定（见本提交）。
+- 2026-09-27 — T7：API——项目、阶段、文件、快照、模型配置 — 完成，`make check` 全绿（247 个后端测试，新增 38 个 api 测试）；`main` 的 lifespan 装配 engine/blobs/registry/runtime_factory/bus/turn_runner 并挂在 `app.state` 上，供 `api/deps.py` 注入；顺带修复 T1 遗留的 `test_health.py` `TestClient` 弃用警告（见本提交）。
 
 ## 下一步
 
-- 从 T7 开始：API——项目、阶段、文件、快照、模型配置。T7 创建项目时用 `repo.stages.create_stage` 建三行阶段状态；定稿/重新打开调用 `agent.stage_flow.finalize/reopen`（`StageFlowError` → 409）；文件 PUT 和回滚在 `TurnRunner.is_project_busy(project_id)` 为真时返回 409。
+- 从 T8 开始：API——会话、消息、SSE（`backend/src/studio/api/sessions.py`）。`POST /sessions/{id}/messages` 调 `TurnRunner.start_turn`（`SessionBusyError` → 409）；`GET /sessions/{id}/stream?after_seq=` 用 `sse-starlette` 先回放 `repo.turns.list_events(after_seq=...)` 再接 `SessionBus.subscribe`；两者都可以直接用 T7 已经装好的 `api/deps.py`（`get_engine`/`get_bus`/`get_turn_runner`）。
 
 ## 决策记录
 
@@ -354,6 +355,13 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T6：`stage_flow.finalize` 先调用 `create_snapshot`（内容未变时返回最近一份）再写 `finalized_snapshot_id`，保证用户未快照的修改也进入定稿版本；下游 `locked` → `active` 并记录 `based_on_snapshot_id`，其他状态且 `based_on` 与新定稿不同 → `stale`；`reopen` 只允许从 `finalized` 出发；下游只有**成功**（`done`）的一轮结束后才更新 `based_on` 并从 `stale` 回到 `active`（失败的一轮可能没处理上游变更）。（审查后修正）`based_on` 记录的是**本轮开始时**物化到 `upstream/` 的上游定稿 id（`stage_flow.upstream_snapshot_ids`），不是轮末的最新定稿；轮中上游又定稿时下游保持 `stale`。M1 每个阶段最多一个上游，多上游时取上游顺序中第一个已定稿的。
 - 2026-09-27 — T6：补充的仓储函数：`repo/sessions.py`（`create_session` 同时取消同阶段其他会话的活动状态、`get_session`）、`repo/turns.py`（turn 生命周期与事件）、`repo/stages.py`（阶段行读写，供 T7 建项目使用）、`profiles.get_model_profile_by_id`（会话存的是 id）。
 - 2026-09-27 — T6（审查后新增）：收尾健壮性——写 turn 最终状态（`finish_turn`，含排队取消分支）失败时重试一次再记日志；运行时事件流在 `finally` 里 `aclose()`，runner 内部出错时也先关闭生成器（真实 SDK 的子进程）再做越界检查和快照；`recover_on_startup` 逐个 turn 兜底，一个失败不影响其他；`repo.turns.previous_turn` 跳过没有 `start_snapshot_id` 的 turn（排队中就被取消的），避免丢失更早一轮的还原路径、回滚基准和交接判断。
+- 2026-09-27 — T7：项目创建失败时的清理策略——先写工作区文件（`style/STYLE.md`）和 `init` 快照，成功后才插入 `projects`/`project_stages` 行；任一步异常都 `except` 兜底删除工作区目录、已插入的阶段行、项目行，再转成 `HTTPException(500)`（不是让异常直接冒泡成 ASGI 层的 500——`httpx.AsyncClient` 走 `ASGITransport` 默认 `raise_app_exceptions=True`，未捕获异常会在测试里变成 Python 异常而不是响应，也不便于统一 `{"detail": ...}` 错误体）。为此给 `db.repo.projects.create_project` 加了可选的显式 `id` 参数（默认仍由表定义的 `uuid4().hex` 生成，不影响已有调用方），新增 `list_projects`、`delete_project`；`db.repo.stages` 新增 `delete_stages`。
+- 2026-09-27 — T7：单个文件读取接口不区分文本/二进制、不设第二个端点——统一按原始字节返回，`Content-Type` 用标准库 `mimetypes` 按扩展名猜测（猜不出时 `application/octet-stream`；文本类和 `application/json` 附 `charset=utf-8`）。文本文件前端可以直接当字符串用，二进制文件也能被正确处理，不需要额外的"是否二进制"标志（简报要求"pick a simple scheme and document it"，写在 `api/files.py` 模块 docstring）。
+- 2026-09-27 — T7：`PUT .../files/{path}?stage=` 的 body 是 JSON `{"content": <UTF-8 文本>}`（不是原始字节），因为 M1 唯一的手动编辑场景是 CodeMirror 文本编辑器；越界判断直接复用 `workspace.scope.is_writable(stage.write_scope(), path)`——`upstream/`、阶段的 `tool_managed` 文件天然不在任何阶段的 `writable` 模式里，不需要为它们单独加一条"if path in upstream, 403"的特判。
+- 2026-09-27 — T7：定稿/重新打开的 `StageFlowError`（非法状态流转，例如定稿 `locked` 阶段、重新打开未定稿阶段）映射成 409（和"项目忙"共用状态码但 `detail` 文案不同）而不是 400——都是"当前状态不允许这个操作"的语义冲突，符合 REST 对 409 Conflict 的惯例用法。
+- 2026-09-27 — T7：api 测试里模拟"项目忙"（409）不经会话/消息 API（T8 才有），直接用 `TurnRunner.start_turn` + 一个替换过默认注册的 `FakeRuntime([fake.sleep(30)])`，测完 `cancel`+`wait` 再 `register_fake` 复位——`is_project_busy` 在 `start_turn` 返回后立刻为真（`_schedule()` 是同步代码，任务对象创建后即计入 `_running`，不需要等事件循环真正跑到协程体），不会因为默认 fake 脚本"秒结束"而产生竞态。
+- 2026-09-27 — T7：httpx 客户端会在构造 URL 时把字面 `..` 段规范化掉（`http://x/a/../b` 变成 `http://x/b`），越界路径的 400 测试如果直接写 `.../files/../secret.txt` 根本发不出带 `..` 的请求；改用百分号编码 `%2e%2e`（`safe_path` 收到的是路由解码后的 `..`，服务端校验逻辑本身不变，只是测试要绕开客户端的规范化）。
+- 2026-09-27 — T7：顺带修复 T1 遗留的小问题（简报要求）——`tests/test_health.py` 从 `fastapi.testclient.TestClient` 迁移到 `httpx.AsyncClient` + `ASGITransport` + `app.router.lifespan_context(app)`，消除 `TestClient` 的 `StarletteDeprecationWarning`；`backend/tests/api/` 下的新测试全部用同一模式（夹具见 `tests/api/conftest.py`），没有引入 `asgi-lifespan` 依赖（依赖清单不允许）。
 
 ## 意外与发现
 
@@ -363,6 +371,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-26 — 写计划时 PyPI 上的最新版本：`claude-agent-sdk 0.2.160`、`openai-agents 0.22.3`；以安装时锁定的版本为准。
 - 2026-09-27 — T2 开始时工作区里已有一份未提交的 `db` 模块（`engine.py`/`models.py`/migrations/`tests/db/` 下 `test_engine.py`、`test_migrate.py`、`test_repo_profiles.py`、`test_repo_projects.py`），`pyproject.toml` 也已加上 `sqlalchemy`/`alembic` 依赖，但 `repo/` 目录本身不存在，`test_repo_*.py` 处于 RED（`ModuleNotFoundError`）——沿用这份已有实现（引擎、ORM 模型、迁移、测试用例均符合本任务要求，engine/migrate 相关测试本就是绿的），只补齐缺失的 `repo/projects.py`、`repo/profiles.py` 让 RED 转 GREEN，未重写已有代码。
 - 2026-09-27 — T6：`runner.py` 实现完约 480 行（审查修复后约 516 行，含较长的中文 docstring），超出计划预期的 ~400 行；按控制者指示没有自行拆分，在报告中提出（可选的拆分：把 `_finish` 收尾与事件处理移到单独模块）。
+- 2026-09-27 — T7：`studio.main` 之前只 import `studio.config`，"只有 db 定义 ORM 模型" 这条 import-linter 契约（`source_modules = ["studio.main"]`）此前没写 `allow_indirect_imports = true` 也能通过，因为压根没有间接路径。main 组装 `agent`/`api` 之后，经 `db.repo`（合法路径）间接用到 `db.models` 的依赖链一下子多了六条，契约随之报"BROKEN"——这是 import-linter 默认对 `forbidden` 类型契约做整条依赖链的传递闭包检查，不是只查直接 import；照 `workspace`/`agent` 两个同名契约的先例给 main 和新增的 `api` 契约都加上 `allow_indirect_imports = true` 后恢复绿。以后任何模块第一次从"只 import 一两个叶子模块"变成"组装/依赖一堆东西"时，都要留意同样的契约可能从"凑巧通过"变成"报错"。
 
 ## 阻塞
 

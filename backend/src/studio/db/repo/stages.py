@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from studio.db.engine import session_scope
@@ -97,3 +97,11 @@ def update_stage(
             row.finalized_at = finalized_at
         db.flush()
         return _to_value(row)
+
+
+def delete_stages(engine: Engine, project_id: str) -> None:
+    """删除项目的全部阶段行；不存在时是空操作（项目创建失败时的清理用，见
+    `api.projects`）。
+    """
+    with session_scope(engine) as db:
+        db.execute(delete(ProjectStage).where(ProjectStage.project_id == project_id))

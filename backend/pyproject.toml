@@ -36,6 +36,12 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 的依赖注入约定就是在参数默认值里调用 `Depends()`/`Query()`（结果
+# 不可变、每次调用等价于工厂函数），B008（"不要在默认值里调用函数"）不适用
+# 于这个模式。
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
 [tool.pyright]
 include = ["src", "tests"]
 pythonVersion = "3.12"
@@ -71,6 +77,10 @@ name = "只有 db 定义 ORM 模型；其他模块只通过 db.repo 读写（规
 type = "forbidden"
 source_modules = ["studio.main"]
 forbidden_modules = ["studio.db.models"]
+# T7 之前 main 只 import studio.config，没有走到 db.repo 的间接路径；现在
+# main 组装 agent/api，经 db.repo（合法路径）间接用到 db.models 很正常，
+# 只禁止绕过 repo 直接 import 模型（和 workspace/agent 的同名契约一致）。
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "workspace 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
@@ -118,3 +128,28 @@ name = "stages 不依赖 main（组装层不能被下层反向依赖）"
 type = "forbidden"
 source_modules = ["studio.stages"]
 forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "只有 main 能 import api（规则 1：api 是组装层）"
+type = "forbidden"
+source_modules = [
+    "studio.config",
+    "studio.db",
+    "studio.workspace",
+    "studio.agent",
+    "studio.stages",
+]
+forbidden_modules = ["studio.api"]
+
+[[tool.importlinter.contracts]]
+name = "api 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.api"]
+forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "api 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.api"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
