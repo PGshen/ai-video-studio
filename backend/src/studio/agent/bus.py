@@ -110,6 +110,23 @@ class Subscription:
     不通过关闭某个异步生成器来触发清理，因此不受"异步生成器从未
     `__anext__()` 过时 `aclose()` 是空操作"这条 Python 行为的影响（T8 审查
     发现的真实 bug，见模块文档）。
+
+    两点容易搞混、复审时特意确认过的语义：
+
+    - **只有显式调用 `close()` 才会取消订阅**——取消一个正在等待
+      `__anext__()` 的协程/任务（比如 `task.cancel()`）本身不会让这个
+      `Subscription` 从 `_subscribers` 里消失，`_closed` 也不会被置位。
+      调用方（例如 `_stream_events`）依赖的是自己 `finally` 里的
+      `subscription.close()`，不是"等待被取消"这件事本身；如果只
+      `task.cancel()` 而不调用 `close()`，订阅仍然会残留在总线里。
+    - `close()` **不会唤醒**另一个协程里正挂起在 `await subscription.__anext__()`
+      的等待——它只是同步地把订阅者从列表里摘掉，之后总线的 `publish()`
+      不会再往这个订阅者的队列里塞新事件，但已经发起的那次 `__anext__()`
+      调用不会因为别处调用了 `close()` 就提前返回或抛异常，会继续挂起，
+      直到有新事件、或者调用方自己取消这次等待。正确用法是让"停止等待"
+      和 `close()` 发生在同一个协程里、按顺序执行，就像 `_stream_events`
+      的 `finally` 那样（先退出 `async for`，再 `close()`），不要指望从另一
+      个任务调用 `close()` 能顺带打断这里的等待。
     """
 
     def __init__(self, bus: SessionBus, session_id: str, subscriber: _Subscriber) -> None:

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,6 +38,7 @@ import pytest
 import sse_starlette.sse as sse_starlette_sse
 from sqlalchemy import Engine
 
+from studio.agent import events
 from studio.agent.bus import BusEvent, SessionBus
 from studio.api.sessions import WIRE_EVENT_TYPES, _stream_events
 from studio.db.repo.profiles import get_model_profile
@@ -306,24 +308,36 @@ class DrivenResponse:
 def _drive(
     app: Any, path: str, *, query: str = "", headers: dict[str, str] | None = None
 ) -> DrivenResponse:
-    driven = DrivenResponse(task=None)  # type: ignore[arg-type]
+    # 用局部变量（不是 `DrivenResponse` 实例本身）承接回调的副作用，这样
+    # 任务可以在构造 `DrivenResponse` 之前就创建好——`task` 字段因此不需要
+    # 可选类型，也不需要 `# type: ignore`（AGENTS.md 红线禁止）。
+    chunks: list[bytes] = []
+    start_headers: list[tuple[bytes, bytes]] = []
+    status: dict[str, int] = {}
+    disconnect = asyncio.Event()
 
     async def receive() -> dict[str, Any]:
-        await driven.disconnect.wait()
+        await disconnect.wait()
         return {"type": "http.disconnect"}
 
     async def send(message: dict[str, Any]) -> None:
         if message["type"] == "http.response.start":
-            driven.status["status"] = message["status"]
-            driven.start_headers.extend(message.get("headers", []))
+            status["status"] = message["status"]
+            start_headers.extend(message.get("headers", []))
         elif message["type"] == "http.response.body":
             body = message.get("body", b"")
             if body:
-                driven.chunks.append(body)
+                chunks.append(body)
 
     scope = _scope(path, query=query, headers=headers)
-    driven.task = asyncio.ensure_future(app(scope, receive, send))
-    return driven
+    task = asyncio.ensure_future(app(scope, receive, send))
+    return DrivenResponse(
+        task=task,
+        chunks=chunks,
+        start_headers=start_headers,
+        status=status,
+        disconnect=disconnect,
+    )
 
 
 def _parse_frame(raw: bytes) -> dict[str, str]:
@@ -501,6 +515,29 @@ async def _create_session_via_api(api_env: ApiEnv, project_id: str, stage: str =
     return response.json()["id"]
 
 
+class _GatedRuntime:
+    """测试专用的运行时：产出 `a`、`b` 两条文本后卡在一个由测试代码控制的
+    `asyncio.Event` 上，直到测试显式 `set()` 才继续产出 `c` 并结束这一轮。
+
+    不用 `FakeRuntime` 的 `sleep()` 步骤（真实时间的 `asyncio.sleep`）是因为
+    那是**时间驱动**的——多长时间够断连接、够收够两条事件，取决于测试
+    运行时的系统调度抖动，CI 慢的时候完全可能在断线前就把整轮跑完（这正是
+    复审指出的 flaky 场景）。这里改成**事件驱动**：运行时物理上不可能在
+    测试释放 `gate` 之前产出第三条事件，"断线时只看到前两条"这件事因此和
+    墙钟时间完全无关，必然成立。
+    """
+
+    def __init__(self, gate: asyncio.Event) -> None:
+        self._gate = gate
+
+    async def run_turn(self, ctx: Any) -> AsyncIterator[Any]:
+        yield events.TextBlock(text="a")
+        yield events.TextBlock(text="b")
+        await self._gate.wait()
+        yield events.TextBlock(text="c")
+        yield events.TurnEnd(resume_ref=ctx.resume_ref, status="done")
+
+
 async def _collect_until_terminal_turn_status(
     driven: DrivenResponse, timeout: float = 2.0
 ) -> list[dict[str, str]]:
@@ -578,15 +615,18 @@ class TestFakeTurnFullEventFlow:
         self, api_env: ApiEnv
     ) -> None:
         from studio.agent import register_fake
-        from studio.agent.fake import FakeRuntime, say, sleep
 
         pid = await _project(api_env)
         session_id = await _create_session_via_api(api_env, pid)
         bus: SessionBus = api_env.app.state.bus
 
-        # 用带 sleep 的脚本拉长一轮的时长，方便在中途断开。
-        script = [say("a"), sleep(0.05), say("b"), sleep(0.05), say("c")]
-        api_env.app.state.runtime_factory.register("fake", lambda: FakeRuntime(script))
+        # `_GatedRuntime` 事件驱动而不是时间驱动：产出 a、b 两条之后物理上
+        # 卡在 `gate` 上，测试不 `set()` 它就绝对不会产出第三条——"断线时
+        # 只看到前两条"这件事因此和墙钟时间/系统调度抖动完全无关（复审指出
+        # 原先基于 `sleep()` 的写法在慢 CI 上可能整轮提前跑完，导致第二个
+        # 连接永远等不到 `snapshot` 而超时）。
+        gate = asyncio.Event()
+        api_env.app.state.runtime_factory.register("fake", lambda: _GatedRuntime(gate))
 
         first = _drive(api_env.app, f"/api/sessions/{session_id}/stream")
         await first.wait_for_status()
@@ -598,9 +638,10 @@ class TestFakeTurnFullEventFlow:
         assert sent.status_code == 202, sent.text
         turn_id = sent.json()["turn_id"]
 
-        # 只等到至少 2 条带 id 的持久事件，模拟"看到一部分就断线"。
+        # 运行时卡在 `gate` 上，最多也只可能先看到 a、b 这两条持久事件。
         await _wait_until(lambda: len([f for f in _event_frames(first.chunks) if "id" in f]) >= 2)
         first_seqs = [int(f["id"]) for f in _event_frames(first.chunks) if "id" in f]
+        assert first_seqs == [1, 2]
         last_seen = max(first_seqs)
 
         first.disconnect_now()
@@ -613,6 +654,9 @@ class TestFakeTurnFullEventFlow:
             headers={"last-event-id": str(last_seen)},
         )
         await second.wait_for_status()
+
+        # 断线已经完成，现在放行运行时继续产出 c、结束这一轮。
+        gate.set()
 
         # 一轮总共 4 条持久事件（text/text/text/snapshot）；等到快照事件出现，
         # 说明这一轮已经跑完，剩下没看到的持久事件都已经补上了。
