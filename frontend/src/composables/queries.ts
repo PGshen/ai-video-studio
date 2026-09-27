@@ -43,6 +43,13 @@ export function useProjectQuery(projectId: MaybeRefOrGetter<string | null>) {
     queryKey: computed(() => queryKeys.project(toValue(projectId) ?? '')),
     queryFn: () => api.getProject(toValue(projectId)!),
     enabled: computed(() => toValue(projectId) !== null),
+    // `ProjectDetailOut.busy` 反映"项目里任一会话是否有一轮在跑"（T14
+    // 审查修复），当前选中会话之外的忙状态（另一个会话、另一个浏览器
+    // 标签页）只能靠轮询发现——SSE 只推当前打开的这条会话的事件。3 秒
+    // 的滞后对"画布该不该只读"这种场景可以接受；当前会话自己的忙状态
+    // 由 `useSessionStream` 的 `turn_status` 事件触发即时失效（见该
+    // 文件），不依赖轮询周期。
+    refetchInterval: 3000,
   })
 }
 

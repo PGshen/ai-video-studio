@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeTurnControls, isBusyStatus } from './turnControls'
+import { combineBusy, computeTurnControls, isBusyStatus } from './turnControls'
 
 describe('computeTurnControls', () => {
   it('没有任何 turn（新会话）：输入可用，两个按钮都不显示', () => {
@@ -53,4 +53,24 @@ describe('isBusyStatus', () => {
       expect(isBusyStatus(status)).toBe(false)
     },
   )
+})
+
+describe('combineBusy', () => {
+  it('两边都不忙 → 不忙', () => {
+    expect(combineBusy(false, null)).toBe(false)
+    expect(combineBusy(false, 'done')).toBe(false)
+  })
+
+  it('项目忙（比如另一个会话/另一个标签页在跑），当前会话没有 turn → 忙', () => {
+    expect(combineBusy(true, null)).toBe(true)
+  })
+
+  it('项目查询还没轮询到最新状态（projectBusy 滞后为 false），但当前会话的 turn 已经在跑 → 忙', () => {
+    expect(combineBusy(false, 'running')).toBe(true)
+    expect(combineBusy(false, 'queued')).toBe(true)
+  })
+
+  it('两边都忙 → 忙', () => {
+    expect(combineBusy(true, 'running')).toBe(true)
+  })
 })

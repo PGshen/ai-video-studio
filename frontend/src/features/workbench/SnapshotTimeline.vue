@@ -52,8 +52,11 @@ const rollbackError = ref<string | null>(null)
 // 一起触发——谁先谁后不由我们控制（审查/走查发现：如果它先跑，我们
 // `@update:open` 里的 `rollbackTarget.value = null` 就会抢在
 // `confirmRollback` 读到目标 id 之前清空它，回滚请求整个不会发出去，
-// 且没有任何报错，非常隐蔽）。用一个不受 `update:open` 影响的普通变量
-// 单独存一份要回滚的 id，彻底绕开这个事件顺序竞态。
+// 且没有任何报错，非常隐蔽）。这里用一个**普通变量**（不是 `ref`，故意
+// 不接入 Vue 响应式系统）单独存一份要回滚的 id：正因为它不是响应式的，
+// `<AlertDialog @update:open>` 清空 `rollbackTarget`（一个 ref）这件事
+// 完全触碰不到它，`confirmRollback` 读到的永远是 `openRollbackDialog`
+// 写入时的那份值，彻底绕开这个事件顺序竞态。
 let pendingRollbackId: string | null = null
 
 function describeError(error: unknown): string {
@@ -75,10 +78,16 @@ async function confirmRollback(): Promise<void> {
   rollbackError.value = null
   try {
     await rollbackMutation.mutateAsync(id)
-    pendingRollbackId = null
     rollbackTarget.value = null
   } catch (error) {
     rollbackError.value = describeError(error)
+  } finally {
+    // 无论成功还是失败都清掉：这个变量只代表"这一次点击要回滚到哪个
+    // id"，请求已经发出去过一次之后就不该再被下一次误读到（哪怕失败，
+    // 对话框此时也已经因为 `AlertDialogAction` 自身的 `DialogClose`
+    // 行为关掉了——见上面 `pendingRollbackId` 声明处的注释——重新点
+    // [回滚到此] 会通过 `openRollbackDialog` 重新赋值）。
+    pendingRollbackId = null
   }
 }
 </script>
@@ -187,8 +196,16 @@ async function confirmRollback(): Promise<void> {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction @click="confirmRollback">
+          <AlertDialogCancel
+            :disabled="rollbackMutation.isPending.value"
+            @click="pendingRollbackId = null"
+          >
+            取消
+          </AlertDialogCancel>
+          <AlertDialogAction
+            :disabled="rollbackMutation.isPending.value"
+            @click="confirmRollback"
+          >
             确认回滚
           </AlertDialogAction>
         </AlertDialogFooter>

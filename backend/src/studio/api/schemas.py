@@ -35,6 +35,11 @@ class ProjectOut(BaseModel):
 
 class ProjectDetailOut(ProjectOut):
     stages: list[StageOut]
+    busy: bool
+    """项目当前是否有一轮在跑（`TurnRunner.is_project_busy`）——后端按项目
+    串行，同一时间至多一个 turn 在写工作区，所以这一个字段就足够代表"任何
+    会话的 turn 是否在跑"，前端画布/快照时间线用它决定是否只读（T14 控制
+    者裁定）。"""
 
 
 class FileEntry(BaseModel):

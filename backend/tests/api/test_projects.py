@@ -63,6 +63,24 @@ class TestListAndGetProject:
         assert response.status_code == 404
         assert_detail(response)
 
+    async def test_get_busy_is_false_when_idle(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+
+        response = await api_env.client.get(f"/api/projects/{project['id']}")
+
+        assert response.status_code == 200
+        assert response.json()["busy"] is False
+
+    async def test_get_busy_is_true_while_a_turn_is_running(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        turn_id = await api_env.make_busy(project["id"])
+        try:
+            response = await api_env.client.get(f"/api/projects/{project['id']}")
+            assert response.status_code == 200
+            assert response.json()["busy"] is True
+        finally:
+            await api_env.release_busy(turn_id)
+
 
 class TestFinalizeAndReopen:
     async def test_finalize_unlocks_downstream_stage(self, api_env: ApiEnv) -> None:

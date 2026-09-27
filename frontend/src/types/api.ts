@@ -27,6 +27,13 @@ export interface ProjectOut {
 
 export interface ProjectDetailOut extends ProjectOut {
   stages: StageOut[]
+  /**
+   * 项目当前是否有一轮在跑（任一会话）。后端按项目串行，这一个字段就
+   * 足够代表"整个项目忙不忙"（T14 控制者裁定：画布/快照时间线只读要看
+   * 这个，不能只看当前选中会话的 turn 状态——用户可能开着另一个会话在
+   * 跑，或者另一个浏览器标签页在跑）。
+   */
+  busy: boolean
 }
 
 export interface FileEntry {

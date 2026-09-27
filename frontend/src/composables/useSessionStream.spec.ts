@@ -72,9 +72,7 @@ beforeEach(() => {
 })
 
 function frame(type: StreamEvent['type'], payload: Record<string, unknown>): StreamEvent {
-  // 测试只需要按 `type` 分支构造任意合法 payload；和 `api/sse.ts` 里同样的原因，
-  // 没法从 `Record<string, unknown>` 静态收窄成对应联合分支，经 `unknown` 中转。
-  return { type, payload } as unknown as StreamEvent
+  return { type, payload } as StreamEvent
 }
 
 describe('useSessionStream', () => {
@@ -206,12 +204,7 @@ describe('useSessionStream', () => {
     onEvent(frame('workspace_changed', { turn_id: 't1', paths: ['a.md'], seq: null }))
     await flushAsync()
 
-    // vue-query 的 `invalidateQueries` 类型上允许 `filters` 是一个返回 filters 的函数
-    // （方便传 `ref`/getter），但这里的调用方（`invalidateWorkspace`）永远直接传对象
-    // 字面量，测试断言时按对象形状收窄即可。
-    const invalidatedKeys = invalidateSpy.mock.calls.map(
-      (call) => (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey,
-    )
+    const invalidatedKeys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey)
     expect(invalidatedKeys).toContainEqual(['projects', 'p1', 'files'])
     expect(invalidatedKeys).toContainEqual(['projects', 'p1', 'snapshots'])
     void result

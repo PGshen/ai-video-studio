@@ -3,11 +3,17 @@
  * 项目工作台外壳（任务简报 T13/T14，控制者裁定 1）：阶段导航 + 左侧会话
  * 面板 + 右侧通用文件画布/快照时间线。
  *
- * `busy`（画布是否只读）单独开一条 `useSessionStream` 连接读取当前会话
- * 的 turn 状态——本地单人应用，一个会话同时最多两条 SSE 连接（这条 +
- * `SessionPanel` 内部那条）的开销可以接受；这样 `FileCanvas` 不需要
- * import `features/workbench`（ESLint 分层规则禁止 features 互相
- * import），也不需要把 `SessionPanel` 已经很紧凑的状态往上提。
+ * `busy`（画布/快照时间线是否只读）综合两个信号（T14 审查修复，见
+ * `turnControls.combineBusy` 的文档注释）：`project.busy`
+ * （`GET /projects/{id}` 返回，后端按项目串行、覆盖任意会话；
+ * `useProjectQuery` 开了 3 秒轮询，`useSessionStream` 在当前会话
+ * `turn_status` 到达时会让这条查询立刻失效，不用等下一个轮询周期）+
+ * 当前选中会话的 turn 状态（SSE，近乎实时，但只覆盖"正在看的这个会
+ * 话"）。单独开一条 `useSessionStream` 连接只是为了拿到这第二个信号——
+ * 本地单人应用，一个会话同时最多两条 SSE 连接（这条 + `SessionPanel`
+ * 内部那条）的开销可以接受；这样 `FileCanvas` 不需要 import
+ * `features/workbench`（ESLint 分层规则禁止 features 互相 import），
+ * 也不需要把 `SessionPanel` 已经很紧凑的状态往上提。
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -19,7 +25,7 @@ import SessionPanel from '@/features/workbench/SessionPanel.vue'
 import SessionPicker from '@/features/workbench/SessionPicker.vue'
 import SnapshotTimeline from '@/features/workbench/SnapshotTimeline.vue'
 import { sessionResetKey } from '@/features/workbench/sessionResetKey'
-import { isBusyStatus } from '@/features/workbench/turnControls'
+import { combineBusy } from '@/features/workbench/turnControls'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 
 const route = useRoute()
@@ -40,7 +46,9 @@ watch(
 )
 
 const { turnStatus: canvasTurnStatus } = useSessionStream(sessionId)
-const canvasBusy = computed(() => isBusyStatus(canvasTurnStatus.value?.status ?? null))
+const canvasBusy = computed(() =>
+  combineBusy(project.value?.busy ?? false, canvasTurnStatus.value?.status ?? null),
+)
 </script>
 
 <template>

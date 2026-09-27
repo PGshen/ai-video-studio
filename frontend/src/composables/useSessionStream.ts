@@ -42,7 +42,7 @@ import { onScopeDispose, ref, watch, type Ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { getSession, sessionStreamUrl } from '@/api/endpoints'
 import { openStream, type SseConnectionStatus } from '@/api/sse'
-import { invalidateWorkspace } from '@/composables/queries'
+import { invalidateWorkspace, queryKeys } from '@/composables/queries'
 import type { TurnOut } from '@/types/api'
 import type {
   ErrorEventPayload,
@@ -328,6 +328,12 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       case 'turn_status': {
         const payload = event.payload as TurnStatusPayload
         turnStatus.value = { turnId: payload.turn_id, status: payload.status, error: payload.error }
+        // 项目详情（`ProjectDetailOut.busy`）失效：当前会话的 turn 一
+        // 开始/结束，画布的只读判断（T14 审查修复：`combineBusy`）应该
+        // 立刻反映，不等 `useProjectQuery` 的 3 秒轮询周期。只有
+        // `projectId`（挂载历史时从 `GET /sessions/{id}` 拿到）已知时
+        // 才失效——理论上 `turn_status` 必然晚于 `applyHistory`。
+        if (projectId) void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
         break
       }
     }

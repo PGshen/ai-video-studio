@@ -117,10 +117,15 @@ def _require_project(engine: Engine, project_id: str) -> ProjectValue:
 
 
 @router.get("/projects/{project_id}", response_model=ProjectDetailOut)
-def get_project_endpoint(project_id: str, engine: Engine = Depends(get_engine)) -> ProjectDetailOut:
+def get_project_endpoint(
+    project_id: str,
+    engine: Engine = Depends(get_engine),
+    turn_runner: TurnRunner = Depends(get_turn_runner),
+) -> ProjectDetailOut:
     project = _require_project(engine, project_id)
     stages = [_stage_out(s) for s in list_stages(engine, project_id)]
-    return ProjectDetailOut(**_project_out(project).model_dump(), stages=stages)
+    busy = turn_runner.is_project_busy(project_id)
+    return ProjectDetailOut(**_project_out(project).model_dump(), stages=stages, busy=busy)
 
 
 def _require_stage_definition(stage: str, registry: StageRegistry) -> StageDefinition:
