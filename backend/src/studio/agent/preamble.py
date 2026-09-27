@@ -12,8 +12,11 @@
     它之前清单完全相同的最近一份快照（回滚会原样写回目标清单）；
   - 上游新定稿：本阶段 `based_on_snapshot_id` 与上游当前 `finalized_snapshot_id`
     不同时，两份清单在上游产物目录下的文件级差异（M1 不做按镜头 id 的摘要）；
-  - 用户手动修改：由 TurnRunner 传入本轮 `user_edit` 快照相对它之前最近一份
-    快照的 diff（精确对应"未被快照的手动改动"）。
+  - 用户手动修改：本会话上一轮结束（`turns.updated_at`）之后、到本轮开始快照
+    为止，项目里每一份 `reason=user_edit` 快照（本轮开始时、其他阶段的 turn
+    开始时、定稿时创建的）相对各自前一份快照的 diff，按路径合并（基准取最早
+    一次改动前的内容，结果取最后一次）。这样用户的修改即使先被别的快照吸收，
+    也不会从本会话的前言里消失；新会话只看本轮自己的 `user_edit` 快照。
 """
 
 from __future__ import annotations
@@ -215,6 +218,38 @@ def _upstream_changes(
     return changes
 
 
+def _user_edits(
+    engine: Engine,
+    blobs: BlobStore,
+    project_id: str,
+    previous: TurnValue | None,
+    start_snapshot_id: str,
+) -> WorkspaceDiff | None:
+    snapshots = list_snapshots(engine, project_id)
+    ids = [snap.id for snap in snapshots]
+    if start_snapshot_id not in ids:
+        return None
+    before: dict[str, str | None] = {}
+    after: dict[str, str | None] = {}
+    for index in range(1, ids.index(start_snapshot_id) + 1):
+        snap = snapshots[index]
+        if snap.reason != "user_edit":
+            continue
+        if previous is None and snap.id != start_snapshot_id:
+            continue
+        if previous is not None and snap.created_at <= previous.updated_at:
+            continue
+        predecessor = snapshots[index - 1].manifest
+        for path in set(predecessor) | set(snap.manifest):
+            if predecessor.get(path) == snap.manifest.get(path):
+                continue
+            before.setdefault(path, predecessor.get(path))
+            after[path] = snap.manifest.get(path)
+    old = {path: sha for path, sha in before.items() if sha is not None}
+    new = {path: sha for path, sha in after.items() if sha is not None}
+    return diff(old, new, blobs)
+
+
 def _handoff_files(workdir: Path, stage: StageDefinition) -> list[str]:
     prefixes = tuple(f"{name}/" for name in stage.artifact_dirs())
     return [path for path in list_tree(workdir) if path.startswith(prefixes)]
@@ -228,11 +263,13 @@ def gather_preamble_inputs(
     project_id: str,
     stage: StageDefinition,
     previous: TurnValue | None,
-    user_edits: WorkspaceDiff | None,
+    start_snapshot_id: str,
 ) -> PreambleInputs:
-    """收集本轮前言需要的信息；`previous` 是本会话上一轮（新会话为 `None`）。"""
+    """收集本轮前言需要的信息；`previous` 是本会话上一轮（新会话为 `None`），
+    `start_snapshot_id` 是本轮开始时的快照。
+    """
     return PreambleInputs(
-        user_edits=user_edits,
+        user_edits=_user_edits(engine, blobs, project_id, previous, start_snapshot_id),
         upstream_changes=_upstream_changes(engine, blobs, project_id, stage),
         restored_paths=_restored_paths(engine, previous),
         rollback=_rollback_notice(engine, blobs, project_id, previous),

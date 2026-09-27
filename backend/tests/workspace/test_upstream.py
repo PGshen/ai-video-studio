@@ -4,7 +4,7 @@ import stat
 from pathlib import Path
 
 from studio.workspace.blobs import BlobStore
-from studio.workspace.upstream import materialize_upstream
+from studio.workspace.upstream import materialize_upstream, upstream_drift
 
 
 def _write(path: Path, content: str | bytes) -> None:
@@ -89,3 +89,32 @@ class TestMaterializeUpstream:
 
         assert not (workdir / "upstream" / "topic" / "escape.txt").exists()
         assert external_target.stat().st_mode == original_mode
+
+
+class TestUpstreamDrift:
+    def test_reports_added_modified_removed_and_symlinks(
+        self, blobs: BlobStore, workdir: Path, tmp_path: Path
+    ) -> None:
+        sources = {
+            "topic": {"topic/a.md": blobs.put(b"a"), "topic/b.md": blobs.put(b"b")},
+            "narrative": None,
+        }
+        materialize_upstream(workdir, blobs, sources)
+        assert upstream_drift(workdir, sources) == []
+
+        root = workdir / "upstream" / "topic"
+        (root / "a.md").chmod(0o644)
+        (root / "a.md").write_bytes(b"changed")
+        (root / "b.md").chmod(0o644)
+        (root / "b.md").unlink()
+        _write(root / "evil.md", "x")
+        (root / "link").symlink_to(tmp_path)
+        _write(workdir / "upstream" / "narrative" / "n.md", "x")
+
+        assert upstream_drift(workdir, sources) == [
+            "upstream/narrative/n.md",
+            "upstream/topic/a.md",
+            "upstream/topic/b.md",
+            "upstream/topic/evil.md",
+            "upstream/topic/link",
+        ]

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import stat
@@ -76,3 +77,36 @@ def materialize_upstream(
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(blobs.get(sha256))
             dest.chmod(_READONLY_FILE_MODE)
+
+
+def _expected_upstream(sources: dict[str, Manifest | None]) -> dict[str, str]:
+    expected: dict[str, str] = {}
+    for stage, manifest in sources.items():
+        for rel_path, sha256 in (manifest or {}).items():
+            if rel_path.startswith(f"{stage}/"):
+                expected[f"upstream/{rel_path}"] = sha256
+    return expected
+
+
+def upstream_drift(workdir: Path | str, sources: dict[str, Manifest | None]) -> list[str]:
+    """`upstream/` 当前内容与按 `sources` 物化的结果不同的路径（`upstream/...`，排序）。
+
+    TurnRunner 在轮末重新物化之前调用，把 agent 对只读副本的改动（新增、修改、
+    删除、符号链接）报告为"被还原"，写进下一轮前言（R5、评审关注点 1）。
+    符号链接不跟随，一律视为改动。
+    """
+    workdir = Path(workdir)
+    expected = _expected_upstream(sources)
+    actual: dict[str, str] = {}
+    for root, dirnames, filenames in os.walk(workdir / "upstream", followlinks=False):
+        root_path = Path(root)
+        for name in (*dirnames, *filenames):
+            entry = root_path / name
+            rel_path = entry.relative_to(workdir).as_posix()
+            if entry.is_symlink():
+                actual[rel_path] = "symlink"
+            elif entry.is_file():
+                actual[rel_path] = hashlib.sha256(entry.read_bytes()).hexdigest()
+    return sorted(
+        path for path in set(expected) | set(actual) if expected.get(path) != actual.get(path)
+    )

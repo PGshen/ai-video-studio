@@ -44,12 +44,12 @@ from studio.workspace import (
     BlobStore,
     Manifest,
     create_snapshot,
-    diff,
     files,
     guard,
     materialize_upstream,
     project_dir,
     scan,
+    upstream_drift,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,7 @@ class _State:
     """一轮运行中累积的状态，`_finish` 据此收尾。"""
 
     before: Manifest | None = None
+    upstream_ids: dict[str, str | None] = field(default_factory=dict)
     sources: dict[str, Manifest | None] | None = None
     tool_writes: dict[str, str] = field(default_factory=dict)
     pending_tool_paths: list[str] = field(default_factory=list)
@@ -110,10 +111,13 @@ class _State:
     error: str | None = None
 
     def final_status(self) -> tuple[str, str | None]:
+        # Budget wins over everything: once exceeded, the runner itself stopped the
+        # turn, so a forced task.cancel() or an error raised while stopping is a
+        # consequence, not the cause.
+        if self.budget_exceeded:
+            return "budget_exceeded", self.error
         if self.status is not None:
             return self.status, self.error
-        if self.budget_exceeded:
-            return "budget_exceeded", None
         if self.end is not None:
             return self.end.status, self.end.error
         return "failed", "运行时没有产出 TurnEnd 就结束了"
@@ -176,9 +180,8 @@ class TurnRunner:
             return False
         if job in self._queue:
             self._queue.remove(job)
-            turns_repo.finish_turn(
-                self._engine,
-                turn_id,
+            self._finish_turn_row(
+                job,
                 status="cancelled",
                 end_snapshot_id=None,
                 usage=None,
@@ -209,14 +212,23 @@ class TurnRunner:
         开始，排队信息只在内存里，同样标记为 `interrupted`，否则会话会一直"忙"。
         """
         for turn in turns_repo.list_unfinished_turns(self._engine):
-            end_snapshot_id: str | None = None
-            session = get_session(self._engine, turn.session_id)
-            if turn.status == "running" and session is not None and session.project_id:
+            try:
+                self._recover_turn(turn)
+            except Exception:
+                logger.exception("恢复 turn %s 失败，继续处理其他 turn", turn.id)
+
+    def _recover_turn(self, turn: turns_repo.TurnValue) -> None:
+        end_snapshot_id: str | None = None
+        session = get_session(self._engine, turn.session_id)
+        if turn.status == "running" and session is not None and session.project_id:
+            try:
                 snapshot = create_snapshot(
                     self._engine, self._blobs, session.project_id, "partial", turn.id
                 )
                 end_snapshot_id = snapshot.id
-            turns_repo.interrupt_turn(self._engine, turn.id, end_snapshot_id=end_snapshot_id)
+            except Exception:
+                logger.exception("turn %s 恢复时快照失败", turn.id)
+        turns_repo.interrupt_turn(self._engine, turn.id, end_snapshot_id=end_snapshot_id)
 
     # ---- scheduling -----------------------------------------------------
 
@@ -270,19 +282,17 @@ class TurnRunner:
 
         latest = latest_snapshot(engine, job.project_id)
         current = scan(workdir)
-        user_edits = None
         if latest is None or latest.manifest != current:
             reason = "user_edit" if latest is not None else "init"
             start = create_snapshot(engine, blobs, job.project_id, reason, job.turn_id)
-            if latest is not None:
-                user_edits = diff(latest.manifest, start.manifest, blobs)
             start_id, state.before = start.id, start.manifest
         else:
             start_id, state.before = latest.id, latest.manifest
         turns_repo.mark_turn_running(engine, job.turn_id, start_snapshot_id=start_id)
         self._publish_status(job, "running")
 
-        state.sources = stage_flow.upstream_sources(engine, job.project_id, job.stage)
+        state.upstream_ids = stage_flow.upstream_snapshot_ids(engine, job.project_id, job.stage)
+        state.sources = stage_flow.manifests_of(engine, state.upstream_ids)
         materialize_upstream(workdir, blobs, state.sources)
 
         previous = turns_repo.previous_turn(engine, job.session.id, job.turn_id)
@@ -294,7 +304,7 @@ class TurnRunner:
                 project_id=job.project_id,
                 stage=job.stage,
                 previous=previous,
-                user_edits=user_edits,
+                start_snapshot_id=start_id,
             )
         )
 
@@ -321,8 +331,16 @@ class TurnRunner:
             record_tool_write=record_tool_write,
         )
         runtime = self._factory.create(job.session.runtime)
-        async for event in runtime.run_turn(ctx):
-            self._handle(job, state, event)
+        stream = runtime.run_turn(ctx)
+        try:
+            async for event in stream:
+                self._handle(job, state, event)
+        finally:
+            # Close the generator (and a real SDK subprocess behind it) before
+            # guard/snapshot run, also when the runner itself raised mid-stream.
+            aclose = getattr(stream, "aclose", None)
+            if aclose is not None:
+                await aclose()
 
     def _handle(self, job: _Job, state: _State, event: events.AgentEvent) -> None:
         if isinstance(event, events.TextDelta):
@@ -403,7 +421,9 @@ class TurnRunner:
                 )
                 restored = report.restored
             if state.sources is not None:
-                materialize_upstream(workdir, self._blobs, state.sources)  # drop agent writes
+                # Agent changes to the read-only copy are dropped and reported (R5).
+                restored += upstream_drift(workdir, state.sources)
+                materialize_upstream(workdir, self._blobs, state.sources)
             if restored:
                 self._persist(job, "notice", {"kind": GUARD_RESTORED_NOTICE, "paths": restored})
                 self._publish(job, "workspace_changed", {"paths": restored})
@@ -439,9 +459,8 @@ class TurnRunner:
             "output_tokens": state.output_tokens,
             "steps": state.steps,
         }
-        turns_repo.finish_turn(
-            self._engine,
-            job.turn_id,
+        self._finish_turn_row(
+            job,
             status=status,
             end_snapshot_id=end_snapshot_id,
             usage=usage,
@@ -452,13 +471,26 @@ class TurnRunner:
         if status == "done":
             try:
                 stage_flow.after_turn_done(
-                    self._engine, self._registry, job.project_id, job.stage.name
+                    self._engine, job.project_id, job.stage.name, state.upstream_ids
                 )
             except Exception:
                 logger.exception("turn %s 更新阶段状态失败", job.turn_id)
         self._publish_status(job, status, error)
 
     # ---- persistence & bus ------------------------------------------------
+
+    def _finish_turn_row(self, job: _Job, **fields: Any) -> None:
+        """写 turn 最终状态，失败时重试一次（例如 SQLite 繁忙）；再失败只记日志。
+
+        否则内存里的并发名额已释放，数据库却一直是 `running`，会话在重启前
+        都会返回"忙"。
+        """
+        for attempt in (1, 2):
+            try:
+                turns_repo.finish_turn(self._engine, job.turn_id, **fields)
+                return
+            except Exception:
+                logger.exception("turn %s 写入最终状态失败（第 %d 次）", job.turn_id, attempt)
 
     def _persist(self, job: _Job, type: str, payload: dict[str, Any]) -> None:
         payload = {"turn_id": job.turn_id, **payload}

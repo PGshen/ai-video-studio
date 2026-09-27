@@ -29,7 +29,7 @@ from studio.workspace.snapshot import (
     rollback,
     scan,
 )
-from studio.workspace.upstream import materialize_upstream
+from studio.workspace.upstream import materialize_upstream, upstream_drift
 
 __all__ = [
     "BlobStore",
@@ -54,6 +54,7 @@ __all__ = [
     "rollback",
     "safe_path",
     "scan",
+    "upstream_drift",
     "write_text",
     "write_text_unscoped",
 ]

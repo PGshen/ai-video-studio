@@ -82,43 +82,51 @@ def reopen(engine: Engine, project_id: str, stage: str) -> StageValue:
     return update_stage(engine, project_id, stage, status="active")
 
 
-def after_turn_done(engine: Engine, registry: StageRegistry, project_id: str, stage: str) -> None:
-    """下游一轮成功结束后：`based_on_snapshot_id` 更新为上游当前定稿，`stale` → `active`。
+def after_turn_done(
+    engine: Engine, project_id: str, stage: str, used_upstream: dict[str, str | None]
+) -> None:
+    """下游一轮成功结束后，把 `based_on_snapshot_id` 更新为**本轮开始时**物化的
+    上游定稿（`used_upstream`，来自 `upstream_snapshot_ids`），而不是轮末的最新
+    定稿——轮中上游又定稿了的话，agent 并没有看到新版本。只有用到的版本仍是
+    上游当前定稿时，`stale` 才回到 `active`。
 
-    M1 的每个阶段最多一个上游；有多个上游时取最近定稿的那一个。
+    M1 每个阶段最多一个上游；有多个上游时取按上游顺序的第一个已定稿版本。
     """
     current = get_stage(engine, project_id, stage)
-    if current is None:
+    used = next(((name, sid) for name, sid in used_upstream.items() if sid is not None), None)
+    if current is None or used is None:
         return
-    upstream_rows = [
-        row
-        for name in registry.get(stage).upstream_stages()
-        if (row := get_stage(engine, project_id, name)) is not None
-        and row.finalized_snapshot_id is not None
-    ]
-    if not upstream_rows:
+    name, snapshot_id = used
+    upstream = get_stage(engine, project_id, name)
+    up_to_date = upstream is not None and upstream.finalized_snapshot_id == snapshot_id
+    status = "active" if current.status == "stale" and up_to_date else None
+    if snapshot_id == current.based_on_snapshot_id and status is None:
         return
-    latest = max(upstream_rows, key=lambda row: row.finalized_at or datetime.min)
-    status = "active" if current.status == "stale" else None
-    if latest.finalized_snapshot_id == current.based_on_snapshot_id and status is None:
-        return
-    update_stage(
-        engine,
-        project_id,
-        stage,
-        status=status,
-        based_on_snapshot_id=latest.finalized_snapshot_id,
-    )
+    update_stage(engine, project_id, stage, status=status, based_on_snapshot_id=snapshot_id)
+
+
+def upstream_snapshot_ids(
+    engine: Engine, project_id: str, stage: StageDefinition
+) -> dict[str, str | None]:
+    """每个上游阶段当前的 `finalized_snapshot_id`（未定稿为 `None`）。"""
+    ids: dict[str, str | None] = {}
+    for name in stage.upstream_stages():
+        row = get_stage(engine, project_id, name)
+        ids[name] = row.finalized_snapshot_id if row is not None else None
+    return ids
+
+
+def manifests_of(engine: Engine, snapshot_ids: dict[str, str | None]) -> dict[str, Manifest | None]:
+    """把 `{阶段: 快照 id}` 换成 `{阶段: 清单}`，供 `materialize_upstream` 使用。"""
+    sources: dict[str, Manifest | None] = {}
+    for name, snapshot_id in snapshot_ids.items():
+        snapshot = get_snapshot(engine, snapshot_id) if snapshot_id is not None else None
+        sources[name] = snapshot.manifest if snapshot is not None else None
+    return sources
 
 
 def upstream_sources(
     engine: Engine, project_id: str, stage: StageDefinition
 ) -> dict[str, Manifest | None]:
-    """每个上游阶段的定稿快照清单（未定稿为 `None`），供 `materialize_upstream` 使用。"""
-    sources: dict[str, Manifest | None] = {}
-    for name in stage.upstream_stages():
-        row = get_stage(engine, project_id, name)
-        snapshot_id = row.finalized_snapshot_id if row is not None else None
-        snapshot = get_snapshot(engine, snapshot_id) if snapshot_id is not None else None
-        sources[name] = snapshot.manifest if snapshot is not None else None
-    return sources
+    """每个上游阶段的定稿快照清单（未定稿为 `None`）。"""
+    return manifests_of(engine, upstream_snapshot_ids(engine, project_id, stage))

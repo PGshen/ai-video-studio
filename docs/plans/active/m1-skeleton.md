@@ -298,7 +298,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T3：快照库 — 完成，`make check` 全绿（见本提交）。
 - 2026-09-27 — T4：越界检查、上游只读副本、受控文件读写 — 完成，`make check` 全绿（见本提交）。
 - 2026-09-27 — T5：agent 核心类型、阶段协议、会话总线、FakeRuntime — 完成，`make check` 全绿（含新增的 import-linter 规则 2、3）（见本提交）。
-- 2026-09-27 — T6：TurnRunner 与上下文前言 — 完成，`make check` 全绿（195 个测试）；`runner.py` 约 480 行，超出预期的 400 行，未自行拆分，交控制者决定（见本提交）。
+- 2026-09-27 — T6：TurnRunner 与上下文前言 — 完成，`make check` 全绿（审查修复后 205 个测试）；`runner.py` 约 516 行，超出预期的 400 行，未自行拆分，交控制者决定（见本提交）。
 
 ## 下一步
 
@@ -343,16 +343,17 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T6：`turn_events.seq` 在插入事件的同一个短事务里按"会话内 max+1"分配（`repo.turns.append_event`），不用内存计数器；新增迁移 0002 把 `(session_id, seq)` 索引改为唯一索引作为兜底 — 单进程、同步短事务（事务内无 await）不会撞号；重启后不需要初始化计数器。
 - 2026-09-27 — T6：**同一项目同时只运行一个 turn**（不同阶段的会话也一样），多出的 turn 保持 `queued`，和全局并发上限一起按 FIFO 调度（跳过被项目占用阻塞的 turn，后面其他项目的 turn 可以先启动）— 各阶段共用一个工作区，两个 turn 并行时，一方的越界检查会把另一方的合法写入当成越界还原（评审关注点 4"不会有两个 turn 同时写同一工作区"）。T7 的文件 PUT/回滚用 `TurnRunner.is_project_busy` 判断 409。
 - 2026-09-27 — T6：跨轮的前言状态全部从持久化数据推出，重启后仍然有效：上一轮被还原的路径写成上一轮的 `notice` 事件（`payload.kind="guard_restored"`）；回滚通知 = 上一轮结束（`turns.updated_at`）之后出现的 `reason=rollback` 快照，回滚目标取它之前清单完全相同的最近一份快照（回滚原样写回目标清单），diff 相对上一轮的 `end_snapshot`；不新增表字段。
-- 2026-09-27 — T6："用户手动修改"= 本轮 `user_edit` 快照相对它之前最近一份快照的 diff（控制者给出的两个选项之一）— 精确对应"没被快照过的手动改动"；用会话上一轮的 `end_snapshot` 做基准会把其他阶段 agent 的改动、回滚也算成用户修改。已知局限：用户改完文件后先在另一个阶段跑了一轮，这些修改会被那一轮的 `user_edit` 快照吸收，本阶段会话看不到。
+- 2026-09-27 — T6（审查后修正，替换本条最初的版本——最初只取本轮 `user_edit` 快照相对前一份快照的 diff，被定稿快照或其他阶段 turn 吸收的修改会丢失）："用户手动修改"= 本会话上一轮结束（`turns.updated_at`）之后、到本轮开始快照为止，项目里所有 `reason=user_edit` 快照（本轮开始、其他阶段 turn 开始、定稿时创建）各自相对前一份快照的 diff，按路径合并（基准取最早一次改动前、结果取最后一次）；新会话只看本轮自己的 `user_edit` 快照（交接摘要另外列出产物）。用"上一轮结束时间"而不是"上一轮 end_snapshot 在列表中的位置"做起点——end_snapshot 可能因清单去重指向更早的快照。
 - 2026-09-27 — T6：落库的工具结果文本、工具参数中的字符串超过 8000 字符（`runner.TOOL_RESULT_MAX_CHARS`）时截断，`tool_result.payload.truncated` 标记是否截断；工具结果里的图片只落库 `media_type`，不存 base64 — 避免 `turn_events` 被大文件内容和图片撑大；完整内容仍在 SDK 会话存储里（设计 §4.1 两者独立）。
 - 2026-09-27 — T6：持久事件的 payload 里带 `turn_id`（和表的 `turn_id` 列重复），落库和发布到总线的 payload 完全一致 — T8 回放与实时推送使用同一种格式，前端可以按 turn 分组。
-- 2026-09-27 — T6：预算——`ToolCall` 计为一步，`Usage.cost_usd` 累加；超出 `model_profile.max_steps_per_turn`/`max_cost_per_turn` 时写一条 `notice`（`kind="budget_exceeded"`），置位取消令牌，最终状态 `budget_exceeded`（优先于运行时自己报的 `cancelled`）；`Budget` 同时传给运行时，运行时可以原生限制。`Usage` 事件上有可选属性 `auth == "login"` 时（T9 添加），成本只记录不限制，步数照常限制。
+- 2026-09-27 — T6：预算——`ToolCall` 计为一步，`Usage.cost_usd` 累加；超出 `model_profile.max_steps_per_turn`/`max_cost_per_turn` 时写一条 `notice`（`kind="budget_exceeded"`），置位取消令牌，最终状态 `budget_exceeded`（审查后修正：优先于一切——包括宽限期后强制 `task.cancel()` 导致的 `cancelled`、停止过程中运行时抛出的异常）；步数语义：上限为 N 时，第 N+1 次工具调用仍会落库，随后本轮停止（运行时可能已经执行了这次调用，事件如实记录）；`Budget` 同时传给运行时，运行时可以原生限制。`Usage` 事件上有可选属性 `auth == "login"` 时（T9 添加），成本只记录不限制，步数照常限制。
 - 2026-09-27 — T6：取消——置位取消令牌，运行时 10 秒（`cancel_grace_seconds`）内没结束就 `task.cancel()`；task 被取消（`CancelledError`）也走同一个收尾流程，状态 `cancelled`。排队中的 turn 取消时直接标记 `cancelled`，不做快照（从未改动工作区）。
 - 2026-09-27 — T6：`recover_on_startup` 把 `running` 和 `queued` 的 turn 都改为 `interrupted`（会话同样），`running` 的先做一份 `partial` 快照再改状态 — 排队信息只在内存里，`queued` 不处理会让会话永远"忙"；快照遵循"先快照后改状态"（§7）。恢复时不做越界检查（工具写入记录已随进程丢失，做了反而会把工具托管文件还原掉）。
-- 2026-09-27 — T6：轮末越界检查之后重新物化一次 `upstream/`，agent 对只读副本的改动当场清除（R5），而不是等下一轮开始 — 画布上立即看到正确内容。
+- 2026-09-27 — T6：轮末越界检查之后重新物化一次 `upstream/`，agent 对只读副本的改动当场清除（R5），而不是等下一轮开始 — 画布上立即看到正确内容。（审查后补充）重新物化之前用新增的 `workspace.upstream_drift` 对比 `upstream/` 实际内容与本轮物化的内容，把不同的路径（`upstream/...`，含符号链接）并入被还原列表，写进 `guard_restored` notice，下一轮前言告知 agent（评审关注点 1）。
 - 2026-09-27 — T6：`record_tool_write(relpath, sha)` 的实现读取磁盘上该文件的实际内容存入 blob 库，以实际内容的哈希为准（忽略传入的 sha）— `guard` 恢复工具版本时要求 blob 已存在；读取经新增的 `workspace.files.read_bytes`（规则 6）。
-- 2026-09-27 — T6：`stage_flow.finalize` 先调用 `create_snapshot`（内容未变时返回最近一份）再写 `finalized_snapshot_id`，保证用户未快照的修改也进入定稿版本；下游 `locked` → `active` 并记录 `based_on_snapshot_id`，其他状态且 `based_on` 与新定稿不同 → `stale`；`reopen` 只允许从 `finalized` 出发；下游只有**成功**（`done`）的一轮结束后才更新 `based_on` 并从 `stale` 回到 `active`（失败的一轮可能没处理上游变更）。M1 每个阶段最多一个上游，多上游时取最近定稿的那个。
+- 2026-09-27 — T6：`stage_flow.finalize` 先调用 `create_snapshot`（内容未变时返回最近一份）再写 `finalized_snapshot_id`，保证用户未快照的修改也进入定稿版本；下游 `locked` → `active` 并记录 `based_on_snapshot_id`，其他状态且 `based_on` 与新定稿不同 → `stale`；`reopen` 只允许从 `finalized` 出发；下游只有**成功**（`done`）的一轮结束后才更新 `based_on` 并从 `stale` 回到 `active`（失败的一轮可能没处理上游变更）。（审查后修正）`based_on` 记录的是**本轮开始时**物化到 `upstream/` 的上游定稿 id（`stage_flow.upstream_snapshot_ids`），不是轮末的最新定稿；轮中上游又定稿时下游保持 `stale`。M1 每个阶段最多一个上游，多上游时取上游顺序中第一个已定稿的。
 - 2026-09-27 — T6：补充的仓储函数：`repo/sessions.py`（`create_session` 同时取消同阶段其他会话的活动状态、`get_session`）、`repo/turns.py`（turn 生命周期与事件）、`repo/stages.py`（阶段行读写，供 T7 建项目使用）、`profiles.get_model_profile_by_id`（会话存的是 id）。
+- 2026-09-27 — T6（审查后新增）：收尾健壮性——写 turn 最终状态（`finish_turn`，含排队取消分支）失败时重试一次再记日志；运行时事件流在 `finally` 里 `aclose()`，runner 内部出错时也先关闭生成器（真实 SDK 的子进程）再做越界检查和快照；`recover_on_startup` 逐个 turn 兜底，一个失败不影响其他；`repo.turns.previous_turn` 跳过没有 `start_snapshot_id` 的 turn（排队中就被取消的），避免丢失更早一轮的还原路径、回滚基准和交接判断。
 
 ## 意外与发现
 
@@ -361,7 +362,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-26 — 已确认 shadcn-vue 的 registry 列表中包含 `@ai-elements`，地址 `https://registry.ai-elements-vue.com/{name}.json`（来源：shadcn-vue 仓库 `apps/v4/public/r/registries.json`）；T11 时补进 frontend-stack.md。
 - 2026-09-26 — 写计划时 PyPI 上的最新版本：`claude-agent-sdk 0.2.160`、`openai-agents 0.22.3`；以安装时锁定的版本为准。
 - 2026-09-27 — T2 开始时工作区里已有一份未提交的 `db` 模块（`engine.py`/`models.py`/migrations/`tests/db/` 下 `test_engine.py`、`test_migrate.py`、`test_repo_profiles.py`、`test_repo_projects.py`），`pyproject.toml` 也已加上 `sqlalchemy`/`alembic` 依赖，但 `repo/` 目录本身不存在，`test_repo_*.py` 处于 RED（`ModuleNotFoundError`）——沿用这份已有实现（引擎、ORM 模型、迁移、测试用例均符合本任务要求，engine/migrate 相关测试本就是绿的），只补齐缺失的 `repo/projects.py`、`repo/profiles.py` 让 RED 转 GREEN，未重写已有代码。
-- 2026-09-27 — T6：`runner.py` 实现完约 480 行（含较长的中文 docstring），超出计划预期的 ~400 行；按控制者指示没有自行拆分，在报告中提出（可选的拆分：把 `_finish` 收尾与事件处理移到单独模块）。
+- 2026-09-27 — T6：`runner.py` 实现完约 480 行（审查修复后约 516 行，含较长的中文 docstring），超出计划预期的 ~400 行；按控制者指示没有自行拆分，在报告中提出（可选的拆分：把 `_finish` 收尾与事件处理移到单独模块）。
 
 ## 阻塞
 

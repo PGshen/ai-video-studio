@@ -7,6 +7,7 @@ from studio.agent.stage_flow import (
     after_turn_done,
     finalize,
     reopen,
+    upstream_snapshot_ids,
     upstream_sources,
 )
 from studio.db.repo.snapshots import get_snapshot
@@ -85,13 +86,14 @@ class TestAfterTurnDone:
         finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
         latest = _stage(env, "topic").finalized_snapshot_id
 
-        after_turn_done(env.engine, env.registry, env.project_id, "narrative")
+        used = upstream_snapshot_ids(env.engine, env.project_id, env.registry.get("narrative"))
+        after_turn_done(env.engine, env.project_id, "narrative", used)
 
         narrative = _stage(env, "narrative")
         assert (narrative.status, narrative.based_on_snapshot_id) == ("active", latest)
 
     def test_stage_without_upstream_is_untouched(self, env: StudioEnv) -> None:
-        after_turn_done(env.engine, env.registry, env.project_id, "topic")
+        after_turn_done(env.engine, env.project_id, "topic", {})
 
         topic = _stage(env, "topic")
         assert (topic.status, topic.based_on_snapshot_id) == ("active", None)

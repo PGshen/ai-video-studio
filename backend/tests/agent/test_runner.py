@@ -348,6 +348,9 @@ class TestGuard:
         assert (upstream / "brief.md").read_text(encoding="utf-8") == "定稿简报"
         assert not (upstream / "evil.md").exists()
 
+        await h.run(session_id, [fake.say("嗯")])
+        assert "被还原" in h.last_prompt and "upstream/topic/evil.md" in h.last_prompt
+
     async def test_business_tool_write_to_tool_managed_file_survives_guard(
         self, h: Harness
     ) -> None:
@@ -564,3 +567,169 @@ class TestRecovery:
 
         # the session accepts a new turn afterwards
         assert create_turn_if_session_idle(h.env.engine, running_session, "继续") is not None
+
+
+class TestReviewFixes:
+    async def test_budget_wins_when_grace_period_force_cancels(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+        _set_profile_limits(env, max_steps_per_turn=1)
+        h.runner._cancel_grace_seconds = 0.05
+
+        class Stubborn:
+            """Ignores the cancel token entirely."""
+
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                for i in range(3):
+                    yield events.ToolCall(call_id=f"c{i}", name="noop", args={})
+                    yield events.ToolResult(call_id=f"c{i}", text="ok")
+                await asyncio.sleep(5)
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        turn = await h.run(h.session(profile="limited"), Stubborn)
+
+        assert turn.status == "budget_exceeded"
+        assert turn.end_snapshot_id is not None
+
+    async def test_user_edit_absorbed_by_finalize_still_reported(self, h: Harness) -> None:
+        session_id = h.session()
+        await h.run(session_id, [fake.write("topic/brief.md", "v1\n")])
+        h.env.write("topic/brief.md", "用户改过\n")
+        finalize(h.env.engine, h.env.blobs, h.env.registry, h.env.project_id, "topic")
+        reopen(h.env.engine, h.env.project_id, "topic")
+
+        await h.run(session_id, [fake.say("ok")])
+
+        assert "用户手动修改" in h.last_prompt and "+用户改过" in h.last_prompt
+
+    async def test_user_edit_absorbed_by_other_stage_turn_still_reported(self, h: Harness) -> None:
+        h.env.write("topic/brief.md", "v0\n")
+        finalize(h.env.engine, h.env.blobs, h.env.registry, h.env.project_id, "topic")
+        reopen(h.env.engine, h.env.project_id, "topic")
+        topic, narrative = h.session(), h.session(stage="narrative")
+        await h.run(topic, [fake.write("topic/brief.md", "v1\n")])
+        h.env.write("topic/brief.md", "用户改过\n")
+        await h.run(narrative, [fake.say("n")])
+        h.env.write("topic/notes.md", "再改\n")
+
+        await h.run(topic, [fake.say("t")])
+
+        assert "+用户改过" in h.last_prompt and "topic/notes.md" in h.last_prompt
+        # the narrative session's own first turn saw the edit too
+        assert "用户手动修改" in h.contexts[-2].user_input.text
+
+    async def test_edits_reported_once(self, h: Harness) -> None:
+        session_id = h.session()
+        await h.run(session_id, [fake.say("1")])
+        h.env.write("topic/brief.md", "改\n")
+        await h.run(session_id, [fake.say("2")])
+        assert "用户手动修改" in h.last_prompt
+
+        await h.run(session_id, [fake.say("3")])
+        assert "用户手动修改" not in h.last_prompt
+
+    async def test_cancelled_queued_turn_does_not_hide_previous_notices(
+        self, env: StudioEnv
+    ) -> None:
+        h = _make_harness(env, max_concurrent_turns=1)
+        session_id = h.session()
+        await h.run(session_id, [fake.shell_write("style/STYLE.md", "x")])
+
+        blocker = h.session(project_id=env.new_project())
+        h.scripts.append([fake.sleep(5)])
+        blocking = await h.runner.start_turn(blocker, UserInput(text="占位"))
+        queued = await h.runner.start_turn(session_id, UserInput(text="排队"))
+        h.runner.cancel(queued)
+        await h.runner.wait(queued)
+        h.runner.cancel(blocking)
+        await h.runner.wait(blocking)
+
+        await h.run(session_id, [fake.say("ok")])
+        assert "style/STYLE.md" in h.last_prompt
+
+    async def test_based_on_uses_upstream_version_seen_at_turn_start(self, h: Harness) -> None:
+        engine, blobs, registry, pid = h.env.engine, h.env.blobs, h.env.registry, h.env.project_id
+        h.env.write("topic/brief.md", "v1")
+        finalize(engine, blobs, registry, pid, "topic")
+        first = (get_stage(engine, pid, "topic") or _never_stage()).finalized_snapshot_id
+
+        class RefinalizeMidTurn:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                reopen(engine, pid, "topic")
+                h.env.write("topic/brief.md", "v2")
+                finalize(engine, blobs, registry, pid, "topic")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        await h.run(h.session(stage="narrative"), RefinalizeMidTurn)
+
+        narrative = get_stage(engine, pid, "narrative")
+        assert narrative is not None
+        assert (narrative.status, narrative.based_on_snapshot_id) == ("stale", first)
+
+    async def test_finish_turn_is_retried_once(
+        self, h: Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from studio.agent import runner as runner_module
+
+        real = runner_module.turns_repo.finish_turn
+        calls: list[int] = []
+
+        def flaky(*args: Any, **kwargs: Any) -> Any:
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("database is locked")
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(runner_module.turns_repo, "finish_turn", flaky)
+        session_id = h.session()
+        turn = await h.run(session_id, [fake.say("hi")])
+
+        assert turn.status == "done" and len(calls) == 2
+        session = get_session(h.env.engine, session_id)
+        assert session is not None and session.status == "idle"
+
+    async def test_runtime_stream_closed_when_runner_fails(self, h: Harness) -> None:
+        closed: list[bool] = []
+
+        class Unserializable:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                try:
+                    yield events.ToolCall(call_id="c1", name="noop", args={"x": object()})
+                    yield events.TurnEnd(resume_ref=None, status="done")
+                finally:
+                    closed.append(True)
+
+        turn = await h.run(h.session(), Unserializable)
+
+        assert turn.status == "failed"
+        assert closed == [True]
+
+    def test_recovery_continues_after_one_failure(
+        self, h: Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from studio.agent import runner as runner_module
+
+        sessions = [h.session(), h.session(stage="narrative")]
+        turns = []
+        for session_id in sessions:
+            turn = create_turn_if_session_idle(h.env.engine, session_id, "x")
+            assert turn is not None
+            mark_turn_running(h.env.engine, turn.id, start_snapshot_id=None)
+            turns.append(turn.id)
+        real = runner_module.create_snapshot
+        calls: list[int] = []
+
+        def flaky(*args: Any, **kwargs: Any) -> Any:
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("disk full")
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(runner_module, "create_snapshot", flaky)
+        h.runner.recover_on_startup()
+
+        second = get_turn(h.env.engine, turns[1])
+        assert second is not None and second.status == "interrupted"
+
+
+def _never_stage() -> Any:
+    raise AssertionError("stage missing")

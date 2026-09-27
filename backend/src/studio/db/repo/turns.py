@@ -115,7 +115,11 @@ def list_turns(engine: Engine, session_id: str) -> list[TurnValue]:
 
 
 def previous_turn(engine: Engine, session_id: str, before_turn_id: str) -> TurnValue | None:
-    """会话中 `before_turn_id` 之前最近一个已结束（非 queued/running）的 turn。"""
+    """会话中 `before_turn_id` 之前最近一个真正运行过（有 `start_snapshot_id`）且已结束的 turn。
+
+    排队中就被取消的 turn 没有运行过，跳过它，否则前言会丢掉更早那一轮留下的
+    还原路径、回滚基准等信息。
+    """
     with session_scope(engine) as db:
         current = db.get(Turn, before_turn_id)
         if current is None:
@@ -127,6 +131,7 @@ def previous_turn(engine: Engine, session_id: str, before_turn_id: str) -> TurnV
                 Turn.id != before_turn_id,
                 Turn.created_at <= current.created_at,
                 Turn.status.not_in(UNFINISHED_TURN_STATUSES),
+                Turn.start_snapshot_id.is_not(None),
             )
             .order_by(Turn.created_at.desc())
             .limit(1)

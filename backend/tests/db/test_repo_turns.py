@@ -102,6 +102,7 @@ class TestTurnLifecycle:
         first = create_turn_if_session_idle(migrated_engine, session_id, "1")
         assert first is not None
         assert previous_turn(migrated_engine, session_id, first.id) is None
+        mark_turn_running(migrated_engine, first.id, start_snapshot_id="s0")
         finish_turn(
             migrated_engine,
             first.id,
@@ -116,6 +117,22 @@ class TestTurnLifecycle:
         assert second is not None
 
         prev = previous_turn(migrated_engine, session_id, second.id)
+        assert prev is not None and prev.id == first.id
+
+        # a queued turn cancelled before it started is skipped
+        finish_turn(
+            migrated_engine,
+            second.id,
+            status="cancelled",
+            end_snapshot_id=None,
+            usage=None,
+            cost_usd=None,
+            error=None,
+            resume_ref=None,
+        )
+        third = create_turn_if_session_idle(migrated_engine, session_id, "3")
+        assert third is not None
+        prev = previous_turn(migrated_engine, session_id, third.id)
         assert prev is not None and prev.id == first.id
 
     def test_interrupt_unfinished(self, migrated_engine: Engine) -> None:
