@@ -126,13 +126,16 @@ class FakeRuntime:
     `TurnContext` 时统一提供，`FakeRuntime` 不再需要自己的默认值）。
     """
 
-    def __init__(self, script: list[FakeStep] | None = None) -> None:
+    def __init__(self, script: list[FakeStep] | None = None, *, delay_seconds: float = 0) -> None:
         self._script = script
+        self._delay_seconds = delay_seconds
 
     async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
         script = self._script
         if script is None:
-            script = default_fake_script(ctx.write_scope, ctx.user_input.text)
+            script = default_fake_script(
+                ctx.write_scope, ctx.user_input.text, delay_seconds=self._delay_seconds
+            )
 
         call_counter = 0
         step_count = 0
@@ -241,18 +244,24 @@ def _first_writable_dir(write_scope: WriteScope) -> str:
     return str(PurePosixPath(pattern).parent)
 
 
-def default_fake_script(write_scope: WriteScope, user_text: str) -> list[FakeStep]:
+def default_fake_script(
+    write_scope: WriteScope, user_text: str, *, delay_seconds: float = 0
+) -> list[FakeStep]:
     """`enable_fake_runtime` 时的默认脚本：回显用户消息，并在阶段的第一个
     可写目录里写一个 `fake-note.md`（AC4：端到端演示 agent 改工作区文件）。
+
+    `delay_seconds > 0`（`STUDIO_FAKE_DELAY_SECONDS`）时在回显和写文件之间
+    睡这么久（可被取消），用来在浏览器里观察"运行中"状态、做重启中断验证（M6）。
     """
     target_dir = _first_writable_dir(write_scope)
-    return [
-        say(f"收到：{user_text}"),
-        write(f"{target_dir}/fake-note.md", f"echo: {user_text}\n"),
-    ]
+    steps: list[FakeStep] = [say(f"收到：{user_text}")]
+    if delay_seconds > 0:
+        steps.append(sleep(delay_seconds))
+    steps.append(write(f"{target_dir}/fake-note.md", f"echo: {user_text}\n"))
+    return steps
 
 
-def register_fake(factory: RuntimeFactory) -> None:
+def register_fake(factory: RuntimeFactory, *, delay_seconds: float = 0) -> None:
     """把 `fake` 运行时注册进 `factory`（控制者裁定：满足 R2——
     `RuntimeFactory` 只是注册表，T5 不预置任何注册，由各运行时各自的模块
     导出注册函数）。
@@ -261,4 +270,4 @@ def register_fake(factory: RuntimeFactory) -> None:
     构造函数是零参数的 `FakeRuntime()`（`script=None`），每一轮都会在
     `run_turn` 里用当轮的 `ctx` 现场生成默认脚本。
     """
-    factory.register("fake", FakeRuntime)
+    factory.register("fake", lambda: FakeRuntime(delay_seconds=delay_seconds))

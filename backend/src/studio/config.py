@@ -44,7 +44,13 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     max_concurrent_turns: int = 2
+    allowed_hosts: list[str] = Field(default_factory=lambda: ["127.0.0.1", "localhost"])
+    """`TrustedHostMiddleware` 放行的 Host（不含端口）。防 DNS rebinding：恶意网页把
+    自己的域名解析到 127.0.0.1 后，浏览器发来的 Host 仍是那个域名，会被拒绝（400）。"""
     enable_fake_runtime: bool = False
+    fake_delay_seconds: float = Field(default=0, ge=0)
+    """Fake 运行时默认脚本在回显和写文件之间睡的秒数（`STUDIO_FAKE_DELAY_SECONDS`），
+    用于手动验证"运行中"状态和重启中断；默认 0。"""
     openai_history_turns: int = 20
     """OpenAI 运行时发给模型的会话历史只保留最近这么多轮（设计 §4.1“保留最近 N 轮”）。"""
 

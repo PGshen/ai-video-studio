@@ -257,7 +257,8 @@ class TestWireEventTypesEnforcement:
 
 
 def _scope(path: str, *, query: str = "", headers: dict[str, str] | None = None) -> dict[str, Any]:
-    raw_headers = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    all_headers = {"host": "127.0.0.1:8000", **(headers or {})}
+    raw_headers = [(k.lower().encode(), v.encode()) for k, v in all_headers.items()]
     return {
         "type": "http",
         "asgi": {"version": "3.0"},

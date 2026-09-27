@@ -87,6 +87,8 @@ class _Job:
     cancel_token: CancelToken = field(default_factory=CancelToken)
     done: asyncio.Event = field(default_factory=asyncio.Event)
     task: asyncio.Task[None] | None = None
+    shutdown: bool = False
+    """进程关闭时被停下：`cancelled` 记为 `interrupted`（可以"继续"），快照记 `partial`。"""
 
 
 @dataclass
@@ -148,6 +150,7 @@ class TurnRunner:
         self._jobs: dict[str, _Job] = {}
         self._queue: deque[_Job] = deque()
         self._running: dict[str, _Job] = {}
+        self._shutting_down = False
 
     # ---- public API ---------------------------------------------------
 
@@ -211,6 +214,35 @@ class TurnRunner:
         """
         return any(job.project_id == project_id for job in self._running.values())
 
+    async def shutdown(self, grace_seconds: float = 5.0) -> None:
+        """进程关闭（lifespan 退出）时收尾：排队的 turn 直接记为 `interrupted`；
+        运行中的 turn 置位取消令牌，等 `grace_seconds` 让运行时自己停下，超时就
+        取消 task。两种情况都走 `_finish`（越界检查 → `partial` 快照 → 写状态），
+        状态记为 `interrupted`，和重启后 `recover_on_startup` 的结果一致，可以"继续"。
+        """
+        self._shutting_down = True
+        for job in list(self._queue):
+            self._queue.remove(job)
+            try:
+                turns_repo.interrupt_turn(self._engine, job.turn_id, end_snapshot_id=None)
+            except Exception:
+                logger.exception("turn %s 关闭时标记 interrupted 失败", job.turn_id)
+            self._publish_status(job, "interrupted")
+            self._release(job)
+
+        tasks = []
+        for job in list(self._running.values()):
+            job.shutdown = True
+            job.cancel_token.cancel()
+            if job.task is not None:
+                tasks.append(job.task)
+        if not tasks:
+            return
+        _done, pending = await asyncio.wait(tasks, timeout=grace_seconds)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
     def recover_on_startup(self) -> None:
         """设计 §4.4 第 8 步：上次进程遗留的 `running`/`queued` turn → `interrupted`。
 
@@ -240,6 +272,8 @@ class TurnRunner:
     # ---- scheduling -----------------------------------------------------
 
     def _schedule(self) -> None:
+        if self._shutting_down:
+            return
         for job in list(self._queue):
             if len(self._running) >= self._settings.max_concurrent_turns:
                 return
@@ -421,6 +455,8 @@ class TurnRunner:
     def _finish(self, job: _Job, state: _State) -> None:
         """越界检查 → 快照 → 写 turn 状态 → 发布 `turn_status`。每一步单独兜底。"""
         status, error = state.final_status()
+        if job.shutdown and status == "cancelled":
+            status = "interrupted"
         workdir = project_dir(self._settings.data_dir, job.project_id)
         try:
             restored: list[str] = []
@@ -450,7 +486,7 @@ class TurnRunner:
 
         end_snapshot_id: str | None = None
         try:
-            reason = "partial" if status == "failed" else "turn"
+            reason = "partial" if status in ("failed", "interrupted") else "turn"
             snapshot = create_snapshot(
                 self._engine, self._blobs, job.project_id, reason, job.turn_id
             )

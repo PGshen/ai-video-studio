@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel
 
 from studio.agent import events
-from studio.agent.fake import FakeRuntime, default_fake_script, register_fake
+from studio.agent.fake import (
+    FakeRuntime,
+    Say,
+    Sleep,
+    Write,
+    default_fake_script,
+    register_fake,
+)
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.db.repo.profiles import ModelProfileValue
@@ -395,3 +404,36 @@ class TestRegisterFake:
 
         assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
         assert (workdir / "topic" / "fake-note.md").exists()
+
+
+class TestFakeDelay:
+    def test_default_script_has_no_sleep_without_delay(self) -> None:
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        script = default_fake_script(scope, "x")
+        assert not any(isinstance(step, Sleep) for step in script)
+
+    def test_default_script_sleeps_between_text_and_write(self) -> None:
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        script = default_fake_script(scope, "x", delay_seconds=2.5)
+        assert [type(step) for step in script] == [Say, Sleep, Write]
+        assert script[1] == Sleep(2.5)
+
+    async def test_register_fake_passes_delay(self, workdir: Path) -> None:
+        factory = RuntimeFactory()
+        register_fake(factory, delay_seconds=0.05)
+        runtime = factory.create("fake")
+        assert isinstance(runtime, FakeRuntime)
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+
+        started = time.monotonic()
+        result = await _run(runtime, _make_ctx(workdir, write_scope=scope))
+
+        assert time.monotonic() - started >= 0.05
+        assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
+
+    def test_settings_default_delay_is_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from studio.config import Settings
+
+        assert Settings().fake_delay_seconds == 0
+        monkeypatch.setenv("STUDIO_FAKE_DELAY_SECONDS", "3")
+        assert Settings().fake_delay_seconds == 3

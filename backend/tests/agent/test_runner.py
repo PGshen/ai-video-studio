@@ -617,6 +617,58 @@ class TestRecovery:
         assert create_turn_if_session_idle(h.env.engine, running_session, "继续") is not None
 
 
+class TestShutdown:
+    async def test_running_turn_is_finished_as_interrupted_with_partial_snapshot(
+        self, h: Harness
+    ) -> None:
+        session_id = h.session()
+        h.scripts.append([fake.write("topic/brief.md", "半成品"), fake.sleep(30)])
+        turn_id = await h.runner.start_turn(session_id, UserInput(text="1"))
+        await _until(lambda: (h.env.workdir / "topic" / "brief.md").exists())
+
+        await asyncio.wait_for(h.runner.shutdown(), timeout=5)
+
+        turn = get_turn(h.env.engine, turn_id)
+        assert turn is not None and turn.status == "interrupted"
+        partial = get_snapshot(h.env.engine, turn.end_snapshot_id or "")
+        assert partial is not None and partial.reason == "partial"
+        assert "topic/brief.md" in partial.manifest
+        assert not h.runner.is_project_busy(h.env.project_id)
+
+    async def test_stubborn_runtime_is_force_cancelled(self, h: Harness) -> None:
+        class Stubborn:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                await asyncio.sleep(30)
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        h.scripts.append(Stubborn)
+        turn_id = await h.runner.start_turn(session_id, UserInput(text="1"))
+        await _until(lambda: h.runner.is_project_busy(h.env.project_id))
+        await asyncio.sleep(0.05)
+
+        await asyncio.wait_for(h.runner.shutdown(grace_seconds=0.05), timeout=5)
+
+        turn = get_turn(h.env.engine, turn_id)
+        assert turn is not None and turn.status == "interrupted"
+        assert turn.end_snapshot_id is not None
+
+    async def test_queued_turn_becomes_interrupted(self, env: StudioEnv) -> None:
+        h = _make_harness(env, max_concurrent_turns=1)
+        first_session = h.session()
+        second_session = h.session(project_id=env.new_project())
+        h.scripts.append([fake.sleep(30)])
+        first = await h.runner.start_turn(first_session, UserInput(text="1"))
+        second = await h.runner.start_turn(second_session, UserInput(text="2"))
+
+        await asyncio.wait_for(h.runner.shutdown(), timeout=5)
+
+        for turn_id in (first, second):
+            turn = get_turn(env.engine, turn_id)
+            assert turn is not None and turn.status == "interrupted", turn_id
+        assert not h.scripts  # the queued turn never started a runtime
+
+
 class TestReviewFixes:
     async def test_budget_wins_when_grace_period_force_cancels(self, env: StudioEnv) -> None:
         h = _make_harness(env)

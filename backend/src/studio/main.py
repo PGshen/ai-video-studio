@@ -4,7 +4,8 @@
 `RuntimeFactory`（总是注册 `claude`、`openai`，`enable_fake_runtime` 时注册 `fake`）→ `SessionBus` →
 `TurnRunner` → `recover_on_startup`（设计 §4.4 第 8 步：把上次进程遗留的
 `running`/`queued` turn 收尾为 `interrupted`）。这些单例挂在 `app.state`
-上，`api/deps.py` 的依赖函数从这里取出，供 T8（会话/SSE）复用。
+上，`api/deps.py` 的依赖函数从这里取出，供 T8（会话/SSE）复用。关闭时先
+`turn_runner.shutdown()`（运行中的 turn 收尾为 `interrupted`），再释放 engine。
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from studio.agent import register_fake
 from studio.agent.bus import SessionBus
@@ -51,7 +53,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     register_claude(runtime_factory, settings)
     register_openai(runtime_factory, settings)
     if settings.enable_fake_runtime:
-        register_fake(runtime_factory)
+        register_fake(runtime_factory, delay_seconds=settings.fake_delay_seconds)
 
     bus = SessionBus()
     blobs = BlobStore(settings.data_dir / "blobs")
@@ -68,7 +70,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        engine.dispose()
+        # Let running turns go through _finish (guard, partial snapshot, status
+        # `interrupted`) before the engine goes away.
+        try:
+            await turn_runner.shutdown()
+        finally:
+            engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -76,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="ai-video-studio", lifespan=_lifespan)
     app.state.settings = resolved_settings
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=resolved_settings.allowed_hosts)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
