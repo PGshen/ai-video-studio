@@ -24,6 +24,16 @@ def _write(path: Path, content: str | bytes) -> None:
         path.write_bytes(content)
 
 
+class TestDataDirOf:
+    def test_rejects_blob_store_root_not_named_blobs(
+        self, engine: Engine, tmp_path: Path, project_id: str
+    ) -> None:
+        bad_blobs = BlobStore(tmp_path / "not-blobs")
+
+        with pytest.raises(ValueError, match="blobs"):
+            create_snapshot(engine, bad_blobs, project_id, reason="user_edit")
+
+
 class TestScan:
     def test_excludes_top_level_excluded_dirs(self, workdir: Path) -> None:
         assert EXCLUDED_TOP_DIRS == {".cache", "output", "upstream"}

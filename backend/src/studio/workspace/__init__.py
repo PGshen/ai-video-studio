@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 from studio.workspace.blobs import BlobStore
+from studio.workspace.files import ScopeError, list_tree, read_text, safe_path, write_text
 from studio.workspace.layout import EXCLUDED_TOP_DIRS, project_dir
+from studio.workspace.scope import GuardReport, WriteScope, guard, is_writable
 from studio.workspace.snapshot import (
     Manifest,
     ModifiedFile,
@@ -19,18 +21,29 @@ from studio.workspace.snapshot import (
     rollback,
     scan,
 )
+from studio.workspace.upstream import materialize_upstream
 
 __all__ = [
     "BlobStore",
     "EXCLUDED_TOP_DIRS",
+    "GuardReport",
     "Manifest",
     "ModifiedFile",
+    "ScopeError",
     "SnapshotRef",
     "WorkspaceDiff",
+    "WriteScope",
     "create_snapshot",
     "diff",
+    "guard",
+    "is_writable",
+    "list_tree",
+    "materialize_upstream",
     "project_dir",
     "read_file_at",
+    "read_text",
     "rollback",
+    "safe_path",
     "scan",
+    "write_text",
 ]

@@ -23,7 +23,12 @@ from studio.db.repo.snapshots import (
     latest_snapshot,
 )
 from studio.workspace.blobs import BlobStore
-from studio.workspace.layout import EXCLUDED_TOP_DIRS, project_dir
+from studio.workspace.layout import (
+    EXCLUDED_TOP_DIRS,
+    PathEscapesWorkdir,
+    project_dir,
+    resolve_relpath,
+)
 
 # 相对路径（POSIX 风格）→ sha256 十六进制摘要。
 Manifest = dict[str, str]
@@ -77,6 +82,8 @@ def _to_ref(value: SnapshotValue, *, created: bool) -> SnapshotRef:
 
 def _data_dir_of(blobs: BlobStore) -> Path:
     """从 blob 根目录反推 `data_dir`（约定：`<data_dir>/blobs/`）。"""
+    if blobs.root.name != "blobs":
+        raise ValueError(f"BlobStore.root 必须命名为 'blobs'，实际是：{blobs.root}")
     return blobs.root.parent
 
 
@@ -183,11 +190,10 @@ def read_file_at(blobs: BlobStore, manifest: Manifest, path: str) -> bytes:
 
 def _safe_dest(workdir: Path, rel_path: str) -> Path:
     """校验清单路径落在工作区内，返回目标绝对路径。"""
-    dest = (workdir / rel_path).resolve()
-    workdir_resolved = workdir.resolve()
-    if dest != workdir_resolved and workdir_resolved not in dest.parents:
-        raise ValueError(f"清单路径越出工作区：{rel_path}")
-    return workdir / rel_path
+    try:
+        return resolve_relpath(workdir, rel_path)
+    except PathEscapesWorkdir as exc:
+        raise ValueError(f"清单路径越出工作区：{rel_path}") from exc
 
 
 def _prune_empty_dirs(workdir: Path) -> None:

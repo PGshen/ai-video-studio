@@ -117,7 +117,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿。
 - **验证命令**：`make check`
 
-### T4：越界检查、上游只读副本、受控文件读写（待开始）
+### T4：越界检查、上游只读副本、受控文件读写（完成）
 
 - **目标**：设计 §4.3 的权限规则和事后防线；供 api 与兜底工具使用的受控读写。
 - **涉及文件**：`backend/src/studio/workspace/{scope,upstream,files}.py`、`backend/tests/workspace/test_{scope,upstream,files}.py`。
@@ -296,10 +296,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T1：后端骨架与后端质量关口 — 完成，`make check`/`make setup`/`make dev` 均验证通过（见本提交）。
 - 2026-09-27 — T2：数据库与迁移 — 完成，`make check` 全绿（见本提交）。
 - 2026-09-27 — T3：快照库 — 完成，`make check` 全绿（见本提交）。
+- 2026-09-27 — T4：越界检查、上游只读副本、受控文件读写 — 完成，`make check` 全绿（见本提交）。
 
 ## 下一步
 
-- 从 T4 开始：越界检查、上游只读副本、受控文件读写。
+- 从 T5 开始：agent 核心类型、阶段协议、会话总线、FakeRuntime。
 
 ## 决策记录
 
@@ -324,6 +325,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T3：`create_snapshot`/`rollback` 的签名（`engine, blobs, project_id, ...`）不带 `data_dir`/`workdir` 参数，工作区目录从 `blobs.root.parent` 反推（约定 `<data_dir>/blobs/` 与 `<data_dir>/projects/<id>/` 是同一 `data_dir` 下的兄弟目录）——避免在这两个函数上额外增加参数，调用方（T4/T6）只需持有同一个 `BlobStore` 实例即可；`scan`/`read_file_at` 保持纯函数（不依赖这一约定），方便单独测试。
 - 2026-09-27 — T3：新增两条 import-linter 契约——`workspace` 不直接依赖 `studio.db.models`（`allow_indirect_imports = true`，因为 `workspace` 经 `studio.db.repo.snapshots` 间接用到 `db.models` 是被允许的合法路径，只禁止绕过 repo 直接 import 模型）；`workspace` 不依赖 `main`。
 - 2026-09-27 — T3：`rollback` 内部复用 `create_snapshot`（而不是直接插入快照行）——回滚后的工作区状态和"新建快照"的语义完全一致（含清单去重：目标已是最新时 `created=False`），复用能保证这条规则不必在两处分别实现。
+- 2026-09-27 — T4：`is_writable` 的 glob 匹配直接用标准库 `fnmatch.fnmatchcase`，不额外实现 `**` 语义——Python 3.12 没有 `PurePosixPath.full_match`（3.13 才有），而 `fnmatch` 把 `*` 翻译成正则 `.*`（本就跨越 `/`），所以 `topic/**` 天然匹配 `topic/` 下任意深度的文件，没有通配符的模式要求完全相等；已用测试验证 `**` 语义符合预期，不需要自己写匹配器。
+- 2026-09-27 — T4：路径包含性检查（`(workdir / relpath).resolve()` 后确认仍在 `workdir` 内）从 `snapshot._safe_dest` 提炼成 `layout.resolve_relpath`（抛 `PathEscapesWorkdir`），`snapshot._safe_dest` 和 `files.safe_path` 都复用它，各自包一层转换成调用方期望的异常类型（`ValueError` / `ScopeError`）——避免同一段"越界检查"逻辑在两处重复实现和分别测试。
+- 2026-09-27 — T4：`guard` 除了按 `before`/`after`/`tool_writes` 还原越界改动外，额外扫描并删除工作区里排除目录（`EXCLUDED_TOP_DIRS`）之外的所有符号链接（控制者裁定）——`scan()` 天然忽略符号链接，如果 `guard` 不清理，agent 建的符号链接会一直留在工作区（不进快照、不受越界检查约束），可能被用作绕过下一轮检查的手段；删除的符号链接路径计入 `GuardReport.restored`。
+- 2026-09-27 — T4：`snapshot._data_dir_of` 增加防御性检查，`blobs.root.name != "blobs"` 时抛 `ValueError`（控制者裁定）——`_data_dir_of` 靠"约定" `<data_dir>/blobs/` 反推 `data_dir`，这个假设一旦被调用方传错（例如误传了别的目录当 `BlobStore.root`）会静默算出错误的工作区路径，进而让 `create_snapshot`/`rollback` 操作到错误的位置；提前失败比静默算错更安全。
+- 2026-09-27 — T4：`materialize_upstream` 的 `sources[stage]` 约定为该阶段定稿快照的**完整清单**（可能含 `style/` 等其他路径），函数内部按 `<stage>/` 前缀过滤后再落盘到 `upstream/<stage>/`——这样调用方（T6 的 TurnRunner）不需要预先按目录切分清单，直接把定稿快照的 manifest 传进来即可，防御性地保证只有属于该阶段产物目录的文件被物化。
 
 ## 意外与发现
 
