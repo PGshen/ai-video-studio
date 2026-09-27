@@ -21,6 +21,7 @@ export default defineConfigWithVueTs(
     files: ['src/**/*.{ts,mts,tsx,vue}'],
   },
   {
+    // Generated shadcn-vue / @ai-elements code is not linted at all.
     name: 'app/ignores',
     ignores: ['**/dist/**', '**/node_modules/**', 'src/components/ui/**', 'src/components/ai-elements/**'],
   },
@@ -84,17 +85,6 @@ export default defineConfigWithVueTs(
           ],
         },
       ],
-    },
-  },
-  {
-    name: 'app/generated-code',
-    files: ['src/components/ui/**/*.{ts,vue}', 'src/components/ai-elements/**/*.{ts,vue}'],
-    rules: {
-      // 生成的代码尽量不手改，格式规则放宽。
-      'vue/multi-word-component-names': 'off',
-      'vue/attributes-order': 'off',
-      'vue/html-self-closing': 'off',
-      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 )

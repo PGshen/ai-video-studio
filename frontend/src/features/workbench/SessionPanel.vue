@@ -28,6 +28,7 @@ import {
 } from '@/composables/queries'
 import { ApiError } from '@/api/http'
 import { computeTurnControls } from './turnControls'
+import { CONTINUE_TEXT, optimisticSend } from './optimisticSend'
 import SessionTimelineItem from './SessionTimelineItem.vue'
 
 const props = defineProps<{ sessionId: string | null }>()
@@ -52,19 +53,15 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误'
 }
 
+const optimisticMessages = { add: addLocalUserMessage, remove: removeLocalUserMessage }
+
 async function onSubmit(message: PromptInputMessage): Promise<void> {
   const text = message.text.trim()
   if (!text || !props.sessionId) return
   sendError.value = null
-  const placeholderId = addLocalUserMessage(text)
   try {
-    await sendMutation.mutateAsync({ text })
+    await optimisticSend(optimisticMessages, text, () => sendMutation.mutateAsync({ text }))
   } catch (error) {
-    // 请求本身失败（409/网络错误等）：这个 turn 从没真正创建，占位必须
-    // 撤回——留着的话会一直占着 useSessionStream 内部 FIFO 队列的队首，
-    // 下一条真正发出去的消息到达的真实 turn 会被错误配对到这条假消息上
-    // （审查发现）。
-    removeLocalUserMessage(placeholderId)
     sendError.value = describeError(error)
   }
 }
@@ -78,8 +75,10 @@ async function onStop(): Promise<void> {
 }
 
 async function onContinue(): Promise<void> {
+  sendError.value = null
   try {
-    await continueMutation.mutateAsync()
+    // The backend sends the fixed text "继续" as this turn's user message.
+    await optimisticSend(optimisticMessages, CONTINUE_TEXT, () => continueMutation.mutateAsync())
   } catch (error) {
     sendError.value = describeError(error)
   }

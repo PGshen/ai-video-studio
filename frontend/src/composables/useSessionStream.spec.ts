@@ -413,4 +413,111 @@ describe('useSessionStream', () => {
     expect(result.items.value).toEqual([])
     expect(result.turnStatus.value).toBeNull()
   })
+
+  describe('I3：断线期间 turn 结束，重连后刷新 turn 状态', () => {
+    function turn(status: string, id = 't1') {
+      return {
+        id,
+        session_id: 's1',
+        user_message: '你好',
+        status,
+        start_snapshot_id: 's0',
+        end_snapshot_id: status === 'running' ? null : 'snap1',
+        usage: null,
+        cost_usd: null,
+        error: null,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      }
+    }
+
+    it('reconnecting → open 时重新 GET /sessions/{id} 覆盖 turnStatus', async () => {
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turn('running')] }))
+      const { result } = await setup('s1')
+      const onStatus = openStreamMock.mock.calls[0]![1].onStatus as (s: unknown) => void
+      expect(result.turnStatus.value?.status).toBe('running')
+
+      onStatus({ kind: 'open' })
+      await flushAsync()
+      expect(getSessionMock).toHaveBeenCalledTimes(1) // 首次 open 不重复拉取
+
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turn('done')] }))
+      onStatus({ kind: 'reconnecting', delayMs: 1000, reason: 'network' })
+      onStatus({ kind: 'open' })
+      await flushAsync()
+
+      expect(getSessionMock).toHaveBeenCalledTimes(2)
+      expect(result.turnStatus.value).toEqual({ turnId: 't1', status: 'done', error: null })
+    })
+
+    it('刷新请求期间先到达的 turn_status 不被旧响应覆盖', async () => {
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turn('running')] }))
+      const { result } = await setup('s1')
+      const { onStatus, onEvent } = openStreamMock.mock.calls[0]![1] as {
+        onStatus: (s: unknown) => void
+        onEvent: (e: StreamEvent) => void
+      }
+      let resolveRefresh: (value: SessionDetailOut) => void = () => {}
+      getSessionMock.mockReturnValueOnce(
+        new Promise<SessionDetailOut>((resolve) => {
+          resolveRefresh = resolve
+        }),
+      )
+
+      onStatus({ kind: 'reconnecting', delayMs: 1000, reason: 'network' })
+      onStatus({ kind: 'open' })
+      onEvent(frame('turn_status', { turn_id: 't2', status: 'running', error: null }))
+      resolveRefresh(sessionDetail({ turns: [turn('done')] }))
+      await flushAsync()
+
+      expect(result.turnStatus.value).toEqual({ turnId: 't2', status: 'running', error: null })
+    })
+
+    it('当前运行中 turn 的 snapshot 事件触发刷新', async () => {
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turn('running')] }))
+      const { result } = await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turn('done')] }))
+
+      onEvent(
+        frame('snapshot', {
+          turn_id: 't1',
+          snapshot_id: 'snap1',
+          reason: 'turn',
+          created: true,
+          seq: 3,
+        }),
+      )
+      await flushAsync()
+
+      expect(getSessionMock).toHaveBeenCalledTimes(2)
+      expect(result.turnStatus.value?.status).toBe('done')
+      expect(result.items.value).toContainEqual({
+        kind: 'snapshot',
+        turnId: 't1',
+        snapshotId: 'snap1',
+        reason: 'turn',
+        created: true,
+      })
+    })
+
+    it('已结束 turn 的历史 snapshot 回放不触发刷新', async () => {
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turn('done')] }))
+      await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+      onEvent(
+        frame('snapshot', {
+          turn_id: 't1',
+          snapshot_id: 'snap1',
+          reason: 'turn',
+          created: true,
+          seq: 3,
+        }),
+      )
+      await flushAsync()
+
+      expect(getSessionMock).toHaveBeenCalledTimes(1)
+    })
+  })
 })

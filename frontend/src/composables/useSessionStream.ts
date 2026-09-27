@@ -36,6 +36,13 @@
  * `removeLocalUserMessage` 撤回占位（T13 审查修复）——否则这条占位会一直
  * 占着 `pendingLocalMessages` 队首，下一条真正发出去的消息的真实 turn 会
  * 被 FIFO 错误配对到这条"其实没发出去"的占位上。
+ *
+ * `turn_status` 不回放带来的问题（M1 最终审查 I3）：断线期间一轮结束，重连
+ * 后前端收不到那条 `turn_status`，会一直显示"运行中"。所以连接从
+ * `reconnecting` 回到 `open` 时重新 `GET /sessions/{id}` 覆盖 `turnStatus`；
+ * 当前运行中 turn 的 `snapshot` 事件（一轮收尾时落库、会被回放）到达时也
+ * 刷新一次。刷新响应到达前如果已经收到更新的 `turn_status`，响应作废
+ * （`statusVersion`），同样受 `generation` 防竞态保护。
  */
 
 import { onScopeDispose, ref, watch, type Ref } from 'vue'
@@ -107,6 +114,8 @@ export interface SnapshotItem {
   turnId: string
   snapshotId: string
   reason: string
+  /** 后端本次是否新建了快照；`false` 表示内容没变、沿用已有快照（M4）。 */
+  created: boolean
 }
 
 export type TimelineItem =
@@ -183,6 +192,9 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   // 仍然在每次回调开始时同步调用，负责立刻掐断"上一个已经连上的"流（它不是
   // 过期回调，是真的要被替换掉的现役连接）。
   let generation = 0
+  // 每收到一条实时 `turn_status` 自增；刷新请求发出后它变了，说明响应已经过时。
+  let statusVersion = 0
+  let lastConnectionKind: SseConnectionStatus['kind'] | null = null
 
   function reset(): void {
     items.value = []
@@ -193,6 +205,27 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     toolCallIndex.clear()
     pendingLocalMessages = [] // 上一个会话遗留的占位不能被下一个会话的 turn 认领。
     projectId = null
+    lastConnectionKind = null
+  }
+
+  function isBusy(status: string | undefined): boolean {
+    return status === 'queued' || status === 'running'
+  }
+
+  /** 重新拉取会话，用最近一个 turn 的状态覆盖 `turnStatus`（I3）。 */
+  async function refreshTurnStatus(id: string, myGeneration: number): Promise<void> {
+    const versionAtRequest = statusVersion
+    let detail: Awaited<ReturnType<typeof getSession>>
+    try {
+      detail = await getSession(id)
+    } catch {
+      return // 下一次重连或 snapshot 事件会再试。
+    }
+    if (myGeneration !== generation || versionAtRequest !== statusVersion) return
+    for (const turn of detail.turns) knownTurns.set(turn.id, turn)
+    const last = detail.turns.at(-1)
+    if (last) turnStatus.value = { turnId: last.id, status: last.status, error: last.error }
+    if (projectId) void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
   }
 
   function addLocalUserMessage(text: string): string {
@@ -232,7 +265,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     items.value.push({ kind: 'user_message', turnId, text: turn?.user_message ?? '' })
   }
 
-  function handleEvent(event: StreamEvent): void {
+  function handleEvent(event: StreamEvent, id: string, myGeneration: number): void {
     const turnId = event.payload.turn_id
     if (turnId) ensureUserMessage(turnId)
 
@@ -317,8 +350,13 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
           turnId: payload.turn_id,
           snapshotId: payload.snapshot_id,
           reason: payload.reason,
+          created: payload.created,
         })
         if (projectId) void invalidateWorkspace(queryClient, projectId)
+        const current = turnStatus.value
+        if (current && current.turnId === payload.turn_id && isBusy(current.status)) {
+          void refreshTurnStatus(id, myGeneration)
+        }
         break
       }
       case 'workspace_changed': {
@@ -327,6 +365,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       }
       case 'turn_status': {
         const payload = event.payload as TurnStatusPayload
+        statusVersion += 1
         turnStatus.value = { turnId: payload.turn_id, status: payload.status, error: payload.error }
         // 项目详情（`ProjectDetailOut.busy`）失效：当前会话的 turn 一
         // 开始/结束，画布的只读判断（T14 审查修复：`combineBusy`）应该
@@ -357,11 +396,16 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       afterSeq: 0,
       onEvent: (event) => {
         if (myGeneration !== generation) return // 过期连接的事件，丢弃。
-        handleEvent(event)
+        handleEvent(event, id, myGeneration)
       },
       onStatus: (status) => {
         if (myGeneration !== generation) return
+        const previous = lastConnectionKind
+        lastConnectionKind = status.kind
         connectionStatus.value = status
+        if (status.kind === 'open' && previous === 'reconnecting') {
+          void refreshTurnStatus(id, myGeneration)
+        }
       },
       signal: myController.signal,
     })

@@ -8,6 +8,7 @@ import { computed } from 'vue'
 import { Message, MessageContent } from '@/components/ai-elements/message'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import type { TimelineItem } from '@/composables/useSessionStream'
+import { snapshotEventLabel } from './snapshotReason'
 
 const props = defineProps<{ item: TimelineItem }>()
 
@@ -94,6 +95,6 @@ const imageNotice = computed(() => {
     v-else-if="item.kind === 'snapshot'"
     class="text-muted-foreground text-xs"
   >
-    已创建快照（{{ item.reason }}）
+    {{ snapshotEventLabel(item.reason, item.created) }}
   </p>
 </template>

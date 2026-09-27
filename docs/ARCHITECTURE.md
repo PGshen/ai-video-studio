@@ -62,7 +62,7 @@ ai-video-studio/
 | `components/ui/` | shadcn-vue 生成的组件（通过 CLI 添加，尽量不手改） |
 | `components/ai-elements/` | @ai-elements 生成的组件（通过 CLI 添加，尽量不手改） |
 
-规则：`features/*` 之间不互相 import，共用的内容放进 `components/` 或 `composables/`。`components/` 不 import `features/` 或 `pages/`。`pages/` 可以 import `features/`（组合层）。由 `frontend/eslint.config.ts` 中的 `no-restricted-imports` 规则检查（T11 接入；未用 `eslint-plugin-boundaries`，格式规则对 `components/ui`、`components/ai-elements` 下的生成代码放宽）。
+规则：`features/*` 之间不互相 import，共用的内容放进 `components/` 或 `composables/`。`components/` 不 import `features/` 或 `pages/`。`pages/` 可以 import `features/`（组合层）。由 `frontend/eslint.config.ts` 中的 `no-restricted-imports` 规则检查（T11 接入；未用 `eslint-plugin-boundaries`；`components/ui`、`components/ai-elements` 下的生成代码整体不做 lint）。
 
 ## 4. 进程与数据流
 
