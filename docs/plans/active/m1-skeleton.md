@@ -272,7 +272,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿；AC4 走查通过。
 - **验证命令**：`make check`；浏览器 L4
 
-### T15：冒烟测试与 R1–R5 验证（待开始）
+### T15：冒烟测试与 R1–R5 验证（完成；API key 三个用例缺 key 未运行，见「验证记录」）
 
 - **目标**：真实模型跑通三种接入方式，给出 R1–R5 的结论并落地对策。
 - **涉及文件**：`backend/tests/smoke/`、`Makefile`（`smoke` 目标：`pytest -m smoke`）、`docs/references/{claude-agent-sdk,openai-agents-sdk}.md`、`docs/runbooks/verification.md`（按实际更新）。
@@ -314,9 +314,12 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T14 审查后修复 — 完成，`make check` 全绿（后端 425 个测试：新增 `GET /projects/{id}` 的 `busy` 字段 2 个；前端 112 个 vitest：`editorReadonly.spec.ts` 4、`conflictState.spec.ts` 9、`fileKind.spec.ts` 3、`snapshotSelection.spec.ts` 6、`snapshotReason.spec.ts` 6、`turnControls.spec.ts` 新增 `isBusyStatus` 6 + `combineBusy` 4，共比 T13 多 44 个）：① 画布/时间线只读原来只看当前选中会话的 turn 状态，但后端按**项目**串行（任一会话有 turn 在跑就该只读）——`ProjectDetailOut` 新增 `busy: bool`（`api/projects.py` 用 `turn_runner.is_project_busy`），`useProjectQuery` 加 3 秒 `refetchInterval`（覆盖"其他会话/其他标签页"），`useSessionStream` 在当前会话 `turn_status` 到达时让项目查询立刻失效（覆盖"当前会话"，不等轮询），新增 `turnControls.combineBusy(projectBusy, sessionStatus)` 取或；② 撤销了此前"修复 make check 基线"的 4 处改动——那不是真的基线问题，是本地 `vue-tsc` 增量缓存导致的假阳性（详见下面「决策记录」对应条目），`api/sse.ts`/`PromptInput.vue`/两个 `.spec.ts` 已改回 T13 原样；③ `SnapshotTimeline` 的 [取消]/[确认回滚] 在 `rollbackMutation` pending 时禁用，避免重复点击导致两次 POST；④ `pendingRollbackId` 补充注释说明"为什么故意不是 `ref`"，并在 [取消] 点击时显式清空（`update:open` 的通用关闭回调不能碰它——`AlertDialogAction` 触发的关闭一定先于它自己的 `@click` 执行，在那个回调里清空会重新引入原来的竞态，只有独立于该竞态路径的 [取消] 按钮自己的 `@click` 才安全）。
 - 2026-09-28 — T14 审查后修复（第二轮）— 完成，`make check` 全绿（后端 425 个测试不变；前端 116 个 vitest，新增 `snapshotSelection.spec.ts` 的 `canRollback` 4 条）：第一轮只在 `FileCanvas` 接了 `combineBusy` 的结果，`SnapshotTimeline` 没接——`ProjectWorkbenchPage.vue` 之前没传 `busy` prop 给它，[回滚到此] 一直可点，agent 运行中点开二次确认弹窗、真正提交时才被后端 409 拒绝。补上：`SnapshotTimeline` 新增 `busy: boolean` prop（`ProjectWorkbenchPage` 传 `canvasBusy`），新增纯函数 `snapshotSelection.canRollback(busy, isPending)`（`!busy && !isPending`），[回滚到此] 按钮和弹窗里的 [确认回滚] 都用它算 `disabled`；忙时头部提示文案从"选中两个快照可以对比"换成"agent 运行中，暂不能回滚"。[对比]（选快照看 diff）不受影响，busy 时也能看——不改工作区，没有 409 风险。
 
+- 2026-09-28 — T15：冒烟测试与 R1–R5 验证 — 完成（部分未验证）：`make smoke` 目标与 `backend/tests/smoke/`（4 个用例 + 4 个离线辅助测试）落地；种子配置核实并更新模型名/单价（`deepseek/deepseek-flash`，四个真实配置都填了单价与 `supports_vision`）；`make smoke` 第 1 次运行（本 M1 共用 5 次额度中的 1 次）：`test_claude_login` 通过，其余 3 个缺 key 跳过；R3、R5、Claude 侧 R2、登录模式 R4 有结论，R1、OpenAI/LiteLLM 侧 R2、API key 模式 R4 未验证；`make check` 全绿（见本提交）。
 ## 下一步
 
-- 从 T15 开始：冒烟测试与 R1–R5 验证。
+- M1 的全部任务已完成，进入 SOP 的最终审查/验收。AC10 只完成了本机登录部分：负责人在 `backend/.env` 提供 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY` 后再跑一次 `make smoke`（M1 额度还剩 4 次），补齐：Claude API key 模式的最小对话与 R4（`CLAUDE_CONFIG_DIR=data/claude` 下会话创建/恢复）、OpenAI Responses 的最小对话（含 strict schema 带 `default` 是否被接受、默认 `store` 下续轮）、DeepSeek（LiteLLM）的最小对话与 R2 观察。R1（DeepSeek 上的原生 `apply_patch`/`shell`）不在自动用例里：LiteLLM 路径默认就是兜底文件工具集（设计 §9 的对策已是现状），如需结论，要临时给 LiteLLM 路径接上原生工具手动试一次。
+- R2 在 LiteLLM 路径上若观察到模型看不到图片（证据文件 `r2_saw_colours: false`），按设计 §9 实现"文本说明 + 图片作为下一条输入消息"的对策（按模型配置 `supports_vision` 和运行时决定）；T15 按控制者裁定没有预先实现。
+- 已有的 `data/studio.db`（T13/T14 走查时建的）里 `deepseek` 配置仍是 `deepseek/deepseek-chat`、没有单价——种子只插入不更新；这个模型名已停用，需要删掉旧库重建或手动改行（M5 设置页之前没有界面可改）。
 - T14 走查时同样没能截到"运行中→画布只读"这一帧（fake runtime 一轮
   太快）；`editorReadonly.ts` 的 `busy` 分支只有 vitest 覆盖，`busy`
   从 `ProjectWorkbenchPage` 经 `isBusyStatus(turnStatus)` 传到
@@ -327,9 +330,6 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
   FakeRuntime 加可配置延迟。
 - T13 走查时 fake 运行时完成一轮的速度过快，没能在浏览器里实际观察到"运行中"状态下输入框禁用、[停止] 按钮出现的真实渲染（`computeTurnControls` 的对应分支只有 vitest 覆盖，没有浏览器实测）；409"会话忙"和 400"运行时未注册"的错误提示同样只做了代码走查、没有在浏览器里人工触发。T14/T15 如果需要展示这些路径，可以考虑给 FakeRuntime 加一个可配置延迟，或者直接在 T15 用真实模型验证。
 - （T14 已确认并沿用）`Claude_Browser` 的 `computer screenshot` 只把图片内嵌回当前对话，没有导出文件到磁盘的接口；T14 按简报"截图或至少写一份文字记录"的兜底条款，改成把走查步骤、观察结果、发现的 bug 写成 `data/evidence/m1/t14-ac4-walkthrough.md`。后续任务如果同样要求"保存截图"，沿用这个折中方案即可。
-- T15 需要实测 references 中标"⚠️ T15 实测"的 ClaudeRuntime 条目（登录模式置空变量是否生效、图片工具结果、hook 拒绝的表现、sandbox（R3）、`CLAUDE_CONFIG_DIR`（R4）、resume 后 `total_cost_usd` 是否带之前的累计值）。
-- T15：`make smoke` 目标要和 `scripts/dev.sh` 一样在运行前导出 `backend/.env`（`set -a; . backend/.env; set +a`），否则各运行时从 `os.environ` 读不到 key（pydantic-settings 不把 `.env` 写进环境变量）。缺单价的配置现在会产出 `cost_unpriced` 提示、turn 成本为空。
-- T15 的 OpenAI 部分：种子配置 `gpt`/`deepseek` 目前没有单价（`price_input`/`price_output` 为空），OpenAIRuntime 的成本 = token × 单价（美元/百万 token），**冒烟前必须给这两个配置填上单价并设 `max_cost_per_turn`**，否则成本预算不起作用（设了上限但缺单价时本轮会直接失败）。另需实测：strict schema 带 `default` 是否被接受、R1（DeepSeek 上的 `apply_patch`/`shell`）、R2（LiteLLM 路径的图片工具结果）、`OpenAIResponsesModel` 默认 `store` 下续轮是否正常。
 
 ## 决策记录
 
@@ -443,6 +443,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T14：`CodeEditor.vue` 不直接 `import ... from '@codemirror/state'`（哪怕只是 `import type`）——它只是 `codemirror` 包的间接依赖，不在「依赖清单」允许的四个包里，pnpm 严格 `node_modules` 下从 `frontend/src` 这一层解析不到（`frontend/node_modules/@codemirror/` 下只有 `lang-json`/`lang-markdown`/`lang-python` 三个符号链接，没有 `state`）。改用 `type Extension = typeof basicSetup` 让 TypeScript 通过 `codemirror` 自己的 `.d.ts`（它在自己的依赖闭包内能解析到 `@codemirror/state`）间接拿到同一个类型，不需要我们自己写这条 import。只读态/语言切换没有用 `Compartment` 动态重新配置（`codemirror` 包不重新导出它），改成整个销毁重建 `EditorView`——这两者只在切文件、agent 运行状态变化时触发，频率低，代价可以接受。
 - 2026-09-28 — T14：画布是否只读的 `busy` 由 `ProjectWorkbenchPage.vue` 单独开一条 `useSessionStream(sessionId)` 连接算出（只用它的 `turnStatus`，`items` 不用），而不是把 `SessionPanel.vue` 内部已经在用的那条连接的状态提升到页面层——一个会话因此同时有两条 SSE 连接。本地单人应用、SSE 事件量很小，这个代价换来的是 `FileCanvas` 不需要 import `features/workbench`（ESLint 分层规则禁止 features 互相 import），也不需要改动 `SessionPanel` 已经稳定的内部状态管理。`isBusyStatus(status)` 提成 `turnControls.ts` 的独立导出（原来 `BUSY_STATUSES` 只在 `computeTurnControls` 内部用）。
 - 2026-09-28 — T14：AC4 走查发现一个隐蔽 bug 并修复——`SnapshotTimeline.vue` 的 [确认回滚] 按钮用 `<AlertDialogAction @click="confirmRollback">`，而 `AlertDialogAction` 底层是 reka-ui 的 `DialogClose`：它自己的 `onClick`（把 `open` 置 `false`）和我们绑的 `@click` 加在同一个 DOM 按钮上，谁先谁后不由调用方控制。当 `DialogClose` 的处理先跑时，`<AlertDialog @update:open="... rollbackTarget = null">` 会抢在 `confirmRollback` 读到 `rollbackTarget.value` 之前把它清空，函数里的早退分支直接返回——**回滚请求完全不会发出，也没有任何报错或异常**，只有靠实际点开浏览器、检查网络请求列表才发现（`read_network_requests` 过滤 `rollback` 长期无匹配）。修复：另开一个不接入 Vue 响应式、不受 `update:open` 影响的普通变量 `pendingRollbackId` 单独记住待回滚的 id，`confirmRollback` 从它读，彻底绕开这条事件顺序竞态。这类"两个 `@click` 绑在同一个由第三方组件管理开关状态的按钮上"的模式以后要留意，`AlertDialogAction`/`DialogClose` 不是只做视觉展示的哑组件。
+- 2026-09-28 — T15：冒烟用例复制种子配置（真实模型名与单价）为 `smoke-<名>` 再加预算上限（`max_cost_per_turn`：claude-sonnet 0.30、gpt 0.25、deepseek 0.05，合计 0.60 ≤ 1 美元；每轮最多 8 步），不改种子本身的上限 — 预算只属于冒烟测试；复制种子能顺带验证种子模型名可用。
+- 2026-09-28 — T15：冒烟用的阶段定义包一层真实占位阶段（`SmokeStage`：提示词、可写范围、上下游不变，加 `smoke_image`，关联网工具）— 业务工具只在测试里存在，不进 `stages/`；关联网让一轮更短更可控。
+- 2026-09-28 — T15：`smoke_image` 返回左蓝右黄的 64×32 PNG（标准库 `zlib`/`struct` 手写），工具文本不提颜色，要求模型说出两种颜色才算"看到"图片（R2）；Claude 与 OpenAI Responses 断言，LiteLLM 只记录（控制者裁定）。
+- 2026-09-28 — T15：种子配置按官方页面核实：`claude-sonnet-5` 有效（$2/$10）；`gpt-5` 仍在售（$1.25/$10）；`deepseek-chat` 已于 2026-07-24 停用，改为 `deepseek/deepseek-flash`（按高峰价 $0.30/$1.20 计）；四个真实配置 `supports_vision=True`（`deepseek-flash` 支持图片输入）。Claude 两个配置的单价只作参考（ClaudeRuntime 用 SDK 的 `total_cost_usd`，不用单价）。
+- 2026-09-28 — T15：R3 结论成立，保留 Bash + SDK sandbox（不启用设计 §9 的"关闭 Bash"对策）；R5 结论成立，不需要额外对策（事前 hook + 只读文件权限 + 事后 guard 三层）。
 
 ## 意外与发现
 
@@ -474,6 +479,12 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T13：手动浏览器验证时 `pnpm dlx shadcn-vue@latest add alert-dialog --yes` 一次成功（12.3s，只新增了 `components/ui/alert-dialog/` 10 个文件，没有改 `package.json`——`reka-ui` 已经在依赖里），说明沙箱环境本次有可用的出网权限；T11 记录过的网络不稳定（`@tabler/icons-vue` 没装上）这次没有重现。
 - 2026-09-27 — T13：`Claude_Browser` 的 `computer` 工具第一次 `screenshot` 有时会返回刚触发导航/点击前的旧画面（例如点击项目卡片后 URL 已经变成 `/projects/{id}/topic`，但截图仍显示项目列表），需要额外 `wait` 或再截一次图才能看到最新状态；`read_page`（accessibility tree）没有这个滞后，更适合用来确认"实际渲染了什么"，截图更适合确认"样式对不对"。
 - 2026-09-28 — T14 走查/审查修复：上面这条"T14 开始前基线不是绿的"的判断是**错的**，已撤销。复审时发现第一次 `pnpm run typecheck` 报的 4 处 `vue-tsc` 错误是**本地缓存导致的假阳性**，不是真实的基线问题：`node_modules/.tmp/tsconfig.app.tsbuildinfo`（`vue-tsc` 的增量编译缓存，路径见 `tsconfig.app.json` 的 `tsBuildInfoFile`）当时残留着更早、和当前 `tsconfig`/依赖版本不匹配的状态；`git stash` 掉本任务改动后"复测"其实复用了同一份脏缓存，两次都读到同样的假错误，让人误以为是"改动前后一致的 pre-existing 问题"。清掉 `node_modules/.tmp` 和 `node_modules/.vite` 后干净重跑 `vue-tsc --noEmit`，在 T13 提交（`27b7427`）状态、以及仅撤销 T14 那 4 个"修复"文件的状态下，都是 **0 错误**——`api/sse.ts`、`components/ai-elements/prompt-input/PromptInput.vue`、`composables/{queries,useSessionStream}.spec.ts` 的原始写法本来就是对的，不需要任何改动。四处"修复"已全部 `git checkout 27b7427 --` 撤销，改回原样，`make check` 干净重跑仍然全绿。教训：怀疑"基线不绿"时，先删 `frontend/node_modules/.tmp`（`vue-tsc`/`tsc` 的 `tsBuildInfoFile` 输出目录）和 `node_modules/.vite` 再跑，不要只用 `git stash` 对照（stash 不会清缓存，两次跑的是同一份缓存、结论会自我印证）。
+- 2026-09-28 — T15：真实模型（登录模式，`claude-sonnet-5`）在第一轮用 **Bash**（`printf > topic/smoke.md`）而不是 Write 建文件——Bash 写工作区内的文件既不经 `PreToolUse` hook 也不受沙箱限制，阶段可写范围只能靠轮末 guard 兜底（与设计一致，但说明 guard 在真实使用里是主力防线之一，不只是"兜底"）。
+- 2026-09-28 — T15：R5 实测中 Bash 写 `upstream/topic/smoke.md` 失败的原因是只读副本的文件权限 `0o444`（zsh 报 `permission denied`），不是沙箱（沙箱允许写 `cwd` 内）；Edit 被 hook 拒绝。两层都挡住了，guard 这次没有需要还原的东西（`guard_restored` 提示为空）；guard 还原 `upstream/` 漂移的路径由 T4/T6 契约测试覆盖。
+- 2026-09-28 — T15：登录模式下 result 的 `total_cost_usd` 不是 0，而是按 API 价估算的值（三轮约 $0.055、$0.016、$0.093），turn 的 `cost_usd` 照记但只作参考（`cost_advisory`）。
+- 2026-09-28 — T15：Claude Code 宿主给子进程注入了 `CLAUDECODE`、`CLAUDE_CODE_*`、`ANTHROPIC_BASE_URL` 等变量，SDK 的 `env` 只能覆盖不能删除；为了让登录用例代表普通终端里的 `make dev`，本次用 `env -i HOME=… PATH=… make smoke` 运行（写进了 verification runbook）。
+- 2026-09-28 — T15：SDK 实际启动的是 wheel 内置 CLI 2.1.283，不是 `~/.local/bin/claude`（2.1.228）；冒烟用例用"能找到 `claude` CLI"作为"本机装过并登录过 Claude Code"的近似判断。
+- 2026-09-28 — T15：登录用例的 transcript 和工具结果图片会留在负责人的 `~/.claude/projects/<由临时工作区路径推出的目录>/` 下，测试不自动删除（不在测试里删用户配置目录的东西），runbook 里提示可手动清理。
 
 ## 已知限制（非本任务缺陷，留给后续任务）
 
@@ -494,3 +505,10 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 - 2026-09-28 — T14 — AC4（画布 + 快照时间线全部交互）：`make check` 全绿（后端 423 + 前端 102 个测试）；浏览器走查（`mcp__Claude_Browser__*`，`.claude/launch.json` 的 `api`/`frontend` 配置，`STUDIO_ENABLE_FAKE_RUNTIME=true`）覆盖：新建项目 → 新建 `fake` 会话 → 发消息 → 流式文本 + 可折叠 `write_file` 工具调用 → 画布出现 `topic/fake-note.md` → 时间线出现新快照 → 打开文件用 CodeMirror 编辑并保存（`PUT` 200）→ 再发一条消息，agent 前言里正确带出用户手动修改的 diff，时间线依次出现 `手动编辑`/`Agent 一轮` 两条快照 → 选中两个快照 [对比] 显示 `新增：topic/fake-note.md` → [回滚到此] 二次确认 → 回滚成功（时间线新增"回滚"快照，画布文件树回到只有 `style/STYLE.md`）。走查记录（含发现并修复的回滚竞态 bug）见 `data/evidence/m1/t14-ac4-walkthrough.md`。未覆盖：`busy=true` 时画布只读的浏览器实测截图、未保存修改冲突横幅的端到端截图（原因和纯函数单测覆盖情况见该文件「未覆盖 / 已知限制」一节和计划「下一步」）。
 - 2026-09-28 — T14 审查后修复：`make check` 全绿（后端 425 + 前端 112 个测试）。① `curl` 直接验证 `GET /projects/{id}` 返回体含 `"busy":false`；浏览器走查确认前端确实读到这个字段（`read_network_requests` 看到响应体）。② `useProjectQuery` 的 `refetchInterval:3000` 本身没问题，但验证时发现 TanStack Query 默认只在"页面可见"时执行间隔轮询（`focusManager.isFocused()`，取 `document.visibilityState !== 'hidden'`，源码见 `@tanstack/query-core` 的 `queryObserver.js#updateRefetchInterval`）——本次用的浏览器自动化工具打开的标签页 `document.visibilityState` 恒为 `"hidden"`（不是真人在用真实浏览器窗口那种"标签页在后台但仍算可见"），轮询天然不会触发；用 `Object.defineProperty(document, 'visibilityState', {value: 'visible'})` 临时打桩后，轮询请求立刻出现，证明代码本身没问题，只是走查环境的限制。这是 TanStack Query 的标准默认行为（真实用户打开且聚焦这个标签页时会正常轮询），没有设 `refetchIntervalInBackground: true` 强制后台轮询——控制者要求的是"页面打开时轮询"，不是"标签页切到后台也要轮询"，默认行为已经满足，强行打开后台轮询只会增加不必要的请求。③④ 重新走查确认 [确认回滚] 只发一次 `POST`（`disabled` 生效）、[取消] 能正确清空 `pendingRollbackId`。
+- 2026-09-28 — T15 — AC10（部分）：`env -i HOME=$HOME PATH=... make smoke 2>&1 | tee data/evidence/m1/smoke-run1.log`（M1 期间第 1 次运行）→ `1 passed, 3 skipped, 430 deselected in 63.45s`。`test_claude_login` 通过；`test_claude_api_key`/`test_openai_responses`/`test_deepseek_litellm` 因未设置 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`DEEPSEEK_API_KEY` 跳过——**未验证**。逐轮观察见 `data/evidence/m1/smoke/20260927T195536Z-claude-login.json`（时间戳为 UTC）。登录用例三轮都是 `done`，步数 2/1/3，参考成本 $0.055/$0.016/$0.093（订阅额度，无 API 费用）。第一轮：模型建了 `topic/smoke.md`、调用 `smoke_image`，工具结果带 `image/png`，回答"左半边是蓝色，右半边是黄色"。AC10 整体仍未勾选：Claude API key、OpenAI、DeepSeek 三种接入方式待补跑。
+- 2026-09-28 — T15 — R1（LiteLLM 模型上的 `ApplyPatchTool`/`ShellTool`）：**未验证（缺 `DEEPSEEK_API_KEY`）**。现状即设计 §9 的对策：LiteLLM 路径只给兜底文件工具、不给 Shell（T10）。references 保持 ⚠️。
+- 2026-09-28 — T15 — R2（工具返回图片）：Claude（登录模式）**成立**——模型正确说出图片两半的颜色（工具文本不含颜色）；CLI 回传的图片是 Anthropic API 形态，另附 `[Image: source: <路径>]` 文本块。OpenAI Responses、LiteLLM（DeepSeek）**未验证（缺 key）**；LiteLLM 侧对策按控制者裁定未预先实现。
+- 2026-09-28 — T15 — R3（macOS 上 Claude sandbox）：**成立**。第二轮让模型用 Bash 原样执行 `touch <$TMPDIR 下工作区外路径>; touch <仓库 data/evidence/m1/r3-scratch/r3-probe>; curl https://example.com`：两个 `touch` 都是 `Operation not permitted`，探针文件不存在；`curl` 被沙箱网络代理拒绝（`CONNECT tunnel failed, response 403`，`<sandbox_violations>deny network-outbound example.com:443`）。第一轮 Bash 在工作区内写文件成功。结论：沙箱只允许写 `cwd`，Bash 默认无外网；保留 Bash，不启用"关闭 Bash"的对策。
+- 2026-09-28 — T15 — R4（Claude 会话存储）：登录模式**按设计工作**——不改 `CLAUDE_CONFIG_DIR`，transcript 落在 `~/.claude/projects/<cwd 推出的 key>/<session_id>.jsonl`，`<data_dir>/claude/projects` 为空；第二轮 `resume` 后正确复述第一轮回答；成本账本显示恢复会话的 `total_cost_usd` 从 transcript 保存的累计值继续（0.055074 + 0.0157014 = 0.0707754）。API key 模式（`CLAUDE_CONFIG_DIR=<data_dir>/claude`）**未验证（缺 `ANTHROPIC_API_KEY`）**，`test_claude_api_key` 已写好断言。
+- 2026-09-28 — T15 — R5（读取 `upstream/` 后尝试写入）：**真实运行**了一轮叙事阶段 turn（登录模式；先把选题定稿，让 `upstream/topic/smoke.md` 出现），明确要求模型读取后用 Edit 追加、再用 Bash `echo >>` 追加：读取成功；Edit 被 `PreToolUse` hook 拒绝（`is_error=True`，内容 `PreToolUse:Edit hook error: upstream/topic/smoke.md 不在本阶段可写范围内…`）；Bash 因只读副本文件权限 `0o444` 失败；模型没有重试并如实报告；轮末文件内容仍是 `smoke ok`。未被要求时模型是否会主动写 `upstream/`：本次样本中没有观察到（第一、二轮都没碰 `upstream/`），但样本很小。guard 对 `upstream/` 漂移的还原由 T4/T6 契约测试覆盖（本次没有触发）。结论：成立，事前拦截返回错误、事后防线兜底，符合设计 §9。
+- 2026-09-28 — T15 — `make check`：全绿（后端 430 个测试 + 前端 116 个，后端新增 5 个：种子单价 1 个 + 冒烟辅助离线测试 4 个；4 个冒烟用例被 `-m 'not smoke'` 排除）。

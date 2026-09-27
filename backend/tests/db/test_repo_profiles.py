@@ -64,8 +64,26 @@ def test_seed_deepseek_profile_fields(migrated_engine: Engine) -> None:
     assert profile is not None
     assert profile.runtime == "openai"
     assert profile.provider == "litellm"
-    assert profile.model == "deepseek/deepseek-chat"
+    # deepseek-chat stopped resolving on 2026-07-24; deepseek-flash is the current name.
+    assert profile.model == "deepseek/deepseek-flash"
     assert profile.api_key_env == "DEEPSEEK_API_KEY"
+
+
+def test_seed_prices_per_million_tokens(migrated_engine: Engine) -> None:
+    """Official list prices checked 2026-09-28 (USD / 1M tokens, standard tier;
+    DeepSeek at peak rates so the cost estimate never undershoots)."""
+    seed_model_profiles(migrated_engine, enable_fake_runtime=False)
+    expected = {
+        "claude-sonnet": (2.0, 10.0),
+        "claude-login": (2.0, 10.0),
+        "gpt": (1.25, 10.0),
+        "deepseek": (0.30, 1.20),
+    }
+    for name, (price_in, price_out) in expected.items():
+        profile = get_model_profile(migrated_engine, name)
+        assert profile is not None
+        assert (profile.price_input, profile.price_output) == (price_in, price_out), name
+        assert profile.supports_vision, name
 
 
 def test_get_model_profile_unknown_name_returns_none(migrated_engine: Engine) -> None:

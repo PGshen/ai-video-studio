@@ -1,8 +1,12 @@
 """`model_profiles` 仓储：种子数据与只读查询（设计 §3.1、计划决策记录）。
 
-种子的模型名是临时值，等 T9/T10 核实各运行时的真实模型名后再更新（计划
-「决策记录」2026-09-27）。`claude-login` 的 `api_key_env` 为空表示使用本机
-已登录的 Claude Code 订阅账号，不新增字段，复用设计已有的 `api_key_env`。
+种子的模型名与单价在 T15（2026-09-28）按各家官方页面核实：Claude 模型表
+（`claude-sonnet-5`，$2/$10）、OpenAI 定价页（`gpt-5`，$1.25/$10）、DeepSeek 定价页
+（`deepseek-chat` 已于 2026-07-24 停用，现名 `deepseek-flash`，按高峰价 $0.30/$1.20
+计，宁可高估）。种子只插入不存在的配置，已有数据库里的旧行不会被更新。
+
+`claude-login` 的 `api_key_env` 为空表示使用本机已登录的 Claude Code 订阅账号，
+不新增字段，复用设计已有的 `api_key_env`。
 """
 
 from __future__ import annotations
@@ -53,7 +57,7 @@ def _to_value(row: ModelProfile) -> ModelProfileValue:
     )
 
 
-# 模型名为 T2 阶段的临时值，T9/T10 核实运行时行为后更新（计划决策记录）。
+# Prices are USD per 1M tokens (checked 2026-09-28, see module docstring).
 _SEED_PROFILES: list[dict[str, Any]] = [
     {
         "name": "claude-sonnet",
@@ -61,6 +65,9 @@ _SEED_PROFILES: list[dict[str, Any]] = [
         "model": "claude-sonnet-5",
         "runtime": "claude",
         "api_key_env": "ANTHROPIC_API_KEY",
+        "supports_vision": True,
+        "price_input": 2.0,
+        "price_output": 10.0,
     },
     {
         "name": "claude-login",
@@ -68,6 +75,9 @@ _SEED_PROFILES: list[dict[str, Any]] = [
         "model": "claude-sonnet-5",
         "runtime": "claude",
         "api_key_env": None,
+        "supports_vision": True,
+        "price_input": 2.0,
+        "price_output": 10.0,
     },
     {
         "name": "gpt",
@@ -75,13 +85,19 @@ _SEED_PROFILES: list[dict[str, Any]] = [
         "model": "gpt-5",
         "runtime": "openai",
         "api_key_env": "OPENAI_API_KEY",
+        "supports_vision": True,
+        "price_input": 1.25,
+        "price_output": 10.0,
     },
     {
         "name": "deepseek",
         "provider": "litellm",
-        "model": "deepseek/deepseek-chat",
+        "model": "deepseek/deepseek-flash",
         "runtime": "openai",
         "api_key_env": "DEEPSEEK_API_KEY",
+        "supports_vision": True,
+        "price_input": 0.30,
+        "price_output": 1.20,
     },
 ]
 

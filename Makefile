@@ -60,5 +60,8 @@ endif
 dev:
 	@bash scripts/dev.sh
 
+# 真实模型的冒烟测试（计划 T15）：和 scripts/dev.sh 一样先导出 backend/.env，
+# 各运行时才能从 os.environ 读到 key；缺 key 的用例自动跳过。默认 make check 不含它。
 smoke:
-	@echo "TODO(M1): 运行需要真实 key 的冒烟测试" && exit 1
+	set -a; [ -f backend/.env ] && . backend/.env; set +a; \
+	cd backend && $(UV) run pytest -m smoke -v -rs

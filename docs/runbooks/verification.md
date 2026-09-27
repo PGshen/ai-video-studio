@@ -18,7 +18,15 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
 
 ## 冒烟测试（`make smoke`）
 
-- 需要的环境变量：`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`，以及可选的 LiteLLM 模型 key（例如 `DEEPSEEK_API_KEY`）、`TAVILY_API_KEY`。
-- 缺少某个 key 时，对应的用例会被跳过，并在输出中说明原因。
-- 会产生真实的费用：每次运行只跑最小的对话，预算上限写在测试里。
+- 命令：`make smoke`。它先导出 `backend/.env`（同 `scripts/dev.sh`），再运行 `cd backend && uv run pytest -m smoke -v -rs`；默认的 `make check` 用 `addopts = "-m 'not smoke'"` 排除这些用例。
+- 用例（`backend/tests/smoke/test_smoke.py`），每种运行时/认证方式一个，都经 `TurnRunner` 在临时数据目录里跑真实的 turn：
+  - `test_claude_api_key`：需要 `ANTHROPIC_API_KEY`（模型配置 `claude-sonnet`）；另跑一轮恢复会话，验证 API key 模式的会话存储（R4）。
+  - `test_claude_login`：本机已登录的 Claude Code 订阅账号（`claude-login`），找不到 `claude` CLI 或设了 `STUDIO_SMOKE_SKIP_LOGIN=1` 时跳过；三轮：最小对话 → 恢复会话 + Bash 沙箱探测（R3、R4）→ 叙事阶段尝试写 `upstream/`（R5）。消耗订阅额度。
+  - `test_openai_responses`：需要 `OPENAI_API_KEY`（`gpt`）。
+  - `test_deepseek_litellm`：需要 `DEEPSEEK_API_KEY`（`deepseek`，LiteLLM 路径）；图片是否被看到只记录、不断言（R2）。
+- 缺少某个 key 时，对应的用例会被跳过，并在输出中说明原因；结论记为"未验证"。
+- 会产生真实的费用：每个用例只跑最小的对话。预算写在测试里（`COST_LIMITS` 合计 ≤ 1 美元、每轮最多 8 步），由模型配置的 `max_cost_per_turn`/`max_steps_per_turn` 强制；登录用例只限步数。
+- 每个用例把观察结果写到 `data/evidence/m1/smoke/<时间>-<用例>.json`（形似 key 的字符串会被打码），建议同时 `make smoke 2>&1 | tee data/evidence/<计划 id>/smoke-runN.log`。
+- 在 Claude Code 里代为运行时，用 `env -i HOME=... PATH=... make smoke` 之类去掉宿主注入的 `CLAUDE_CODE_*`/`CLAUDECODE`/`ANTHROPIC_BASE_URL` 等变量，让登录用例的环境与普通终端一致。
+- 登录用例的会话 transcript 会留在 `~/.claude/projects/` 下（目录名由临时工作区路径推出），可以手动清理。
 - 运行冒烟测试需要负责人事先同意（SOP §6 第 7 条），计划中已写明的除外。

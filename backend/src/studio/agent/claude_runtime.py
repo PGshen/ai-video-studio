@@ -5,7 +5,8 @@
 
 - **认证**：`model_profile.api_key_env` 有值 → 从该环境变量读 key 注入子进程
   环境，并把 `CLAUDE_CONFIG_DIR` 指向 `<data_dir>/claude/`（会话存储随之移到
-  数据目录，R4 最终结论在 T15）；环境变量缺失 → 本轮直接 `failed`。为空 →
+  数据目录；API key 模式下这一点待实测，登录模式的默认位置与恢复已在 T15 实测）；
+  环境变量缺失 → 本轮直接 `failed`。为空 →
   本机登录模式：把 `LOGIN_BLANKED_ENV` 置空（SDK 把 `env` 合并在
   `os.environ` 之上，无法删除键，CLI 把空值当作未设置），不改
   `CLAUDE_CONFIG_DIR`（改了会读不到 macOS 钥匙串里的登录凭据），`Usage.auth`
@@ -84,7 +85,7 @@ SANDBOX: SandboxSettings = {
     # Without this the model can opt out per command via dangerouslyDisableSandbox.
     "allowUnsandboxedCommands": False,
 }
-"""Bash sandbox（R3 的最终取舍在 T15 手动验证后决定）。"""
+"""Bash sandbox。R3 已在 T15 实测（macOS，2026-09-28）：工作区外写入、外网都被拦住，保留 Bash。"""
 
 
 class SdkClient(Protocol):
