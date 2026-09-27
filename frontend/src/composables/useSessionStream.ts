@@ -24,12 +24,14 @@
  * 第一个事件到达之前（`ensureUserMessage`：见到某个 `turn_id` 的第一条
  * 事件时，如果这个 turn 还没插入过用户消息，先插）。
  *
- * 已知限制（记入计划「决策记录」/「意外与发现」，不在本任务内解决）：如果
- * 消息是在本次挂载**之后**才发送的（`turn_id` 不在挂载时拉到的 `turns`
- * 列表里），`ensureUserMessage` 拿不到这个 turn 的 `user_message`
- * 文本，会插入一条空文本的占位——真实文本在调用 `sendMessage` 的那一层
- * （T13 的会话面板）手头就有，应该由那一层在乐观更新时直接补上，而不是
- * 这个通用 composable 去猜。
+ * T12 遗留的已知限制在 T13 里解决：本次挂载之后才发送的消息，`turn_id`
+ * 不在挂载时拉到的 `turns` 列表里，`ensureUserMessage` 原本拿不到文本。
+ * 现在会话面板发消息时改调 `addLocalUserMessage(text)` 乐观插入一条占位
+ * （`turnId` 是本地生成的 `local-<n>`），`ensureUserMessage` 见到任意
+ * 新 `turn_id` 的第一个事件时优先按 FIFO 顺序认领最早的一条待处理占位、
+ * 原地把 `turnId` 换成真实值，而不是去 `knownTurns` 查（查不到就只能插空
+ * 文本）。`sessionId` 切换时占位队列会清空，避免旧会话遗留的占位被新会话
+ * 的 turn 误认领。
  */
 
 import { onScopeDispose, ref, watch, type Ref } from 'vue'
@@ -112,6 +114,15 @@ export interface UseSessionStreamResult {
   items: Ref<TimelineItem[]>
   turnStatus: Ref<TurnStatusState | null>
   connectionStatus: Ref<SseConnectionStatus | null>
+  /**
+   * 乐观插入一条用户消息（任务简报 T13，控制者裁定 3；解决上面文档「已知
+   * 限制」）：会话面板发消息时手头就有文本，不用等 SSE 回放出真实
+   * `turn_id`。占位项先用 `local-<n>` 当 `turnId` 插入 `items`；等这个
+   * turn 的第一个事件到达、`ensureUserMessage` 按 FIFO 顺序认领一个待
+   * 处理的占位时，原地把占位的 `turnId` 换成真实值，不会同时存在"占位 +
+   * 空文本"两条。
+   */
+  addLocalUserMessage: (text: string) => void
 }
 
 function findLastStreamingTextIndex(items: TimelineItem[], turnId: string): number {
@@ -135,6 +146,9 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   const knownTurns = new Map<string, TurnOut>()
   const userMessageInserted = new Set<string>()
   const toolCallIndex = new Map<string, number>()
+  // 乐观插入、还没被真实 turn 认领的占位（FIFO：先发送的消息先配对）。
+  let pendingLocalMessages: { placeholderId: string; text: string }[] = []
+  let localMessageCounter = 0
 
   // 审查发现的竞态（`sessionId` 在上一次 `watch` 回调还卡在 `await
   // loadHistory` 时又变了一次）：`generation` 每次回调开始时自增一，回调
@@ -154,12 +168,32 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     knownTurns.clear()
     userMessageInserted.clear()
     toolCallIndex.clear()
+    pendingLocalMessages = [] // 上一个会话遗留的占位不能被下一个会话的 turn 认领。
     projectId = null
+  }
+
+  function addLocalUserMessage(text: string): void {
+    const placeholderId = `local-${localMessageCounter}`
+    localMessageCounter += 1
+    pendingLocalMessages.push({ placeholderId, text })
+    items.value.push({ kind: 'user_message', turnId: placeholderId, text })
   }
 
   function ensureUserMessage(turnId: string): void {
     if (userMessageInserted.has(turnId)) return
     userMessageInserted.add(turnId)
+
+    const pending = pendingLocalMessages.shift()
+    if (pending) {
+      const idx = items.value.findIndex(
+        (item) => item.kind === 'user_message' && item.turnId === pending.placeholderId,
+      )
+      if (idx !== -1) {
+        items.value[idx] = { kind: 'user_message', turnId, text: pending.text }
+        return
+      }
+    }
+
     const turn = knownTurns.get(turnId)
     items.value.push({ kind: 'user_message', turnId, text: turn?.user_message ?? '' })
   }
@@ -318,5 +352,5 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     disconnect()
   })
 
-  return { items, turnStatus, connectionStatus }
+  return { items, turnStatus, connectionStatus, addLocalUserMessage }
 }

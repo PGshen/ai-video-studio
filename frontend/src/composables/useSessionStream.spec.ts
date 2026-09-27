@@ -298,6 +298,64 @@ describe('useSessionStream', () => {
     expect(result.items.value.every((i) => i.turnId !== 't-s1')).toBe(true)
   })
 
+  it('addLocalUserMessage 乐观插入用户消息，turn 的第一个事件到达时原地补上真实 turnId', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+    const { result } = await setup('s1')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    result.addLocalUserMessage('乐观插入的问题')
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: 'local-0', text: '乐观插入的问题' },
+    ])
+
+    onEvent(frame('turn_status', { turn_id: 't1', status: 'queued', error: null, seq: null }))
+    onEvent(frame('text_delta', { turn_id: 't1', text: '好的', seq: null }))
+
+    // 占位项被原地替换成真实 turnId，不是额外插入一条、也没有留下空文本占位。
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: 't1', text: '乐观插入的问题' },
+      { kind: 'text', turnId: 't1', text: '好的', streaming: true },
+    ])
+  })
+
+  it('addLocalUserMessage 按发送顺序（FIFO）依次和到达的 turn 配对', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+    const { result } = await setup('s1')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    result.addLocalUserMessage('第一条')
+    onEvent(frame('text', { turn_id: 't1', text: '回复1', seq: 1 }))
+    result.addLocalUserMessage('第二条')
+    onEvent(frame('text', { turn_id: 't2', text: '回复2', seq: 2 }))
+
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: 't1', text: '第一条' },
+      { kind: 'text', turnId: 't1', text: '回复1', streaming: false },
+      { kind: 'user_message', turnId: 't2', text: '第二条' },
+      { kind: 'text', turnId: 't2', text: '回复2', streaming: false },
+    ])
+  })
+
+  it('sessionId 变化时清空乐观占位队列，避免串到下一个会话', async () => {
+    getSessionMock.mockImplementation((id: string) =>
+      Promise.resolve(sessionDetail({ id, project_id: `p-${id}`, turns: [] })),
+    )
+    const { result, idRef } = await setup('s1')
+    result.addLocalUserMessage('会话 1 里发的消息')
+
+    idRef.value = 's2'
+    await flushAsync()
+
+    const onEvent = openStreamMock.mock.calls[1]![1].onEvent as (e: StreamEvent) => void
+    onEvent(frame('text', { turn_id: 't-s2', text: '新会话的回复', seq: 1 }))
+
+    // 新会话里第一个 turn 不应该被上一个会话遗留的占位文本"认领"。
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: 't-s2', text: '' },
+      { kind: 'text', turnId: 't-s2', text: '新会话的回复', streaming: false },
+    ])
+  })
+
   it('sessionId 变为 null 时关闭连接并清空状态', async () => {
     getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
     const abort = vi.fn()
