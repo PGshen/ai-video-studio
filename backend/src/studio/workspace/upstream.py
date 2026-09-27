@@ -20,10 +20,20 @@ _READONLY_FILE_MODE = 0o444
 
 
 def _make_tree_writable(path: Path) -> None:
-    """回收只读权限，以便 `shutil.rmtree` 能删除上一轮物化的只读文件。"""
+    """回收只读权限，以便 `shutil.rmtree` 能删除上一轮物化的只读文件。
+
+    跳过符号链接：`materialize_upstream` 本身不会写符号链接，但排除目录本来
+    就不受越界检查约束，agent 仍可能在上一轮往 `upstream/<stage>/` 里放一个
+    符号链接。`chmod` 默认跟随符号链接，会改到链接目标（可能在工作区之外）
+    的权限；不跟随（`follow_symlinks=False`）在部分平台上 `chmod` 又不支持
+    对符号链接本身生效，所以干脆跳过——`shutil.rmtree` 删除符号链接本身不
+    需要先改它的权限。
+    """
     for root, dirnames, filenames in os.walk(path):
         for name in (*dirnames, *filenames):
             entry = Path(root) / name
+            if entry.is_symlink():
+                continue
             try:
                 entry.chmod(entry.stat().st_mode | stat.S_IWUSR)
             except FileNotFoundError:

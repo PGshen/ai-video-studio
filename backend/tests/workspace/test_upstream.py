@@ -68,3 +68,24 @@ class TestMaterializeUpstream:
         materialize_upstream(workdir, blobs, {"topic": {"topic/brief.md": sha}})
 
         assert not (workdir / "upstream" / "topic" / "hack.md").exists()
+
+    def test_leftover_symlink_in_upstream_does_not_chmod_external_target(
+        self, blobs: BlobStore, workdir: Path, tmp_path: Path
+    ) -> None:
+        """`upstream/` 是排除目录，不受越界检查约束；上一轮如果被写入了一个
+        指向工作区外部的符号链接，下一次物化清空 `upstream/` 时，不应该跟随
+        这个符号链接去修改外部目标的权限，只需要把符号链接本身删掉。
+        """
+        sha = blobs.put(b"# brief")
+        materialize_upstream(workdir, blobs, {"topic": {"topic/brief.md": sha}})
+
+        external_target = tmp_path / "external.txt"
+        external_target.write_text("secret", encoding="utf-8")
+        external_target.chmod(0o400)
+        original_mode = external_target.stat().st_mode
+        (workdir / "upstream" / "topic" / "escape.txt").symlink_to(external_target)
+
+        materialize_upstream(workdir, blobs, {"topic": {"topic/brief.md": sha}})
+
+        assert not (workdir / "upstream" / "topic" / "escape.txt").exists()
+        assert external_target.stat().st_mode == original_mode

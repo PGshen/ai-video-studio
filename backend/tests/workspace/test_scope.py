@@ -125,6 +125,32 @@ class TestGuard:
 
         assert report.restored == []
 
+    def test_tool_managed_file_created_then_deleted_within_turn_is_restored(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        """工具本轮新建了托管文件，agent 又通过 Shell 把它删了：本轮开始和
+        结束时该文件都不存在（before={}, after={}），但 `tool_writes` 里有
+        记录，说明工具本轮确实写过——必须恢复为工具写入的内容，而不能因为
+        `path` 不在 `before`/`after` 的并集里就被漏过。
+        """
+        scope = WriteScope(writable=["narrative/**"], tool_managed=["narrative/timing.json"])
+        tool_sha = blobs.put(b'{"tool": "version"}')
+        before: dict[str, str] = {}
+        after: dict[str, str] = {}
+
+        report = guard(
+            workdir,
+            before,
+            after,
+            scope,
+            blobs,
+            tool_writes={"narrative/timing.json": tool_sha},
+        )
+
+        content = (workdir / "narrative" / "timing.json").read_text(encoding="utf-8")
+        assert content == '{"tool": "version"}'
+        assert report.restored == ["narrative/timing.json"]
+
     def test_deletes_symlinks_outside_excluded_dirs(self, blobs: BlobStore, workdir: Path) -> None:
         scope = WriteScope(writable=["topic/**"], tool_managed=[])
         _write(workdir / "topic" / "brief.md", "draft")

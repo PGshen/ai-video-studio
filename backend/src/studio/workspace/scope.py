@@ -105,7 +105,7 @@ def guard(
     workdir = Path(workdir)
     restored: list[str] = []
 
-    for path in sorted(set(before) | set(after)):
+    for path in sorted(set(before) | set(after) | set(tool_writes)):
         if path in tool_writes:
             expected_sha256 = tool_writes[path]
             if after.get(path) != expected_sha256:
