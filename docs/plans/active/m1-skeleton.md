@@ -87,7 +87,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make setup && make check` 为绿；`make dev` 能访问 `/api/health`。
 - **验证命令**：`make check`；`make dev` 后 `curl 127.0.0.1:8000/api/health`
 
-### T2：数据库与迁移（待开始）
+### T2：数据库与迁移（完成）
 
 - **目标**：设计 §3.1 的全部表可用，连接配置符合 §7。
 - **涉及文件**：`backend/src/studio/db/{__init__,engine,models}.py`、`backend/src/studio/db/migrations/`（Alembic env + `0001_initial`）、`backend/src/studio/db/repo/{projects,stages,sessions,turns,snapshots,profiles}.py`、`backend/tests/db/`。
@@ -294,10 +294,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-09-27 — T1：后端骨架与后端质量关口 — 完成，`make check`/`make setup`/`make dev` 均验证通过（见本提交）。
+- 2026-09-27 — T2：数据库与迁移 — 完成，`make check` 全绿（见本提交）。
 
 ## 下一步
 
-- 从 T2 开始：数据库与迁移。
+- 从 T3 开始：快照库。
 
 ## 决策记录
 
@@ -315,6 +316,10 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T1：`Settings.data_dir` 用 pydantic `field_validator` 解析为绝对路径并校验不落在 `backend/src` 之下，校验失败抛自定义 `WorkspaceInsideSourceError`（继承 `RuntimeError`，不是 `ValueError`）——pydantic v2 只把 `ValueError`/`TypeError`/`AssertionError` 包装成 `ValidationError`，用独立异常类型能让调用方精确捕获这一种配置错误，而不必解析 pydantic 的通用校验错误。
 - 2026-09-27 — T1：测试中不传 `_env_file=None` 覆盖 `Settings`（pyright 对 pydantic-settings 的 dataclass-transform 合成 `__init__` 不认识这个私有 kwarg，会报 `reportCallIssue`）；改为直接传字段值（如 `data_dir=...`）覆盖，init kwargs 在 pydantic-settings 的来源优先级里本就高于 `.env` 文件，效果等价且类型检查干净。
 - 2026-09-27 — T1：给 `scripts/check_docs.py` 的 `SKIP_DIRS` 加入 `.superpowers`（本次 SDD 编排的临时脚手架目录，已在 `.gitignore` 中，不属于文档知识库）——运行 `make check` 时发现该目录下的 `common.md` 引用了尚未创建的 `docs/references/claude-agent-sdk.md`（T9 才会创建），导致 `check-docs` 误报，与 T1 范围无关但阻塞了质量关口，遂一并修正扫描范围。
+- 2026-09-27 — T2：`turn_events` 冗余存一份 `session_id`（可从 `turn_id` 关联 `turns.session_id` 推出）——`seq` 的作用域是会话级（见 2026-09-26 决策），SSE `after_seq` 续传按会话查询时直接按 `(session_id, seq)` 走索引，不必联表 `turns`；索引 `ix_turn_events_session_seq` 建在 `(session_id, seq)` 上。
+- 2026-09-27 — T2：`model_profiles` 种子的 `provider` 字段取值——`claude-sonnet`/`claude-login` 用 `anthropic`，`gpt` 用 `openai`，`deepseek` 用 `litellm`（区分"经 LiteLLM 转发"和"原生 OpenAI Responses API"两条 T10 要分别实现的路径）；`fake` 用 `provider="fake"`。这些是本任务的临时值，T9/T10 核实运行时行为后可能调整。
+- 2026-09-27 — T2：本任务只在 `repo/` 下创建 `projects.py`、`profiles.py` 两个文件（各自的仓储函数与测试），未创建 `stages.py`/`sessions.py`/`turns.py`/`snapshots.py` 空文件——遵循"先写失败测试再实现"和 YAGNI，这几个仓储会分别在 T6（`turns`/`sessions`）、T3/T7（`snapshots`）、T7（`stages`）按各自任务需要的签名新增，brief 中列出的文件名是完整清单，不代表本任务要全部建好空壳。
+- 2026-09-27 — T2：import-linter 新增两条契约（规则 5 相关）——`config` 不依赖 `db`（config 层依赖表里 config 一行是"—"）；`main` 不 import `studio.db.models`（只有 `db` 定义 ORM 模型，其他模块经 `db.repo` 的函数拿到 dataclass 值对象）。
 
 ## 意外与发现
 
@@ -322,6 +327,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 - 2026-09-26 — 已确认 shadcn-vue 的 registry 列表中包含 `@ai-elements`，地址 `https://registry.ai-elements-vue.com/{name}.json`（来源：shadcn-vue 仓库 `apps/v4/public/r/registries.json`）；T11 时补进 frontend-stack.md。
 - 2026-09-26 — 写计划时 PyPI 上的最新版本：`claude-agent-sdk 0.2.160`、`openai-agents 0.22.3`；以安装时锁定的版本为准。
+- 2026-09-27 — T2 开始时工作区里已有一份未提交的 `db` 模块（`engine.py`/`models.py`/migrations/`tests/db/` 下 `test_engine.py`、`test_migrate.py`、`test_repo_profiles.py`、`test_repo_projects.py`），`pyproject.toml` 也已加上 `sqlalchemy`/`alembic` 依赖，但 `repo/` 目录本身不存在，`test_repo_*.py` 处于 RED（`ModuleNotFoundError`）——沿用这份已有实现（引擎、ORM 模型、迁移、测试用例均符合本任务要求，engine/migrate 相关测试本就是绿的），只补齐缺失的 `repo/projects.py`、`repo/profiles.py` 让 RED 转 GREEN，未重写已有代码。
 
 ## 阻塞
 

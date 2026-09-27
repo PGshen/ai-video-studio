@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.30,<1",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.5,<3",
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.13,<2",
 ]
 
 [dependency-groups]
@@ -48,9 +50,8 @@ markers = [
 ]
 
 [tool.importlinter]
-# R1（控制者裁定）：M1 T1 时只有 studio.config 和 studio.main 存在，
-# 契约只能覆盖这两个模块。后续任务新建模块时，把 ARCHITECTURE §2
-# 对应的分层规则补进这里（例如规则 2：agent 不 import stages）。
+# R1（控制者裁定）：每个任务新建模块时，把 ARCHITECTURE §2 对应的分层规则
+# 补进这里。T1 时只有 studio.config 和 studio.main；T2 新增 studio.db。
 root_package = "studio"
 
 [[tool.importlinter.contracts]]
@@ -58,3 +59,15 @@ name = "config 不依赖 main（组装层不能被下层反向依赖）"
 type = "forbidden"
 source_modules = ["studio.config"]
 forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "config 不依赖 db（config 层不依赖任何其他模块）"
+type = "forbidden"
+source_modules = ["studio.config"]
+forbidden_modules = ["studio.db"]
+
+[[tool.importlinter.contracts]]
+name = "只有 db 定义 ORM 模型；其他模块只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.main"]
+forbidden_modules = ["studio.db.models"]
