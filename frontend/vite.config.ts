@@ -20,6 +20,16 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        // 后端进程被杀（或重启）时，http-proxy 不会结束已经在转发的 SSE 响应，
+        // 浏览器侧的流一直挂着、永远不触发重连（M1 最终审查 L3 实测发现）。
+        // 上游响应一断就销毁对浏览器的响应，让 openStream 走重连逻辑。
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes, _req, res) => {
+            proxyRes.on('close', () => {
+              if (!res.writableEnded) res.destroy()
+            })
+          })
+        },
       },
     },
   },
