@@ -1,0 +1,34 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "/Users/peng/.local/bin/uv",
+      "runtimeArgs": [
+        "run",
+        "uvicorn",
+        "studio.main:app",
+        "--reload",
+        "--reload-dir",
+        "src",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "cwd": "backend",
+      "port": 8000,
+      "env": {
+        "STUDIO_ENABLE_FAKE_RUNTIME": "true",
+        "STUDIO_DATA_DIR": "/Users/peng/Me/Ai/ai-video-studio/.claude/worktrees/m1-skeleton/data"
+      }
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "frontend",
+      "port": 5173
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeTurnControls } from './turnControls'
+import { computeTurnControls, isBusyStatus } from './turnControls'
 
 describe('computeTurnControls', () => {
   it('没有任何 turn（新会话）：输入可用，两个按钮都不显示', () => {
@@ -36,4 +36,21 @@ describe('computeTurnControls', () => {
       showContinue: false,
     })
   })
+})
+
+describe('isBusyStatus', () => {
+  it('null：不忙', () => {
+    expect(isBusyStatus(null)).toBe(false)
+  })
+
+  it.each(['queued', 'running'] as const)('%s：忙', (status) => {
+    expect(isBusyStatus(status)).toBe(true)
+  })
+
+  it.each(['interrupted', 'budget_exceeded', 'done', 'failed', 'cancelled'] as const)(
+    '%s：不忙',
+    (status) => {
+      expect(isBusyStatus(status)).toBe(false)
+    },
+  )
 })

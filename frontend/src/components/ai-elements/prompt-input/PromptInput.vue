@@ -24,6 +24,7 @@ const emit = defineEmits<{
 
 const instance = getCurrentInstance()
 const formRef = ref<HTMLFormElement | null>(null)
+void formRef // 只在模板里以字符串 `ref="formRef"` 使用，vue-tsc 的 noUnusedLocals 认不出来。
 
 function getListener(name: 'onSubmit' | 'onError') {
   return instance?.vnode.props?.[name]
@@ -75,6 +76,7 @@ if (!context) {
 }
 
 const { fileInputRef, addFiles, submitForm } = context
+void fileInputRef // 只在模板里以字符串 `ref="fileInputRef"` 使用，同上。
 
 function handleDragOver(e: DragEvent) {
   if (e.dataTransfer?.types?.includes('Files')) {

@@ -171,7 +171,11 @@ export function openStream(url: string, options: OpenStreamOptions): void {
       if (seq <= lastSeq) return // 重放/重连交界处的重复持久事件。
       lastSeq = seq
     }
-    onEvent({ type: frame.event as WireEventType, payload } as StreamEvent)
+    // `payload` 的精确形状（`TextDeltaPayload`/`ToolResultPayload`/…）由 `frame.event`
+    // 在运行时决定，这里只是原样透传后端发来的 JSON——没法从 `Record<string, unknown>`
+    // 静态收窄成对应的联合类型分支，所以经 `unknown` 中转（不是 lint 逃逸，是这个
+    // 位置本来就该由调用方按 `type` 自己收窄，`useSessionStream.handleEvent` 就是这么做的）。
+    onEvent({ type: frame.event as WireEventType, payload } as unknown as StreamEvent)
   }
 
   async function backoff(reason: string): Promise<void> {

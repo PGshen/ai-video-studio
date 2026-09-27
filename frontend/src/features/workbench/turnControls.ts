@@ -30,3 +30,13 @@ export function computeTurnControls(status: string | null): TurnControls {
   }
   return IDLE_CONTROLS
 }
+
+/**
+ * 项目是否"忙"（有一轮在跑）：T14 通用文件画布用它决定 CodeEditor 是否
+ * 只读——后端按项目串行（同一时间只有一个 turn 在写工作区），所以当前
+ * 会话的 turn 处于 `queued`/`running` 就足以代表整个项目忙，不需要单独
+ * 的项目级接口。
+ */
+export function isBusyStatus(status: string | null): boolean {
+  return status !== null && BUSY_STATUSES.has(status)
+}

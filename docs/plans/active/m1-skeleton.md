@@ -259,7 +259,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿；Fake 配置下能在浏览器完成一轮对话。
 - **验证命令**：`make check`；浏览器 L4
 
-### T14：工作台——通用文件画布与快照时间线（待开始）
+### T14：工作台——通用文件画布与快照时间线（完成）
 
 - **目标**：画布与时间线，完成 AC4 的全部交互。
 - **涉及文件**：`frontend/src/features/canvas/generic/{FileCanvas,FileTree,CodeEditor}.vue`、`frontend/src/features/workbench/SnapshotTimeline.vue`、对应 spec、`.claude/launch.json`。
@@ -310,11 +310,21 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T12 审查后修复 — 完成，`make check` 全绿（前端 43 个 vitest：新增 `useSessionStream.spec.ts` 2 条竞态回归、`http.spec.ts` 3 条编码用例、新建 `endpoints.spec.ts` 5 条编码用例，共新增 10 个）：修了 `useSessionStream` 里 `sessionId` 快速切换时的竞态（加 `generation` 世代计数器，过期回调不再 `connect()`、过期流的 `onEvent`/`onStatus` 也被丢弃）；`http.ts`/`endpoints.ts` 拼 URL 路径的地方补上 `encodePathSegment`/`encodeFilePath` 编码；`items` 数组无上限增长记为已知限制，未改代码（见本文件「已知限制」一节）。详见 `.superpowers/sdd/m1-skeleton/task-12-report.md`「审查后的修复」。
 - 2026-09-27 — T13：工作台——项目列表、阶段导航、会话面板 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 25 个 vitest：`stageStatus.spec.ts` 5、`turnControls.spec.ts` 8、`useSessionStream.spec.ts` 新增 3 条乐观插入/FIFO 配对/会话切换清空占位队列，共 68 个前端测试）；新增 `features/projects/ProjectList.vue`（列表 + 新建对话框）、`features/workbench/{StageNav,SessionPicker,SessionPanel,SessionTimelineItem,stageStatus,turnControls}`、`pages/ProjectWorkbenchPage.vue`；`useSessionStream` 按控制者裁定 3 扩展 `addLocalUserMessage(text)` 解决 T12 已知限制（占位 `turnId` 为 `local-<n>`，FIFO 认领真实 turn，`sessionId` 切换清空占位队列避免误认领）；`pnpm dlx shadcn-vue@latest add alert-dialog` 新增 `components/ui/alert-dialog`（[定稿] 二次确认）；`dialog`/`select`/`dropdown-menu` 在 T11 已随 dashboard-01/`NavUser` 落地，本任务直接复用；纯逻辑（阶段状态→样式/禁用、turn 状态→按钮可用性、乐观消息 FIFO 配对）按控制者裁定 7 抽成 `.ts` 纯函数单测，组件本身不做挂载快照测试。Fake 配置下浏览器手动走查（L4）：新建项目 → 跳转选题阶段 → 新建 `fake` 会话 → 发消息 → 依次看到乐观插入的用户消息、助手文本（含前言回显）、`write_file` 工具调用（可展开看 PARAMETERS/RESULT）、"已创建快照" → [定稿] 二次确认后选题变 `✓`、叙事从灰变可点、动画仍锁定 → 切到叙事阶段会话面板正确清空 → 模型下拉里 `fake`/`claude-login` 可选、`claude-sonnet`/`gpt`/`deepseek` 因未配置密钥禁用（见本提交）。
 
+- 2026-09-28 — T14：工作台——通用文件画布与快照时间线 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 34 个 vitest：`editorReadonly.spec.ts` 4、`conflictState.spec.ts` 9、`fileKind.spec.ts` 3、`snapshotSelection.spec.ts` 6、`snapshotReason.spec.ts` 6、`turnControls.spec.ts` 新增 `isBusyStatus` 6 条，共 102 个前端测试）；新增 `features/canvas/generic/{FileCanvas,FileTree,CodeEditor,editorReadonly,conflictState,fileKind}.{vue,ts}`、`features/workbench/{SnapshotTimeline.vue,snapshotSelection.ts,snapshotReason.ts}`，`ProjectWorkbenchPage.vue` 组合进右侧画布区（画布在上、时间线在下）；`CodeEditor.vue` 只用「依赖清单」允许的四个包（`codemirror` 重新导出的 `EditorView`/`basicSetup` + 三个 `@codemirror/lang-*`），不引入 `vue-codemirror`，也不直接 import `@codemirror/state`（它是 `codemirror` 的间接依赖，pnpm 严格 node_modules 下解析不到）——只读/语言切换靠整个销毁重建 `EditorView` 实现，理由和权衡见文件内注释；`busy`（画布只读的触发条件之一）由 `ProjectWorkbenchPage` 单独开一条 `useSessionStream` 连接算出（`isBusyStatus`，新增到 `turnControls.ts`），不需要把 `SessionPanel` 的状态上提、也不需要 `features/canvas` import `features/workbench`（ESLint 分层规则禁止）。走查前发现 `make check` 基线本身不绿（`vue-tsc` 4 处 pre-existing 报错，与本任务改动无关，`git stash` 验证过），按 AGENTS.md 处理后修复；AC4 走查中发现并修复一个真实 bug：`AlertDialogAction`（reka-ui `DialogClose`）自身的 `onClick` 会抢在我们的 `@click="confirmRollback"` 之前把 `rollbackTarget` 清空，导致回滚请求完全不发出、无任何报错，改用不接入响应式链路的普通变量 `pendingRollbackId` 规避。走查记录见 `data/evidence/m1/t14-ac4-walkthrough.md`（见本提交）。
+
 ## 下一步
 
-- 从 T14 开始：工作台——通用文件画布与快照时间线。
+- 从 T15 开始：冒烟测试与 R1–R5 验证。
+- T14 走查时同样没能截到"运行中→画布只读"这一帧（fake runtime 一轮
+  太快）；`editorReadonly.ts` 的 `busy` 分支只有 vitest 覆盖，`busy`
+  从 `ProjectWorkbenchPage` 经 `isBusyStatus(turnStatus)` 传到
+  `FileCanvas` 的链路只做了类型检查/走查代码路径，没有浏览器实测
+  截图。未保存修改的冲突横幅（`workspace_changed` 到达时缓冲区脏）
+  同理：`conflictState.ts` 单测完整，但没有构造出真实并发场景做端到端
+  截图验证。如果 T15 或后续任务需要展示这两条路径，同样可以考虑给
+  FakeRuntime 加可配置延迟。
 - T13 走查时 fake 运行时完成一轮的速度过快，没能在浏览器里实际观察到"运行中"状态下输入框禁用、[停止] 按钮出现的真实渲染（`computeTurnControls` 的对应分支只有 vitest 覆盖，没有浏览器实测）；409"会话忙"和 400"运行时未注册"的错误提示同样只做了代码走查、没有在浏览器里人工触发。T14/T15 如果需要展示这些路径，可以考虑给 FakeRuntime 加一个可配置延迟，或者直接在 T15 用真实模型验证。
-- 本次浏览器验证没有找到把截图落盘到 `data/evidence/m1/` 的工具（`Claude_Browser` 的 `computer screenshot` 只把图片内嵌回当前对话，没有导出文件的接口）；T14 如果同样要求"保存截图"，需要确认届时的工具集是否有截图导出能力，或者改成手动导出。
+- （T14 已确认并沿用）`Claude_Browser` 的 `computer screenshot` 只把图片内嵌回当前对话，没有导出文件到磁盘的接口；T14 按简报"截图或至少写一份文字记录"的兜底条款，改成把走查步骤、观察结果、发现的 bug 写成 `data/evidence/m1/t14-ac4-walkthrough.md`。后续任务如果同样要求"保存截图"，沿用这个折中方案即可。
 - T15 需要实测 references 中标"⚠️ T15 实测"的 ClaudeRuntime 条目（登录模式置空变量是否生效、图片工具结果、hook 拒绝的表现、sandbox（R3）、`CLAUDE_CONFIG_DIR`（R4）、resume 后 `total_cost_usd` 是否带之前的累计值）。
 - T15：`make smoke` 目标要和 `scripts/dev.sh` 一样在运行前导出 `backend/.env`（`set -a; . backend/.env; set +a`），否则各运行时从 `os.environ` 读不到 key（pydantic-settings 不把 `.env` 写进环境变量）。缺单价的配置现在会产出 `cost_unpriced` 提示、turn 成本为空。
 - T15 的 OpenAI 部分：种子配置 `gpt`/`deepseek` 目前没有单价（`price_input`/`price_output` 为空），OpenAIRuntime 的成本 = token × 单价（美元/百万 token），**冒烟前必须给这两个配置填上单价并设 `max_cost_per_turn`**，否则成本预算不起作用（设了上限但缺单价时本轮会直接失败）。另需实测：strict schema 带 `default` 是否被接受、R1（DeepSeek 上的 `apply_patch`/`shell`）、R2（LiteLLM 路径的图片工具结果）、`OpenAIResponsesModel` 默认 `store` 下续轮是否正常。
@@ -428,6 +438,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T13 审查后修复：`ProjectWorkbenchPage` 原来只 `watch(stage, ...)` 清空 `sessionId`，改成 `watch(() => sessionResetKey(projectId.value, stage.value), ...)`——新增的纯函数 `sessionResetKey(projectId, stage)` 把两个值拼成一个比较键，项目或阶段任一个变化都会让键变化、触发一次清空；单独抽出来是因为这条 watch 表达式本身不好直接单测（依赖 `useRoute()`），拼键这一步是唯一有分支意义的逻辑，抽出来之后可以离开组件单测四种组合。
 - 2026-09-27 — T13 审查后修复：`addLocalUserMessage` 改为返回它插入的占位 `turnId`（原来是 `void`），新增 `removeLocalUserMessage(placeholderId)`——发送请求本身失败时占位必须能被撤回，否则占位会一直占着 `useSessionStream` 内部 FIFO 队列的队首，下一条真正发出去的消息对应的真实 turn 会被错误配对到这条"其实没发出去"的占位上。`removeLocalUserMessage` 对已经被真实 turn 认领的占位（`turnId` 已经被原地替换过）或者本来就不存在的 id 是安全的 no-op。
 - 2026-09-27 — T13 审查后修复：`ToolCallItem.result` 补上 `images: ToolResultImage[]` 字段（透传自 `ToolResultPayload.images`，之前直接丢弃）。M1 后端只持久化 `media_type`、不存图片内容（T6 控制者裁定），前端因此也只能显示"含 N 张图片，不可预览"的文字提示，不是真缩略图——记入「已知限制」，留给 M2 判断是否需要在后端补图片内容持久化。
+- 2026-09-28 — T14：`CodeEditor.vue` 不直接 `import ... from '@codemirror/state'`（哪怕只是 `import type`）——它只是 `codemirror` 包的间接依赖，不在「依赖清单」允许的四个包里，pnpm 严格 `node_modules` 下从 `frontend/src` 这一层解析不到（`frontend/node_modules/@codemirror/` 下只有 `lang-json`/`lang-markdown`/`lang-python` 三个符号链接，没有 `state`）。改用 `type Extension = typeof basicSetup` 让 TypeScript 通过 `codemirror` 自己的 `.d.ts`（它在自己的依赖闭包内能解析到 `@codemirror/state`）间接拿到同一个类型，不需要我们自己写这条 import。只读态/语言切换没有用 `Compartment` 动态重新配置（`codemirror` 包不重新导出它），改成整个销毁重建 `EditorView`——这两者只在切文件、agent 运行状态变化时触发，频率低，代价可以接受。
+- 2026-09-28 — T14：画布是否只读的 `busy` 由 `ProjectWorkbenchPage.vue` 单独开一条 `useSessionStream(sessionId)` 连接算出（只用它的 `turnStatus`，`items` 不用），而不是把 `SessionPanel.vue` 内部已经在用的那条连接的状态提升到页面层——一个会话因此同时有两条 SSE 连接。本地单人应用、SSE 事件量很小，这个代价换来的是 `FileCanvas` 不需要 import `features/workbench`（ESLint 分层规则禁止 features 互相 import），也不需要改动 `SessionPanel` 已经稳定的内部状态管理。`isBusyStatus(status)` 提成 `turnControls.ts` 的独立导出（原来 `BUSY_STATUSES` 只在 `computeTurnControls` 内部用）。
+- 2026-09-28 — T14：AC4 走查发现一个隐蔽 bug 并修复——`SnapshotTimeline.vue` 的 [确认回滚] 按钮用 `<AlertDialogAction @click="confirmRollback">`，而 `AlertDialogAction` 底层是 reka-ui 的 `DialogClose`：它自己的 `onClick`（把 `open` 置 `false`）和我们绑的 `@click` 加在同一个 DOM 按钮上，谁先谁后不由调用方控制。当 `DialogClose` 的处理先跑时，`<AlertDialog @update:open="... rollbackTarget = null">` 会抢在 `confirmRollback` 读到 `rollbackTarget.value` 之前把它清空，函数里的早退分支直接返回——**回滚请求完全不会发出，也没有任何报错或异常**，只有靠实际点开浏览器、检查网络请求列表才发现（`read_network_requests` 过滤 `rollback` 长期无匹配）。修复：另开一个不接入 Vue 响应式、不受 `update:open` 影响的普通变量 `pendingRollbackId` 单独记住待回滚的 id，`confirmRollback` 从它读，彻底绕开这条事件顺序竞态。这类"两个 `@click` 绑在同一个由第三方组件管理开关状态的按钮上"的模式以后要留意，`AlertDialogAction`/`DialogClose` 不是只做视觉展示的哑组件。
 
 ## 意外与发现
 
@@ -458,10 +471,13 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T13：ESLint 的 features 分层规则（`no-restricted-imports` 挡 `@/features/**`）连同一个 feature 目录内部互相引用也一起挡住了——第一版 `StageNav.vue`/`SessionPanel.vue` 用 `@/features/workbench/xxx` 引用同目录的 `stageStatus.ts`/`turnControls.ts`/`SessionTimelineItem.vue`，`pnpm run lint` 报 "features/* 之间互不 import"；改成相对路径 `./xxx`（同目录，不含 `..`，规则本就放行）后通过。spec 文件同理：`stageStatus.spec.ts`/`turnControls.spec.ts` 原来也用 `@/features/workbench/...` 导入被测模块，一并改成 `./`。以后 `features/<name>/` 目录内部互相引用一律用相对路径，跨 feature 才谈得上"要不要用 `@/`"（本来就不允许）。
 - 2026-09-27 — T13：手动浏览器验证时 `pnpm dlx shadcn-vue@latest add alert-dialog --yes` 一次成功（12.3s，只新增了 `components/ui/alert-dialog/` 10 个文件，没有改 `package.json`——`reka-ui` 已经在依赖里），说明沙箱环境本次有可用的出网权限；T11 记录过的网络不稳定（`@tabler/icons-vue` 没装上）这次没有重现。
 - 2026-09-27 — T13：`Claude_Browser` 的 `computer` 工具第一次 `screenshot` 有时会返回刚触发导航/点击前的旧画面（例如点击项目卡片后 URL 已经变成 `/projects/{id}/topic`，但截图仍显示项目列表），需要额外 `wait` 或再截一次图才能看到最新状态；`read_page`（accessibility tree）没有这个滞后，更适合用来确认"实际渲染了什么"，截图更适合确认"样式对不对"。
+- 2026-09-28 — T14 开始前 `make check` 基线不是绿的（本任务改动之前就已存在，与 T14 无关）：`pnpm run typecheck` 报 4 处 `vue-tsc` 错误——① `api/sse.ts`：`{ type, payload } as StreamEvent` 的联合类型收窄从"警告级别的宽松转换"变成硬报错（`TS2352`，`Record<string, unknown>` 和 `StreamEvent` 的 payload 联合类型判定为重叠不足）；② `components/ai-elements/prompt-input/PromptInput.vue`：`formRef`/`fileInputRef` 只在模板里以字符串 `ref="xxx"` 使用，`noUnusedLocals` 认不出这种用法，报"声明但未使用"；③④ `composables/{queries,useSessionStream}.spec.ts`：`@tanstack/vue-query`（锁定版本 `5.104.0`）的 `QueryClient.invalidateQueries` 类型签名是 `filters?: InvalidateQueryFilters | (() => InvalidateQueryFilters)`（支持传 getter/ref，见其类型声明文件顶部注释），测试里 `vi.spyOn` 记录的调用参数因此被推成联合类型，直接 `call[0]?.queryKey` 编译不过。用 `git stash` 掉本任务全部改动后复测，确认这 4 处在 T13 提交（`27b7427`）的状态下就已经报错——不是我引入的回归，但按 AGENTS.md「基线不绿时先处理这个问题」，没有绕过（没用 `// @ts-ignore`/放宽 `tsconfig`），逐个按最小改动修复：①④ 经 `unknown` 中转后按调用方实际用法收窄类型（写清楚为什么这里没法静态收窄）；②给两个 ref 各加一行 `void formRef`/`void fileInputRef` 说明只在模板里用；③④ 断言处显式转成 `{ queryKey?: unknown[] } | undefined` 后取值。全部只是类型标注层面的调整，运行时行为不变，`vitest run` 前后都是 108 个测试全绿。这批 pre-existing 报错大概率是某次 `pnpm install` 在 `^` 半开区间内解析到了比 T12/T13 编写时更新的补丁版本（`@tanstack/vue-query`/`vue-tsc`/`typescript`），使原本能过的写法现在过不了；没有再往前查是哪次安装引入的，记入这里供以后遇到类似"突然报错但没人改代码"时参考。
 
 ## 已知限制（非本任务缺陷，留给后续任务）
 
 - `useSessionStream` 的 `items` 数组只增不减，长会话（很多轮 turn）会让这个数组无限增长，没有做虚拟滚动或历史裁剪——T13 接入真实会话面板、出现长会话性能问题时再按需处理（比如只保留最近 N 轮 + "加载更早"的分页）。
+- T14：通用画布只对 `busy`（agent 运行中）和 `upstream/` 两种情况提前算出只读，不复刻后端 `is_writable`（§4.3）完整的阶段可写范围规则——落在范围之外的手动编辑，编辑器本身不会置灰，保存时后端 403 拒绝，前端把错误信息显示出来（"保存失败：不在当前阶段的可写范围内"），不是静默失败，但用户要点一次保存才会看到。M1 阶段占位定义的可写范围目前和"整个工作区减 upstream"基本重合，这个差异实际不常触发；如果后续阶段的可写范围变复杂（比如某些子目录 tool_managed），可以考虑把 `is_writable` 的规则搬一份到前端做即时反馈。
+- T14：`FileCanvas`/`SnapshotTimeline` 判断"是否有一轮在跑"（`busy`）时，`ProjectWorkbenchPage` 单独开了第二条 `useSessionStream` SSE 连接（只用它的 `turnStatus`），和 `SessionPanel` 内部那条并存——同一个会话同时有两条 SSE 连接。本地单人应用可以接受，但如果以后要减少连接数，可以考虑把 `turnStatus` 从 `SessionPanel` 提升到页面层、两边共用一条连接（需要相应调整 `SessionPanel` 的 props 接口）。
 - T13 审查发现：工具结果里的图片（`ToolResultPayload.images`）在 M1 没法在会话面板里预览缩略图——T6 的控制者裁定是后端只持久化 `ToolResultImage.media_type`，不存图片内容本身（图片数据可能很大，M1 没有实现对应的存储/清理机制）。前端 `ToolCallItem.result.images` 保留了这个字段、`SessionTimelineItem` 在工具结果下面渲染一句"含 N 张图片（M1 未存图片内容，不可预览）"的文字占位，不是真缩略图。M2 落地 `render_preview` 关键帧时，如果产物预览需要真的显示图片，要先在后端补图片内容的持久化（存到 blob 或工作区文件，再由前端按路径/id 拉取），这属于新的设计决策，不是简单的前端改动。
 
 ## 阻塞
@@ -474,4 +490,4 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 无
+- 2026-09-28 — T14 — AC4（画布 + 快照时间线全部交互）：`make check` 全绿（后端 423 + 前端 102 个测试）；浏览器走查（`mcp__Claude_Browser__*`，`.claude/launch.json` 的 `api`/`frontend` 配置，`STUDIO_ENABLE_FAKE_RUNTIME=true`）覆盖：新建项目 → 新建 `fake` 会话 → 发消息 → 流式文本 + 可折叠 `write_file` 工具调用 → 画布出现 `topic/fake-note.md` → 时间线出现新快照 → 打开文件用 CodeMirror 编辑并保存（`PUT` 200）→ 再发一条消息，agent 前言里正确带出用户手动修改的 diff，时间线依次出现 `手动编辑`/`Agent 一轮` 两条快照 → 选中两个快照 [对比] 显示 `新增：topic/fake-note.md` → [回滚到此] 二次确认 → 回滚成功（时间线新增"回滚"快照，画布文件树回到只有 `style/STYLE.md`）。走查记录（含发现并修复的回滚竞态 bug）见 `data/evidence/m1/t14-ac4-walkthrough.md`。未覆盖：`busy=true` 时画布只读的浏览器实测截图、未保存修改冲突横幅的端到端截图（原因和纯函数单测覆盖情况见该文件「未覆盖 / 已知限制」一节和计划「下一步」）。

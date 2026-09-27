@@ -22,7 +22,10 @@ describe('invalidateWorkspace', () => {
 
     await invalidateWorkspace(queryClient, 'p1')
 
-    const keys = spy.mock.calls.map((call) => call[0]?.queryKey)
+    // vue-query 的 `invalidateQueries` 类型上允许 `filters` 是一个返回 filters 的函数
+    // （方便传 `ref`/getter），但 `invalidateWorkspace` 永远直接传对象字面量，测试
+    // 断言时按对象形状收窄即可。
+    const keys = spy.mock.calls.map((call) => (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey)
     expect(keys).toContainEqual(['projects', 'p1', 'files'])
     expect(keys).toContainEqual(['projects', 'p1', 'snapshots'])
   })
