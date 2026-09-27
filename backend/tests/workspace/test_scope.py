@@ -177,6 +177,38 @@ class TestGuard:
         assert (workdir / "output" / "link.mp4").is_symlink()
         assert report.restored == []
 
+    def test_restore_does_not_write_through_symlinked_directory(
+        self, blobs: BlobStore, workdir: Path, tmp_path: Path
+    ) -> None:
+        # Agent: `rm -rf style && ln -s <external> style`.
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        original_sha = blobs.put(b"# style")
+        before = {"style/STYLE.md": original_sha}
+        external = tmp_path / "external"
+        external.mkdir()
+        (workdir / "style").symlink_to(external, target_is_directory=True)
+        after: dict[str, str] = {}
+
+        report = guard(workdir, before, after, scope, blobs, tool_writes={})
+
+        assert list(external.iterdir()) == []
+        assert not (workdir / "style").is_symlink()
+        assert (workdir / "style" / "STYLE.md").read_bytes() == b"# style"
+        assert "style/STYLE.md" in report.restored
+
+    def test_restore_replaces_directory_created_at_file_path(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        original_sha = blobs.put(b"# style")
+        before = {"style/STYLE.md": original_sha}
+        (workdir / "style" / "STYLE.md").mkdir(parents=True)
+
+        report = guard(workdir, before, {}, scope, blobs, tool_writes={})
+
+        assert (workdir / "style" / "STYLE.md").read_bytes() == b"# style"
+        assert report.restored == ["style/STYLE.md"]
+
 
 def test_guard_report_is_dataclass() -> None:
     report = GuardReport(restored=["a"])

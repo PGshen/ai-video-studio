@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,9 +56,44 @@ class GuardReport:
     """被还原（含新增被删除、修改/删除被恢复）或被清除的符号链接的相对路径。"""
 
 
-def _write_bytes(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+def _clear_obstacle(path: Path) -> None:
+    """删掉挡在还原路径上的东西：符号链接或文件只 unlink（不跟随），目录整棵删除。"""
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _restore_bytes(workdir: Path, relpath: str, data: bytes) -> None:
+    """把 `data` 写回 `workdir/relpath`，保证写入不经过任何符号链接。
+
+    guard 已先清除了可快照目录里的符号链接，这里再逐级检查一次（防御性）：
+    路径中间任一环节是符号链接或普通文件就删掉它再建目录；目标本身是符号
+    链接或目录也先删掉，避免写穿到工作区外或因 `IsADirectoryError` 卡住。
+    """
+    parts = Path(relpath).parts
+    current = workdir
+    for part in parts[:-1]:
+        current = current / part
+        if current.is_symlink() or (current.exists() and not current.is_dir()):
+            current.unlink()
+        if not current.exists():
+            current.mkdir()
+    dest = current / parts[-1]
+    if dest.is_symlink() or dest.is_dir():
+        _clear_obstacle(dest)
+    dest.write_bytes(data)
+
+
+def _remove_file(workdir: Path, relpath: str) -> None:
+    """删除一个越界新增的文件；路径上有符号链接时不跟随（符号链接已由 guard 清除）。"""
+    current = workdir
+    for part in Path(relpath).parts:
+        current = current / part
+        if current.is_symlink():
+            return
+    if current.is_file():
+        current.unlink()
 
 
 def _find_symlinks(workdir: Path) -> list[Path]:
@@ -105,11 +141,17 @@ def guard(
     workdir = Path(workdir)
     restored: list[str] = []
 
+    # Symlinks first: a restore must never write through a directory symlink the
+    # agent planted (e.g. `rm -rf style && ln -s /outside style`).
+    for symlink_path in _find_symlinks(workdir):
+        symlink_path.unlink()
+        restored.append(symlink_path.relative_to(workdir).as_posix())
+
     for path in sorted(set(before) | set(after) | set(tool_writes)):
         if path in tool_writes:
             expected_sha256 = tool_writes[path]
             if after.get(path) != expected_sha256:
-                _write_bytes(workdir / path, blobs.get(expected_sha256))
+                _restore_bytes(workdir, path, blobs.get(expected_sha256))
                 restored.append(path)
             continue
 
@@ -121,13 +163,9 @@ def guard(
             continue
 
         if before_sha256 is None:
-            (workdir / path).unlink(missing_ok=True)
+            _remove_file(workdir, path)
         else:
-            _write_bytes(workdir / path, blobs.get(before_sha256))
+            _restore_bytes(workdir, path, blobs.get(before_sha256))
         restored.append(path)
 
-    for symlink_path in _find_symlinks(workdir):
-        symlink_path.unlink()
-        restored.append(symlink_path.relative_to(workdir).as_posix())
-
-    return GuardReport(restored=sorted(restored))
+    return GuardReport(restored=sorted(set(restored)))

@@ -21,18 +21,27 @@ _READONLY_FILE_MODE = 0o444
 
 
 def _make_tree_writable(path: Path) -> None:
-    """回收只读权限，以便 `shutil.rmtree` 能删除上一轮物化的只读文件。
+    """回收权限，以便 `shutil.rmtree` 能删除上一轮物化的只读文件。
 
-    跳过符号链接：`materialize_upstream` 本身不会写符号链接，但排除目录本来
-    就不受越界检查约束，agent 仍可能在上一轮往 `upstream/<stage>/` 里放一个
-    符号链接。`chmod` 默认跟随符号链接，会改到链接目标（可能在工作区之外）
-    的权限；不跟随（`follow_symlinks=False`）在部分平台上 `chmod` 又不支持
-    对符号链接本身生效，所以干脆跳过——`shutil.rmtree` 删除符号链接本身不
-    需要先改它的权限。
+    目录补上 `u+rwx`（agent 可能 `chmod 000 upstream/topic`，没有 r/x 就
+    列不出、删不掉里面的条目），文件补上 `u+w`。自顶向下遍历，先改父目录
+    的权限再进入它。跳过符号链接：`chmod` 默认跟随符号链接，会改到链接目标
+    （可能在工作区之外）的权限；`shutil.rmtree` 删除符号链接本身不需要改它
+    的权限。
     """
+    path.chmod(path.stat().st_mode | stat.S_IRWXU)
     for root, dirnames, filenames in os.walk(path):
-        for name in (*dirnames, *filenames):
-            entry = Path(root) / name
+        root_path = Path(root)
+        for name in dirnames:
+            entry = root_path / name
+            if entry.is_symlink():
+                continue
+            try:
+                entry.chmod(entry.stat().st_mode | stat.S_IRWXU)
+            except FileNotFoundError:
+                pass
+        for name in filenames:
+            entry = root_path / name
             if entry.is_symlink():
                 continue
             try:
@@ -42,6 +51,10 @@ def _make_tree_writable(path: Path) -> None:
 
 
 def _clear_dir(path: Path) -> None:
+    """删除 `path`：符号链接或文件只 unlink（不跟随、不改链接目标权限），目录整棵删除。"""
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return
     if not path.exists():
         return
     _make_tree_writable(path)
@@ -98,6 +111,9 @@ def upstream_drift(workdir: Path | str, sources: dict[str, Manifest | None]) -> 
     workdir = Path(workdir)
     expected = _expected_upstream(sources)
     actual: dict[str, str] = {}
+    if (workdir / "upstream").is_symlink():
+        # os.walk would follow a symlinked top directory; report it instead.
+        return sorted({"upstream", *expected})
     for root, dirnames, filenames in os.walk(workdir / "upstream", followlinks=False):
         root_path = Path(root)
         for name in (*dirnames, *filenames):
@@ -106,7 +122,11 @@ def upstream_drift(workdir: Path | str, sources: dict[str, Manifest | None]) -> 
             if entry.is_symlink():
                 actual[rel_path] = "symlink"
             elif entry.is_file():
-                actual[rel_path] = hashlib.sha256(entry.read_bytes()).hexdigest()
+                try:
+                    actual[rel_path] = hashlib.sha256(entry.read_bytes()).hexdigest()
+                except OSError:
+                    # Unreadable (e.g. agent ran `chmod 000`): count it as drift.
+                    actual[rel_path] = "unreadable"
     return sorted(
         path for path in set(expected) | set(actual) if expected.get(path) != actual.get(path)
     )

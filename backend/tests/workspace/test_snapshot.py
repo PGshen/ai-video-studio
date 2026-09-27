@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine
 
+from studio.db.repo.snapshots import insert_snapshot, list_snapshots
 from studio.workspace.blobs import BlobStore
 from studio.workspace.layout import EXCLUDED_TOP_DIRS
 from studio.workspace.snapshot import (
@@ -254,3 +255,56 @@ class TestRollback:
     ) -> None:
         with pytest.raises(ValueError):
             rollback(engine, blobs, project_id, "does-not-exist")
+
+    def test_unsnapshotted_manual_edit_is_recoverable_after_rollback(
+        self, engine: Engine, blobs: BlobStore, project_id: str, workdir: Path
+    ) -> None:
+        _write(workdir / "topic" / "a.md", "v1")
+        snap1 = create_snapshot(engine, blobs, project_id, reason="turn")
+        _write(workdir / "topic" / "a.md", "v2")
+        create_snapshot(engine, blobs, project_id, reason="turn")
+
+        # Manual edit that no snapshot has captured yet (PUT /files does not snapshot).
+        _write(workdir / "topic" / "a.md", "manual")
+
+        rollback(engine, blobs, project_id, snap1.id)
+        assert (workdir / "topic" / "a.md").read_text(encoding="utf-8") == "v1"
+
+        edits = [
+            snap
+            for snap in list_snapshots(engine, project_id)
+            if snap.manifest.get("topic/a.md") is not None
+            and blobs.get(snap.manifest["topic/a.md"]) == b"manual"
+        ]
+        assert len(edits) == 1
+        assert edits[0].reason == "user_edit"
+
+        undo = rollback(engine, blobs, project_id, edits[0].id)
+        assert undo.created is True
+        assert (workdir / "topic" / "a.md").read_text(encoding="utf-8") == "manual"
+
+    def test_rollback_without_pending_edits_creates_no_extra_snapshot(
+        self, engine: Engine, blobs: BlobStore, project_id: str, workdir: Path
+    ) -> None:
+        _write(workdir / "topic" / "a.md", "v1")
+        snap1 = create_snapshot(engine, blobs, project_id, reason="turn")
+        _write(workdir / "topic" / "a.md", "v2")
+        create_snapshot(engine, blobs, project_id, reason="turn")
+
+        rollback(engine, blobs, project_id, snap1.id)
+
+        reasons = [snap.reason for snap in list_snapshots(engine, project_id)]
+        assert reasons == ["turn", "turn", "rollback"]
+
+    def test_manifest_key_with_dotdot_is_rejected(
+        self, engine: Engine, blobs: BlobStore, project_id: str, workdir: Path, data_dir: Path
+    ) -> None:
+        sha = blobs.put(b"evil")
+        bad = insert_snapshot(
+            engine, project_id=project_id, manifest={"../escaped.txt": sha}, reason="turn"
+        )
+
+        with pytest.raises(ValueError):
+            rollback(engine, blobs, project_id, bad.id)
+
+        assert not (workdir.parent / "escaped.txt").exists()

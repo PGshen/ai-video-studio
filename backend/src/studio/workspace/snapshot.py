@@ -221,11 +221,19 @@ def rollback(
 ) -> SnapshotRef:
     """回滚到目标快照：写回清单内容、删除清单外文件，再新建 `reason=rollback` 快照。
 
+    覆盖之前先给当前工作区拍一份 `reason=user_edit` 快照（内容未变时不新建，
+    与 `stage_flow.finalize` 一致）：用户通过文件接口做的手动修改不会自动
+    快照，不先拍的话回滚会把它们永久覆盖，回滚本身也无法撤销。
+
     排除目录（`EXCLUDED_TOP_DIRS`）不参与快照，回滚不会触碰它们。
     """
     target = get_snapshot(engine, target_snapshot_id)
     if target is None:
         raise ValueError(f"快照不存在：{target_snapshot_id}")
+    if target.project_id != project_id:
+        raise ValueError(f"快照不属于项目 {project_id}：{target_snapshot_id}")
+
+    create_snapshot(engine, blobs, project_id, reason="user_edit")
 
     workdir = project_dir(_data_dir_of(blobs), project_id)
     workdir.mkdir(parents=True, exist_ok=True)
