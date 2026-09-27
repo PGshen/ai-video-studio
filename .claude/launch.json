@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "api",
-      "runtimeExecutable": "/Users/peng/.local/bin/uv",
+      "runtimeExecutable": "uv",
       "runtimeArgs": [
         "run",
         "uvicorn",
@@ -19,14 +19,16 @@
       "cwd": "backend",
       "port": 8000,
       "env": {
-        "STUDIO_ENABLE_FAKE_RUNTIME": "true",
-        "STUDIO_DATA_DIR": "/Users/peng/Me/Ai/ai-video-studio/.claude/worktrees/m1-skeleton/data"
+        "STUDIO_ENABLE_FAKE_RUNTIME": "true"
       }
     },
     {
       "name": "frontend",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "frontend",
       "port": 5173
     }
