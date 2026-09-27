@@ -18,6 +18,7 @@ _WRITE_SCOPE = WriteScope(writable=["topic/**"], tool_managed=[])
 
 class TopicStage:
     name = "topic"
+    allow_web = True
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")

@@ -12,13 +12,24 @@ from typing import Literal
 
 TurnStatus = Literal["done", "failed", "cancelled", "budget_exceeded"]
 
-FILE_TOOL_NAMES = frozenset({"write_file", "shell"})
+FILE_TOOL_NAMES = frozenset(
+    {"write_file", "shell", "Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"}
+)
 """`ToolCall.name` 属于这个集合时视为“文件类工具调用”：TurnRunner（T6）在
 这类调用之后需要推送 `workspace_changed` 事件（设计 §4.4 步骤 5）。
-`write_file` 对应原生文件写工具（`fake.write`），`shell` 对应 Shell 类原生
-工具（`fake.shell_write`）——两者都可能改动工作区文件，但只有前者受事前
-拦截约束。
+
+- `write_file`/`shell`：FakeRuntime 的原生文件写工具（`fake.write`）和 Shell
+  类工具（`fake.shell_write`）。
+- `Write`/`Edit`/`MultiEdit`/`NotebookEdit`/`Bash`：Claude Code 原生工具名
+  （T9：ClaudeRuntime 原样保留原生工具名，不映射成规范名，界面上看到的就是
+  SDK 真实调用的工具）。它们的参数里没有 `path`（Claude 用 `file_path`/
+  `notebook_path`/`command`），TurnRunner 因此推送空路径列表，表示"路径未知，
+  整体刷新"。
+
+其中只有写文件类工具受事前拦截约束，Shell 类只能靠事后 `guard` 兜底。
 """
+
+AuthMode = Literal["api_key", "login"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,9 +78,16 @@ class ToolResult:
 
 @dataclass(frozen=True, slots=True)
 class Usage:
+    """本轮（不是会话累计）的用量。
+
+    `auth == "login"`（Claude 本机登录/订阅账号）时 `cost_usd` 只是 CLI 的估算，
+    TurnRunner 不按它强制成本预算（计划决策记录 2026-09-27）。
+    """
+
     input_tokens: int
     output_tokens: int
     cost_usd: float
+    auth: AuthMode | None = None
 
 
 @dataclass(frozen=True, slots=True)

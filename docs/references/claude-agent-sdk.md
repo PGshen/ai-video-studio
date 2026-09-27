@@ -1,18 +1,38 @@
 # Claude Agent SDK（Python，`claude-agent-sdk`）
 
-用于 `agent/` 中的 ClaudeRuntime。设计依据见[架构设计 §4](../design/2026-09-26-architecture.md)。
+用于 `agent/claude_runtime.py` 中的 ClaudeRuntime。设计依据见[架构设计 §4](../design/2026-09-26-architecture.md)。
+
+T9（2026-09-27）核实时安装的版本：`claude-agent-sdk 0.2.160`，内置 Claude Code CLI `2.1.283`（`claude_agent_sdk/_cli_version.py`）。下文"源码"指 `backend/.venv/lib/python3.12/site-packages/claude_agent_sdk/` 下的文件；"CLI 源码"指内置 CLI 可执行文件 `_bundled/claude` 中嵌入的 JS（用 `strings` 提取后检索，主要是消息 schema 的 `describe()` 文本）。只有真实调用才能确认的行为标为"⚠️ T15 实测"。
 
 ## 事实
 
 | 状态 | 内容 | 来源 |
 |---|---|---|
-| ⚠️ 待验证 | 选项通过 `ClaudeAgentOptions` 传入，旧项目用过的字段有：`model`、`cwd`、`setting_sources=[]`（不加载本地设置文件）、`permission_mode="acceptEdits"`、`max_turns`、`max_budget_usd`、`mcp_servers`、`allowed_tools`、`tools`（可用的内置工具列表）、`env`（传入 `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`）、`resume` | 旧项目 `../ai-video/backend/app/services/strategies/claude_agent_runtime.py` |
-| ⚠️ 待验证 | 业务工具用 `@tool(name, description, schema)` 定义，再用 `create_sdk_mcp_server(name, version, tools)` 做成进程内 MCP server；工具返回 `{"content": [...], "is_error": bool}` | 旧项目 `agent_sandbox.py: build_validate_server` |
-| ⚠️ 待验证 | 流式消息中带有 `session_id`；最终的 result 消息带有 `subtype`、`result`、`total_cost_usd`、`num_turns`，而且都是**累计值**（恢复会话后需要减去之前的值） | 旧项目 `claude_agent_runtime.py` |
-| ⚠️ 待验证 | 工具返回图片：MCP 的 image content block（`{"type": "image", "data": <base64>, "mimeType": ...}`） | 推断，M1 冒烟测试时验证（R2） |
-| ⚠️ 待验证 | `PreToolUse` hook 可以拦截 Write/Edit，并返回拒绝原因 | 推断，M1 验证 |
-| ⚠️ 待验证 | 可以开启 sandbox 选项来限制 Bash 的文件系统访问；macOS 上的具体行为未知 | 推断，M1 验证（R3） |
-| ⚠️ 待验证 | 会话存储位置可以通过环境变量（例如 `CLAUDE_CONFIG_DIR`）指向数据目录 | 推断，M1 验证（R4） |
-| ⚠️ 待验证 | 中断正在运行的轮次：`ClaudeSDKClient.interrupt()`；使用 `query()` 时只能关闭流 | 推断，M1 验证 |
+| ✅ 已验证（2026-09-27，0.2.160） | 选项通过 `ClaudeAgentOptions` 传入。本项目用到的字段都存在：`model`、`cwd`、`system_prompt`、`tools`（可用的内置工具列表，`[]` 表示全部禁用）、`allowed_tools`（免确认的工具）、`setting_sources=[]`（不加载任何本地设置文件；`None` 表示全部加载）、`strict_mcp_config`（只用传入的 MCP server）、`permission_mode="acceptEdits"`、`resume`、`env`、`mcp_servers`、`hooks`、`sandbox`、`include_partial_messages`、`max_budget_usd`、`verbatim_prompts`；另有 `max_turns`、`session_store` 等未使用 | 源码 `types.py: ClaudeAgentOptions` |
+| ✅ 已验证（2026-09-27，0.2.160） | `env` **合并在父进程 `os.environ` 之上**（只丢弃继承来的 `CLAUDECODE`），无法删除继承的变量，只能覆盖。要"去掉"某个变量只能设为空字符串 | 源码 `_internal/transport/subprocess_cli.py`（`process_env = {**inherited_env, ..., **self._options.env}`） |
+| ✅ 已验证（2026-09-27，CLI 2.1.283） | CLI 判断 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` 时按 JS 真值判断（`if(a.ANTHROPIC_API_KEY)` 等），空字符串等同于未设置；有值时 API key 优先于本机登录凭据（CLI 的错误说明里也提到环境变量的 key 会"覆盖账号登录"） | CLI 源码（凭据解析函数与 `org_disabled_credential` 说明） |
+| ⚠️ T15 实测 | 本机登录模式：ClaudeRuntime 把 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN` 置空、不改 `CLAUDE_CONFIG_DIR`，CLI 应沿用本机已登录的订阅账号 | 由上两条推出 |
+| ✅ 已验证（2026-09-27，0.2.160） | 业务工具：`SdkMcpTool(name, description, input_schema, handler)`（`@tool` 装饰器就是构造它）+ `create_sdk_mcp_server(name, version, tools)` 得到 `{"type": "sdk", "name", "instance"}`。`input_schema` 可直接给含 `type`/`properties` 的 JSON Schema（Pydantic `model_json_schema()` 可用），SDK 先用 `jsonschema` 校验参数再调 handler；handler 收一个 dict，返回 `{"content": [...], "is_error": bool}`；未知工具、参数不合法、handler 抛异常都转成 `isError` 结果，不会中断请求。模型看到的工具名是 `mcp__<server 名>__<工具名>`，需要放进 `allowed_tools` | 源码 `__init__.py: tool / create_sdk_mcp_server / _convert_tool_content` |
+| ✅ 已验证（2026-09-27，0.2.160） | 工具返回图片：handler 的 content 里放 `{"type": "image", "data": <base64>, "mimeType": ...}`，SDK 原样转成 MCP image content（`text`/`image` 透传，`resource_link`/文本 `resource` 压成文本，其他类型丢弃并记警告） | 源码 `__init__.py: _convert_tool_content` |
+| ⚠️ T15 实测（R2） | 模型是否真的"看到"工具返回的图片；以及 CLI 回传给我们的 `ToolResultBlock.content` 里图片是 Anthropic API 形态（`{"type":"image","source":{"type":"base64","media_type","data"}}`）还是 MCP 形态——ClaudeRuntime 两种都解析 | — |
+| ✅ 已验证（2026-09-27，0.2.160） | 消息类型：`SystemMessage(subtype, data)`（`init` 的 `data` 里有 `session_id`）、`AssistantMessage(content, model, parent_tool_use_id, usage, session_id, ...)`、`UserMessage(content, parent_tool_use_id, ...)`（工具结果以 `ToolResultBlock(tool_use_id, content: str \| list[dict] \| None, is_error)` 出现在这里）、`StreamEvent(uuid, session_id, event, parent_tool_use_id)`（仅 `include_partial_messages=True` 时出现，`event` 是原始 API 流事件，文本增量为 `content_block_delta` + `delta.type == "text_delta"`）、`ResultMessage(subtype, is_error, num_turns, session_id, total_cost_usd, usage, result, errors, terminal_reason, ...)`。`parent_tool_use_id` 非空表示子 agent 的消息 | 源码 `types.py`、`_internal/message_parser.py` |
+| ✅ 已验证（2026-09-27，CLI 2.1.283） | **累计值语义**：`ResultMessage.total_cost_usd` 是"本次 `query()` 调用"的累计估算；在流式输入会话（`ClaudeSDKClient`）里跨轮累计；**恢复（resume）的会话从 transcript 保存的累计值继续**（若有），所以第一条 result 就包含之前各轮的花费；`/clear` 会清零；出错/启动失败的 result 可能是 0。`modelUsage` 同样累计。`usage` 只统计主循环，并且在流式输入会话里是**每轮的值**。`max_budget_usd` 只统计本次 `query()` 调用开始后的花费 | CLI 源码（result 消息 schema 中 `total_cost_usd`、`modelUsage`、`usage` 的 `describe()` 文本） |
+| ⚠️ T15 实测 | transcript 是否真的保存了累计值（"when it has one"）；ClaudeRuntime 两种情况都能处理（见下方"本项目的用法"） | — |
+| ✅ 已验证（2026-09-27，0.2.160） | `result.subtype` 取值包括 `success`、`error_max_budget_usd` 等；`terminal_reason` 为 `aborted_streaming`/`aborted_tools` 表示被 `interrupt()` 中断 | 源码 `types.py: ResultMessage` 注释、`ClaudeAgentOptions.max_budget_usd` 注释 |
+| ✅ 已验证（2026-09-27，0.2.160） | `PreToolUse` hook：`hooks={"PreToolUse": [HookMatcher(matcher="Write\|Edit\|MultiEdit\|NotebookEdit", hooks=[callback])]}`；回调签名 `(input, tool_use_id, context) -> dict`，`input` 含 `tool_name`、`tool_input`、`tool_use_id`、`cwd`；拒绝时返回 `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "..."}}`。hook 对每次工具调用都生效，不受 `permission_mode`/`allowed_tools` 影响 | 源码 `types.py: PreToolUseHookInput / PreToolUseHookSpecificOutput / HookMatcher`、`ClaudeAgentOptions.can_use_tool` 注释 |
+| ⚠️ T15 实测 | 被 hook 拒绝后，模型收到的是带拒绝原因的错误工具结果（流里表现为 `is_error=True` 的 `ToolResultBlock`） | — |
+| ✅ 已验证（2026-09-27，0.2.160） | sandbox：`sandbox=SandboxSettings`（`enabled`、`autoAllowBashIfSandboxed`（默认 true）、`allowUnsandboxedCommands`（默认 true：模型可以用 `dangerouslyDisableSandbox` 参数逐条绕过；设为 false 则一律在沙箱中运行）、`excludedCommands`、`network`、`ignoreViolations`）。SDK 把它合并进 `--settings` 的 JSON 传给 CLI（"flag settings" 层，与 `setting_sources` 无关）。只作用于 Bash，macOS/Linux 可用；Read/Write/Edit 的限制要靠权限规则或 hook。CLI 另有 `filesystem.allowWrite/denyWrite/denyRead` 与 `network.allowedDomains`（沙箱内网络出站只允许这些域名） | 源码 `types.py: SandboxSettings`、`subprocess_cli.py: _build_settings_value`；CLI 源码（sandbox settings schema） |
+| ⚠️ T15 实测（R3） | macOS 上沙箱是否确实阻止 Bash 写工作区（`cwd`）之外的文件、默认可写范围是否就是 `cwd` | — |
+| ✅ 已验证（2026-09-27，0.2.160） | 会话存储位置：`$CLAUDE_CONFIG_DIR/projects/<由 cwd 推出的 project key>/<session_id>.jsonl`，未设置时是 `~/.claude/projects/...`。可以通过 `env={"CLAUDE_CONFIG_DIR": ...}` 改到数据目录。但 `CLAUDE_CONFIG_DIR` 同时决定 `.credentials.json`、`settings.json`、`.claude.json` 的位置，并且**改变 macOS 钥匙串中 OAuth 凭据的 service 名后缀**，所以改了之后读不到原来的本机登录凭据（SDK 自己的 session-store 恢复逻辑为此专门把钥匙串里的凭据复制出来） | 源码 `_internal/sessions.py: _get_projects_dir`、`_internal/session_resume.py: _copy_auth_files` 注释 |
+| ⚠️ T15 实测（R4） | API key 模式下把 `CLAUDE_CONFIG_DIR` 指向 `data/claude/` 能正常创建、恢复会话 | — |
+| ✅ 已验证（2026-09-27，0.2.160） | 中断：`ClaudeSDKClient.interrupt()` 发送 `interrupt` 控制请求（只在流式模式下可用，必须已 `connect()`）；中断后 CLI 仍会发出 result 消息（`terminal_reason` 为 `aborted_*`），`receive_response()` 在 result 后结束。`disconnect()` 会先取消仍在运行的 SDK MCP 工具调用 | 源码 `client.py: interrupt / receive_response / disconnect`、`_internal/query.py: interrupt` |
+| ✅ 已验证（2026-09-27，0.2.160） | `verbatim_prompts=True`：发给 CLI 的用户消息不做 `@path` 文件展开、不分派斜杠命令（要求 CLI ≥ 2.1.248，内置 CLI 满足） | 源码 `types.py: ClaudeAgentOptions.verbatim_prompts` |
 | ✅ 已验证（2026-09-27） | 官方政策：除非事先获批，Anthropic 不允许第三方开发者在其产品（包括基于 Agent SDK 构建的 agent）中提供 claude.ai 登录或订阅额度，应使用 API key 认证（也支持 Bedrock / Vertex 等云厂商认证） | [Agent SDK Overview](https://docs.claude.com/en/docs/agent-sdk/overview) |
-| ⚠️ 待验证 | 技术上 SDK 通过子进程调用 Claude Code CLI；未设置 `ANTHROPIC_API_KEY` 时，CLI 会沿用本机已登录的凭据（订阅账号）。若把 `CLAUDE_CONFIG_DIR` 指向数据目录（R4），可能读不到原有登录状态 | 推断，T9 读源码、T15 实测 |
+
+## 本项目的用法（T9）
+
+- 每轮新建一个 `ClaudeSDKClient`，`resume=会话的 sdk_ref`；`TurnEnd.resume_ref` 是 result 的 `session_id`。
+- **认证**：模型配置 `api_key_env` 有值 → 注入 `ANTHROPIC_API_KEY`，`ANTHROPIC_AUTH_TOKEN` 置空，`CLAUDE_CONFIG_DIR=<data_dir>/claude`；变量缺失 → 本轮 `failed`（不启动 CLI）。`api_key_env` 为空 → 本机登录模式：`ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN` 置空，不改 `CLAUDE_CONFIG_DIR`（会话存储留在 `~/.claude/projects/`），`Usage.auth="login"`，成本不强制。R4 的最终结论在 T15。
+- **成本**：每轮的花费 = 本次 `total_cost_usd` − 该会话上次记录的累计值，记录落盘在 `<data_dir>/claude/studio-cost-ledger/<session_id>.json`（进程重启后仍能求差）。本次累计值小于记录值（transcript 没保存累计值、`/clear` 等）时，把本次累计值当作本轮花费；累计值为 0 时不更新记录。token 数直接用 result 的 `usage`（每轮值；输入 = `input_tokens` + 两种 cache token）。
+- **预算**：步数（工具调用数）超限 → `interrupt()`，本轮 `budget_exceeded`；成本上限在 API key 模式下交给 `max_budget_usd`（正好是本轮花费），result 为 `error_max_budget_usd` 时本轮 `budget_exceeded`；登录模式不设。
+- **工具名**：原生工具名原样保留（`Write`/`Edit`/`MultiEdit`/`NotebookEdit`/`Bash` 已加入 `events.FILE_TOOL_NAMES`）；业务工具去掉 `mcp__studio__` 前缀后作为 `ToolCall.name`。

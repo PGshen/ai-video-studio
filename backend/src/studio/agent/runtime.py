@@ -75,6 +75,10 @@ class TurnContext:
     project_id: str
     stage: str
     record_tool_write: Callable[[str, str], None]
+    allow_web: bool = False
+    """是否开放联网工具（Claude 的 WebSearch/WebFetch）；TurnRunner 从
+    `StageDefinition.allow_web` 取值（T9 控制者裁定：topic 开、其余关）。
+    """
 
 
 @runtime_checkable

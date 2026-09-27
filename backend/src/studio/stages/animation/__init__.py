@@ -18,6 +18,7 @@ _WRITE_SCOPE = WriteScope(writable=["animation/scenes/**"], tool_managed=[])
 
 class AnimationStage:
     name = "animation"
+    allow_web = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")

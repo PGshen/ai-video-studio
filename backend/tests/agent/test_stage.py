@@ -15,6 +15,7 @@ from studio.workspace.scope import WriteScope
 
 class _StubStage:
     name = "stub"
+    allow_web = False
 
     def system_prompt(self) -> str:
         return "stub"

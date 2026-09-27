@@ -25,6 +25,9 @@ class TestTopicStage:
     def test_no_business_tools_in_m1(self) -> None:
         assert topic_stage.tools() == []
 
+    def test_web_tools_allowed(self) -> None:
+        assert topic_stage.allow_web is True
+
     def test_system_prompt_is_non_empty(self) -> None:
         assert topic_stage.system_prompt().strip() != ""
 
@@ -42,6 +45,9 @@ class TestNarrativeStage:
         assert narrative_stage.upstream_stages() == ["topic"]
         assert narrative_stage.artifact_dirs() == ["narrative"]
 
+    def test_web_tools_not_allowed(self) -> None:
+        assert narrative_stage.allow_web is False
+
 
 class TestAnimationStage:
     def test_write_scope_matches_design(self) -> None:
@@ -52,3 +58,6 @@ class TestAnimationStage:
     def test_upstream_and_artifact_dirs(self) -> None:
         assert animation_stage.upstream_stages() == ["narrative"]
         assert animation_stage.artifact_dirs() == ["animation/scenes"]
+
+    def test_web_tools_not_allowed(self) -> None:
+        assert animation_stage.allow_web is False

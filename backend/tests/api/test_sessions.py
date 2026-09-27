@@ -5,6 +5,8 @@ from __future__ import annotations
 from studio.agent import register_fake
 from studio.agent.fake import FakeRuntime, sleep
 from studio.agent.runtime import UserInput
+from studio.db.engine import session_scope
+from studio.db.models import ModelProfile
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import create_session
 from studio.db.repo.turns import (
@@ -103,12 +105,16 @@ class TestCreateSession:
 
     async def test_unregistered_runtime_is_400(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)
-        claude_profile = get_model_profile(api_env.app.state.engine, "claude-sonnet")
-        assert claude_profile is not None
+        # `claude` is always registered since T9; use a runtime nobody registers.
+        with session_scope(api_env.app.state.engine) as db:
+            row = ModelProfile(name="orphan", provider="x", model="x", runtime="unregistered")
+            db.add(row)
+            db.flush()
+            profile_id = row.id
 
         response = await api_env.client.post(
             f"/api/projects/{pid}/stages/topic/sessions",
-            json={"model_profile_id": claude_profile.id},
+            json={"model_profile_id": profile_id},
         )
 
         assert response.status_code == 400

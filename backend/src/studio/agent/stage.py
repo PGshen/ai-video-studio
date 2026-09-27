@@ -18,6 +18,8 @@ from studio.workspace.scope import WriteScope
 @runtime_checkable
 class StageDefinition(Protocol):
     name: str
+    allow_web: bool
+    """是否给 agent 开放联网工具（设计 §4.2：只有 brainstorm/topic 联网）。"""
 
     def system_prompt(self) -> str: ...
 

@@ -188,7 +188,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿；手动 `curl -N` 可看到流。
 - **验证命令**：`make check`
 
-### T9：ClaudeRuntime（待开始）
+### T9：ClaudeRuntime（完成）
 
 - **目标**：Claude Agent SDK 适配器，mock 测试覆盖。
 - **涉及文件**：`backend/src/studio/agent/claude_runtime.py`、`backend/tests/agent/test_claude_runtime.py`、`docs/references/claude-agent-sdk.md`。
@@ -302,10 +302,12 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T7：API——项目、阶段、文件、快照、模型配置 — 完成，`make check` 全绿（247 个后端测试，新增 38 个 api 测试）；`main` 的 lifespan 装配 engine/blobs/registry/runtime_factory/bus/turn_runner 并挂在 `app.state` 上，供 `api/deps.py` 注入；顺带修复 T1 遗留的 `test_health.py` `TestClient` 弃用警告（见本提交）。
 - 2026-09-27 — T8：API——会话、消息、SSE — 完成，`make check` 全绿；新增依赖 `sse-starlette`；手动 `curl -N`（含 `after_seq`/`Last-Event-ID`）验证过真实回放（见本提交）。
 - 2026-09-27 — T8 审查后修复 — 完成，`make check` 全绿（298 个后端测试）：`SessionBus.subscribe()` 改成返回 `Subscription`（同步幂等 `close()`）的结构性修复替换了第一版依赖调度顺序的"预热"写法；补齐 HTTP 层测试（直接驱动 ASGI app，不再局限于生成器白盒测试）；`WIRE_EVENT_TYPES` 统一定义；模型配置不存在改成 400；`after_seq`/`Last-Event-ID` 非法输入改成 400；补了"项目忙不拒绝消息、只排队"的 api 测试（见本提交）。
+- 2026-09-27 — T9：ClaudeRuntime — 完成，`make check` 全绿（331 个后端测试，新增 29 个 ClaudeRuntime mock 测试）；新增依赖 `claude-agent-sdk 0.2.160`（内置 CLI 2.1.283）；references 中可由源码确认的条目已改为 ✅，其余标为 T15 实测（见本提交）。
 
 ## 下一步
 
-- 从 T9 开始：ClaudeRuntime（`backend/src/studio/agent/claude_runtime.py`）。先按简报"第一步（核实）"核实 `docs/references/claude-agent-sdk.md` 中标 ⚠️ 的条目，再实现认证方式（`api_key_env` 为空走本机登录）、`ClaudeSDKClient` 选项、`PreToolUse` hook、事件转换。可以直接复用 T8 的 `RuntimeFactory.has()`（判断运行时是否已注册）——`main` 在装好 `ClaudeRuntime` 后调用 `runtime_factory.register("claude", ...)`。
+- 从 T10 开始：OpenAIRuntime 与兜底文件工具。可参照 T9 的写法：`register_openai(factory, settings)` 由 `main` 调用；`TurnContext.allow_web` 决定是否开放联网工具；`events.Usage.auth` 可留空；原生工具名如需触发 `workspace_changed`，同 T9 一样加入 `events.FILE_TOOL_NAMES`。注意 `tests/api/test_sessions.py::test_unregistered_runtime_is_400` 已改用一个 runtime 为 `unregistered` 的临时模型配置，不受 T10 注册 `openai` 影响。
+- T15 需要实测 references 中标"⚠️ T15 实测"的 ClaudeRuntime 条目（登录模式置空变量是否生效、图片工具结果、hook 拒绝的表现、sandbox（R3）、`CLAUDE_CONFIG_DIR`（R4）、resume 后 `total_cost_usd` 是否带之前的累计值）。
 
 ## 决策记录
 
@@ -379,6 +381,17 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T8（第二次审查后新增）：`after_seq`/`Last-Event-ID` 的非法输入（非数字、负数）统一在 `_parse_after_seq` 里转成 400，而不是让 `int()` 抛出的 `ValueError` 变成未处理的 500；`after_seq` 查询参数存在时优先于 `Last-Event-ID` 请求头（都缺省则从 0 开始）。
 - 2026-09-27 — T8（第二次审查后新增）：补了一条 api 测试验证"项目忙不拒绝消息"（控制者裁定 3 的另一半，之前只测了"同一会话忙 → 409"，没测"同项目其他会话忙 → 202 排队"）——用同一个项目的另一个阶段开一个会话发消息，断言 202 且 turn 状态是 `queued`，释放忙会话后能正常跑完变成 `done`。
 
+- 2026-09-27 — T9：联网工具开关放在阶段定义上：`StageDefinition` 协议新增 `allow_web: bool`（topic 为 True，narrative/animation 为 False），`TurnContext` 新增 `allow_web: bool = False`，由 TurnRunner 从阶段定义填入；ClaudeRuntime 只在 `allow_web` 时加 WebSearch/WebFetch（控制者裁定）。
+- 2026-09-27 — T9：`events.Usage` 新增 `auth: Literal["api_key", "login"] | None = None`，TurnRunner 改为直接读 `event.auth`（原来用 `getattr` 兼容 T6 测试里的子类）；T6 的对应测试改为直接构造 `Usage(auth="login")`。
+- 2026-09-27 — T9：Claude 原生工具名不映射成规范名，而是把 `Write`/`Edit`/`MultiEdit`/`NotebookEdit`/`Bash` 加入 `events.FILE_TOOL_NAMES`——界面显示 SDK 真实调用的工具名；这些工具参数里没有 `path`，TurnRunner 推送空路径列表（"路径未知，整体刷新"）。业务工具的 `ToolCall.name` 去掉 `mcp__studio__` 前缀，与 FakeRuntime 的 `call_tool` 一致。
+- 2026-09-27 — T9：登录模式下"移除" `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` 的做法是在 `env` 中置为空字符串——SDK 把 `env` 合并在 `os.environ` 之上，无法删除键；CLI 把空值当作未设置（源码核实，见 references）。API key 模式同样把 `ANTHROPIC_AUTH_TOKEN` 置空，避免 shell 里残留的 token 干扰认证。
+- 2026-09-27 — T9：API key 模式把 `CLAUDE_CONFIG_DIR` 指向 `<data_dir>/claude/`（源码确认可行，会话存储随之移入数据目录）；登录模式不改（改了会读不到 macOS 钥匙串里的登录凭据）。R4 最终结论在 T15。
+- 2026-09-27 — T9：每轮花费按"本次累计值 − 上次记录的累计值"求差，记录落盘在 `<data_dir>/claude/studio-cost-ledger/<session_id>.json`，不改数据库表；累计值变小时视为重新计数，累计值为 0 时不记录（规则见 references"本项目的用法"）。
+- 2026-09-27 — T9：成本预算在 API key 模式下交给 SDK 的 `max_budget_usd`（CLI 源码确认它只统计本次 `query()` 调用，即本轮），因为 result 消息只在一轮结束时才带成本，运行中无法由 TurnRunner 按成本打断；步数预算由 ClaudeRuntime 在工具调用数超限时 `interrupt()`（TurnRunner 的步数检查仍然有效）。
+- 2026-09-27 — T9：选项里另加了简报未列出的三项隔离设置：`strict_mcp_config=True`（不加载本机/项目的其他 MCP server）、`verbatim_prompts=True`（用户消息里含前言等工作区派生文本，禁止 CLI 展开其中的 `@path`）、sandbox 的 `allowUnsandboxedCommands=False`（否则模型可逐条命令绕过沙箱）。
+- 2026-09-27 — T9：`main` 总是注册 `claude`（没有 key 也无害，缺 key 在对应 turn 中报 `failed`）；`register_claude` 从 `studio.agent.claude_runtime` 导入，不放进 `studio.agent.__init__`，避免 import `studio.agent` 时就加载 SDK。
+- 2026-09-27 — T9：`claude-agent-sdk` 依赖写成 `>=0.2.160,<0.3`，与其他依赖的上界风格一致。
+
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
@@ -391,6 +404,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T8：实测发现 `httpx`（本项目锁定 0.28.1）的 `ASGITransport.handle_async_request` 会把整个 ASGI 应用调用跑到完成、缓冲全部响应体之后才返回 `Response`——对一个正常很快结束的接口没有影响，但对 `GET /sessions/{id}/stream` 这种"不断开就不会自己结束"的 SSE 流，意味着经 `httpx.AsyncClient` + `ASGITransport` 的 `client.stream()` 永远拿不到任何中间数据，只会一直阻塞到外部 `asyncio.wait_for` 超时。这个结论本身成立，但第一版报告据此得出"HTTP 层没法测断线重连"过宽——第二次审查指出直接实现 ASGI 的 `receive`/`send` 回调驱动 `app(scope, receive, send)` 就能拿到真正的逐块响应、也能模拟真实断线，已按这个方式补齐 HTTP 层测试。已记入 `docs/references/sse-starlette.md`（新建，索引加进 `docs/references/README.md`）。
 - 2026-09-27 — T8：过程中发现一个真实的（非测试假象）订阅者泄漏 bug——如果一次 SSE 连接的全部数据都能靠"回放已落库事件"满足、从未真正走到"订阅总线取实时事件"这一步就断开，早期实现里 `SessionBus.subscribe()` 返回的异步生成器会处于"从未 `__anext__` 过"的状态；Python 对这种"冷"生成器调用 `aclose()` 不会执行它的 `finally`，订阅永久残留，正是评审关注点 2 要防的问题，且会在真实部署中复现（不局限于测试）。第一版修复（预热任务 + `wait_for(shield, timeout=0)`）第二次审查证明仍然依赖调度顺序、不够可靠；最终改成结构性修复——`SessionBus.subscribe()` 返回一个 `close()` 同步幂等的 `Subscription` 对象，彻底不依赖生成器有没有被迭代过。修复方案和实测细节见上面「决策记录」T8 对应条目和 `docs/references/sse-starlette.md`。
 - 2026-09-27 — T8：第二次审查发现 `sse_starlette.sse.AppStatus.should_exit_event` 是进程级单例，第一次真正用到时惰性绑定到当时的事件循环；本项目 `pytest-asyncio` 默认每个测试函数一个新事件循环，测试文件里一旦有第二个测试真正建立 SSE 连接就会报"绑定了不同的事件循环"（包在 `anyio` 的 `ExceptionGroup` 里，日志显示成"Task exception was never retrieved"，容易被误判成别的 bug）。这是只有测试套件补齐 HTTP 层用例、多个测试都真正走到 `EventSourceResponse.__call__` 之后才会暴露的问题（T8 第一版只有一个这样的测试，没有触发）。修复：`test_stream.py` 加自动夹具，每个测试前后重置这两个类属性。记入 `docs/references/sse-starlette.md`。
+
+- 2026-09-27 — T9：`total_cost_usd` 的累计语义在 Python 源码里看不出来（由 CLI 产生），最终从内置 CLI 可执行文件里嵌入的消息 schema 说明文本中确认：恢复的会话从 transcript 保存的累计值继续，`max_budget_usd` 只统计本次调用。已写进 references。
+- 2026-09-27 — T9：`main` 总是注册 `claude` 之后，T8 的 `test_unregistered_runtime_is_400`（原来用 `claude-sonnet` 配置代表"未注册的运行时"）失败，改为临时插入一个 runtime 为 `unregistered` 的模型配置。
 
 ## 阻塞
 

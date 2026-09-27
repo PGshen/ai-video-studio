@@ -329,6 +329,7 @@ class TurnRunner:
             project_id=job.project_id,
             stage=job.stage.name,
             record_tool_write=record_tool_write,
+            allow_web=job.stage.allow_web,
         )
         runtime = self._factory.create(job.session.runtime)
         stream = runtime.run_turn(ctx)
@@ -378,7 +379,7 @@ class TurnRunner:
             state.output_tokens += event.output_tokens
             state.cost_usd += event.cost_usd
             # Subscription (login) auth: cost is informational, only steps are enforced.
-            if getattr(event, "auth", None) == "login":
+            if event.auth == "login":
                 state.cost_advisory = True
             limit = job.profile.max_cost_per_turn
             if limit is not None and not state.cost_advisory and state.cost_usd > limit:

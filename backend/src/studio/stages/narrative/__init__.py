@@ -21,6 +21,7 @@ _WRITE_SCOPE = WriteScope(
 
 class NarrativeStage:
     name = "narrative"
+    allow_web = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")

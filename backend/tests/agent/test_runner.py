@@ -274,19 +274,23 @@ class TestBudget:
         h = _make_harness(env)
         _set_profile_limits(env, max_cost_per_turn=1.0)
 
-        @dataclass(frozen=True, slots=True)
-        class LoginUsage(events.Usage):
-            auth: str = "login"
-
         class Subscription:
             async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
-                yield LoginUsage(input_tokens=10, output_tokens=10, cost_usd=5.0)
+                yield events.Usage(input_tokens=10, output_tokens=10, cost_usd=5.0, auth="login")
                 yield events.TurnEnd(resume_ref=None, status="done")
 
         turn = await h.run(h.session(profile="limited"), Subscription)
 
         assert turn.status == "done"
         assert turn.cost_usd == pytest.approx(5.0)
+
+
+class TestAllowWeb:
+    async def test_allow_web_follows_stage_definition(self, h: Harness) -> None:
+        await h.run(h.session(stage="topic"), [fake.say("a")])
+        await h.run(h.session(stage="narrative"), [fake.say("b")])
+
+        assert [ctx.allow_web for ctx in h.contexts] == [True, False]
 
 
 class TestResumeAndTruncation:
@@ -368,6 +372,8 @@ class TestGuard:
 
             def __init__(self) -> None:
                 self._base = h.env.registry.get("narrative")
+
+            allow_web = False
 
             def system_prompt(self) -> str:
                 return "p"
