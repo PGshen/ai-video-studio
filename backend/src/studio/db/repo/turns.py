@@ -182,6 +182,22 @@ def finish_turn(
         return _turn_value(turn)
 
 
+def latest_turn(engine: Engine, session_id: str) -> TurnValue | None:
+    """会话最近创建的一个 turn；`None` 表示会话还没有过任何 turn。
+
+    供 `POST /sessions/{id}/cancel`、`.../continue` 判断"当前一轮"的状态用
+    （任务简报 T8）。
+    """
+    with session_scope(engine) as db:
+        row = db.scalars(
+            select(Turn)
+            .where(Turn.session_id == session_id)
+            .order_by(Turn.created_at.desc())
+            .limit(1)
+        ).first()
+        return _turn_value(row) if row is not None else None
+
+
 def list_unfinished_turns(engine: Engine) -> list[TurnValue]:
     """所有 `queued`/`running` 的 turn（进程启动恢复用，设计 §4.4 第 8 步）。"""
     with session_scope(engine) as db:

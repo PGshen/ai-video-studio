@@ -22,6 +22,7 @@ from studio.agent.stage import StageRegistry
 from studio.api.files import router as files_router
 from studio.api.profiles import router as profiles_router
 from studio.api.projects import router as projects_router
+from studio.api.sessions import router as sessions_router
 from studio.api.snapshots import router as snapshots_router
 from studio.config import Settings, get_settings
 from studio.db.engine import make_engine, migrate
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(projects_router)
+    app.include_router(sessions_router)
     app.include_router(files_router)
     app.include_router(snapshots_router)
     app.include_router(profiles_router)

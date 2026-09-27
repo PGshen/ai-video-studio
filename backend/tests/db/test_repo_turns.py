@@ -11,6 +11,7 @@ from studio.db.repo.turns import (
     finish_turn,
     get_turn,
     interrupt_turn,
+    latest_turn,
     list_events,
     list_unfinished_turns,
     mark_turn_running,
@@ -151,6 +152,32 @@ class TestTurnLifecycle:
         assert (after.status, after.end_snapshot_id) == ("interrupted", "s9")
         assert session.status == "interrupted"
         assert list_unfinished_turns(migrated_engine) == []
+
+
+class TestLatestTurn:
+    def test_returns_none_when_session_has_no_turns(self, migrated_engine: Engine) -> None:
+        session_id = _session(migrated_engine)
+        assert latest_turn(migrated_engine, session_id) is None
+
+    def test_returns_most_recently_created_turn(self, migrated_engine: Engine) -> None:
+        session_id = _session(migrated_engine)
+        first = create_turn_if_session_idle(migrated_engine, session_id, "hi")
+        assert first is not None
+        finish_turn(
+            migrated_engine,
+            first.id,
+            status="done",
+            end_snapshot_id="s1",
+            usage=None,
+            cost_usd=None,
+            error=None,
+            resume_ref=None,
+        )
+        second = create_turn_if_session_idle(migrated_engine, session_id, "again")
+        assert second is not None
+
+        latest = latest_turn(migrated_engine, session_id)
+        assert latest is not None and latest.id == second.id
 
 
 class TestEvents:

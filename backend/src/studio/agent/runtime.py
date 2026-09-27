@@ -103,6 +103,10 @@ class RuntimeFactory:
     def register(self, name: str, constructor: RuntimeConstructor) -> None:
         self._constructors[name] = constructor
 
+    def has(self, name: str) -> bool:
+        """`name` 是否已注册；创建会话前用来判断能否直接给出 400（T8 控制者裁定 1）。"""
+        return name in self._constructors
+
     def create(self, name: str) -> AgentRuntime:
         try:
             constructor = self._constructors[name]

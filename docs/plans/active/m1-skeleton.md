@@ -175,7 +175,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿；`/docs` 能看到全部接口。
 - **验证命令**：`make check`
 
-### T8：API——会话、消息、SSE（待开始）
+### T8：API——会话、消息、SSE（完成）
 
 - **目标**：对话接口与流式推送。
 - **涉及文件**：`backend/src/studio/api/sessions.py`、`backend/tests/api/test_sessions.py`、`backend/tests/api/test_stream.py`。
@@ -300,10 +300,11 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T5：agent 核心类型、阶段协议、会话总线、FakeRuntime — 完成，`make check` 全绿（含新增的 import-linter 规则 2、3）（见本提交）。
 - 2026-09-27 — T6：TurnRunner 与上下文前言 — 完成，`make check` 全绿（审查修复后 205 个测试）；`runner.py` 约 516 行，超出预期的 400 行，未自行拆分，交控制者决定（见本提交）。
 - 2026-09-27 — T7：API——项目、阶段、文件、快照、模型配置 — 完成，`make check` 全绿（247 个后端测试，新增 38 个 api 测试）；`main` 的 lifespan 装配 engine/blobs/registry/runtime_factory/bus/turn_runner 并挂在 `app.state` 上，供 `api/deps.py` 注入；顺带修复 T1 遗留的 `test_health.py` `TestClient` 弃用警告（见本提交）。
+- 2026-09-27 — T8：API——会话、消息、SSE — 完成，`make check` 全绿（281 个后端测试，新增 34 个 api 测试）；新增依赖 `sse-starlette`；手动 `curl -N`（含 `after_seq`/`Last-Event-ID`）验证过真实回放（见本提交）。
 
 ## 下一步
 
-- 从 T8 开始：API——会话、消息、SSE（`backend/src/studio/api/sessions.py`）。`POST /sessions/{id}/messages` 调 `TurnRunner.start_turn`（`SessionBusyError` → 409）；`GET /sessions/{id}/stream?after_seq=` 用 `sse-starlette` 先回放 `repo.turns.list_events(after_seq=...)` 再接 `SessionBus.subscribe`；两者都可以直接用 T7 已经装好的 `api/deps.py`（`get_engine`/`get_bus`/`get_turn_runner`）。
+- 从 T9 开始：ClaudeRuntime（`backend/src/studio/agent/claude_runtime.py`）。先按简报"第一步（核实）"核实 `docs/references/claude-agent-sdk.md` 中标 ⚠️ 的条目，再实现认证方式（`api_key_env` 为空走本机登录）、`ClaudeSDKClient` 选项、`PreToolUse` hook、事件转换。可以直接复用 T8 的 `RuntimeFactory.has()`（判断运行时是否已注册）——`main` 在装好 `ClaudeRuntime` 后调用 `runtime_factory.register("claude", ...)`。
 
 ## 决策记录
 
@@ -362,6 +363,14 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T7：api 测试里模拟"项目忙"（409）不经会话/消息 API（T8 才有），直接用 `TurnRunner.start_turn` + 一个替换过默认注册的 `FakeRuntime([fake.sleep(30)])`，测完 `cancel`+`wait` 再 `register_fake` 复位——`is_project_busy` 在 `start_turn` 返回后立刻为真（`_schedule()` 是同步代码，任务对象创建后即计入 `_running`，不需要等事件循环真正跑到协程体），不会因为默认 fake 脚本"秒结束"而产生竞态。
 - 2026-09-27 — T7：httpx 客户端会在构造 URL 时把字面 `..` 段规范化掉（`http://x/a/../b` 变成 `http://x/b`），越界路径的 400 测试如果直接写 `.../files/../secret.txt` 根本发不出带 `..` 的请求；改用百分号编码 `%2e%2e`（`safe_path` 收到的是路由解码后的 `..`，服务端校验逻辑本身不变，只是测试要绕开客户端的规范化）。
 - 2026-09-27 — T7：顺带修复 T1 遗留的小问题（简报要求）——`tests/test_health.py` 从 `fastapi.testclient.TestClient` 迁移到 `httpx.AsyncClient` + `ASGITransport` + `app.router.lifespan_context(app)`，消除 `TestClient` 的 `StarletteDeprecationWarning`；`backend/tests/api/` 下的新测试全部用同一模式（夹具见 `tests/api/conftest.py`），没有引入 `asgi-lifespan` 依赖（依赖清单不允许）。
+- 2026-09-27 — T8：新增依赖 `sse-starlette`（依赖清单里已列明允许）；`backend/pyproject.toml` 加了版本区间 `>=2.1,<3`，`uv sync` 解析到 `2.4.1`。
+- 2026-09-27 — T8：会话创建（控制者裁定 1）用新增的 `RuntimeFactory.has(name)` 判断 `model_profile.runtime` 是否已注册，未注册 → 400；`RuntimeFactory` 本身仍然只是注册表（R2），`has()` 只是一个只读查询方法，不影响 `register`/`create` 的既有语义。
+- 2026-09-27 — T8：忙的语义按控制者裁定 3 严格区分——`TurnRunner.start_turn` 只在**同一会话**已有 `queued`/`running` turn 时抛 `SessionBusyError`（`POST .../messages` 映射为 409）；项目级串行化完全交给 `TurnRunner` 内部的队列（`_schedule`/`is_project_busy`），消息本身仍会被接受、排成 `queued` turn（202）。`POST .../cancel`、`.../continue` 各自用新增的 `db.repo.turns.latest_turn(session_id)` 判断"当前一轮"的状态（`cancel` 要求 `queued`/`running`，`continue` 要求 `interrupted`/`budget_exceeded`），不满足条件都是 409；`continue` 固定发送中文文本"继续"（`api.sessions.CONTINUE_TEXT`）。
+- 2026-09-27 — T8（审查后修复，真实 bug，非测试技巧）：SSE 端点的核心异步生成器 `_stream_events` 在"这一轮客户端只消费了回放的历史事件就断线（从未真正走到订阅总线取实时事件那一步）"时，如果直接对总线订阅调用 `aclose()`，Python 对"从未 `__anext__` 过"的异步生成器执行 `aclose()` 是空操作，不会跑 `SessionBus._pump` 的 `finally`（把订阅者从列表移除的那段代码），订阅会永久残留——这正是评审关注点 2 明确要防的订阅者泄漏，且是能在真实生产环境复现的 bug（不止是测试假象）。修复：订阅后立刻用 `asyncio.ensure_future` 把"取下一条实时事件"包成任务调度，再用 `await asyncio.wait_for(asyncio.shield(task), timeout=0)` 给它恰好一次调度机会（推进到 `_pump` 内部真正的挂起点，但不等它真的产出事件；`shield` 防止这次超时连带取消任务本身），且这段"预热"代码必须写在 `try` 内部（万一取消恰好落在预热这一步，也要能走到 `finally` 清理，不能被跳过）。这样收尾时 `live_next.cancel()` 命中的永远是一个已经真正开始执行的任务，取消才能正确传播到 `_pump` 的 `finally`。详细分析和实测脚本记入 `docs/references/sse-starlette.md`。
+- 2026-09-27 — T8：SSE 事件类型直接复用 `TurnRunner`/`SessionBus` 已经在用的 `type` 字符串（`text_delta`/`text`/`tool_call`/`tool_result`/`snapshot`/`notice`/`error`/`workspace_changed`/`turn_status`），`_stream_events` 不做二次映射，只在 `api/sessions.py` 模块文档里统一注明这份对应关系（简报"控制者裁定 6"要求"在一个地方"）——T6/T5 里这些字符串本就和设计 §3.1/评审要点列出的线上事件名完全一致，没有必要再引入一层转换表。
+- 2026-09-27 — T8：SSE 消息用 sse-starlette 的 dict 形式（`{"event":..., "data": json.dumps(...), "id": str(seq)}`）；`data` 里除了原始 payload 还塞一份 `seq`（持久事件是真实序号，瞬时事件是 `None`），方便前端不用单独解析 SSE 帧的 `id` 字段；只有持久事件才带顶层 `id`，瞬时事件的消息字典里完全没有这个 key（不是 `id: null`）。
+- 2026-09-27 — T8：测试"断线重连、不丢不重"没有按简报字面意思完全通过 `httpx.AsyncClient.stream()` 读取——实测发现 `httpx` 0.28.1 的 `ASGITransport` 会在返回响应前把整个 ASGI 应用调用跑到完成（缓冲全部 body 后才返回），对于不会自己结束的 SSE 流，这意味着经 HTTP 层做"收到几条事件后断开"的用例永远拿不到任何中间数据，只会阻塞到 `asyncio.wait_for` 超时。改为：核心回放/去重/转发逻辑直接调用 `_stream_events`（绕开 HTTP 层）；断线清理用真实 HTTP 请求包一层 `asyncio.Task` + `task.cancel()` 模拟断开，验证完整路由链路下 `SessionBus.subscriber_count` 归零。详见 `docs/references/sse-starlette.md`。
+- 2026-09-27 — T8：补充的仓储函数——`db.repo.sessions.list_sessions(engine, project_id, stage)`（`GET .../sessions` 用）、`db.repo.turns.latest_turn(engine, session_id)`（`cancel`/`continue` 用）；`agent.runtime.RuntimeFactory.has(name)`。均为只读查询或注册表判断，不改变已有函数的签名和语义。
 
 ## 意外与发现
 
@@ -372,6 +381,8 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T2 开始时工作区里已有一份未提交的 `db` 模块（`engine.py`/`models.py`/migrations/`tests/db/` 下 `test_engine.py`、`test_migrate.py`、`test_repo_profiles.py`、`test_repo_projects.py`），`pyproject.toml` 也已加上 `sqlalchemy`/`alembic` 依赖，但 `repo/` 目录本身不存在，`test_repo_*.py` 处于 RED（`ModuleNotFoundError`）——沿用这份已有实现（引擎、ORM 模型、迁移、测试用例均符合本任务要求，engine/migrate 相关测试本就是绿的），只补齐缺失的 `repo/projects.py`、`repo/profiles.py` 让 RED 转 GREEN，未重写已有代码。
 - 2026-09-27 — T6：`runner.py` 实现完约 480 行（审查修复后约 516 行，含较长的中文 docstring），超出计划预期的 ~400 行；按控制者指示没有自行拆分，在报告中提出（可选的拆分：把 `_finish` 收尾与事件处理移到单独模块）。
 - 2026-09-27 — T7：`studio.main` 之前只 import `studio.config`，"只有 db 定义 ORM 模型" 这条 import-linter 契约（`source_modules = ["studio.main"]`）此前没写 `allow_indirect_imports = true` 也能通过，因为压根没有间接路径。main 组装 `agent`/`api` 之后，经 `db.repo`（合法路径）间接用到 `db.models` 的依赖链一下子多了六条，契约随之报"BROKEN"——这是 import-linter 默认对 `forbidden` 类型契约做整条依赖链的传递闭包检查，不是只查直接 import；照 `workspace`/`agent` 两个同名契约的先例给 main 和新增的 `api` 契约都加上 `allow_indirect_imports = true` 后恢复绿。以后任何模块第一次从"只 import 一两个叶子模块"变成"组装/依赖一堆东西"时，都要留意同样的契约可能从"凑巧通过"变成"报错"。
+- 2026-09-27 — T8：实测发现 `httpx`（本项目锁定 0.28.1）的 `ASGITransport.handle_async_request` 会把整个 ASGI 应用调用跑到完成、缓冲全部响应体之后才返回 `Response`——对一个正常很快结束的接口没有影响，但对 `GET /sessions/{id}/stream` 这种"不断开就不会自己结束"的 SSE 流，意味着经 `httpx.AsyncClient` + `ASGITransport` 的 `client.stream()` 永远拿不到任何中间数据，只会一直阻塞到外部 `asyncio.wait_for` 超时。简报原本设想"用 httpx AsyncClient.stream 读 SSE、断开重连"的测试写法在这个组合下不可行；改为核心逻辑直接调用端点背后的异步生成器测试，断线清理用 `asyncio.Task.cancel()` 模拟。已记入 `docs/references/sse-starlette.md`（新建，索引加进 `docs/references/README.md`）。
+- 2026-09-27 — T8：过程中发现一个真实的（非测试假象）订阅者泄漏 bug——如果一次 SSE 连接的全部数据都能靠"回放已落库事件"满足、从未真正走到"订阅总线取实时事件"这一步就断开，`SessionBus.subscribe()` 返回的异步生成器会处于"从未 `__anext__` 过"的状态；Python 对这种"冷"生成器调用 `aclose()` 不会执行它的 `finally`（`SessionBus._pump` 里把订阅者从列表移除的逻辑），订阅永久残留，正是评审关注点 2 要防的问题，且会在真实部署中复现（不局限于测试）。修复方案和实测细节见上面「决策记录」T8 对应条目和 `docs/references/sse-starlette.md`。
 
 ## 阻塞
 

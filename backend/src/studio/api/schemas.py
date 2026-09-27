@@ -75,6 +75,50 @@ class SnapshotDiffOut(BaseModel):
     modified: list[ModifiedFileOut]
 
 
+class SessionCreate(BaseModel):
+    model_profile_id: str
+
+
+class SessionOut(BaseModel):
+    id: str
+    project_id: str | None
+    stage: str
+    model_profile_id: str
+    runtime: str
+    sdk_ref: str | None
+    status: str
+    is_active: bool
+    title: str | None
+
+
+class TurnOut(BaseModel):
+    id: str
+    session_id: str
+    user_message: str
+    status: str
+    start_snapshot_id: str | None
+    end_snapshot_id: str | None
+    usage: dict[str, Any] | None
+    cost_usd: float | None
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SessionDetailOut(SessionOut):
+    turns: list[TurnOut]
+
+
+class MessageCreate(BaseModel):
+    text: str
+
+
+class TurnAccepted(BaseModel):
+    """`POST .../messages`、`.../cancel`、`.../continue` 的响应：正在处理的 turn id。"""
+
+    turn_id: str
+
+
 class ModelProfileOut(BaseModel):
     """不包含 `api_key_env`（字段名本身不是密钥，但简报要求"不返回 key，
     只返回 key 是否已配置"）：调用方只需要知道能不能用，不需要知道去哪个

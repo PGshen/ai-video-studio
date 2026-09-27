@@ -52,3 +52,11 @@ class TestRuntimeFactory:
 
         with pytest.raises(KeyError):
             factory.create("claude")
+
+    def test_has_reflects_registration(self) -> None:
+        factory = RuntimeFactory()
+        assert factory.has("fake") is False
+
+        factory.register("fake", _StubRuntime)
+
+        assert factory.has("fake") is True

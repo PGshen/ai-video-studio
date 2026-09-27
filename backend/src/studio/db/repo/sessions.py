@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import Engine, update
+from sqlalchemy import Engine, select, update
 
 from studio.db.engine import session_scope
 from studio.db.models import Session
@@ -78,3 +78,14 @@ def get_session(engine: Engine, session_id: str) -> SessionValue | None:
     with session_scope(engine) as db:
         row = db.get(Session, session_id)
         return to_session_value(row) if row is not None else None
+
+
+def list_sessions(engine: Engine, project_id: str | None, stage: str) -> list[SessionValue]:
+    """某个项目某个阶段的全部会话，按创建时间升序（`GET .../sessions` 用）。"""
+    with session_scope(engine) as db:
+        rows = db.scalars(
+            select(Session)
+            .where(Session.project_id == project_id, Session.stage == stage)
+            .order_by(Session.created_at.asc())
+        ).all()
+        return [to_session_value(row) for row in rows]
