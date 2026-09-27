@@ -203,7 +203,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - **完成标准**：`make check` 为绿；references 已更新。
 - **验证命令**：`make check`
 
-### T10：OpenAIRuntime 与兜底文件工具（待开始）
+### T10：OpenAIRuntime 与兜底文件工具（完成）
 
 - **目标**：OpenAI Agents SDK 适配器（Responses API 与 LiteLLM 两条路径），mock 测试覆盖。
 - **涉及文件**：`backend/src/studio/agent/{openai_runtime,apply_patch,fallback_tools}.py`、`backend/tests/agent/test_{openai_runtime,apply_patch,fallback_tools}.py`、`docs/references/openai-agents-sdk.md`、`docs/references/legacy-assets.md`。
@@ -303,11 +303,13 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T8：API——会话、消息、SSE — 完成，`make check` 全绿；新增依赖 `sse-starlette`；手动 `curl -N`（含 `after_seq`/`Last-Event-ID`）验证过真实回放（见本提交）。
 - 2026-09-27 — T8 审查后修复 — 完成，`make check` 全绿（298 个后端测试）：`SessionBus.subscribe()` 改成返回 `Subscription`（同步幂等 `close()`）的结构性修复替换了第一版依赖调度顺序的"预热"写法；补齐 HTTP 层测试（直接驱动 ASGI app，不再局限于生成器白盒测试）；`WIRE_EVENT_TYPES` 统一定义；模型配置不存在改成 400；`after_seq`/`Last-Event-ID` 非法输入改成 400；补了"项目忙不拒绝消息、只排队"的 api 测试（见本提交）。
 - 2026-09-27 — T9：ClaudeRuntime — 完成，`make check` 全绿（331 个后端测试，新增 29 个 ClaudeRuntime mock 测试）；新增依赖 `claude-agent-sdk 0.2.160`（内置 CLI 2.1.283）；references 中可由源码确认的条目已改为 ✅，其余标为 T15 实测（见本提交）。
+- 2026-09-27 — T10：OpenAIRuntime 与兜底文件工具 — 完成，`make check` 全绿（403 个后端测试，新增 72 个：OpenAIRuntime 35、ApplyPatchEditor 16、兜底工具 15、`files.delete_file` 5、启动注册 1）；新增依赖 `openai-agents[litellm] 0.22.3`（带入 `openai 3.19.2`、`litellm 1.83.0`，`websockets` 从 17.1 降到 16.1.1）；测试用 SDK 自带的 `agents.testing.ScriptedModel` 驱动真实 `Runner.run_streamed`（见本提交）。
 
 ## 下一步
 
-- 从 T10 开始：OpenAIRuntime 与兜底文件工具。可参照 T9 的写法：`register_openai(factory, settings)` 由 `main` 调用；`TurnContext.allow_web` 决定是否开放联网工具；`events.Usage.auth` 可留空；原生工具名如需触发 `workspace_changed`，同 T9 一样加入 `events.FILE_TOOL_NAMES`。注意 `tests/api/test_sessions.py::test_unregistered_runtime_is_400` 已改用一个 runtime 为 `unregistered` 的临时模型配置，不受 T10 注册 `openai` 影响。
+- 从 T11 开始：前端骨架与前端质量关口。
 - T15 需要实测 references 中标"⚠️ T15 实测"的 ClaudeRuntime 条目（登录模式置空变量是否生效、图片工具结果、hook 拒绝的表现、sandbox（R3）、`CLAUDE_CONFIG_DIR`（R4）、resume 后 `total_cost_usd` 是否带之前的累计值）。
+- T15 的 OpenAI 部分：种子配置 `gpt`/`deepseek` 目前没有单价（`price_input`/`price_output` 为空），OpenAIRuntime 的成本 = token × 单价（美元/百万 token），**冒烟前必须给这两个配置填上单价并设 `max_cost_per_turn`**，否则成本预算不起作用（设了上限但缺单价时本轮会直接失败）。另需实测：strict schema 带 `default` 是否被接受、R1（DeepSeek 上的 `apply_patch`/`shell`）、R2（LiteLLM 路径的图片工具结果）、`OpenAIResponsesModel` 默认 `store` 下续轮是否正常。
 
 ## 决策记录
 
@@ -391,6 +393,14 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-27 — T9：选项里另加了简报未列出的三项隔离设置：`strict_mcp_config=True`（不加载本机/项目的其他 MCP server）、`verbatim_prompts=True`（用户消息里含前言等工作区派生文本，禁止 CLI 展开其中的 `@path`）、sandbox 的 `allowUnsandboxedCommands=False`（否则模型可逐条命令绕过沙箱）。
 - 2026-09-27 — T9：`main` 总是注册 `claude`（没有 key 也无害，缺 key 在对应 turn 中报 `failed`）；`register_claude` 从 `studio.agent.claude_runtime` 导入，不放进 `studio.agent.__init__`，避免 import `studio.agent` 时就加载 SDK。
 - 2026-09-27 — T9：`claude-agent-sdk` 依赖写成 `>=0.2.160,<0.3`，与其他依赖的上界风格一致。
+- 2026-09-27 — T10：OpenAIRuntime 按 `provider` 分两条路径：`openai` → `OpenAIResponsesModel`（显式 `AsyncOpenAI(api_key, base_url)`）+ 原生 `ApplyPatchTool`/`ShellTool`（`allow_web` 时加 `WebSearchTool`）；`litellm` → `LitellmModel`（显式传 key，不改 `os.environ`）+ 兜底文件工具，无 Shell、无联网（控制者裁定）。其他 provider → 本轮 `failed`。
+- 2026-09-27 — T10：`workspace.files` 新增 `delete_file(workdir, relpath, scope)`（`ApplyPatchEditor.delete_file` 需要，规则 6 要求落盘都经过 workspace）。`WorkspaceApplyPatchEditor` 失败时返回 `ApplyPatchResult(status="failed")` 而不是抛异常（抛异常 SDK 也能处理，但会多打一条错误日志）；`move_to` 先检查两端都可写再动文件。
+- 2026-09-27 — T10：`events.FILE_TOOL_NAMES` 加入 `apply_patch`、`edit_file`。`apply_patch` 的 `ToolCall.args` 由运行时整理成 `{"type", "path", "diff"}`，所以 TurnRunner 按 `args["path"]` 能推送精确的 `workspace_changed` 路径；`shell` 的 args 是 `{"commands": [...]}`，推空列表。托管 `web_search_call` 没有输出条目，运行时在 `ToolCall` 后立即补一个 `ToolResult`，避免界面上的工具调用一直挂起。
+- 2026-09-27 — T10：用量每次模型调用（`RunHooks.on_llm_end`）产出一个 `Usage` 事件（Claude 是每轮一个），TurnRunner 累加，成本预算因此能在轮中途打断；单价单位定为**美元 / 百万 token**（写进 `ModelProfileValue` 字段说明和 references）；配置了成本上限但缺单价时本轮直接 `failed`（沿用旧项目"没单价就拒绝运行"的保护）。预算判定和停止仍由 TurnRunner 经取消令牌完成，运行时只负责响应取消（`RunResultStreaming.cancel()`）。
+- 2026-09-27 — T10：会话历史裁剪用 `RunConfig.session_input_callback` 按用户消息切分、只发最近 N 轮（`Settings.openai_history_turns`，默认 20，新增配置字段），库里保留全部；没有用 `SessionSettings.limit`（它按条目数截取，可能从工具调用/结果中间切断）。首轮 `resume_ref` 为空时生成新的 uuid 作为 `SQLiteSession` id。
+- 2026-09-27 — T10：Shell executor 不传名字含 KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL 的环境变量（避免 agent 的命令读到 API key）；单条命令默认超时 120 秒、上限 600 秒，超时杀整个进程组；非零退出码或超时的调用标为 `is_error`。
+- 2026-09-27 — T10：业务 `ToolSpec` → `FunctionTool` 优先用 strict schema，SDK 无法转换（`UserError`）时退回非 strict；每次调用的 `ToolResult` 按 `call_id` 暂存，事件转换时直接取用，保留 `is_error` 和原始图片。
+- 2026-09-27 — T10：`max_turns=200`（SDK 默认 10 太小，步数预算由 TurnRunner 按 `max_steps_per_turn` 强制）；`RunConfig(tracing_disabled=True)`（SDK 默认会把追踪上传到 OpenAI）。`openai-agents` 依赖写成 `>=0.22.3,<0.23`。
 
 ## 意外与发现
 
@@ -407,6 +417,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 - 2026-09-27 — T9：`total_cost_usd` 的累计语义在 Python 源码里看不出来（由 CLI 产生），最终从内置 CLI 可执行文件里嵌入的消息 schema 说明文本中确认：恢复的会话从 transcript 保存的累计值继续，`max_budget_usd` 只统计本次调用。已写进 references。
 - 2026-09-27 — T9：`main` 总是注册 `claude` 之后，T8 的 `test_unregistered_runtime_is_400`（原来用 `claude-sonnet` 配置代表"未注册的运行时"）失败，改为临时插入一个 runtime 为 `unregistered` 的模型配置。
+- 2026-09-27 — T10：`openai-agents 0.22.3` 自带测试替身 `agents.testing.ScriptedModel`，可以直接驱动真实的 `Runner.run_streamed`（含 `apply_patch_call`），不需要自己 mock `Model` 接口；但它的自动流式不支持 `shell_call`，Shell 用例用 `ModelStep.stream([...])` 手写两条流事件。
+- 2026-09-27 — T10：`ToolCallItem.raw_item` 对 `apply_patch_call`/`shell_call` 是 dict，对 `function_call` 是 Pydantic 对象，转换时两种都要处理。`agents` 顶层没有导出 `ToolContext`（要从 `agents.tool_context` 导入）。
+- 2026-09-27 — T10：`uv add "openai-agents[litellm]"` 把 `websockets` 从 17.1 降到 16.1.1（litellm 的约束），`uvicorn[standard]` 仍可用，`make check` 全绿。
 
 ## 阻塞
 

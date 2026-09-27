@@ -6,6 +6,7 @@ import pytest
 
 from studio.workspace.files import (
     ScopeError,
+    delete_file,
     list_tree,
     read_bytes,
     read_text,
@@ -146,3 +147,32 @@ class TestReadBytes:
     def test_rejects_unsafe_path(self, workdir: Path) -> None:
         with pytest.raises(ScopeError):
             read_bytes(workdir, "../outside")
+
+
+class TestDeleteFile:
+    _SCOPE = WriteScope(writable=["topic/**"], tool_managed=["topic/managed.json"])
+
+    def test_deletes_file_within_scope(self, workdir: Path) -> None:
+        _write(workdir / "topic" / "a.md", "x")
+        delete_file(workdir, "topic/a.md", self._SCOPE)
+        assert not (workdir / "topic" / "a.md").exists()
+
+    def test_rejects_delete_outside_scope(self, workdir: Path) -> None:
+        _write(workdir / "style" / "STYLE.md", "x")
+        with pytest.raises(ScopeError):
+            delete_file(workdir, "style/STYLE.md", self._SCOPE)
+        assert (workdir / "style" / "STYLE.md").exists()
+
+    def test_rejects_delete_of_tool_managed_file(self, workdir: Path) -> None:
+        _write(workdir / "topic" / "managed.json", "{}")
+        with pytest.raises(ScopeError):
+            delete_file(workdir, "topic/managed.json", self._SCOPE)
+
+    def test_missing_file_raises_file_not_found(self, workdir: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            delete_file(workdir, "topic/missing.md", self._SCOPE)
+
+    def test_rejects_directory(self, workdir: Path) -> None:
+        (workdir / "topic" / "sub").mkdir(parents=True)
+        with pytest.raises(IsADirectoryError):
+            delete_file(workdir, "topic/sub", self._SCOPE)

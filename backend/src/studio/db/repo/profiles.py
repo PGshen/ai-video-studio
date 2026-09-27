@@ -29,7 +29,9 @@ class ModelProfileValue:
     api_key_env: str | None
     supports_vision: bool
     price_input: float | None
+    """输入单价，美元 / 百万 token（OpenAIRuntime 据此计算成本，T10）。"""
     price_output: float | None
+    """输出单价，美元 / 百万 token。"""
     max_cost_per_turn: float | None
     max_steps_per_turn: int | None
 

@@ -1,7 +1,7 @@
 """api 进程入口：组装 FastAPI 应用（设计 §2.1；控制者裁定 1）。
 
 `_lifespan` 按顺序完成：`migrate` → 种子模型配置 → 注册三个占位阶段定义 →
-`RuntimeFactory`（总是注册 `claude`，`enable_fake_runtime` 时注册 `fake`）→ `SessionBus` →
+`RuntimeFactory`（总是注册 `claude`、`openai`，`enable_fake_runtime` 时注册 `fake`）→ `SessionBus` →
 `TurnRunner` → `recover_on_startup`（设计 §4.4 第 8 步：把上次进程遗留的
 `running`/`queued` turn 收尾为 `interrupted`）。这些单例挂在 `app.state`
 上，`api/deps.py` 的依赖函数从这里取出，供 T8（会话/SSE）复用。
@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from studio.agent import register_fake
 from studio.agent.bus import SessionBus
 from studio.agent.claude_runtime import register_claude
+from studio.agent.openai_runtime import register_openai
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
@@ -48,6 +49,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     runtime_factory = RuntimeFactory()
     register_claude(runtime_factory, settings)
+    register_openai(runtime_factory, settings)
     if settings.enable_fake_runtime:
         register_fake(runtime_factory)
 

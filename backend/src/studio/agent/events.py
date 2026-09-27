@@ -13,13 +13,28 @@ from typing import Literal
 TurnStatus = Literal["done", "failed", "cancelled", "budget_exceeded"]
 
 FILE_TOOL_NAMES = frozenset(
-    {"write_file", "shell", "Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"}
+    {
+        "write_file",
+        "edit_file",
+        "shell",
+        "apply_patch",
+        "Write",
+        "Edit",
+        "MultiEdit",
+        "NotebookEdit",
+        "Bash",
+    }
 )
 """`ToolCall.name` 属于这个集合时视为“文件类工具调用”：TurnRunner（T6）在
 这类调用之后需要推送 `workspace_changed` 事件（设计 §4.4 步骤 5）。
 
 - `write_file`/`shell`：FakeRuntime 的原生文件写工具（`fake.write`）和 Shell
   类工具（`fake.shell_write`）。
+- OpenAIRuntime（T10）：`apply_patch`/`shell` 是 Responses 路径的原生工具，
+  `write_file`/`edit_file` 是 LiteLLM 路径的兜底文件工具。`apply_patch` 的
+  `ToolCall.args` 由运行时整理成 `{"type", "path", "diff"}`，兜底工具的参数
+  本来就有 `path`，所以这几种都能推送精确路径；`shell` 只有 `commands`，推送
+  空列表。
 - `Write`/`Edit`/`MultiEdit`/`NotebookEdit`/`Bash`：Claude Code 原生工具名
   （T9：ClaudeRuntime 原样保留原生工具名，不映射成规范名，界面上看到的就是
   SDK 真实调用的工具）。它们的参数里没有 `path`（Claude 用 `file_path`/
@@ -78,7 +93,9 @@ class ToolResult:
 
 @dataclass(frozen=True, slots=True)
 class Usage:
-    """本轮（不是会话累计）的用量。
+    """本轮内新增（不是会话累计）的用量；一轮可以产出多个，TurnRunner 累加。
+    （ClaudeRuntime 每轮一个；OpenAIRuntime 每次模型调用一个，成本预算因此能在
+    轮中途生效。）
 
     `auth == "login"`（Claude 本机登录/订阅账号）时 `cost_usd` 只是 CLI 的估算，
     TurnRunner 不按它强制成本预算（计划决策记录 2026-09-27）。

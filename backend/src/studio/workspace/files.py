@@ -95,6 +95,20 @@ def write_text(workdir: Path | str, relpath: str, content: str, scope: WriteScop
     path.write_text(content, encoding="utf-8")
 
 
+def delete_file(workdir: Path | str, relpath: str, scope: WriteScope) -> None:
+    """在可写范围内删除一个普通文件（`ApplyPatchEditor.delete_file` 使用）。
+
+    路径不安全或不在 `scope` 内时抛出 `ScopeError`；文件不存在抛出
+    `FileNotFoundError`；目标是目录抛出 `IsADirectoryError`。
+    """
+    path = safe_path(workdir, relpath)
+    if not is_writable(scope, relpath):
+        raise ScopeError(f"不在可写范围内：{relpath}")
+    if path.is_dir():
+        raise IsADirectoryError(f"是目录，不能删除：{relpath}")
+    path.unlink()
+
+
 def write_text_unscoped(workdir: Path | str, relpath: str, content: str) -> None:
     """写入文本（UTF-8），不检查可写范围（T5 决策记录：模拟 Shell 等绕过
     事前拦截的原生工具——真实的 Shell 能写工作区内任意路径，不会经过这里

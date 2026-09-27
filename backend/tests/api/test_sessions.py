@@ -103,6 +103,10 @@ class TestCreateSession:
         assert response.status_code == 400
         assert_detail(response)
 
+    async def test_real_runtimes_are_registered_at_startup(self, api_env: ApiEnv) -> None:
+        factory = api_env.app.state.runtime_factory
+        assert factory.has("claude") and factory.has("openai")
+
     async def test_unregistered_runtime_is_400(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)
         # `claude` is always registered since T9; use a runtime nobody registers.

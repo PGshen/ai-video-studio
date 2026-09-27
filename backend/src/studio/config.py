@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     port: int = 8000
     max_concurrent_turns: int = 2
     enable_fake_runtime: bool = False
+    openai_history_turns: int = 20
+    """OpenAI 运行时发给模型的会话历史只保留最近这么多轮（设计 §4.1“保留最近 N 轮”）。"""
 
     @field_validator("data_dir")
     @classmethod
