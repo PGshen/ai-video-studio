@@ -15,6 +15,7 @@ dependencies = [
     "openai-agents[litellm]>=0.22.3,<0.23",
     "manim>=0.18,<1",
     "pyflakes>=3.4,<4",
+    "pillow>=11,<13",
 ]
 
 [dependency-groups]
@@ -163,9 +164,10 @@ allow_indirect_imports = true
 [[tool.importlinter.contracts]]
 name = "分层（ARCHITECTURE §2 依赖表）：main > api > stages > agent > workspace > db > config"
 type = "layers"
-# 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines（M2 T1）已有
-# 独立的 forbidden 契约（只依赖 config，见下）；search/jobs/worker 还不存在，等对应
-# 里程碑新建模块时按 R1 补进来。各阶段之间的独立性由上面的 independence 契约保证。
+# 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines（M2 T1）、
+# jobs（M2 T3）、worker（M2 T5）不在这条链上，各自已有独立的 forbidden 契约（见
+# 下）；search（M4）还不存在，等建立时按 R1 补进来。各阶段之间的独立性由上面的
+# independence 契约保证。
 layers = [
     "studio.main",
     "studio.api",
@@ -209,3 +211,36 @@ name = "jobs 不依赖 main（组装层不能被下层反向依赖）"
 type = "forbidden"
 source_modules = ["studio.jobs"]
 forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "没有模块 import worker（规则 1：worker 是组装层，M2 T5）"
+type = "forbidden"
+source_modules = [
+    "studio.config",
+    "studio.db",
+    "studio.workspace",
+    "studio.agent",
+    "studio.stages",
+    "studio.api",
+    "studio.jobs",
+    "studio.engines",
+]
+forbidden_modules = ["studio.worker"]
+
+[[tool.importlinter.contracts]]
+name = "worker 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.worker"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "worker 只依赖 jobs/engines/workspace/db/config（ARCHITECTURE §2 依赖表），不依赖 agent/stages/api/main"
+type = "forbidden"
+source_modules = ["studio.worker"]
+forbidden_modules = [
+    "studio.agent",
+    "studio.stages",
+    "studio.api",
+    "studio.main",
+]

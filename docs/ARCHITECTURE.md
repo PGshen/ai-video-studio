@@ -35,7 +35,7 @@ ai-video-studio/
 | `stages.<topic\|narrative\|animation>`（brainstorm 在 M4） | 各阶段的提示词、专属工具、产物 schema、校验器；M1 是占位定义（提示词 + 可写范围），实现 `agent.stage.StageDefinition` | `stages.common`、`agent`、`workspace`、`engines`、`search`、`jobs`、`db`、`config` |
 | `api` | HTTP 路由、SSE | 以上全部（除 `main`） |
 | `main` | api 进程入口：组装应用，**注册各阶段**与各运行时，lifespan 关闭时收尾运行中的 turn | 以上全部 |
-| `worker`（M2） | worker 进程入口：成片任务循环 | `jobs`、`engines`、`workspace`、`db`、`config` |
+| `worker` | worker 进程入口：成片任务循环（M2 T5） | `jobs`、`engines`、`workspace`、`db`、`config` |
 
 ### 分层规则（机器检查）
 

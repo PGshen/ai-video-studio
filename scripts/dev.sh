@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# make dev 的实现：启动 api 和前端（worker 留到 M2）。
+# make dev 的实现：启动 api、worker、前端三个进程。
 # uvicorn 的 --reload-dir 只指向 backend/src，工作区（data/）不在监听范围内
-# （AGENTS.md 红线：工作区不能被 uvicorn reload 监听到）。
+# （AGENTS.md 红线：工作区不能被 uvicorn reload 监听到）；worker 不需要热重载，
+# 不接 --reload（M2 T5）。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -53,6 +54,13 @@ if [ -f "$ROOT_DIR/backend/pyproject.toml" ]; then
   ) &
   pids+=("$!")
   echo "api: http://$STUDIO_BIND_HOST:$STUDIO_BIND_PORT (OpenAPI: /docs)"
+
+  (
+    cd "$ROOT_DIR/backend"
+    exec "$UV" run python -m studio.worker
+  ) &
+  pids+=("$!")
+  echo "worker: 已启动（成片渲染任务循环，日志见上方 [worker] 前缀）"
 else
   echo "跳过后端启动：backend/ 尚未创建"
 fi
