@@ -72,7 +72,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：上述测试先红后绿；`make check` 绿。
 - **验证命令**：`make check`
 
-### T2：runner 小修（TD-7、TD-8、TD-13）（待开始）
+### T2：runner 小修（TD-7、TD-8、TD-13）（完成）
 
 - **目标**：Claude 原生写工具的改动路径能推送；路径不重复；嵌套参数也截断；重启恢复时做一次越界还原。
 - **涉及文件**：`backend/src/studio/agent/runner.py`、`backend/tests/agent/test_runner.py`。
@@ -169,10 +169,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 ## 进度
 
 - 2026-09-28 — T1 — 完成（TD-2/TD-3/TD-4/TD-5 均已修复，测试先红后绿，`make check` 全绿；commit 在提交后补）。
+- 2026-09-28 — T2 — 完成（TD-7/TD-8/TD-13 均已修复，测试先红后绿，`make check` 全绿）。
 
 ## 下一步
 
-- 从 T2 开始。
+- 从 T3 开始。
 
 ## 决策记录
 
@@ -180,6 +181,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — TD-10 放在拆分（T6/T7）之前 — 拆分期间测试断言不动，才能证明是纯搬移。
 - 2026-09-28 — T1/TD-3：没有另外暴露 `backend_src_dir()`，测试改用 `repo_root() / "backend" / "src"` 构造越界路径 — controller 只裁定要暴露 `repo_root()`，`backend/src` 是 config 文档里写明的固定相对布局，测试用这个相对路径拼接足够，不需要再加一个公开访问点。
 - 2026-09-28 — T1/TD-5：把 `_prune_empty_dirs` 从 `snapshot.py` 搬到 `workspace/layout.py`（改名 `prune_empty_dirs`，去掉下划线），供 `snapshot.rollback` 和新加的 `scope.guard` 共用 — 两个模块本来就都依赖 `layout`，比互相 import 私有函数更干净；同时把 `EXCLUDED_TOP_DIRS - {"upstream"}` 提成 `layout.HIDDEN_TOP_DIRS`，`api/files.py` 和 `workspace/files.py` 都改用它，不再各自算一遍。
+- 2026-09-28 — T2/TD-7：恢复时的越界 guard 用 turn 的 `start_snapshot_id`（`get_snapshot` 取其 manifest）做 `before`，`session.stage` 经 `StageRegistry.get` 拿 `write_scope`；`tool_writes` 传空字典（本轮工具写入记录随进程丢失，guard 因此不能区分"工具管理但范围外"的文件，只能按可写范围还原——M1 已有的工具管理文件都在各自阶段的可写范围内，不受影响）。起始快照缺失（`start_snapshot_id is None` 或快照已不存在）或阶段未注册时跳过 guard，只记日志，仍然做 `partial` 快照并标记 `interrupted`。
 
 ## 意外与发现
 

@@ -21,6 +21,7 @@ import asyncio
 import logging
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine
@@ -39,7 +40,7 @@ from studio.config import Settings
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
 from studio.db.repo.sessions import SessionValue, get_session
-from studio.db.repo.snapshots import latest_snapshot
+from studio.db.repo.snapshots import get_snapshot, latest_snapshot
 from studio.workspace import (
     BlobStore,
     Manifest,
@@ -72,8 +73,18 @@ def _truncate(text: str) -> tuple[str, bool]:
     return text[:TOOL_RESULT_MAX_CHARS] + "…（已截断）", True
 
 
+def _truncate_value(value: object) -> object:
+    if isinstance(value, str):
+        return _truncate(value)[0]
+    if isinstance(value, dict):
+        return {k: _truncate_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_truncate_value(v) for v in value]
+    return value
+
+
 def _truncate_args(args: dict[str, object]) -> dict[str, object]:
-    return {k: _truncate(v)[0] if isinstance(v, str) else v for k, v in args.items()}
+    return {k: _truncate_value(v) for k, v in args.items()}
 
 
 @dataclass
@@ -260,6 +271,8 @@ class TurnRunner:
         end_snapshot_id: str | None = None
         session = get_session(self._engine, turn.session_id)
         if turn.status == "running" and session is not None and session.project_id:
+            workdir = project_dir(self._settings.data_dir, session.project_id)
+            self._guard_recovered_turn(turn, session, workdir)
             try:
                 snapshot = create_snapshot(
                     self._engine, self._blobs, session.project_id, "partial", turn.id
@@ -268,6 +281,39 @@ class TurnRunner:
             except Exception:
                 logger.exception("turn %s 恢复时快照失败", turn.id)
         turns_repo.interrupt_turn(self._engine, turn.id, end_snapshot_id=end_snapshot_id)
+
+    def _guard_recovered_turn(
+        self, turn: turns_repo.TurnValue, session: SessionValue, workdir: Path
+    ) -> None:
+        """TD-7：`running` turn 恢复时按该阶段的 `write_scope` 做一次越界还原。
+
+        本轮的工具写入记录随进程丢失，`tool_writes` 传空字典——guard 因此只能
+        按可写范围区分，不能像正常收尾那样保留"工具管理但范围外"的文件；
+        这对 M1 已有的工具管理文件（都在各阶段自己的可写范围内）没有影响。
+        起始快照或阶段未注册时跳过，只记日志，不阻止恢复。
+        """
+        if turn.start_snapshot_id is None:
+            logger.warning("turn %s 没有起始快照，恢复时跳过越界检查", turn.id)
+            return
+        start = get_snapshot(self._engine, turn.start_snapshot_id)
+        if start is None:
+            logger.warning(
+                "turn %s 的起始快照 %s 不存在，恢复时跳过越界检查",
+                turn.id,
+                turn.start_snapshot_id,
+            )
+            return
+        try:
+            stage = self._registry.get(session.stage)
+        except KeyError:
+            logger.warning(
+                "会话 %s 的阶段 %s 未注册，恢复时跳过越界检查", session.id, session.stage
+            )
+            return
+        try:
+            guard(workdir, start.manifest, scan(workdir), stage.write_scope(), self._blobs, {})
+        except Exception:
+            logger.exception("turn %s 恢复时越界检查失败", turn.id)
 
     # ---- scheduling -----------------------------------------------------
 
@@ -437,11 +483,21 @@ class TurnRunner:
         call = state.calls.get(event.call_id)
         recorded, state.pending_tool_paths = state.pending_tool_paths, []
         if call is not None and call.name in events.FILE_TOOL_NAMES:
-            # `move_to` is the target of an apply_patch rename (OpenAIRuntime).
-            candidates = (call.args.get("path"), call.args.get("move_to"))
+            # `move_to` is the target of an apply_patch rename (OpenAIRuntime);
+            # `file_path`/`notebook_path` are Claude's native write tool args
+            # (TD-13: Claude does not use `path`).
+            candidates = (
+                call.args.get("path"),
+                call.args.get("file_path"),
+                call.args.get("notebook_path"),
+                call.args.get("move_to"),
+            )
             # An empty list means "unknown paths, refetch" (e.g. shell commands).
             paths = [path for path in candidates if isinstance(path, str)]
-            self._publish(job, "workspace_changed", {"paths": paths + recorded})
+            # Dedupe while preserving first-seen order (TD-8): a native tool's
+            # own path can also show up in `recorded` via `record_tool_write`.
+            merged = dict.fromkeys(paths + recorded)
+            self._publish(job, "workspace_changed", {"paths": list(merged)})
         elif recorded:
             self._publish(job, "workspace_changed", {"paths": recorded})
 

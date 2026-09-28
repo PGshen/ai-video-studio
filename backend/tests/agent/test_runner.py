@@ -22,7 +22,7 @@ from studio.db.engine import session_scope
 from studio.db.models import ModelProfile
 from studio.db.repo.profiles import get_model_profile, seed_model_profiles
 from studio.db.repo.sessions import create_session, get_session
-from studio.db.repo.snapshots import get_snapshot, list_snapshots
+from studio.db.repo.snapshots import get_snapshot, latest_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
 from studio.db.repo.turns import (
     TurnValue,
@@ -326,6 +326,62 @@ class TestWorkspaceChangedPaths:
         changed = [e.payload["paths"] for e in received if e.type == "workspace_changed"]
         assert changed == [["topic/a.md", "topic/b.md"]]
 
+    async def test_claude_native_file_path_is_published(self, h: Harness) -> None:
+        # TD-13: Claude's native Write/Edit tools use `file_path`, not `path`.
+        class ClaudeWriter:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                args: dict[str, object] = {"file_path": "topic/a.md", "content": "x"}
+                yield events.ToolCall(call_id="c1", name="Write", args=args)
+                yield events.ToolResult(call_id="c1", text="ok")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        received, pump = _collect(h.bus, session_id)
+        await h.run(session_id, ClaudeWriter)
+        await _drain(pump)
+
+        changed = [e.payload["paths"] for e in received if e.type == "workspace_changed"]
+        assert changed == [["topic/a.md"]]
+
+    async def test_claude_notebook_edit_path_is_published(self, h: Harness) -> None:
+        class ClaudeNotebookEditor:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                args: dict[str, object] = {"notebook_path": "topic/nb.ipynb"}
+                yield events.ToolCall(call_id="n1", name="NotebookEdit", args=args)
+                yield events.ToolResult(call_id="n1", text="ok")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        received, pump = _collect(h.bus, session_id)
+        await h.run(session_id, ClaudeNotebookEditor)
+        await _drain(pump)
+
+        changed = [e.payload["paths"] for e in received if e.type == "workspace_changed"]
+        assert changed == [["topic/nb.ipynb"]]
+
+    async def test_candidate_path_deduped_against_recorded(self, h: Harness) -> None:
+        # A native file tool's `file_path` can name the same path
+        # `record_tool_write` already recorded; the published list must not
+        # repeat it (TD-13/TD-8: merge then dedupe, preserving order).
+        class DupWriter:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                target = Path(ctx.workdir) / "topic" / "a.md"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("x", encoding="utf-8")
+                ctx.record_tool_write("topic/a.md", "unused")
+                yield events.ToolCall(call_id="c1", name="Write", args={"file_path": "topic/a.md"})
+                yield events.ToolResult(call_id="c1", text="ok")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        received, pump = _collect(h.bus, session_id)
+        turn = await h.run(session_id, DupWriter)
+        await _drain(pump)
+
+        assert turn.status == "done"
+        changed = [e.payload["paths"] for e in received if e.type == "workspace_changed"]
+        assert changed == [["topic/a.md"]]
+
 
 class TestAllowWeb:
     async def test_allow_web_follows_stage_definition(self, h: Harness) -> None:
@@ -356,6 +412,30 @@ class TestResumeAndTruncation:
         result = next(r for r in list_events(h.env.engine, session_id) if r.type == "tool_result")
         assert len(result.payload["text"]) < TOOL_RESULT_MAX_CHARS + 50
         assert result.payload["truncated"] is True
+
+    async def test_nested_tool_call_args_are_truncated(self, h: Harness) -> None:
+        # TD-8: `_truncate_args` must recurse into dict/list values, not just
+        # top-level strings.
+        long = "y" * (TOOL_RESULT_MAX_CHARS + 50)
+
+        class NestedArgs:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                args: dict[str, object] = {
+                    "path": "topic/a.md",
+                    "edits": [{"old": long, "new": [long, {"deep": long}]}],
+                }
+                yield events.ToolCall(call_id="c1", name="edit_file", args=args)
+                yield events.ToolResult(call_id="c1", text="ok")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        await h.run(session_id, NestedArgs)
+
+        call = next(r for r in list_events(h.env.engine, session_id) if r.type == "tool_call")
+        edits = call.payload["args"]["edits"]
+        assert len(edits[0]["old"]) < len(long)
+        assert len(edits[0]["new"][0]) < len(long)
+        assert len(edits[0]["new"][1]["deep"]) < len(long)
 
 
 class TestGuard:
@@ -615,6 +695,48 @@ class TestRecovery:
 
         # the session accepts a new turn afterwards
         assert create_turn_if_session_idle(h.env.engine, running_session, "继续") is not None
+
+    def test_out_of_scope_write_is_restored_in_scope_kept(self, h: Harness) -> None:
+        # TD-7: a `running` turn with a real start snapshot gets one guard()
+        # restore (no tool_writes, since those live only in memory) before the
+        # partial snapshot, using its stage's write_scope as the boundary.
+        session_id = h.session(stage="topic")
+        start = latest_snapshot(h.env.engine, h.env.project_id)
+        assert start is not None
+        turn = create_turn_if_session_idle(h.env.engine, session_id, "1")
+        assert turn is not None
+        mark_turn_running(h.env.engine, turn.id, start_snapshot_id=start.id)
+
+        h.env.write("topic/ok.md", "范围内，保留")
+        h.env.write("style/evil.md", "越界，应该被还原")
+
+        h.runner.recover_on_startup()
+
+        assert (h.env.workdir / "topic" / "ok.md").exists()
+        assert not (h.env.workdir / "style" / "evil.md").exists()
+        after = get_turn(h.env.engine, turn.id)
+        assert after is not None and after.status == "interrupted"
+        partial = get_snapshot(h.env.engine, after.end_snapshot_id or "")
+        assert partial is not None
+        assert "topic/ok.md" in partial.manifest
+        assert "style/evil.md" not in partial.manifest
+
+    def test_missing_start_snapshot_skips_guard_but_still_recovers(self, h: Harness) -> None:
+        # Existing behaviour (no start_snapshot_id recorded) must keep working:
+        # guard is skipped, but the partial snapshot and interrupt still happen.
+        session_id = h.session(stage="topic")
+        turn = create_turn_if_session_idle(h.env.engine, session_id, "1")
+        assert turn is not None
+        mark_turn_running(h.env.engine, turn.id, start_snapshot_id=None)
+
+        h.env.write("style/untouched.md", "不受影响（没有起始快照可比对）")
+
+        h.runner.recover_on_startup()
+
+        assert (h.env.workdir / "style" / "untouched.md").exists()
+        after = get_turn(h.env.engine, turn.id)
+        assert after is not None and after.status == "interrupted"
+        assert after.end_snapshot_id is not None
 
 
 class TestShutdown:
