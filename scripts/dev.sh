@@ -31,16 +31,19 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [ -f "$ROOT_DIR/backend/pyproject.toml" ]; then
+  # 绑定地址从 Settings 读取（`studio.config` 的 `__main__` 输出 "host port"），
+  # 而不是在这里写死，否则改 STUDIO_HOST/STUDIO_PORT 不会真的生效（TD-2）。
+  read -r STUDIO_BIND_HOST STUDIO_BIND_PORT < <(cd "$ROOT_DIR/backend" && "$UV" run python -m studio.config)
   (
     cd "$ROOT_DIR/backend"
     exec "$UV" run uvicorn studio.main:app \
       --reload \
       --reload-dir "$ROOT_DIR/backend/src" \
-      --host 127.0.0.1 \
-      --port 8000
+      --host "$STUDIO_BIND_HOST" \
+      --port "$STUDIO_BIND_PORT"
   ) &
   pids+=("$!")
-  echo "api: http://127.0.0.1:8000 (OpenAPI: /docs)"
+  echo "api: http://$STUDIO_BIND_HOST:$STUDIO_BIND_PORT (OpenAPI: /docs)"
 else
   echo "跳过后端启动：backend/ 尚未创建"
 fi

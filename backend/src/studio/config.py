@@ -100,3 +100,19 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def repo_root() -> Path:
+    """仓库根目录（`<repo_root>/backend/src/studio/config.py` 向上 3 层）。
+
+    公开只读访问点：`_REPO_ROOT` 等常量是模块私有实现细节，其它模块和测试
+    不应直接 import（TD-3）。
+    """
+    return _REPO_ROOT
+
+
+if __name__ == "__main__":
+    # `dev.sh` 用这一行的输出取真正生效的绑定地址（TD-2）：Settings.host/port
+    # 此前只是声明字段，没人读它们，改 STUDIO_PORT 不会影响 dev.sh 里写死的端口。
+    _settings = Settings()
+    print(f"{_settings.host} {_settings.port}")
