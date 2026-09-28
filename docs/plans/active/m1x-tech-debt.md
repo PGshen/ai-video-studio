@@ -105,7 +105,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：测试语义不减弱（每条原断言都能在新写法里找到对应的不变量，列在 commit 说明里）；`make check` 绿。
 - **验证命令**：`make check`
 
-### T5：`TurnContext.tool_context()` 与单一步数口径（TD-17、TD-18）（待开始）
+### T5：`TurnContext.tool_context()` 与单一步数口径（TD-17、TD-18）（完成）
 
 - **目标**：`ToolContext` 只构造一处；步数预算以 runner 为准。
 - **涉及文件**：`backend/src/studio/agent/{runtime,fake,claude_runtime,openai_runtime,runner}.py`、对应测试。
@@ -172,10 +172,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T2 — 完成（TD-7/TD-8/TD-13 均已修复，测试先红后绿，`make check` 全绿）。
 - 2026-09-28 — T3 — 完成（TD-11/TD-12 均已修复：connect 前/中取消立即结束、0 预算不启动 CLI、账本按 SDK 会话 id、无 result 的一轮记"待校准"并入下一轮且以 `Usage.includes_carryover` 标注；mock 测试先红后绿，`make check` 全绿；本机登录冒烟"中途取消 + 再发一轮"两种取消方式都与 SDK 累计值对上）。
 - 2026-09-28 — T4 — 完成（TD-10：`backend/tests/event_asserts.py` 新增 `assert_in_order`/`type_counts`；`test_stream.py::test_default_fake_script_produces_expected_wire_events` 与 `test_runner.py::test_events_persisted_published_and_snapshotted` 改为断言相对顺序和不变量；本地把 `runner.py` 的 `workspace_changed` 发布挪到 `_finish` 快照之后（不提交），确认旧的完整列表断言红、新断言绿后已还原，`git diff -- backend/src` 为空；`make check` 全绿）。
+- 2026-09-28 — T5 — 完成（TD-17：`TurnContext.tool_context()`，Fake/Claude/OpenAI 三个运行时改用它，`grep -rn "ToolContext(" backend/src` 只剩 `runtime.py`；TD-18：Fake/Claude 运行时删除步数计数，Claude 不再因步数自行 interrupt，改由 runner 置位取消令牌、watcher 转成 `interrupt()`，runner 最终状态仍为 `budget_exceeded`；OpenAI `max_turns` 改为由 `max_steps` 推导的宽松兜底；测试先红（4 项）后绿，`make check` 全绿）。
 
 ## 下一步
 
-- 从 T5 开始。
+- 从 T6 开始。
 
 ## 决策记录
 
@@ -190,6 +191,8 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T3：真实验证用例放在 `backend/tests/smoke/test_smoke.py::test_claude_login_cancel_then_turn`（名字含 `claude_login`，`-k claude_login` 会选中），为此给 `support.build_harness` 加了 `cancel_grace_seconds` 参数、`SmokeHarness.turn_cancelled_at_tool_call`、`record_evidence(directory=...)`（证据写到 `data/evidence/m1x/smoke/`）；都是测试代码。
 - 2026-09-28 — T4：辅助函数放在 `backend/tests/event_asserts.py`（`tests/` 目录本身没有 `__init__.py`，两个子包 `tests/api`、`tests/agent` 各自是独立的顶层包，pytest 因此把 `tests/` 加进 `sys.path`），两边都用 `from event_asserts import assert_in_order, type_counts` 绝对导入，不新增 `tests/__init__.py`（避免改变现有的测试收集/导入方式，超出本任务范围）。
 - 2026-09-28 — T4：只改了 `test_stream.py`/`test_runner.py` 里两条绑定"完整事件类型列表"的断言；`test_runner.py` 里 `types[-2:] == ["error", "snapshot"]`（失败收尾）这类只看首尾两个元素的小断言本身已经是相对位置表达，没有改动必要，保留不动。
+- 2026-09-28 — T5/TD-18：OpenAI 运行时的 SDK `max_turns` 取 `max_turns(budget)`：`max_steps` 为 `None` 时仍是 `MAX_TURNS=200`，否则 `max_steps * 2 + 2`。理由：SDK 只有在上一轮模型调用产出工具调用时才会再调模型，runner 在第 `max_steps + 1` 个工具调用时就停止本轮，所以正常情况下最多需要 `max_steps + 2` 次模型调用，乘 2 足够宽松、只防失控；超限时报 `failed`，错误信息里的上限值随之变化。
+- 2026-09-28 — T5/TD-18：`Budget.max_steps` 字段保留（公共接口不变），语义改为"只供运行时推导 SDK 兜底"；Claude 运行时的 `_interrupt`/`_interrupt_on_cancel` 保留（取消 watcher 仍用），只删了 `_Turn.steps`/`budget_hit` 与 `_finish` 里的 `budget_hit` 分支。原运行时层的步数测试移到 runner 层（`test_runner.py::TestBudget::test_step_budget_stops_fake_runtime`，已有的 `test_step_budget_enforced_by_runner` 覆盖"运行时以 cancelled 结束、runner 记 budget_exceeded"）；运行时层改为"忽略 `Budget.max_steps`"与"工具调用后收到取消令牌即结束"两类测试。
 
 ## 意外与发现
 
@@ -197,6 +200,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T3：强制取消落在**新会话的第一轮**时（还没有 `sdk_ref`），runner 拿不到 `TurnEnd.resume_ref`，下一轮会开新的 SDK 会话，那一轮的花费无法从累计值找回（账本虽然记了"待校准"，但不会再被读到）。影响仅限"新会话第一轮就被强制取消"，金额是那一轮已花的部分；未处理，T10 收尾时登记。
 - 2026-09-28 — T3：冒烟 run2（`data/evidence/m1x/smoke-t3-run2.log`）中强制取消场景失败：辅助函数一直等不到 Bash 的 `tool_call`，300s 超时。那一轮的事件没来得及写进证据，原因无法确认（推测模型没调用工具就结束了这一轮，而辅助函数没判断 turn 已结束）。已改为 turn 结束也停止等待、并断言确实在 Bash 调用中被取消，run3、run4 均通过。
 - 2026-09-28 — T3：`runner` 目前不读 `Usage.includes_carryover`（只累加 `cost_usd`），标注只在事件层；要在界面上显示"含上一轮残余"需要 runner 落库/推送，本任务不改 runner（T5/T7 会动 runner），T10 收尾时登记。
+- 2026-09-28 — T5：FakeRuntime 原来的"步数"是脚本步骤数（`say`/`sleep`/`use_cost` 都算），不是工具调用数，和 runner 的口径（`ToolCall` 数）本来就不一致——这正是 TD-18 说的风险；删掉后新 runner 测试（3 次写入、`max_steps_per_turn=1`）的 tool_call 数从 1 变成 2，与 Claude/OpenAI 路径一致。
 
 ## 阻塞
 
@@ -216,3 +220,5 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
   - `test_stream.py` 里 `names == [8 个事件的完整列表]` → 拆成：①`type_counts(names)` 断言每种类型各出现几次（不比较顺序）；②`turn_statuses == ["queued","running","done"]`（turn 生命周期顺序，不能松动）；③`names[0]/names[-1] == "turn_status"` 且首尾分别是 queued/done（`turn_start` 最先、`turn_end` 最后）；④`assert_in_order(names, "text", "tool_call", "tool_result")`（说话 → 调工具 → 工具结果的因果链）；⑤`workspace_changed` 的下标晚于 `tool_result`（`workspace_changed` 在对应 `tool_result` 之后）；⑥`snapshot` 的下标早于最后一个元素（快照事件在 `turn_end` 之前）。
   - `test_runner.py` 里 `[r.type for r in rows] == ["text","tool_call","tool_result","snapshot"]` → 拆成 `type_counts` 断言各类型出现次数、`assert_in_order(row_types, "text","tool_call","tool_result","snapshot")` 断言因果链（含快照在 `turn_end` 之前，这里体现为它是持久化事件里的最后一条）；`[r.seq for r in rows] == [1,2,3,4]`（持久化 seq 单调连续）保留不变——它本来就不是"事件类型顺序"断言。
 - T4：`make check` 全绿。
+- T5（TD-17/TD-18）：新增/改写的 4 项测试先红（`data/evidence/m1x/t5-red.log`：`test_tool_context_matches_turn_context`、Fake/Claude 的 `test_step_budget_is_left_to_the_runner`、runner 的 `test_step_budget_stops_fake_runtime`；OpenAI 的 `TestMaxTurns` 因 `max_turns` 不存在而导入失败）后绿（`data/evidence/m1x/t5-green.log`，`tests/agent` 303 项通过）。`grep -rn "ToolContext(" backend/src` 只剩 `runtime.py:87`。通过。
+- T5：`make check` 全绿（后端 568 passed / 5 deselected，前端 128 passed）。

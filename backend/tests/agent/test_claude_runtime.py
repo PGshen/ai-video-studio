@@ -814,18 +814,32 @@ class TestCancelAndBudget:
         assert received[-1] == events.TurnEnd(resume_ref=SESSION, status="cancelled")
         assert clients.last.disconnected
 
-    async def test_step_budget_interrupts(self, workdir: Path, data_dir: Path) -> None:
+    async def test_step_budget_is_left_to_the_runner(self, workdir: Path, data_dir: Path) -> None:
+        """TD-18: the runner counts steps and stops the turn via the cancel token."""
         clients = Clients(
             [
                 _assistant(ToolUseBlock(id="t1", name="Read", input={})),
                 _assistant(ToolUseBlock(id="t2", name="Read", input={})),
-            ],
-            hold=True,
+                _result(0.0),
+            ]
         )
         result = await _run(_runtime(data_dir, clients), _ctx(workdir, budget=Budget(max_steps=1)))
 
+        assert not clients.last.interrupted.is_set()
+        assert result[-1] == events.TurnEnd(resume_ref=SESSION, status="done")
+
+    async def test_cancel_after_tool_call_interrupts(self, workdir: Path, data_dir: Path) -> None:
+        clients = Clients([_assistant(ToolUseBlock(id="t1", name="Read", input={}))], hold=True)
+        token = CancelToken()
+
+        received: list[events.AgentEvent] = []
+        async for event in _runtime(data_dir, clients).run_turn(_ctx(workdir, cancel_token=token)):
+            received.append(event)
+            if isinstance(event, events.ToolCall):
+                token.cancel()
+
         assert clients.last.interrupted.is_set()
-        assert result[-1] == events.TurnEnd(resume_ref=SESSION, status="budget_exceeded")
+        assert received[-1] == events.TurnEnd(resume_ref=SESSION, status="cancelled")
 
     async def test_cost_budget_uses_sdk_limit(self, workdir: Path, data_dir: Path) -> None:
         clients = Clients([_result(1.2, subtype="error_max_budget_usd", is_error=True)])

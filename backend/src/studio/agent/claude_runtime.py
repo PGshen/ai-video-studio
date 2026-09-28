@@ -26,7 +26,8 @@
   一轮没拿到 result（被强制取消、出错）时账本标"待校准"，那一轮的花费并入
   下一轮的差值，`Usage.includes_carryover` 标注（TD-11）。
 - **取消/预算**：开始前已取消 → 不启动 CLI；connect 期间取消 → 放弃 connect
-  立即结束（TD-12）；之后取消令牌置位或步数超限 → `interrupt()`。成本上限为 0 →
+  立即结束（TD-12）；之后取消令牌置位 → `interrupt()`。步数由 TurnRunner 计数，
+  超限时它置位取消令牌，本轮由 runner 记为 `budget_exceeded`（TD-18）。成本上限为 0 →
   不启动 CLI，直接 `budget_exceeded`；其余交给 SDK 的 `max_budget_usd`（只统计
   本次 query() 调用的花费，即本轮）。
 
@@ -73,7 +74,7 @@ from claude_agent_sdk.types import (
 
 from studio.agent import events
 from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext, UserInput
-from studio.agent.tools import ToolContext, ToolSpec, invoke_tool
+from studio.agent.tools import ToolSpec, invoke_tool
 from studio.config import Settings
 from studio.workspace.scope import WriteScope, is_writable
 
@@ -403,12 +404,7 @@ def _write_scope_hook(workdir: Path, scope: WriteScope) -> HookCallback:
 
 def build_sdk_tool(spec: ToolSpec, ctx: TurnContext) -> SdkMcpTool[Any]:
     """把业务 `ToolSpec` 转成 SDK 的进程内 MCP 工具；调用统一走 `invoke_tool`。"""
-    tool_ctx = ToolContext(
-        project_id=ctx.project_id,
-        stage=ctx.stage,
-        workdir=ctx.workdir,
-        record_tool_write=ctx.record_tool_write,
-    )
+    tool_ctx = ctx.tool_context()
 
     async def handler(args: dict[str, Any]) -> dict[str, Any]:
         result = await invoke_tool(spec, tool_ctx, args)
@@ -483,8 +479,6 @@ def _tool_result_content(
 class _Turn:
     session_id: str | None
     queried: bool = False
-    steps: int = 0
-    budget_hit: bool = False
     interrupted: bool = False
     result: ResultMessage | None = None
 
@@ -640,7 +634,6 @@ class ClaudeRuntime:
 
         turn = _Turn(session_id=ctx.resume_ref)
         watcher: asyncio.Task[None] | None = None
-        max_steps = ctx.budget.max_steps
         client: SdkClient | None = None
         try:
             client = self._client_factory(self._options(ctx, auth, env))
@@ -651,13 +644,10 @@ class ClaudeRuntime:
             turn.queried = True
             await client.query(_prompt(ctx.user_input))
             async for message in client.receive_response():
+                # Step budget: the runner counts ToolCalls and stops the turn via
+                # the cancel token, which the watcher turns into interrupt() (TD-18).
                 for event in _convert(message, turn):
                     yield event
-                    if isinstance(event, events.ToolCall):
-                        turn.steps += 1
-                        if max_steps is not None and turn.steps > max_steps:
-                            turn.budget_hit = True
-                            await _interrupt(client, turn)
                 if isinstance(message, ResultMessage):
                     turn.result = message
         except Exception as exc:
@@ -709,7 +699,7 @@ class ClaudeRuntime:
         )
 
         error: str | None = None
-        if turn.budget_hit or result.subtype == "error_max_budget_usd":
+        if result.subtype == "error_max_budget_usd":
             status: events.TurnStatus = "budget_exceeded"
         elif ctx.cancel_token.is_cancelled or (result.terminal_reason or "").startswith("aborted"):
             status = "cancelled"

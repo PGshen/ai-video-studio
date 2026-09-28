@@ -35,7 +35,7 @@ from typing import Any
 
 from studio.agent import events
 from studio.agent.runtime import RuntimeFactory, TurnContext
-from studio.agent.tools import ToolContext, invoke_tool
+from studio.agent.tools import invoke_tool
 from studio.workspace import files
 from studio.workspace.scope import WriteScope, is_writable
 
@@ -119,11 +119,9 @@ class FakeRuntime:
     `RuntimeFactory` 的零参数 `RuntimeConstructor` 签名，同时仍然对每一轮
     的实际 `write_scope`/用户消息作出正确的回显（而不是构造时就固定死）。
 
-    `call_tool` 步骤需要的 `ToolContext(project_id, stage, workdir,
-    record_tool_write)` 直接从 `ctx.project_id`/`ctx.stage`/
-    `ctx.record_tool_write` 取（审查后修复：这几项本来是 `FakeRuntime`
-    构造参数，现在改为 `TurnContext` 的字段，`TurnRunner`——T6——构造
-    `TurnContext` 时统一提供，`FakeRuntime` 不再需要自己的默认值）。
+    `call_tool` 步骤需要的工具上下文取自 `ctx.tool_context()`（TD-17）。
+    步数预算不在这里计数：TurnRunner 统计工具调用、超限时置位取消令牌，
+    这里在每一步开始前检查令牌（TD-18）。
     """
 
     def __init__(self, script: list[FakeStep] | None = None, *, delay_seconds: float = 0) -> None:
@@ -138,17 +136,11 @@ class FakeRuntime:
             )
 
         call_counter = 0
-        step_count = 0
         total_cost = 0.0
 
         for step in script:
             if ctx.cancel_token.is_cancelled:
                 yield events.TurnEnd(resume_ref=ctx.resume_ref, status="cancelled")
-                return
-
-            step_count += 1
-            if ctx.budget.max_steps is not None and step_count > ctx.budget.max_steps:
-                yield events.TurnEnd(resume_ref=ctx.resume_ref, status="budget_exceeded")
                 return
 
             if isinstance(step, Say):
@@ -191,13 +183,7 @@ class FakeRuntime:
                         call_id=call_id, text=f"未知工具：{step.name}", is_error=True
                     )
                     continue
-                tool_ctx = ToolContext(
-                    project_id=ctx.project_id,
-                    stage=ctx.stage,
-                    workdir=ctx.workdir,
-                    record_tool_write=ctx.record_tool_write,
-                )
-                result = await invoke_tool(spec, tool_ctx, step.args)
+                result = await invoke_tool(spec, ctx.tool_context(), step.args)
                 yield events.ToolResult(
                     call_id=call_id,
                     text=result.text,

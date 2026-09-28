@@ -43,10 +43,12 @@ from pydantic import BaseModel
 
 from studio.agent import events
 from studio.agent.openai_runtime import (
+    MAX_TURNS,
     LocalShellExecutor,
     OpenAIRuntime,
     build_function_tool,
     build_model,
+    max_turns,
     native_shell_supported,
     openai_client,
     register_openai,
@@ -637,6 +639,31 @@ class TestCancel:
             _run(_runtime(data_dir, models), _ctx(workdir, cancel_token=token)), 5
         )
         assert _end(out).status == "cancelled"
+
+
+class TestMaxTurns:
+    """TD-18: the runner enforces the step budget; the SDK's `max_turns` is only a
+    loose backstop derived from it (plan decision: `max_steps * 2 + 2`)."""
+
+    def test_unlimited_steps_use_default_cap(self) -> None:
+        assert max_turns(Budget()) == MAX_TURNS
+
+    def test_derived_from_step_budget(self) -> None:
+        assert max_turns(Budget(max_steps=5)) == 12
+
+    async def test_backstop_applies_to_the_run(self, workdir: Path, data_dir: Path) -> None:
+        models = Models(
+            [[function_call("echo", {"text": str(i)}, call_id=f"c{i}")] for i in range(3)]
+            + [[assistant_message("完成")]]
+        )
+        out = await _run(
+            _runtime(data_dir, models),
+            _ctx(workdir, tools=[_echo_spec()], budget=Budget(max_steps=0)),
+        )
+
+        end = _end(out)
+        assert end.status == "failed"
+        assert end.error is not None and "（2）" in end.error
 
 
 def _user_texts(call: ModelCall) -> list[str]:

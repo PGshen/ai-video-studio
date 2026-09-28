@@ -267,6 +267,27 @@ class TestBudget:
         assert len(calls) == 3
         assert turn.usage is not None and turn.usage["steps"] == 3
 
+    async def test_step_budget_stops_fake_runtime(self, env: StudioEnv) -> None:
+        """TD-18: moved from the runtime tests. The runner counts steps and cancels
+        the token; the runtime ends `cancelled`, the turn is `budget_exceeded`."""
+        h = _make_harness(env)
+        _set_profile_limits(env, max_steps_per_turn=1)
+        session_id = h.session(profile="limited")
+
+        turn = await h.run(
+            session_id,
+            [
+                fake.write("topic/a.md", "a"),
+                fake.write("topic/b.md", "b"),
+                fake.write("topic/c.md", "c"),
+            ],
+        )
+
+        assert turn.status == "budget_exceeded"
+        calls = [r for r in list_events(env.engine, session_id) if r.type == "tool_call"]
+        assert len(calls) == 2
+        assert not (env.workdir / "topic" / "c.md").exists()
+
     async def test_cost_budget(self, env: StudioEnv) -> None:
         h = _make_harness(env)
         _set_profile_limits(env, max_cost_per_turn=1.0)

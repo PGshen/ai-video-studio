@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from studio.agent.events import AgentEvent, ImageData
-from studio.agent.tools import ToolSpec
+from studio.agent.tools import ToolContext, ToolSpec
 from studio.db.repo.profiles import ModelProfileValue
 from studio.workspace.scope import WriteScope
 
@@ -26,7 +26,12 @@ class UserInput:
 
 @dataclass(frozen=True, slots=True)
 class Budget:
-    """一轮对话的预算上限；任一项为 `None` 表示不限制。"""
+    """一轮对话的预算上限；任一项为 `None` 表示不限制。
+
+    步数由 TurnRunner 统一计数并在超限时用取消令牌停止本轮（TD-18）；运行时
+    不自己计数，`max_steps` 只供运行时推导 SDK 的宽松兜底（例如 OpenAI 的
+    `max_turns`）。
+    """
 
     max_steps: int | None = None
     max_cost_usd: float | None = None
@@ -55,12 +60,9 @@ class TurnContext:
 
     `project_id`/`stage`/`record_tool_write` 是设计 §4.1 原始字段列表之外
     的补充（审查后修复，见计划决策记录）：运行时在处理业务工具调用时需要
-    构造 `tools.ToolContext(project_id, stage, workdir, record_tool_write)`
-    才能调用 `tools.invoke_tool`，这三项和 `ToolContext` 的字段一一对应，
-    直接放进 `TurnContext` 比额外引入一个 `make_tool_context` 工厂函数更
-    简单——`TurnRunner`（T6）本来就持有这些值，构造 `TurnContext` 时一并
-    传入即可，运行时（`FakeRuntime`/`ClaudeRuntime`/`OpenAIRuntime`）不需要
-    再从别处取它们。
+    `tools.ToolContext` 才能调用 `tools.invoke_tool`，这三项加上 `workdir`
+    和 `ToolContext` 的字段一一对应。运行时统一用 `tool_context()` 取，
+    不各自构造（TD-17）。
     """
 
     system_prompt: str
@@ -79,6 +81,15 @@ class TurnContext:
     """是否开放联网工具（Claude 的 WebSearch/WebFetch）；TurnRunner 从
     `StageDefinition.allow_web` 取值（T9 控制者裁定：topic 开、其余关）。
     """
+
+    def tool_context(self) -> ToolContext:
+        """业务工具 handler 的上下文；三个运行时都从这里取，不各自构造（TD-17）。"""
+        return ToolContext(
+            project_id=self.project_id,
+            stage=self.stage,
+            workdir=self.workdir,
+            record_tool_write=self.record_tool_write,
+        )
 
 
 @runtime_checkable

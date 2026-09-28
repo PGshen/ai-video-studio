@@ -45,4 +45,4 @@
 - `provider=litellm` → `LitellmModel` + 兜底文件工具（`list_files`/`read_file`/`write_file`/`edit_file`），无 Shell、无联网工具。
 - 会话：`<data_dir>/openai_sessions.db`，首轮生成新 id 作为 `resume_ref`；发给模型的历史只保留最近 `Settings.openai_history_turns`（默认 20）轮，按用户消息切分。
 - 用量：每次模型调用一个 `Usage` 事件（缺单价时 `priced=False`，TurnRunner 发一次 `cost_unpriced` 提示并把 turn 成本记为空），成本 = `input_tokens × price_input + output_tokens × price_output`，单价单位为**美元 / 百万 token**；缓存命中的输入按普通输入价计（宁可高估）。配置了 `max_cost_per_turn` 却缺单价时本轮直接失败。
-- `RunConfig(tracing_disabled=True)`、`max_turns=200`（步数预算由 TurnRunner 强制）。
+- `RunConfig(tracing_disabled=True)`、`max_turns` 只是宽松兜底：不限步数时 200，否则 `max_steps * 2 + 2`（步数预算由 TurnRunner 计数并经取消令牌强制，M1x T5，TD-18）。

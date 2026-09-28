@@ -85,7 +85,7 @@ from openai import AsyncOpenAI
 from studio.agent import events
 from studio.agent.apply_patch import WorkspaceApplyPatchEditor, to_workspace_relpath
 from studio.agent.fallback_tools import build_fallback_tools
-from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext, UserInput
+from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec, invoke_tool
 from studio.config import Settings
 from studio.db.repo.profiles import ModelProfileValue
@@ -95,8 +95,21 @@ logger = logging.getLogger(__name__)
 
 SESSIONS_DB = "openai_sessions.db"
 MAX_TURNS = 200
-"""SDK 的 `max_turns`（模型调用次数上限）；SDK 默认 10 太小。真正的步数预算由
-TurnRunner 按 `max_steps_per_turn` 强制，这里只是防失控的兜底。"""
+"""不限步数时 SDK 的 `max_turns`（模型调用次数上限）；SDK 默认 10 太小。"""
+
+
+def max_turns(budget: Budget) -> int:
+    """SDK `max_turns` 的宽松兜底（TD-18）。
+
+    真正的步数预算由 TurnRunner 按 `max_steps_per_turn` 计数并用取消令牌强制；
+    这里只防失控。一次模型调用至少产出一个工具调用才会有下一次调用，runner 在第
+    `max_steps + 1` 个工具调用时就停下，所以 `max_steps * 2 + 2` 在正常情况下
+    永远不会先于 runner 触发。
+    """
+    if budget.max_steps is None:
+        return MAX_TURNS
+    return budget.max_steps * 2 + 2
+
 
 SHELL_DEFAULT_TIMEOUT_S = 120.0
 SHELL_MAX_TIMEOUT_S = 600.0
@@ -640,12 +653,7 @@ class OpenAIRuntime:
         self._environ = environ if environ is not None else os.environ
 
     def _tools(self, ctx: TurnContext, turn: _Turn) -> list[Tool]:
-        tool_ctx = ToolContext(
-            project_id=ctx.project_id,
-            stage=ctx.stage,
-            workdir=ctx.workdir,
-            record_tool_write=ctx.record_tool_write,
-        )
+        tool_ctx = ctx.tool_context()
         specs = list(ctx.tools)
         native: list[Tool] = []
         if ctx.model_profile.provider == "openai":
@@ -709,6 +717,7 @@ class OpenAIRuntime:
         result: RunResultStreaming | None = None
         watcher: asyncio.Task[None] | None = None
         error: str | None = None
+        turn_limit = max_turns(ctx.budget)
         try:
             if not ctx.cancel_token.is_cancelled:
                 result = Runner.run_streamed(
@@ -716,7 +725,7 @@ class OpenAIRuntime:
                     _model_input(ctx.user_input),
                     session=session,
                     hooks=_UsageHooks(turn),
-                    max_turns=MAX_TURNS,
+                    max_turns=turn_limit,
                     run_config=RunConfig(
                         tracing_disabled=True,
                         session_input_callback=keep_recent_turns(self._history_turns),
@@ -727,7 +736,7 @@ class OpenAIRuntime:
                     for converted in turn.drain_usage() + _convert(event, turn):
                         yield converted
         except MaxTurnsExceeded:
-            error = f"模型调用次数超过上限（{MAX_TURNS}）"
+            error = f"模型调用次数超过上限（{turn_limit}）"
         except Exception as exc:
             logger.exception("OpenAI Agents SDK 调用失败")
             error = f"OpenAI Agents SDK 出错：{type(exc).__name__}: {exc}"

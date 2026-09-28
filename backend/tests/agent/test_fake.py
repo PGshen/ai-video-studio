@@ -307,21 +307,43 @@ class TestSleepAndCancel:
 
 
 class TestBudget:
-    async def test_max_steps_exceeded_ends_turn_as_budget_exceeded(self, workdir: Path) -> None:
+    async def test_step_budget_is_left_to_the_runner(self, workdir: Path) -> None:
+        """TD-18: the runner counts steps; the runtime ignores `Budget.max_steps`."""
         from studio.agent import fake
 
         runtime = FakeRuntime([fake.say("一"), fake.say("二"), fake.say("三")])
         ctx = _make_ctx(
             workdir,
             write_scope=WriteScope(writable=["topic/**"], tool_managed=[]),
-            budget=Budget(max_steps=2),
+            budget=Budget(max_steps=1),
         )
 
         result = await _run(runtime, ctx)
 
-        assert result[-1] == events.TurnEnd(resume_ref=None, status="budget_exceeded")
-        text_blocks = [e for e in result if isinstance(e, events.TextBlock)]
-        assert len(text_blocks) == 2
+        assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
+        assert len([e for e in result if isinstance(e, events.TextBlock)]) == 3
+
+    async def test_cancel_after_tool_call_ends_before_next_step(self, workdir: Path) -> None:
+        """How the runner stops a turn over its step budget: it cancels the token."""
+        from studio.agent import fake
+
+        runtime = FakeRuntime([fake.write("topic/a.md", "a"), fake.write("topic/b.md", "b")])
+        token = CancelToken()
+        ctx = _make_ctx(
+            workdir,
+            write_scope=WriteScope(writable=["topic/**"], tool_managed=[]),
+            cancel_token=token,
+        )
+
+        result: list[events.AgentEvent] = []
+        async for event in runtime.run_turn(ctx):
+            result.append(event)
+            if isinstance(event, events.ToolCall):
+                token.cancel()
+
+        assert result[-1] == events.TurnEnd(resume_ref=None, status="cancelled")
+        assert len([e for e in result if isinstance(e, events.ToolCall)]) == 1
+        assert not (workdir / "topic" / "b.md").exists()
 
     async def test_max_cost_exceeded_ends_turn_as_budget_exceeded(self, workdir: Path) -> None:
         from studio.agent import fake
