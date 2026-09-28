@@ -1,0 +1,42 @@
+{
+  "scenes": [
+    {
+      "id": "s-hook",
+      "narration": "如果一个排序算法能在一秒内处理十亿条记录，你会好奇它到底做了什么。",
+      "visual_intent": "用一个不断增长的数字条引出问题，制造悬念。",
+      "beats": [
+        {
+          "cue_text": "如果一个排序算法能在一秒内处理十亿条记录",
+          "visual_action": "数字条从左侧滑入并快速填满画面",
+          "emphasis": "强调数字规模",
+          "transition": "reveal"
+        },
+        {
+          "cue_text": "你会好奇它到底做了什么",
+          "visual_action": "问号图标淡入，悬停在数字条上方",
+          "emphasis": "引出问题",
+          "transition": "continue"
+        }
+      ]
+    },
+    {
+      "id": "s-explain",
+      "narration": "答案是分而治之：把大问题拆成小问题，分别解决后再合并。",
+      "visual_intent": "用分裂再合并的动画展示分治思想。",
+      "beats": [
+        {
+          "cue_text": "答案是分而治之",
+          "visual_action": "一个大方块裂成两个小方块",
+          "emphasis": "点出核心概念",
+          "transition": "transform"
+        },
+        {
+          "cue_text": "分别解决后再合并",
+          "visual_action": "两个小方块处理完毕后合并回一个有序方块",
+          "emphasis": "展示合并结果",
+          "transition": "exit"
+        }
+      ]
+    }
+  ]
+}
