@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+.import_linter_cache/
 
 # 前端
 node_modules/
@@ -18,3 +19,7 @@ dist/
 !.env.example
 .claude/settings.local.json
 .DS_Store
+
+# 本地工具工作区
+.claude/worktrees/
+.superpowers/

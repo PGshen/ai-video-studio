@@ -1,0 +1,543 @@
+# M1：骨架（后端、快照库、运行时、TurnRunner、前端外壳）
+
+## 元信息
+
+| 项 | 值 |
+|---|---|
+| 状态 | 已完成 |
+| 里程碑 | M1 |
+| 设计依据 | [架构设计 §2–§4、§6、§7、§9、§10](../../design/2026-09-26-architecture.md)；模块与分层见 [ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| 分支 | `m1-skeleton` |
+| 批准记录 | 2026-09-27：负责人批准计划（含 Claude 本机登录支持），执行方式为 Subagent-driven；2026-09-28：负责人验收通过（AC4 以会话内浏览器截图 + `data/evidence/m1/ac4-screenshots-2026-09-28.md` 为证） |
+
+## 目标
+
+搭好可以独立运行的骨架：在浏览器里创建项目、进入任一阶段，和 agent（Fake / Claude / OpenAI / LiteLLM 模型）对话（Claude 既可用 API key，也可用本机已登录的订阅账号）；agent 改工作区文件后右侧画布实时刷新，每轮自动快照，可以对比、回滚、手动编辑；越界写入会被还原。同时完成风险项 R1–R5 的验证，把结论写进 `references/`。
+
+## 范围
+
+**包含：**
+
+- 后端：`config`、`db`（全部 12 张表 + Alembic 迁移）、`workspace`（快照库、越界检查、上游只读副本、文件读写）、`agent`（事件、`ToolSpec`、运行时协议、阶段定义协议、会话总线、上下文前言、TurnRunner、Fake/Claude/OpenAI 三个适配器、兜底文件工具）、`stages/{topic,narrative,animation}` 的**占位定义**（占位提示词 + §4.3 的可写范围，没有业务工具）、`api`（projects / stages / files / snapshots / sessions + SSE / model-profiles）、`main`。
+- 通用的阶段机制：定稿、重新打开、下游 `stale` 标记（§5.4 中与具体阶段无关的部分）。
+- 前端：Vite + Vue 3 + TS + Tailwind v4 + shadcn-vue（`dashboard-01` 外壳）+ @ai-elements；项目列表、项目工作台（阶段导航、会话面板、通用文件画布、快照时间线）。
+- 质量关口：ruff、pyright、import-linter、pytest；eslint、vue-tsc、vitest；全部接入 `make check`，快速子集接入 `make check-fast`。
+- `make dev`（api + 前端）、`make smoke`（真实 key 的冒烟测试）。
+- R1–R5 验证。
+
+**不包含：**
+
+- worker 进程和 `jobs` 模块（M2；M1 只建 `jobs` 表）。`make dev` 在 M2 再加入 worker。
+- 任何阶段的业务工具、产物 schema、校验器、阶段专属画布（M2–M4）。
+- 选题池、头脑风暴、ideas API（M4；M1 只建 `ideas` 表），搜索提供方（M4）。
+- 设置页、风格库（M5）。M1 的模型配置通过种子数据 + 只读列表接口提供；`style/STYLE.md` 建项目时写一个占位文件。
+- 按镜头 id 的上游变更摘要（M3）；M1 的上游变更摘要是文件级 diff 摘要。
+- 用户消息附带图片（接口保留字段，界面 M1 只发文本）。
+
+## 评审关注点
+
+设计没有直接写出、但最容易在真实使用中出问题的五种情况，各自已落到对应任务的测试里：
+
+1. **agent 通过 Shell 删除或改写可写范围外的文件**（包括 `style/`、`upstream/`）→ 本轮结束时被还原，下一轮前言告知。测试在 T4、T6。
+2. **用户在 agent 运行中关闭页面或断网后重连** → 用 `after_seq` 续传，不丢事件、不重复。测试在 T8、T12。
+3. **工作区里出现二进制文件、空目录、符号链接、`..` 路径** → 快照只收普通文件；二进制文件不生成文本 diff；文件接口拒绝越出工作区的路径和符号链接。测试在 T3、T7。
+4. **同一会话连发两条消息 / 超过全局并发** → 第二条返回 409（会话忙）或排队规则明确；不会有两个 turn 同时写同一工作区。测试在 T6、T8。
+5. **回滚后 agent 的"记忆"与文件不一致** → 回滚新建快照，下一轮前言写明"已回滚到快照 X"及 diff 摘要。测试在 T6。
+
+## 依赖清单（本计划允许引入的全部依赖）
+
+- 后端运行时：`fastapi`、`uvicorn[standard]`、`pydantic`、`pydantic-settings`、`sqlalchemy`（2.x，同步引擎）、`alembic`、`sse-starlette`、`claude-agent-sdk`、`openai-agents[litellm]`。
+- 后端开发：`ruff`、`pyright`、`import-linter`、`pytest`、`pytest-asyncio`、`httpx`。
+- 前端运行时：`vue`、`vue-router`、`@tanstack/vue-query`、`tailwindcss`、`@tailwindcss/vite`、`codemirror`、`@codemirror/lang-markdown`、`@codemirror/lang-json`、`@codemirror/lang-python`；以及 shadcn-vue CLI 添加 `dashboard-01` 和所用 @ai-elements 组件时**自动写入**的依赖（实际清单记入「决策记录」）。
+- 前端开发：`vite`、`@vitejs/plugin-vue`、`typescript`、`vue-tsc`、`vitest`、`@vue/test-utils`、`jsdom`、`eslint`、`eslint-plugin-vue`、`typescript-eslint`、`@vue/eslint-config-typescript`。
+- 不引入：SSE 客户端库（自己写基于 fetch 的解析器，约百行，便于测 `after_seq`）、`concurrently`（`make dev` 用 bash 脚本）。
+
+## 冒烟测试预授权（SOP §6 第 7 条）
+
+T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由负责人在 `backend/.env` 中提供 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`（LiteLLM 代表模型），`make smoke` 每次全部用例合计预算上限 **1 美元**（写在测试里，由各运行时的预算机制强制）；整个 M1 期间 `make smoke` 最多运行 5 次。Claude 本机登录用例消耗负责人的订阅额度，不产生 API 费用；负责人已知悉官方文档对第三方产品使用 claude.ai 登录的限制（见 [claude-agent-sdk.md](../../references/claude-agent-sdk.md)），自行判断风险。缺少的 key 对应用例跳过，结论记为"未验证"。
+
+## 验收标准
+
+- [x] AC1：`make check` 为绿，且包含后端 ruff / pyright / import-linter / pytest、前端 eslint / vue-tsc / vitest、文档检查；`make check-fast` 包含 ruff 和 eslint。（验证：运行命令，贴输出摘要）
+- [x] AC2：import-linter 契约强制 ARCHITECTURE §2 的分层规则 1–5；故意加一条违规 import 时 `make check` 失败。（验证：临时改动 + 输出）
+- [x] AC3：`make setup && make dev` 后，api 监听 `127.0.0.1:8000`，前端监听 `127.0.0.1:5173`；uvicorn reload 只监听 `backend/src`，agent 写工作区文件不会触发重启。（验证：L3，观察日志）
+- [x] AC4：使用 Fake 模型配置，在浏览器中完成：创建项目 → 进入选题阶段 → 发消息 → 看到流式文本和可折叠的工具调用 → 画布出现 agent 写入的文件 → 时间线出现新快照 → 对比 → 回滚 → 手动编辑并保存。（验证：L4 截图，存 `data/evidence/m1/`）
+- [x] AC5：SSE 续传：`curl -N .../stream?after_seq=N` 只回放 seq > N 的已落库事件，然后接实时流。（验证：L3）
+- [x] AC6：越界写入（包括通过 Shell、写入 `upstream/`、改工具托管文件）在本轮结束时被还原，下一轮前言中列出被还原的路径。（验证：L2 契约测试）
+- [x] AC7：用户手动编辑后发下一条消息，先产生 `user_edit` 快照，前言包含 diff 摘要；回滚后前言包含回滚通知。（验证：L2）
+- [x] AC8：一轮的各种结束方式——完成、失败（`partial` 快照）、用户取消、超出预算、进程重启后 `interrupted`——状态和快照都正确，并能"继续"。（验证：L2 + L3 重启 api）
+- [x] AC9：ClaudeRuntime、OpenAIRuntime 用 mock 的 SDK 通过事件转换、业务工具转换（含图片结果）、会话恢复、取消、预算的测试。（验证：L2）
+- [x] AC10：`make smoke` 中 Claude（API key 与本机登录两种方式）、OpenAI（Responses API）、DeepSeek（LiteLLM）各跑通一轮最小对话：写一个文件、调用一个返回图片的业务工具；R1–R5 每项都有结论和证据，不成立的项已按设计 §9 的对策落地；`references/` 相应条目改为 ✅ 或 ❌ 并注明版本和日期。（验证：L5；run2/run3 合计四个用例都至少成功一次——`claude-api-key` 只在 run2 通过，run3 再跑时 `ECONNRESET`，判定为网络瞬时失败，不影响结论；证据见 `data/evidence/m1/smoke-run2.log`、`smoke-run3.log`、`smoke/*.json` 与「验证记录」）
+
+## 任务
+
+<!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
+
+### T1：后端骨架与后端质量关口（完成）
+
+- **目标**：`backend/` 可安装、可启动、可检查。
+- **涉及文件**：`backend/pyproject.toml`、`backend/uv.lock`、`backend/.env.example`、`backend/src/studio/{__init__,config,main}.py`、`backend/tests/{conftest,test_config,test_health}.py`、`Makefile`、`scripts/dev.sh`、`docs/runbooks/dev-setup.md`。
+- **接口与要点**：
+  - Python `>=3.12,<3.13`，uv 管理；`[tool.ruff]`、`[tool.pyright]`（strict 可选，至少 `standard`）、`[tool.pytest.ini_options]`（`asyncio_mode = "auto"`，默认排除 `smoke` 标记）、`[tool.importlinter]` 都写在 `pyproject.toml`。
+  - `config.Settings`（pydantic-settings，读 `backend/.env`，前缀 `STUDIO_`）：`data_dir: Path`（默认仓库根下 `data/`）、`host="127.0.0.1"`、`port=8000`、`max_concurrent_turns=2`、`enable_fake_runtime: bool`；`get_settings()`。模型 key 不进 Settings 字段，由模型配置的 `api_key_env` 按名读环境变量。
+  - `main.create_app(settings) -> FastAPI`，`GET /api/health` 返回 `{"status": "ok"}`。
+  - import-linter 契约先写好 ARCHITECTURE §2 的规则 1–4（模块尚不存在的契约用 `allow_indirect_imports`/在模块出现时生效，具体写法记入决策记录）。
+  - `Makefile`：`check-backend` = `ruff check` + `ruff format --check` + `pyright` + `lint-imports` + `pytest`；`check-fast` 加上 `ruff check`；`dev` 调 `scripts/dev.sh`（启动 `uvicorn studio.main:app --reload --reload-dir backend/src`，trap 退出时杀掉子进程）。
+- **测试**：`Settings` 默认值与 `STUDIO_DATA_DIR` 覆盖；**`data_dir` 解析后不在 `backend/src` 之下**（在则启动报错）；`/api/health`。
+- **完成标准**：`make setup && make check` 为绿；`make dev` 能访问 `/api/health`。
+- **验证命令**：`make check`；`make dev` 后 `curl 127.0.0.1:8000/api/health`
+
+### T2：数据库与迁移（完成）
+
+- **目标**：设计 §3.1 的全部表可用，连接配置符合 §7。
+- **涉及文件**：`backend/src/studio/db/{__init__,engine,models}.py`、`backend/src/studio/db/migrations/`（Alembic env + `0001_initial`）、`backend/src/studio/db/repo/{projects,stages,sessions,turns,snapshots,profiles}.py`、`backend/tests/db/`。
+- **接口与要点**：
+  - `make_engine(db_path) -> Engine`：连接时设置 `journal_mode=WAL`、`busy_timeout=5000`、`foreign_keys=OFF`（设计：不设外键）；`session_scope(engine)` 上下文管理器，一次一个短事务。
+  - `migrate(engine)`：程序化执行 `alembic upgrade head`，api 启动时调用。
+  - 主键统一用字符串 id（`uuid4().hex`，项目用可读 slug 前缀可选），时间用 UTC。JSON 字段用 SQLAlchemy `JSON`。
+  - repo 函数只暴露领域操作，返回 Pydantic/dataclass 值对象，不把 ORM 对象泄露出 `db`（规则 5）。本任务只实现 T3–T8 会用到的函数，签名在对应任务中补充。
+  - 种子数据：`seed_model_profiles()` 插入 `fake`（仅 `enable_fake_runtime` 时）、`claude-sonnet`（`claude-sonnet-5`，runtime=claude，`api_key_env=ANTHROPIC_API_KEY`）、`claude-login`（同一模型，`api_key_env` 为空＝使用本机 Claude Code 登录）、`gpt`（runtime=openai，Responses）、`deepseek`（runtime=openai，provider=litellm，`api_key_env=DEEPSEEK_API_KEY`），已存在则跳过。具体模型名在 T9/T10 核实后写定。
+- **测试**：临时库上 `migrate` 后 12 张表都存在；重复 `migrate` 幂等；PRAGMA 生效；种子幂等。
+- **完成标准**：`make check` 为绿。
+- **验证命令**：`make check`
+
+### T3：快照库（完成）
+
+- **目标**：实现设计 §3.3 的全部操作。
+- **涉及文件**：`backend/src/studio/workspace/{__init__,layout,blobs,snapshot}.py`、`backend/tests/workspace/test_snapshot.py`。
+- **接口与要点**：
+  - `layout.project_dir(data_dir, project_id) -> Path`；`EXCLUDED_TOP_DIRS = {".cache", "output", "upstream"}`。
+  - `BlobStore(root)`：`put(data: bytes) -> str`（sha256，已存在跳过，先写临时文件再原子 rename）、`get(sha) -> bytes`。
+  - `scan(workdir) -> dict[str, str]`：相对路径（POSIX 风格）→ sha256；只收普通文件，跳过符号链接和排除目录。
+  - `create_snapshot(engine, blobs, project_id, reason, turn_id=None) -> SnapshotRef`，清单与最近一份相同时返回已有快照并标记 `created=False`。
+  - `diff(old: Manifest, new: Manifest, blobs) -> WorkspaceDiff`：`added / removed / modified`，文本文件（UTF-8 可解码）附 unified diff，二进制只标记。
+  - `rollback(engine, blobs, project_id, target_snapshot_id) -> SnapshotRef`：写回、删除清单外文件（排除目录不动）、清理空目录、新建 `reason=rollback` 快照。
+  - `read_file_at(blobs, manifest, path) -> bytes`。
+- **测试**：扫描排除规则、符号链接被忽略；去重；增删改 diff；二进制无文本 diff；回滚后内容与目标一致、排除目录不受影响、回滚本身可再回滚；空目录清理。
+- **完成标准**：`make check` 为绿。
+- **验证命令**：`make check`
+
+### T4：越界检查、上游只读副本、受控文件读写（完成）
+
+- **目标**：设计 §4.3 的权限规则和事后防线；供 api 与兜底工具使用的受控读写。
+- **涉及文件**：`backend/src/studio/workspace/{scope,upstream,files}.py`、`backend/tests/workspace/test_{scope,upstream,files}.py`。
+- **接口与要点**：
+  - `WriteScope(writable: list[str], tool_managed: list[str])`（glob，相对工作区）。`is_writable(scope, relpath) -> bool`：`tool_managed` 永远不可由 agent 写。
+  - `guard(workdir, before: Manifest, after: Manifest, scope, blobs, tool_writes: dict[str, str]) -> GuardReport`：还原所有越界的新增/修改/删除到 `before` 的内容；工具托管文件以 `tool_writes`（路径→最后一次工具写入的 sha）为准；返回 `restored: list[str]`。
+  - `materialize_upstream(workdir, blobs, sources: dict[stage, Manifest | None])`：清空并重建 `upstream/<stage>/`，只复制该上游阶段的产物目录（如 `topic/`），文件设为只读权限。
+  - `files.safe_path(workdir, relpath) -> Path`：拒绝绝对路径、`..`、越出工作区、符号链接；`list_tree`、`read_text`、`write_text(workdir, relpath, content, scope)`（越界抛 `ScopeError`）。
+- **测试**：越界新增被删除、越界修改被还原、越界删除被恢复；`upstream/` 的改动不计入快照也不影响还原逻辑（它每轮重建）；工具托管文件被 agent 改写后恢复为工具版本；`safe_path` 的各种非法路径。
+- **完成标准**：`make check` 为绿。
+- **验证命令**：`make check`
+
+### T5：agent 核心类型、阶段协议、会话总线、FakeRuntime（完成）
+
+- **目标**：运行时无关的核心抽象，以及可编排的测试运行时。
+- **涉及文件**：`backend/src/studio/agent/{__init__,events,tools,runtime,stage,bus,fake}.py`、`backend/src/studio/stages/{common,topic,narrative,animation}/`（`__init__.py` + `prompt.md` 占位）、`backend/tests/agent/test_{bus,fake,tools}.py`。
+- **接口与要点**：
+  - `events`：`TextDelta(text)`、`TextBlock(text)`、`ToolCall(call_id, name, args)`、`ToolResult(call_id, text, images: list[ImageData], is_error)`、`Usage(input_tokens, output_tokens, cost_usd)`、`TurnEnd(resume_ref, status)`；`status ∈ {done, failed, cancelled, budget_exceeded}`，失败时带 `error`。
+  - `tools`：`ToolSpec(name, description, input_model: type[BaseModel], stages: set[str], handler)`；`ToolContext(project_id, stage, workdir, record_tool_write)`；`ToolResult(text, images, is_error)`；`invoke_tool(spec, ctx, raw_args) -> ToolResult`（参数校验失败或异常都转成 `is_error=True`）。
+  - `runtime`：`TurnContext(system_prompt, user_input: UserInput, tools, workdir, model_profile, resume_ref, cancel_token, budget, write_scope)`；`Budget(max_steps, max_cost_usd)`；`CancelToken`（`asyncio.Event` 包装）；`AgentRuntime` 协议 `run_turn(ctx) -> AsyncIterator[AgentEvent]`；`RuntimeFactory`：按 `model_profile.runtime` 返回实例（claude / openai / fake）。
+  - `stage`：`StageDefinition` 协议：`name`、`system_prompt()`、`tools() -> list[ToolSpec]`、`write_scope() -> WriteScope`、`upstream_stages() -> list[str]`、`artifact_dirs() -> list[str]`、`status_summary(workdir) -> str`；`StageRegistry.register/get`。`agent` 不 import `stages`（规则 2）。
+  - `stages/*`：三个占位定义，可写范围按 §4.3（topic: `topic/**`；narrative: `narrative/narrative.json`，`tool_managed=["narrative/timing.json"]`；animation: `animation/scenes/**`），上游分别为 `[]`、`["topic"]`、`["narrative"]`。
+  - `bus.SessionBus`：`publish(session_id, event)`；`subscribe(session_id) -> AsyncIterator`；订阅者慢时有界队列丢弃**瞬时**事件（text_delta），不丢持久事件。
+  - `fake.FakeRuntime(script)`：脚本是步骤列表（`say(text)`、`write(path, content)`、`shell_write(path)`（模拟绕过事前拦截的写入）、`call_tool(name, args)`、`fail(msg)`、`sleep(s)`、`use_cost(usd)`），按步骤产出事件；响应 `cancel_token`。`enable_fake_runtime` 时的默认脚本：回显用户消息并写 `<stage 可写目录>/fake-note.md`，供 AC4 演示。
+- **测试**：总线多订阅者、慢订阅者；Fake 脚本各步骤的事件序列；`invoke_tool` 异常转换。
+- **完成标准**：`make check` 为绿（含 import-linter 规则 2、3）。
+- **验证命令**：`make check`
+
+### T6：TurnRunner 与上下文前言（完成）
+
+- **目标**：设计 §4.4 的完整一轮生命周期，用 FakeRuntime 端到端测试。
+- **涉及文件**：`backend/src/studio/agent/{runner,preamble,stage_flow}.py`、`backend/src/studio/db/repo/{turns,sessions}.py`（补充）、`backend/tests/agent/test_{runner,preamble,stage_flow}.py`。
+- **接口与要点**：
+  - `TurnRunner(engine, blobs, registry, runtime_factory, bus, settings)`；`start_turn(session_id, user_input) -> turn_id`（会话已有运行中的 turn → `SessionBusyError`；超过全局并发 → turn 进入 `queued`，按 FIFO 启动）；`cancel(turn_id)`；`recover_on_startup()`（§4.4 第 8 步）。
+  - 一轮步骤：检测变化 → `user_edit` 快照 → 刷新 `upstream/`（读各上游的 `finalized_snapshot_id`）→ 构建前言 → `run_turn` → 事件处理（持久事件分配**会话内单调递增的 `seq`** 后落库再发布；`TextDelta` 只发布；文件类工具调用后发布 `workspace_changed`）→ 结束：`guard` → 快照（`turn`，失败为 `partial`）→ 写 turn 状态、用量、成本、`end_snapshot_id` → 发布 `turn_status`。任何异常路径也必须先快照再改状态（§7）。
+  - 预算：步数（工具调用次数）或成本超限 → 触发取消 → 状态 `budget_exceeded`。
+  - `preamble.build_preamble(...) -> str`：用户手动修改（文件列表 + 截断的 diff）、上游新定稿（文件级 diff 摘要）、上一轮被还原的路径、回滚通知、阶段 `status_summary`、新会话的交接摘要（阶段产物文件清单）。没有内容时返回空串。
+  - 定稿的通用逻辑也放在这里旁边的 `agent/stage_flow.py`：`finalize(project_id, stage)`、`reopen(project_id, stage)`、下游 `stale` 标记与下游一轮结束后恢复 `active`（§5.4）。
+- **测试**（全部用 FakeRuntime + 临时数据目录）：正常一轮的事件落库与快照；`seq` 连续；失败 → `partial`；取消；预算超限；shell 越界写入被还原且下一轮前言列出（评审关注点 1）；写入 `upstream/` 被还原（R5）；用户编辑 → `user_edit` 快照 + 前言 diff；回滚 → 前言通知（评审关注点 5）；会话忙 409 / 全局并发排队（评审关注点 4）；启动恢复 `running → interrupted`；定稿、重新打开、stale 流转。
+- **完成标准**：`make check` 为绿。
+- **验证命令**：`make check`
+
+### T7：API——项目、阶段、文件、快照、模型配置（完成）
+
+- **目标**：非会话类接口。
+- **涉及文件**：`backend/src/studio/api/{__init__,deps,schemas,projects,files,snapshots,profiles}.py`、`backend/src/studio/main.py`、`backend/tests/api/`。
+- **接口与要点**（前缀 `/api`）：
+  - `POST /projects {title, settings?}`：建库行、初始化工作区（`style/STYLE.md` 占位）、`init` 快照、`project_stages` 三行（topic=`active`，其余 `locked`）；`GET /projects`、`GET /projects/{id}`（含各阶段状态）。
+  - `POST /projects/{id}/stages/{stage}/finalize`、`POST .../reopen`。
+  - `GET /projects/{id}/files`（树）、`GET /projects/{id}/files/{path:path}`、`PUT /projects/{id}/files/{path:path}?stage=`（按该阶段的 `write_scope` 检查，越界 403；有运行中的 turn 时 409）。
+  - `GET /projects/{id}/snapshots`、`GET /projects/{id}/snapshots/diff?from=&to=`、`POST /projects/{id}/snapshots/{sid}/rollback`（有运行中的 turn 时 409）。
+  - `GET /model-profiles`（不返回 key，只返回 key 是否已配置）。
+  - `main` 的 lifespan：`migrate` → 种子 → 注册三个阶段 → `recover_on_startup`。
+- **测试**：httpx `AsyncClient` + 临时数据目录；非法路径 400、符号链接拒绝（评审关注点 3）；越界 PUT 403；运行中 409。
+- **完成标准**：`make check` 为绿；`/docs` 能看到全部接口。
+- **验证命令**：`make check`
+
+### T8：API——会话、消息、SSE（完成）
+
+- **目标**：对话接口与流式推送。
+- **涉及文件**：`backend/src/studio/api/sessions.py`、`backend/tests/api/test_sessions.py`、`backend/tests/api/test_stream.py`。
+- **接口与要点**：
+  - `POST /projects/{id}/stages/{stage}/sessions {model_profile_id}`（新会话设为 `is_active`，旧会话取消活动）；`GET .../sessions`；`GET /sessions/{id}`（含 turns 列表和状态）。
+  - `POST /sessions/{id}/messages {text}` → `202 {turn_id}`；会话忙 409。`POST /sessions/{id}/cancel`；`POST /sessions/{id}/continue`（对 `interrupted`/`budget_exceeded` 发一条"继续"消息）。
+  - `GET /sessions/{id}/stream?after_seq=`（sse-starlette）：先回放 `seq > after_seq` 的已落库事件（SSE `id` = seq），再接总线实时事件；瞬时事件没有 `id`；回放与实时交界处按 seq 去重。
+  - SSE 事件类型：`text_delta`、`text`、`tool_call`、`tool_result`、`snapshot`、`notice`、`error`、`workspace_changed`、`turn_status`。
+- **测试**：Fake 一轮的完整事件流；中途断开后用 `after_seq` 重连不丢不重（评审关注点 2）；会话忙 409。
+- **完成标准**：`make check` 为绿；手动 `curl -N` 可看到流。
+- **验证命令**：`make check`
+
+### T9：ClaudeRuntime（完成）
+
+- **目标**：Claude Agent SDK 适配器，mock 测试覆盖。
+- **涉及文件**：`backend/src/studio/agent/claude_runtime.py`、`backend/tests/agent/test_claude_runtime.py`、`docs/references/claude-agent-sdk.md`。
+- **第一步（核实）**：阅读已安装 `claude-agent-sdk` 的源码和官方文档，逐条核实 references 中 ⚠️ 的条目（选项字段、`@tool`/`create_sdk_mcp_server`、消息类型与累计用量、image content block、`PreToolUse` hook、sandbox 选项、会话存储位置、`ClaudeSDKClient.interrupt()`），能从源码确认的改为 ✅ 并注明版本和日期；需要真实调用才能确认的留给 T15。
+- **接口与要点**：
+  - **认证方式**：模型配置的 `api_key_env` 有值 → 从该环境变量读 key 注入 `env`；为空 → 本机登录模式：不注入 key，并从传给子进程的环境中**移除** `ANTHROPIC_API_KEY`（否则会覆盖登录凭据），且不改 `CLAUDE_CONFIG_DIR`（会话存储的处理见 R4）。本机登录模式下 `total_cost_usd` 只是估算，成本预算仅作参考，步数上限照常强制；turn 的 `usage` 中标记 `auth=login`。
+  - 用 `ClaudeSDKClient`（为了 `interrupt()`）；选项：`model`、`cwd=workdir`、`setting_sources=[]`、`permission_mode="acceptEdits"`、内置工具 Read/Write/Edit/Glob/Grep/Bash（brainstorm/topic 阶段另加 WebSearch/WebFetch，M1 按阶段定义开关）、业务工具经 `create_sdk_mcp_server` 转换（`ToolResult.images` → image content block）、`resume=resume_ref`、`env` 注入 key、会话存储指向 `data/claude/`（方式以核实结果为准）。
+  - `PreToolUse` hook：Write/Edit 的目标路径不满足 `write_scope` → 拒绝并说明原因；sandbox 按核实结果开启。
+  - 事件转换：流式文本 → `TextDelta`，完整文本块 → `TextBlock`，tool_use / tool_result → `ToolCall`/`ToolResult`，result 消息 → `Usage`（按会话减去之前的累计值）+ `TurnEnd(resume_ref=session_id)`。
+  - 预算：成本/步数超限时 `interrupt()`。
+- **测试**：两种认证方式下传给 SDK 的 `env` 是否正确（登录模式下不含 `ANTHROPIC_API_KEY`）；用假的 SDK 客户端（按消息序列回放）测试事件转换、累计用量差值、图片结果转换、hook 拒绝越界、取消调用 `interrupt()`、预算超限。
+- **完成标准**：`make check` 为绿；references 已更新。
+- **验证命令**：`make check`
+
+### T10：OpenAIRuntime 与兜底文件工具（完成）
+
+- **目标**：OpenAI Agents SDK 适配器（Responses API 与 LiteLLM 两条路径），mock 测试覆盖。
+- **涉及文件**：`backend/src/studio/agent/{openai_runtime,apply_patch,fallback_tools}.py`、`backend/tests/agent/test_{openai_runtime,apply_patch,fallback_tools}.py`、`docs/references/openai-agents-sdk.md`、`docs/references/legacy-assets.md`。
+- **第一步（核实）**：阅读已安装 `openai-agents` 的源码，核实 `ApplyPatchTool`/`ApplyPatchEditor` 接口、`ShellTool` 本地 executor 接口、`FunctionTool` 与 `ToolOutputImage`、`SQLiteSession`、`LitellmModel`、`RunHooks`、流式事件类型、取消方式；在 references 注明版本号。
+- **接口与要点**：
+  - 模型选择：`provider=openai` → `OpenAIResponsesModel`，原生 `ApplyPatchTool` + `ShellTool`（工作目录为工作区）；`provider=litellm` → `LitellmModel`，兜底文件工具集，不提供 Shell（R1 的结论可能改变这一点，见 T15）。
+  - `apply_patch.WorkspaceApplyPatchEditor`：落盘通过 `workspace.files.write_text`（规则 6），越界返回错误。
+  - `fallback_tools`：`list_files`、`read_file`、`write_file`、`edit_file`，从旧项目 `OpenAICodegenWorkspace` **复制后改写**为 `ToolSpec`，底层用 `workspace.files`；迁移对应测试；更新 legacy-assets 状态。
+  - 业务工具 → `FunctionTool`；图片结果 → `ToolOutputImage`（R2 不成立时的对策在 T15 落地）。
+  - 会话：`SQLiteSession(session_id, data_dir/"openai_sessions.db")`，只保留最近 N 轮（N 写进配置）。
+  - 预算：`RunHooks.on_llm_end` 累计用量，按模型配置价格算成本，超限取消；取消：取消运行中的 task，状态 `cancelled`。
+- **测试**：用假的模型（SDK 提供的测试模型或 mock `Model` 接口）驱动：事件转换、工具调用、图片结果、预算、取消；`WorkspaceApplyPatchEditor` 的增删改与越界；兜底工具迁移过来的测试。
+- **完成标准**：`make check` 为绿；references 与 legacy-assets 已更新。
+- **验证命令**：`make check`
+
+### T11：前端骨架与前端质量关口（完成）
+
+- **目标**：`frontend/` 可安装、可启动、可检查，外壳就位。
+- **涉及文件**：`frontend/`（Vite 工程、`src/main.ts`、`src/router.ts`、`src/App.vue`、`components.json`、`src/components/ui/`、`src/components/ai-elements/`、`eslint.config.ts`、`vitest` 配置）、`Makefile`、`scripts/dev.sh`、`docs/references/frontend-stack.md`。
+- **接口与要点**：
+  - pnpm；Tailwind v4 用 `@tailwindcss/vite` 与 CSS 中的 `@import "tailwindcss"`；`npx shadcn-vue@latest init` + `add dashboard-01`；@ai-elements 组件（registry `https://registry.ai-elements-vue.com/{name}.json`）按需添加：conversation、message、prompt-input、tool、code-block（以实际可用名称为准）。
+  - 路由：`/projects`、`/projects/:id/:stage`；`/ideas`、`/settings` 放占位页。
+  - Vite dev server 代理 `/api` 到 `127.0.0.1:8000`，绑定 `127.0.0.1:5173`。
+  - ESLint：`no-restricted-imports` 实现 ARCHITECTURE §3 的规则（`features/*` 互不 import；`components/` 不 import `features/`）；`components/ui`、`components/ai-elements` 排除部分格式规则（生成代码尽量不手改）。
+  - `Makefile`：`check-frontend` = `eslint` + `vue-tsc --noEmit` + `vitest run`；`check-fast` 加 `eslint`；`dev.sh` 同时启动前端。
+  - 把实际的组件清单、Tailwind v4 配置方式写进 `frontend-stack.md`（✅ + 日期）。
+- **测试**：路由解析的 vitest；一条故意违规的 import 让 eslint 失败（验证后删除，记录到验证记录）。
+- **完成标准**：`make check` 为绿；`make dev` 能打开外壳页面。
+- **验证命令**：`make check`
+
+### T12：前端 API 客户端与 SSE 客户端（完成）
+
+- **目标**：类型化的 HTTP 客户端和支持续传的 SSE 客户端。
+- **涉及文件**：`frontend/src/api/{http,sse,endpoints}.ts`、`frontend/src/types/`、`frontend/src/composables/{useSessionStream,queries}.ts`、对应 `*.spec.ts`。
+- **接口与要点**：
+  - `types/`：手写与后端 `api/schemas.py` 对应的类型（M1 不引入代码生成）。
+  - `sse.ts`：`openStream(url, {afterSeq, onEvent, signal})`，基于 `fetch` + `ReadableStream` 解析 SSE（`id`/`event`/`data`、多行 data、注释行、分块边界）；断线后指数退避重连，带上最后收到的 seq。
+  - `useSessionStream(sessionId)`：维护消息列表（合并 `text_delta` 为进行中的文本块，`text` 到达时替换）、工具调用（`tool_call` 与 `tool_result` 按 `call_id` 配对）、turn 状态；收到 `workspace_changed` 时让文件查询失效。
+  - `queries.ts`：TanStack Query hooks（projects、files、snapshots、sessions、model-profiles）及其 mutation。
+- **测试**：SSE 解析（跨 chunk 边界、多行 data、无 id 的瞬时事件）；重连携带 `after_seq` 且不重复（评审关注点 2）；`useSessionStream` 的增量合并与配对。
+- **完成标准**：`make check` 为绿。
+- **验证命令**：`make check`
+
+### T13：工作台——项目列表、阶段导航、会话面板（完成）
+
+- **目标**：能在浏览器中创建项目并对话。
+- **涉及文件**：`frontend/src/features/projects/`、`frontend/src/features/workbench/{WorkbenchPage,StageNav,SessionPanel,SessionPicker}.vue`、对应 spec。
+- **接口与要点**：
+  - 项目列表页：列表 + 新建对话框（标题）。
+  - 工作台顶部：阶段导航（`locked` 灰、`active`、`finalized ✓`、`stale ⚠`），[定稿] 按钮（M1 无阶段条件，直接调用 finalize，需二次确认）。
+  - 会话面板：模型配置下拉 + [新会话]；消息流用 @ai-elements Conversation/Message，工具调用用 Tool（可折叠）；输入框 PromptInput；[停止]（运行中）/[继续]（`interrupted`、`budget_exceeded`）；错误和 turn 状态提示。
+- **测试**：组件级 vitest 只测状态逻辑（例如按钮可用性随 turn 状态变化）；界面在 T15 前用浏览器手动验证并截图。
+- **完成标准**：`make check` 为绿；Fake 配置下能在浏览器完成一轮对话。
+- **验证命令**：`make check`；浏览器 L4
+
+### T14：工作台——通用文件画布与快照时间线（完成）
+
+- **目标**：画布与时间线，完成 AC4 的全部交互。
+- **涉及文件**：`frontend/src/features/canvas/generic/{FileCanvas,FileTree,CodeEditor}.vue`、`frontend/src/features/workbench/SnapshotTimeline.vue`、对应 spec、`.claude/launch.json`。
+- **接口与要点**：
+  - 文件树（隐藏 `.cache/`、`output/`；`upstream/` 显示为只读分组）+ CodeMirror 6 编辑器（按扩展名选 markdown/json/python 语言包）；agent 运行时只读；保存调用 PUT，403/409 给出提示。
+  - `workspace_changed` 触发文件树与当前文件重新拉取；当前文件有未保存修改时提示冲突而不是直接覆盖。
+  - 快照时间线：按时间列出（原因、所属 turn），选两个快照 [对比]（CodeBlock 显示 unified diff），[回滚到此]（二次确认）。
+  - `.claude/launch.json` 写好 `frontend` 与 `api` 两个配置，供 L4 验证使用。
+- **测试**：编辑器只读状态与未保存冲突逻辑的 vitest；AC4 的浏览器走查截图存 `data/evidence/m1/`。
+- **完成标准**：`make check` 为绿；AC4 走查通过。
+- **验证命令**：`make check`；浏览器 L4
+
+### T15：冒烟测试与 R1–R5 验证（完成；API key 三个用例缺 key 未运行，见「验证记录」）
+
+- **目标**：真实模型跑通三种接入方式，给出 R1–R5 的结论并落地对策。
+- **涉及文件**：`backend/tests/smoke/`、`Makefile`（`smoke` 目标：`pytest -m smoke`）、`docs/references/{claude-agent-sdk,openai-agents-sdk}.md`、`docs/runbooks/verification.md`（按实际更新）。
+- **接口与要点**：
+  - 测试专用业务工具 `smoke_image`：返回一句文字和一张小 PNG（测试数据内置）。
+  - 每种运行时一个用例（Claude 两种认证方式各一个）：一轮对话中要求模型写 `topic/smoke.md` 并调用 `smoke_image`，断言文件存在、工具结果被模型看到（要求模型复述图片中的颜色/文字）、turn 状态 `done`、成本在预算内。预算见「冒烟测试预授权」。
+  - R1：DeepSeek（LiteLLM）上尝试 `ApplyPatchTool`/`ShellTool`；不可用 → 确认 LiteLLM 路径自动使用兜底工具集（T10 已是默认），记录结论。
+  - R2：LiteLLM 模型的图片工具结果；不可用 → 实现"文本说明 + 图片作为下一条输入消息"的对策，按模型配置 `supports_vision` 和运行时决定。
+  - R3：macOS 上手动验证 Claude sandbox 对 Bash 写工作区外文件的限制；不符 → 关闭 Bash，依赖事后防线。
+  - R4：验证 Claude 会话存储能否指向 `data/claude/`；不能 → 接受默认位置并在 dev-setup 中说明。同时验证它与本机登录模式的关系：若指向数据目录会导致读不到登录凭据，则登录模式下使用默认位置，API key 模式下使用数据目录，结论写进 references。
+  - 本机登录：用 `claude-login` 配置跑一轮最小对话，确认不设 key 时能以订阅账号完成，记录 `total_cost_usd` 的表现。
+  - R5：真实模型下读取 `upstream/` 后是否尝试写入，结合 T6 的契约测试给出结论。
+- **测试**：即上述冒烟用例（默认不在 `make check` 中）。
+- **完成标准**：AC10 满足；每项风险的结论写进「验证记录」和 references。
+- **验证命令**：`make smoke`
+
+## 进度
+
+<!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
+
+- 2026-09-27 — T1：后端骨架与后端质量关口 — 完成，`make check`/`make setup`/`make dev` 均验证通过（见本提交）。
+- 2026-09-27 — T2：数据库与迁移 — 完成，`make check` 全绿（见本提交）。
+- 2026-09-27 — T3：快照库 — 完成，`make check` 全绿（见本提交）。
+- 2026-09-27 — T4：越界检查、上游只读副本、受控文件读写 — 完成，`make check` 全绿（见本提交）。
+- 2026-09-27 — T5：agent 核心类型、阶段协议、会话总线、FakeRuntime — 完成，`make check` 全绿（含新增的 import-linter 规则 2、3）（见本提交）。
+- 2026-09-27 — T6：TurnRunner 与上下文前言 — 完成，`make check` 全绿（审查修复后 205 个测试）；`runner.py` 约 516 行，超出预期的 400 行，未自行拆分，交控制者决定（见本提交）。
+- 2026-09-27 — T7：API——项目、阶段、文件、快照、模型配置 — 完成，`make check` 全绿（247 个后端测试，新增 38 个 api 测试）；`main` 的 lifespan 装配 engine/blobs/registry/runtime_factory/bus/turn_runner 并挂在 `app.state` 上，供 `api/deps.py` 注入；顺带修复 T1 遗留的 `test_health.py` `TestClient` 弃用警告（见本提交）。
+- 2026-09-27 — T8：API——会话、消息、SSE — 完成，`make check` 全绿；新增依赖 `sse-starlette`；手动 `curl -N`（含 `after_seq`/`Last-Event-ID`）验证过真实回放（见本提交）。
+- 2026-09-27 — T8 审查后修复 — 完成，`make check` 全绿（298 个后端测试）：`SessionBus.subscribe()` 改成返回 `Subscription`（同步幂等 `close()`）的结构性修复替换了第一版依赖调度顺序的"预热"写法；补齐 HTTP 层测试（直接驱动 ASGI app，不再局限于生成器白盒测试）；`WIRE_EVENT_TYPES` 统一定义；模型配置不存在改成 400；`after_seq`/`Last-Event-ID` 非法输入改成 400；补了"项目忙不拒绝消息、只排队"的 api 测试（见本提交）。
+- 2026-09-27 — T9：ClaudeRuntime — 完成，`make check` 全绿（331 个后端测试，新增 29 个 ClaudeRuntime mock 测试）；新增依赖 `claude-agent-sdk 0.2.160`（内置 CLI 2.1.283）；references 中可由源码确认的条目已改为 ✅，其余标为 T15 实测（见本提交）。
+- 2026-09-27 — T10：OpenAIRuntime 与兜底文件工具 — 完成，`make check` 全绿（403 个后端测试，新增 72 个：OpenAIRuntime 35、ApplyPatchEditor 16、兜底工具 15、`files.delete_file` 5、启动注册 1）；新增依赖 `openai-agents[litellm] 0.22.3`（带入 `openai 3.19.2`、`litellm 1.83.0`，`websockets` 从 17.1 降到 16.1.1）；测试用 SDK 自带的 `agents.testing.ScriptedModel` 驱动真实 `Runner.run_streamed`（见本提交）。
+- 2026-09-27 — T10 审查后修复 — 完成，`make check` 全绿：Shell 命令结束后总是杀掉整个进程组（后台进程不再活过轮末快照）、输出边读边截超限即杀；`workspace.files` 写/删前规范化路径（`narrative/./timing.json` 不再绕过工具托管检查）；apply_patch 的 `ToolCall.args` 用规范化路径并带 `move_to`（TurnRunner 一并推送）；缺单价时 `Usage.priced=False` → TurnRunner 发一次 `cost_unpriced` 提示、turn 成本记空；非 strict 退回时记警告；`scripts/dev.sh` 导出 `backend/.env`（见本提交）。
+- 2026-09-27 — T11：前端骨架与前端质量关口 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 5 个路由 vitest）；`frontend/` 用 `pnpm create vite frontend --template vue-ts` + `shadcn-vue init`（`style` 手动改成 `new-york-v4`，默认的 `reka-nova` 没有 `dashboard-01`）+ `add dashboard-01` + 5 个 `@ai-elements` 组件搭起来；删掉了 dashboard-01 自带的图表/数据表/云文档 demo 内容（连带卸载 `@tanstack/vue-table`、`@unovis/ts`、`@unovis/vue`），保留侧边栏+顶栏外壳，导航指向真实路由；新增 `src/pages/`（路由页面组合层）与 `src/features/projects/`；ESLint 分层规则用 `no-restricted-imports` 实现（未引入 `eslint-plugin-boundaries`）；`make dev` 实测能同时起后端和前端，`curl http://127.0.0.1:5173/`、`curl http://127.0.0.1:5173/api/health`（经 vite 代理）均返回预期内容（见本提交）。
+- 2026-09-27 — T12：前端 API 客户端与 SSE 客户端 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 28 个 vitest：`sse.spec.ts` 12、`http.spec.ts` 7、`useSessionStream.spec.ts` 7、`queries.spec.ts` 2，共 33 个前端测试）；新增 `frontend/src/types/{api,events}.ts`（手写，对应 `api/schemas.py` 和 `runner.py` 的事件 payload）、`api/{http,endpoints,sse}.ts`、`composables/{queries,useSessionStream}.ts`；`sse.ts` 自实现的 `SseFrameParser` 支持跨 chunk 断行/断事件、多行 `data`、CRLF、注释行（`sse-starlette` 心跳）；`openStream` 重连按 `after_seq` 续传并在客户端再做一次 seq 去重（服务端已经去重，双保险）、4xx 不重连、指数退避（1s→2s→4s→8s→10s）；`useSessionStream` 的历史拼接方式见该文件顶部文档：`GET /sessions/{id}` 补 `user_message`/初始 `status`（这两项不在 SSE 回放里），SSE 从 `after_seq=0` 回放拿到全部持久事件按 `turn_id` 归位，见到某个 turn 的第一条事件时才插入它的用户消息；`queries.ts` 的 query-key 工厂和 `useSessionStream` 共用同一套 key（`invalidateWorkspace`）。T12 实测项：起 `STUDIO_ENABLE_FAKE_RUNTIME=true` 的后端 + `pnpm run dev` 前端，经 vite 代理创建项目/会话、发消息，确认 SSE 事件在连接存活期间（心跳之前）就送达而非缓冲到连接关闭，`after_seq` 续传经代理正常；`docs/references/frontend-stack.md` 对应行改 ✅，`docs/references/sse-starlette.md` 补心跳帧格式（见本提交）。
+- 2026-09-27 — T12 审查后修复 — 完成，`make check` 全绿（前端 43 个 vitest：新增 `useSessionStream.spec.ts` 2 条竞态回归、`http.spec.ts` 3 条编码用例、新建 `endpoints.spec.ts` 5 条编码用例，共新增 10 个）：修了 `useSessionStream` 里 `sessionId` 快速切换时的竞态（加 `generation` 世代计数器，过期回调不再 `connect()`、过期流的 `onEvent`/`onStatus` 也被丢弃）；`http.ts`/`endpoints.ts` 拼 URL 路径的地方补上 `encodePathSegment`/`encodeFilePath` 编码；`items` 数组无上限增长记为已知限制，未改代码（见本文件「已知限制」一节）。详见 `.superpowers/sdd/m1-skeleton/task-12-report.md`「审查后的修复」。
+- 2026-09-27 — T13：工作台——项目列表、阶段导航、会话面板 — 完成，`make check` 全绿（后端 423 个测试不变，新增前端 25 个 vitest：`stageStatus.spec.ts` 5、`turnControls.spec.ts` 8、`useSessionStream.spec.ts` 新增 3 条乐观插入/FIFO 配对/会话切换清空占位队列，共 68 个前端测试）；新增 `features/projects/ProjectList.vue`（列表 + 新建对话框）、`features/workbench/{StageNav,SessionPicker,SessionPanel,SessionTimelineItem,stageStatus,turnControls}`、`pages/ProjectWorkbenchPage.vue`；`useSessionStream` 按控制者裁定 3 扩展 `addLocalUserMessage(text)` 解决 T12 已知限制（占位 `turnId` 为 `local-<n>`，FIFO 认领真实 turn，`sessionId` 切换清空占位队列避免误认领）；`pnpm dlx shadcn-vue@latest add alert-dialog` 新增 `components/ui/alert-dialog`（[定稿] 二次确认）；`dialog`/`select`/`dropdown-menu` 在 T11 已随 dashboard-01/`NavUser` 落地，本任务直接复用；纯逻辑（阶段状态→样式/禁用、turn 状态→按钮可用性、乐观消息 FIFO 配对）按控制者裁定 7 抽成 `.ts` 纯函数单测，组件本身不做挂载快照测试。Fake 配置下浏览器手动走查（L4）：新建项目 → 跳转选题阶段 → 新建 `fake` 会话 → 发消息 → 依次看到乐观插入的用户消息、助手文本（含前言回显）、`write_file` 工具调用（可展开看 PARAMETERS/RESULT）、"已创建快照" → [定稿] 二次确认后选题变 `✓`、叙事从灰变可点、动画仍锁定 → 切到叙事阶段会话面板正确清空 → 模型下拉里 `fake`/`claude-login` 可选、`claude-sonnet`/`gpt`/`deepseek` 因未配置密钥禁用（见本提交）。
+
+- 2026-09-28 — T14：工作台——通用文件画布与快照时间线 — 完成，`make check` 全绿；新增 `features/canvas/generic/{FileCanvas,FileTree,CodeEditor,editorReadonly,conflictState,fileKind}.{vue,ts}`、`features/workbench/{SnapshotTimeline.vue,snapshotSelection.ts,snapshotReason.ts}`，`ProjectWorkbenchPage.vue` 组合进右侧画布区（画布在上、时间线在下）；`CodeEditor.vue` 只用「依赖清单」允许的四个包（`codemirror` 重新导出的 `EditorView`/`basicSetup` + 三个 `@codemirror/lang-*`），不引入 `vue-codemirror`，也不直接 import `@codemirror/state`（它是 `codemirror` 的间接依赖，pnpm 严格 node_modules 下解析不到）——只读/语言切换靠整个销毁重建 `EditorView` 实现，理由和权衡见文件内注释。AC4 走查中发现并修复一个真实 bug：`AlertDialogAction`（reka-ui `DialogClose`）自身的 `onClick` 会抢在我们的 `@click="confirmRollback"` 之前把 `rollbackTarget` 清空，导致回滚请求完全不发出、无任何报错，改用不接入响应式链路的普通变量 `pendingRollbackId` 规避。走查记录见 `data/evidence/m1/t14-ac4-walkthrough.md`。
+- 2026-09-28 — T14 审查后修复 — 完成，`make check` 全绿（后端 425 个测试：新增 `GET /projects/{id}` 的 `busy` 字段 2 个；前端 112 个 vitest：`editorReadonly.spec.ts` 4、`conflictState.spec.ts` 9、`fileKind.spec.ts` 3、`snapshotSelection.spec.ts` 6、`snapshotReason.spec.ts` 6、`turnControls.spec.ts` 新增 `isBusyStatus` 6 + `combineBusy` 4，共比 T13 多 44 个）：① 画布/时间线只读原来只看当前选中会话的 turn 状态，但后端按**项目**串行（任一会话有 turn 在跑就该只读）——`ProjectDetailOut` 新增 `busy: bool`（`api/projects.py` 用 `turn_runner.is_project_busy`），`useProjectQuery` 加 3 秒 `refetchInterval`（覆盖"其他会话/其他标签页"），`useSessionStream` 在当前会话 `turn_status` 到达时让项目查询立刻失效（覆盖"当前会话"，不等轮询），新增 `turnControls.combineBusy(projectBusy, sessionStatus)` 取或；② 撤销了此前"修复 make check 基线"的 4 处改动——那不是真的基线问题，是本地 `vue-tsc` 增量缓存导致的假阳性（详见下面「决策记录」对应条目），`api/sse.ts`/`PromptInput.vue`/两个 `.spec.ts` 已改回 T13 原样；③ `SnapshotTimeline` 的 [取消]/[确认回滚] 在 `rollbackMutation` pending 时禁用，避免重复点击导致两次 POST；④ `pendingRollbackId` 补充注释说明"为什么故意不是 `ref`"，并在 [取消] 点击时显式清空（`update:open` 的通用关闭回调不能碰它——`AlertDialogAction` 触发的关闭一定先于它自己的 `@click` 执行，在那个回调里清空会重新引入原来的竞态，只有独立于该竞态路径的 [取消] 按钮自己的 `@click` 才安全）。
+- 2026-09-28 — T14 审查后修复（第二轮）— 完成，`make check` 全绿（后端 425 个测试不变；前端 116 个 vitest，新增 `snapshotSelection.spec.ts` 的 `canRollback` 4 条）：第一轮只在 `FileCanvas` 接了 `combineBusy` 的结果，`SnapshotTimeline` 没接——`ProjectWorkbenchPage.vue` 之前没传 `busy` prop 给它，[回滚到此] 一直可点，agent 运行中点开二次确认弹窗、真正提交时才被后端 409 拒绝。补上：`SnapshotTimeline` 新增 `busy: boolean` prop（`ProjectWorkbenchPage` 传 `canvasBusy`），新增纯函数 `snapshotSelection.canRollback(busy, isPending)`（`!busy && !isPending`），[回滚到此] 按钮和弹窗里的 [确认回滚] 都用它算 `disabled`；忙时头部提示文案从"选中两个快照可以对比"换成"agent 运行中，暂不能回滚"。[对比]（选快照看 diff）不受影响，busy 时也能看——不改工作区，没有 409 风险。
+
+- 2026-09-28 — T15：冒烟测试与 R1–R5 验证 — 完成（部分未验证）：`make smoke` 目标与 `backend/tests/smoke/`（4 个用例 + 4 个离线辅助测试）落地；种子配置核实并更新模型名/单价（`deepseek/deepseek-flash`，四个真实配置都填了单价与 `supports_vision`）；`make smoke` 第 1 次运行（本 M1 共用 5 次额度中的 1 次）：`test_claude_login` 通过，其余 3 个缺 key 跳过；R3、R5、Claude 侧 R2、登录模式 R4 有结论，R1、OpenAI/LiteLLM 侧 R2、API key 模式 R4 未验证；`make check` 全绿（见本提交）。- 2026-09-28 — M1 最终整体审查修复（C1、I2–I7、M1–M12）— 完成，`make check` 全绿（后端 490 个测试、前端 125 个 vitest、import-linter 15 条契约）；AC1–AC3、AC5–AC9 补齐证据并勾选，见「验证记录」；报告见 `.superpowers/sdd/m1-skeleton/final-fix-report.md`（见本提交及之前 8 个修复提交）。
+- 2026-09-28 — 验收前追加 F1（Read/Glob/Grep/Write 拦截放过 `~` 路径）— 完成：`_escapes` 与 `write_denial_reason` 对以 `~` 开头的路径（含 `~user/…`）直接拒绝；TestReadScopeHook 新增 8 条、TestWriteScopeHook 新增 3 条 deny 用例（见本提交）。
+- 2026-09-28 — 验收前追加 F2（网关配置：Claude → ccproxy.yukework.com，OpenAI → OpenRouter）— 完成：`Settings` 新增 `anthropic_base_url`/`openai_base_url`/`openai_model`；`seed_model_profiles(settings=...)` 写入并更新已有行的这几个字段，`main` 与冒烟 `build_harness` 用同一个 `Settings` 调种子；OpenAI 运行时在非官方 `base_url` 上不提供 Shell、改给 `list_files`/`read_file`；references、dev-setup、verification、`.env.example` 已更新；后端 512 个测试（新增 15 个）（见本提交）。
+- 2026-09-28 — F1/F2 审查后修复 — 完成：读写 hook 拒绝首尾带空白（含 U+FEFF）的路径与 glob 模式（CLI 先 trim 再展开）；OpenAI 运行时对非官方主机设 `store=False` + `response_include=["reasoning.encrypted_content"]`；修正计划中被 shell 展开的单价和 F1 理由（CLI 只展开 `~`、`~/`）（见本提交）。
+- 2026-09-28 — 验收前追加修复 2·G1（回滚删除当前打开文件后编辑器仍显示旧内容）— 完成：新增纯函数 `computeMissingFileAction`（`frontend/src/features/canvas/generic/missingFile.ts`），`FileCanvas.vue` 用文件树是否还包含当前选中路径判定"文件消失"（`fileMissing` computed），干净缓冲区直接清空 `selectedPath` 关闭编辑器，脏缓冲区保留内容只读展示 + 提示"该文件已不存在（可能被回滚或删除）"，不提供"另存为原路径重新创建"（理由见文件内注释）；同时把内容查询的 `enabled` 条件加上 `!fileMissing`，避免文件消失后继续对已经不存在的路径发 GET。新增 `missingFile.spec.ts` 3 个用例；`make check` 全绿（后端 537 个测试，前端 128 个 vitest，新增 3 个）（见本提交）。
+- 2026-09-28 — 验收前追加修复 2·G2（gpt 种子单价可配置）— 完成：`Settings` 新增 `openai_price_input`/`openai_price_output`（`STUDIO_OPENAI_PRICE_INPUT`/`STUDIO_OPENAI_PRICE_OUTPUT`），复用 `_blank_is_unset` 校验器；`seed_model_profiles` 的 `_gateway_overrides` 把这两个字段并入 `gpt` 的受控更新范围（配置值非空且与已有行不同才更新，过滤条件从 `if value`（真值）改成 `if value is not None`，避免以后单价恰好为 `0.0` 时被误当作"未配置"过滤掉）；`.env.example`、`dev-setup.md` 补充说明和"换模型记得配单价"的提示；`docs/references/openai-agents-sdk.md` 记录 `gpt-5-2025-08-07` 经 OpenRouter/Azure 不支持 `apply_patch` 工具（`make smoke` 第 2 次运行实测 400，`data/evidence/m1/smoke-run2.log`）——这是负责人把种子模型换成 `openai/gpt-6-luna`（$0.10/$0.50 每百万 token）的直接原因。新增 6 个后端测试（`test_config.py` 2 个、`test_repo_profiles.py` 4 个）；`make check` 全绿（后端 537 个测试，本次 G1+G2 合计新增后端 6 个、前端 3 个）（见本提交）。需要在 `backend/.env` 追加：`STUDIO_OPENAI_PRICE_INPUT=0.10`、`STUDIO_OPENAI_PRICE_OUTPUT=0.50`（`STUDIO_OPENAI_MODEL=openai/gpt-6-luna` 已经在 `backend/.env` 里，本次未改）。
+- 2026-09-28 — 验收前追加 3（冒烟结论落档）— 完成：`make smoke` run2/run3 结论写进「验证记录」，AC10 勾选；种子 `deepseek` 的 `supports_vision` 由 `True` 改为 `False`（T15 误设，run2/run3 实测 DeepSeek 看不懂图片颜色）；`OpenAIRuntime.build_function_tool`/`_sdk_output` 按 `model_profile.supports_vision` 过滤业务工具的图片输出（`False` 时只发文本 + "模型不支持图片"提示，`ToolResult.images` 仍保留在 `turn.results` 给事件/画布用），新增 `test_business_tool_image_result_hidden_when_no_vision`；`test_repo_profiles.py` 新增 `test_seed_supports_vision_flags`，`test_seed_prices_per_million_tokens` 去掉不再成立的"全部 supports_vision 为真"断言；`docs/references/{openai-agents-sdk,claude-agent-sdk}.md` 对应 ⚠️ 改 ✅/❌（R1、R2、R4、ccproxy `x-api-key`、OpenRouter usage）；`docs/runbooks/dev-setup.md` 新增"已知限制"说明已有库需要手动 `UPDATE` 或删库重建。未扩展种子受控更新范围（只影响新建的库）。`make check` 全绿（见本提交）。
+
+## 下一步
+
+- M1 已完成并合并到 main。下一份计划：M2 动画阶段（设计 §10）。开始前先从 [tech-debt.md](../../quality/tech-debt.md) 挑选 TD 项处理或排进 M2。
+- 已有的 `data/studio.db` 若在 2026-09-28 之前创建，`deepseek.supports_vision` 需手动改为 0 或删库重建，见 `docs/runbooks/dev-setup.md`「已知限制」。
+- `make smoke` 本 M1 期间已用 3/5 次。
+
+## 决策记录
+
+<!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
+
+- 2026-09-28 — 收尾：影响超出本计划的决定已写成 ADR：[0007 项目级串行运行](../../decisions/0007-项目级串行运行.md)、[0008 模型接入方式](../../decisions/0008-模型接入方式.md)。
+
+- 2026-09-26 — SQLAlchemy 使用同步引擎，异步代码中直接调用短事务 — 单人本地、SQLite 写操作毫秒级；避免引入 aiosqlite 和异步 ORM 的复杂度。
+- 2026-09-26 — SSE 的 `after_seq` 指会话内单调递增的 `turn_events.seq`，瞬时事件不带 seq、不回放 — 设计要求续传，但没规定 seq 的作用域；会话级最方便前端续传。
+- 2026-09-26 — M1 不实现 worker 和 `jobs` 模块，只建表 — 设计 §10 把 worker 成片放在 M2。
+- 2026-09-26 — 三个阶段在 M1 注册占位定义（占位提示词 + §4.3 可写范围）— 让通用画布和越界检查能在真实阶段配置下端到端验证，同时不越过 `agent` 不 import `stages` 的规则。
+- 2026-09-26 — 自己实现 fetch SSE 客户端，不引入库 — 逻辑小，且续传语义需要完全可控、可测。
+- 2026-09-27 — Claude 同时支持本机登录：用模型配置 `api_key_env` 为空表示登录模式，不新增表字段 — 负责人要求；复用设计 §3.1 已有字段，不偏离设计。
+- 2026-09-26 — 定稿、重新打开、stale 流转的通用部分放进 M1 — 上游只读副本（§4.3、R5）依赖定稿快照，没有定稿就无法验证。
+- 2026-09-27 — T1：锁定依赖版本（`uv sync` 解析结果，见 `backend/uv.lock`）：Python `3.12.11`（uv 自动下载）、`fastapi 0.141.1`、`uvicorn 0.54.0`（含 `standard` extras：`httptools`、`uvloop`、`watchfiles`、`websockets` 等）、`pydantic 2.13.5`、`pydantic-settings 2.15.0`；开发依赖 `ruff 0.16.9`、`pyright 1.1.414`、`import-linter 2.15`、`pytest 8.4.2`、`pytest-asyncio 0.26.0`、`httpx 0.28.1`。
+- 2026-09-27 — T1：import-linter 契约按控制者裁定 R1 只写"`config` 不 import `main`"一条最小契约（此时只有这两个模块存在）；后续任务新建 `db`/`workspace`/`agent`/`stages`/`api`/`worker` 时，把 ARCHITECTURE §2 对应的规则 1–6 逐条补进 `backend/pyproject.toml` 的 `[tool.importlinter]`。
+- 2026-09-27 — T1：`Settings.data_dir` 用 pydantic `field_validator` 解析为绝对路径并校验不落在 `backend/src` 之下，校验失败抛自定义 `WorkspaceInsideSourceError`（继承 `RuntimeError`，不是 `ValueError`）——pydantic v2 只把 `ValueError`/`TypeError`/`AssertionError` 包装成 `ValidationError`，用独立异常类型能让调用方精确捕获这一种配置错误，而不必解析 pydantic 的通用校验错误。
+- 2026-09-27 — T1：测试中不传 `_env_file=None` 覆盖 `Settings`（pyright 对 pydantic-settings 的 dataclass-transform 合成 `__init__` 不认识这个私有 kwarg，会报 `reportCallIssue`）；改为直接传字段值（如 `data_dir=...`）覆盖，init kwargs 在 pydantic-settings 的来源优先级里本就高于 `.env` 文件，效果等价且类型检查干净。
+- 2026-09-27 — T1：给 `scripts/check_docs.py` 的 `SKIP_DIRS` 加入 `.superpowers`（本次 SDD 编排的临时脚手架目录，已在 `.gitignore` 中，不属于文档知识库）——运行 `make check` 时发现该目录下的 `common.md` 引用了尚未创建的 `docs/references/claude-agent-sdk.md`（T9 才会创建），导致 `check-docs` 误报，与 T1 范围无关但阻塞了质量关口，遂一并修正扫描范围。
+- 2026-09-27 — T2：`turn_events` 冗余存一份 `session_id`（可从 `turn_id` 关联 `turns.session_id` 推出）——`seq` 的作用域是会话级（见 2026-09-26 决策），SSE `after_seq` 续传按会话查询时直接按 `(session_id, seq)` 走索引，不必联表 `turns`；索引 `ix_turn_events_session_seq` 建在 `(session_id, seq)` 上。
+- 2026-09-27 — T2：`model_profiles` 种子的 `provider` 字段取值——`claude-sonnet`/`claude-login` 用 `anthropic`，`gpt` 用 `openai`，`deepseek` 用 `litellm`（区分"经 LiteLLM 转发"和"原生 OpenAI Responses API"两条 T10 要分别实现的路径）；`fake` 用 `provider="fake"`。这些是本任务的临时值，T9/T10 核实运行时行为后可能调整。
+- 2026-09-27 — T2：本任务只在 `repo/` 下创建 `projects.py`、`profiles.py` 两个文件（各自的仓储函数与测试），未创建 `stages.py`/`sessions.py`/`turns.py`/`snapshots.py` 空文件——遵循"先写失败测试再实现"和 YAGNI，这几个仓储会分别在 T6（`turns`/`sessions`）、T3/T7（`snapshots`）、T7（`stages`）按各自任务需要的签名新增，brief 中列出的文件名是完整清单，不代表本任务要全部建好空壳。
+- 2026-09-27 — T2：import-linter 新增两条契约（规则 5 相关）——`config` 不依赖 `db`（config 层依赖表里 config 一行是"—"）；`main` 不 import `studio.db.models`（只有 `db` 定义 ORM 模型，其他模块经 `db.repo` 的函数拿到 dataclass 值对象）。
+- 2026-09-27 — T3：`create_snapshot`/`rollback` 的签名（`engine, blobs, project_id, ...`）不带 `data_dir`/`workdir` 参数，工作区目录从 `blobs.root.parent` 反推（约定 `<data_dir>/blobs/` 与 `<data_dir>/projects/<id>/` 是同一 `data_dir` 下的兄弟目录）——避免在这两个函数上额外增加参数，调用方（T4/T6）只需持有同一个 `BlobStore` 实例即可；`scan`/`read_file_at` 保持纯函数（不依赖这一约定），方便单独测试。
+- 2026-09-27 — T3：新增两条 import-linter 契约——`workspace` 不直接依赖 `studio.db.models`（`allow_indirect_imports = true`，因为 `workspace` 经 `studio.db.repo.snapshots` 间接用到 `db.models` 是被允许的合法路径，只禁止绕过 repo 直接 import 模型）；`workspace` 不依赖 `main`。
+- 2026-09-27 — T3：`rollback` 内部复用 `create_snapshot`（而不是直接插入快照行）——回滚后的工作区状态和"新建快照"的语义完全一致（含清单去重：目标已是最新时 `created=False`），复用能保证这条规则不必在两处分别实现。
+- 2026-09-27 — T4：`is_writable` 的 glob 匹配直接用标准库 `fnmatch.fnmatchcase`，不额外实现 `**` 语义——Python 3.12 没有 `PurePosixPath.full_match`（3.13 才有），而 `fnmatch` 把 `*` 翻译成正则 `.*`（本就跨越 `/`），所以 `topic/**` 天然匹配 `topic/` 下任意深度的文件，没有通配符的模式要求完全相等；已用测试验证 `**` 语义符合预期，不需要自己写匹配器。
+- 2026-09-27 — T4：路径包含性检查（`(workdir / relpath).resolve()` 后确认仍在 `workdir` 内）从 `snapshot._safe_dest` 提炼成 `layout.resolve_relpath`（抛 `PathEscapesWorkdir`），`snapshot._safe_dest` 和 `files.safe_path` 都复用它，各自包一层转换成调用方期望的异常类型（`ValueError` / `ScopeError`）——避免同一段"越界检查"逻辑在两处重复实现和分别测试。
+- 2026-09-27 — T4：`guard` 除了按 `before`/`after`/`tool_writes` 还原越界改动外，额外扫描并删除工作区里排除目录（`EXCLUDED_TOP_DIRS`）之外的所有符号链接（控制者裁定）——`scan()` 天然忽略符号链接，如果 `guard` 不清理，agent 建的符号链接会一直留在工作区（不进快照、不受越界检查约束），可能被用作绕过下一轮检查的手段；删除的符号链接路径计入 `GuardReport.restored`。
+- 2026-09-27 — T4：`snapshot._data_dir_of` 增加防御性检查，`blobs.root.name != "blobs"` 时抛 `ValueError`（控制者裁定）——`_data_dir_of` 靠"约定" `<data_dir>/blobs/` 反推 `data_dir`，这个假设一旦被调用方传错（例如误传了别的目录当 `BlobStore.root`）会静默算出错误的工作区路径，进而让 `create_snapshot`/`rollback` 操作到错误的位置；提前失败比静默算错更安全。
+- 2026-09-27 — T4：`materialize_upstream` 的 `sources[stage]` 约定为该阶段定稿快照的**完整清单**（可能含 `style/` 等其他路径），函数内部按 `<stage>/` 前缀过滤后再落盘到 `upstream/<stage>/`——这样调用方（T6 的 TurnRunner）不需要预先按目录切分清单，直接把定稿快照的 manifest 传进来即可，防御性地保证只有属于该阶段产物目录的文件被物化。
+- 2026-09-27 — T5（审查后修正，替换本条最初的版本——最初版本在"队列全是持久事件"时会退化为丢弃最旧的一条持久事件，审查认定这违反"持久事件永不丢失"的要求，已修正）：`SessionBus` 每个订阅者内部拆成两条队列——瞬时事件（`text_delta`/`workspace_changed`/`turn_status`）走一条有界队列（容量 `queue_size`），写满时丢弃队列里最旧的一条瞬时事件腾位置（滑动窗口，只保留最新的一批）；持久事件走一条完全无界的队列，永远接受新事件，不做任何容量检查，因此**不可能**被丢弃。两条队列靠 `publish` 时打上的总线全局单调递增内部序号合并成一条有序的事件流（`_Subscriber.pump`：总是从两条队列队首里选内部序号更小的先产出），保证"瞬时事件和持久事件之间的相对到达顺序"在没有事件被丢弃时尽量保持；`publish` 本身是纯同步的入队操作，不阻塞、不抛异常。测试改为验证"发布远超队列容量的持久事件，全部一条不少地送达"，以及跨类型的顺序合并。
+- 2026-09-27 — T5（T8 审查后修正，替换本条最初的版本——最初版本让 `subscribe()` 返回一个包了 `try/finally` 的裸异步生成器，取消订阅写在 `finally` 里；T8 审查发现这个写法有真实 bug：Python 对一个从未 `__anext__()` 过的"冷"异步生成器调用 `aclose()` 是空操作，不会跑 `finally`，如果一次 SSE 连接的全部数据都靠回放已落库事件满足、从未真正走到订阅总线取实时事件那一步就断开，订阅会永久残留，已改成结构性修复）：`SessionBus.subscribe` 的注册（把 `_Subscriber` 加进 `_subscribers`）仍然必须在**同步**代码里完成（原因不变：`async def` 生成器函数体在第一次 `__anext__()` 之前完全不执行，注册逻辑放里面会丢事件）；但返回值不再是裸的异步生成器，而是 `Subscription` 对象——`close()` 是**同步、幂等**的方法，直接把 `_Subscriber` 从 `_subscribers` 列表里摘掉，完全不经过任何生成器的 `aclose()`/`finally`，因此不管这个订阅有没有被迭代过都能正确清理；`__aiter__`/`__anext__` 委托给 `_Subscriber.pump()`，调用方（T6/T8 的 SSE 端点、测试）迭代方式不变，只是收尾时改调用同步的 `close()` 而不是 `await ... aclose()`。
+- 2026-09-27 — T5：`fake.shell_write(path, content="")` 模拟 Shell 类原生工具绕过事前拦截的写入，直接调用新增的 `workspace.files.write_text_unscoped`（只做 `safe_path` 的路径安全校验，不检查 `WriteScope`）——设计 §4.3 里 Shell 的越界写入本就只靠回合结束时的 `scope.guard` 事后兜底，`FakeRuntime` 需要一种"跳过事前拦截"的写入方式来让 T6 能测试这条防线；没有复用 `write_text`（会因为越界而抛 `ScopeError`），而是在 `workspace` 模块（唯一读写工作区文件的模块，规则 6）里新增一个显式跳过范围检查的函数，供 `fake.py` 调用，避免在 `agent` 里绕过 `workspace` 直接操作文件系统。
+- 2026-09-27 — T5（审查后修正，替换本条最初的版本——最初版本给 `FakeRuntime` 加了 `project_id`/`stage`/`record_tool_write` 三个可选构造参数，审查认定这些本质是"运行时执行一轮时需要的上下文"，不该绑在某一个运行时实现的构造函数上，已改成 `TurnContext` 的字段）：`TurnContext`（设计 §4.1）新增 `project_id: str`、`stage: str`、`record_tool_write: Callable[[str, str], None]` 三个字段，和 `tools.ToolContext` 的对应字段一一对应。选择直接扩展 `TurnContext`、而不是另外引入一个 `make_tool_context(ctx, ...)` 工厂函数——`TurnRunner`（T6）构造 `TurnContext` 时本来就持有这些值，一并传入最直接；运行时（`FakeRuntime`/`ClaudeRuntime`/`OpenAIRuntime`）需要给业务工具构造 `ToolContext` 时直接从 `ctx.project_id`/`ctx.stage`/`ctx.workdir`/`ctx.record_tool_write` 取，不用再各自决定"这几项从哪来"。`FakeRuntime` 的构造函数因此收窄回 `FakeRuntime(script: list[FakeStep] | None = None)`。
+- 2026-09-27 — T5（审查后新增，控制者裁定 R2 的落地）：`RuntimeFactory` 本身仍然只是纯注册表，不预置任何注册；`fake` 运行时的注册逻辑放进 `studio.agent.fake.register_fake(factory)`（并从 `studio.agent` 包一并导出），内部就是 `factory.register("fake", FakeRuntime)`——`FakeRuntime` 类本身现在满足零参数构造（`script=None`），`run_turn` 在拿到当轮的 `ctx` 之后才用 `default_fake_script(ctx.write_scope, ctx.user_input.text)` 现场生成默认脚本，而不是构造时就固定死，这样"注册一个不带脚本、每轮都正确回显当轮用户消息"的 `fake` 运行时"才能同时满足 `RuntimeConstructor = Callable[[], AgentRuntime]` 的签名。`main`（T7 之后）在 `settings.enable_fake_runtime` 为真时调用 `register_fake`。
+- 2026-09-27 — T5：`FakeRuntime` 按脚本步数（不区分步骤类型）和累计 `use_cost` 总额分别检查 `ctx.budget.max_steps`/`max_cost_usd`，超限时提前产出 `TurnEnd(status="budget_exceeded")` 并停止——`Budget` 字段在设计 §4.1 就存在，`TurnStatus` 也包含 `budget_exceeded`，作为测试运行时如果完全不响应预算配置，T6 就没有办法用 `FakeRuntime` 测试 TurnRunner 的预算超限路径；真实运行时按步数/成本判断超限的具体时机由 T9/T10 决定。
+- 2026-09-27 — T5：`agent.tools.ToolHandler` 的参数类型标注用 `Any` 而不是 `BaseModel`——`Callable` 的参数位置是逆变的，如果标成 `Callable[[ToolContext, BaseModel], ...]`，任何接受更具体子类型（例如 `_EchoArgs`）的 handler 函数赋值给 `ToolSpec.handler` 时都会被 pyright 判定类型不兼容（`ToolSpec` 要放进同一个 `list[ToolSpec]`，各自的 `input_model` 不同，静态类型没法逐个精确标注）；运行时的实际类型安全由 `invoke_tool` 里的 `spec.input_model.model_validate` 保证。
+- 2026-09-27 — T5：本任务除了简报「涉及文件」里列出的 `tests/agent/test_{bus,fake,tools}.py`，还补充了 `tests/agent/test_{runtime,stage}.py` 和 `tests/stages/test_placeholders.py`——`CancelToken`、`RuntimeFactory`、`StageRegistry`、三个阶段占位定义的可写范围/上游/产物目录都是简报里写了精确值、但仅靠 `test_bus`/`test_fake`/`test_tools` 不会被直接测到的逻辑（`test_fake` 只经三个阶段的 `write_scope()` 间接用到占位定义，不校验它们自身的字段），按"测试先行"的项目约定为它们各自补了最小单测；同时给新增的 `workspace.files.write_text_unscoped` 补了 `tests/workspace/test_files.py::TestWriteTextUnscoped`。这些都是新增测试文件，不算改变已完成任务（T1–T4）的范围。
+- 2026-09-27 — T6：`turn_events.seq` 在插入事件的同一个短事务里按"会话内 max+1"分配（`repo.turns.append_event`），不用内存计数器；新增迁移 0002 把 `(session_id, seq)` 索引改为唯一索引作为兜底 — 单进程、同步短事务（事务内无 await）不会撞号；重启后不需要初始化计数器。
+- 2026-09-27 — T6：**同一项目同时只运行一个 turn**（不同阶段的会话也一样），多出的 turn 保持 `queued`，和全局并发上限一起按 FIFO 调度（跳过被项目占用阻塞的 turn，后面其他项目的 turn 可以先启动）— 各阶段共用一个工作区，两个 turn 并行时，一方的越界检查会把另一方的合法写入当成越界还原（评审关注点 4"不会有两个 turn 同时写同一工作区"）。T7 的文件 PUT/回滚用 `TurnRunner.is_project_busy` 判断 409。
+- 2026-09-27 — T6：跨轮的前言状态全部从持久化数据推出，重启后仍然有效：上一轮被还原的路径写成上一轮的 `notice` 事件（`payload.kind="guard_restored"`）；回滚通知 = 上一轮结束（`turns.updated_at`）之后出现的 `reason=rollback` 快照，回滚目标取它之前清单完全相同的最近一份快照（回滚原样写回目标清单），diff 相对上一轮的 `end_snapshot`；不新增表字段。
+- 2026-09-27 — T6（审查后修正，替换本条最初的版本——最初只取本轮 `user_edit` 快照相对前一份快照的 diff，被定稿快照或其他阶段 turn 吸收的修改会丢失）："用户手动修改"= 本会话上一轮结束（`turns.updated_at`）之后、到本轮开始快照为止，项目里所有 `reason=user_edit` 快照（本轮开始、其他阶段 turn 开始、定稿时创建）各自相对前一份快照的 diff，按路径合并（基准取最早一次改动前、结果取最后一次）；新会话只看本轮自己的 `user_edit` 快照（交接摘要另外列出产物）。用"上一轮结束时间"而不是"上一轮 end_snapshot 在列表中的位置"做起点——end_snapshot 可能因清单去重指向更早的快照。
+- 2026-09-27 — T6：落库的工具结果文本、工具参数中的字符串超过 8000 字符（`runner.TOOL_RESULT_MAX_CHARS`）时截断，`tool_result.payload.truncated` 标记是否截断；工具结果里的图片只落库 `media_type`，不存 base64 — 避免 `turn_events` 被大文件内容和图片撑大；完整内容仍在 SDK 会话存储里（设计 §4.1 两者独立）。
+- 2026-09-27 — T6：持久事件的 payload 里带 `turn_id`（和表的 `turn_id` 列重复），落库和发布到总线的 payload 完全一致 — T8 回放与实时推送使用同一种格式，前端可以按 turn 分组。
+- 2026-09-27 — T6：预算——`ToolCall` 计为一步，`Usage.cost_usd` 累加；超出 `model_profile.max_steps_per_turn`/`max_cost_per_turn` 时写一条 `notice`（`kind="budget_exceeded"`），置位取消令牌，最终状态 `budget_exceeded`（审查后修正：优先于一切——包括宽限期后强制 `task.cancel()` 导致的 `cancelled`、停止过程中运行时抛出的异常）；步数语义：上限为 N 时，第 N+1 次工具调用仍会落库，随后本轮停止（运行时可能已经执行了这次调用，事件如实记录）；`Budget` 同时传给运行时，运行时可以原生限制。`Usage` 事件上有可选属性 `auth == "login"` 时（T9 添加），成本只记录不限制，步数照常限制。
+- 2026-09-27 — T6：取消——置位取消令牌，运行时 10 秒（`cancel_grace_seconds`）内没结束就 `task.cancel()`；task 被取消（`CancelledError`）也走同一个收尾流程，状态 `cancelled`。排队中的 turn 取消时直接标记 `cancelled`，不做快照（从未改动工作区）。
+- 2026-09-27 — T6：`recover_on_startup` 把 `running` 和 `queued` 的 turn 都改为 `interrupted`（会话同样），`running` 的先做一份 `partial` 快照再改状态 — 排队信息只在内存里，`queued` 不处理会让会话永远"忙"；快照遵循"先快照后改状态"（§7）。恢复时不做越界检查（工具写入记录已随进程丢失，做了反而会把工具托管文件还原掉）。
+- 2026-09-27 — T6：轮末越界检查之后重新物化一次 `upstream/`，agent 对只读副本的改动当场清除（R5），而不是等下一轮开始 — 画布上立即看到正确内容。（审查后补充）重新物化之前用新增的 `workspace.upstream_drift` 对比 `upstream/` 实际内容与本轮物化的内容，把不同的路径（`upstream/...`，含符号链接）并入被还原列表，写进 `guard_restored` notice，下一轮前言告知 agent（评审关注点 1）。
+- 2026-09-27 — T6：`record_tool_write(relpath, sha)` 的实现读取磁盘上该文件的实际内容存入 blob 库，以实际内容的哈希为准（忽略传入的 sha）— `guard` 恢复工具版本时要求 blob 已存在；读取经新增的 `workspace.files.read_bytes`（规则 6）。
+- 2026-09-27 — T6：`stage_flow.finalize` 先调用 `create_snapshot`（内容未变时返回最近一份）再写 `finalized_snapshot_id`，保证用户未快照的修改也进入定稿版本；下游 `locked` → `active` 并记录 `based_on_snapshot_id`，其他状态且 `based_on` 与新定稿不同 → `stale`；`reopen` 只允许从 `finalized` 出发；下游只有**成功**（`done`）的一轮结束后才更新 `based_on` 并从 `stale` 回到 `active`（失败的一轮可能没处理上游变更）。（审查后修正）`based_on` 记录的是**本轮开始时**物化到 `upstream/` 的上游定稿 id（`stage_flow.upstream_snapshot_ids`），不是轮末的最新定稿；轮中上游又定稿时下游保持 `stale`。M1 每个阶段最多一个上游，多上游时取上游顺序中第一个已定稿的。
+- 2026-09-27 — T6：补充的仓储函数：`repo/sessions.py`（`create_session` 同时取消同阶段其他会话的活动状态、`get_session`）、`repo/turns.py`（turn 生命周期与事件）、`repo/stages.py`（阶段行读写，供 T7 建项目使用）、`profiles.get_model_profile_by_id`（会话存的是 id）。
+- 2026-09-27 — T6（审查后新增）：收尾健壮性——写 turn 最终状态（`finish_turn`，含排队取消分支）失败时重试一次再记日志；运行时事件流在 `finally` 里 `aclose()`，runner 内部出错时也先关闭生成器（真实 SDK 的子进程）再做越界检查和快照；`recover_on_startup` 逐个 turn 兜底，一个失败不影响其他；`repo.turns.previous_turn` 跳过没有 `start_snapshot_id` 的 turn（排队中就被取消的），避免丢失更早一轮的还原路径、回滚基准和交接判断。
+- 2026-09-27 — T7：项目创建失败时的清理策略——先写工作区文件（`style/STYLE.md`）和 `init` 快照，成功后才插入 `projects`/`project_stages` 行；任一步异常都 `except` 兜底删除工作区目录、已插入的阶段行、项目行，再转成 `HTTPException(500)`（不是让异常直接冒泡成 ASGI 层的 500——`httpx.AsyncClient` 走 `ASGITransport` 默认 `raise_app_exceptions=True`，未捕获异常会在测试里变成 Python 异常而不是响应，也不便于统一 `{"detail": ...}` 错误体）。为此给 `db.repo.projects.create_project` 加了可选的显式 `id` 参数（默认仍由表定义的 `uuid4().hex` 生成，不影响已有调用方），新增 `list_projects`、`delete_project`；`db.repo.stages` 新增 `delete_stages`。
+- 2026-09-27 — T7：单个文件读取接口不区分文本/二进制、不设第二个端点——统一按原始字节返回，`Content-Type` 用标准库 `mimetypes` 按扩展名猜测（猜不出时 `application/octet-stream`；文本类和 `application/json` 附 `charset=utf-8`）。文本文件前端可以直接当字符串用，二进制文件也能被正确处理，不需要额外的"是否二进制"标志（简报要求"pick a simple scheme and document it"，写在 `api/files.py` 模块 docstring）。
+- 2026-09-27 — T7：`PUT .../files/{path}?stage=` 的 body 是 JSON `{"content": <UTF-8 文本>}`（不是原始字节），因为 M1 唯一的手动编辑场景是 CodeMirror 文本编辑器；越界判断直接复用 `workspace.scope.is_writable(stage.write_scope(), path)`——`upstream/`、阶段的 `tool_managed` 文件天然不在任何阶段的 `writable` 模式里，不需要为它们单独加一条"if path in upstream, 403"的特判。
+- 2026-09-27 — T7：定稿/重新打开的 `StageFlowError`（非法状态流转，例如定稿 `locked` 阶段、重新打开未定稿阶段）映射成 409（和"项目忙"共用状态码但 `detail` 文案不同）而不是 400——都是"当前状态不允许这个操作"的语义冲突，符合 REST 对 409 Conflict 的惯例用法。
+- 2026-09-27 — T7：api 测试里模拟"项目忙"（409）不经会话/消息 API（T8 才有），直接用 `TurnRunner.start_turn` + 一个替换过默认注册的 `FakeRuntime([fake.sleep(30)])`，测完 `cancel`+`wait` 再 `register_fake` 复位——`is_project_busy` 在 `start_turn` 返回后立刻为真（`_schedule()` 是同步代码，任务对象创建后即计入 `_running`，不需要等事件循环真正跑到协程体），不会因为默认 fake 脚本"秒结束"而产生竞态。
+- 2026-09-27 — T7：httpx 客户端会在构造 URL 时把字面 `..` 段规范化掉（`http://x/a/../b` 变成 `http://x/b`），越界路径的 400 测试如果直接写 `.../files/../secret.txt` 根本发不出带 `..` 的请求；改用百分号编码 `%2e%2e`（`safe_path` 收到的是路由解码后的 `..`，服务端校验逻辑本身不变，只是测试要绕开客户端的规范化）。
+- 2026-09-27 — T7：顺带修复 T1 遗留的小问题（简报要求）——`tests/test_health.py` 从 `fastapi.testclient.TestClient` 迁移到 `httpx.AsyncClient` + `ASGITransport` + `app.router.lifespan_context(app)`，消除 `TestClient` 的 `StarletteDeprecationWarning`；`backend/tests/api/` 下的新测试全部用同一模式（夹具见 `tests/api/conftest.py`），没有引入 `asgi-lifespan` 依赖（依赖清单不允许）。
+- 2026-09-27 — T8：新增依赖 `sse-starlette`（依赖清单里已列明允许）；`backend/pyproject.toml` 加了版本区间 `>=2.1,<3`，`uv sync` 解析到 `2.4.1`。
+- 2026-09-27 — T8：会话创建（控制者裁定 1）用新增的 `RuntimeFactory.has(name)` 判断 `model_profile.runtime` 是否已注册，未注册 → 400；`RuntimeFactory` 本身仍然只是注册表（R2），`has()` 只是一个只读查询方法，不影响 `register`/`create` 的既有语义。
+- 2026-09-27 — T8：忙的语义按控制者裁定 3 严格区分——`TurnRunner.start_turn` 只在**同一会话**已有 `queued`/`running` turn 时抛 `SessionBusyError`（`POST .../messages` 映射为 409）；项目级串行化完全交给 `TurnRunner` 内部的队列（`_schedule`/`is_project_busy`），消息本身仍会被接受、排成 `queued` turn（202）。`POST .../cancel`、`.../continue` 各自用新增的 `db.repo.turns.latest_turn(session_id)` 判断"当前一轮"的状态（`cancel` 要求 `queued`/`running`，`continue` 要求 `interrupted`/`budget_exceeded`），不满足条件都是 409；`continue` 固定发送中文文本"继续"（`api.sessions.CONTINUE_TEXT`）。
+- 2026-09-27 — T8（第一次审查后修复，真实 bug，非测试技巧；第二次审查后又替换成结构性修复，见下一条）：最初发现 SSE 端点的核心异步生成器 `_stream_events` 在"这一轮客户端只消费了回放的历史事件就断线（从未真正走到订阅总线取实时事件那一步）"时，如果直接对总线订阅调用 `aclose()`，Python 对"从未 `__anext__` 过"的异步生成器执行 `aclose()` 是空操作，订阅会永久残留——这正是评审关注点 2 明确要防的订阅者泄漏，且是能在真实生产环境复现的 bug（不止是测试假象）。第一版修复是"订阅后立刻用 `ensure_future` 预热一个受 `wait_for(shield, timeout=0)` 保护的后台任务"，第二次审查用 scratchpad 里的 `t8probe.py` 证明这个预热写法本身仍然依赖调度顺序——任务被取消得足够早时同样会失效，本质上只是把"生成器是不是冷的"这个问题往后挪了一层；因此改成下一条的结构性修复，删掉了预热/`shield`/`timeout=0` 这套机制。
+- 2026-09-27 — T8（第二次审查后的结构性修复，控制者裁定）：`SessionBus.subscribe()` 改为返回 `Subscription` 对象（见上面 T5 决策记录的更新条目），`close()` 同步、幂等，不依赖生成器有没有被迭代过；`_stream_events` 相应简化为 `subscription = bus.subscribe(...); try: 回放 + async for bus_event in subscription: ...; finally: subscription.close()`，不再需要任何预热/调度技巧。回归测试：`backend/tests/agent/test_bus.py::TestSessionBusSlowSubscriber::test_close_without_ever_iterating_unsubscribes`（bus 层）+ `backend/tests/api/test_stream.py::TestStreamEventsReplay::test_aclose_without_ever_reaching_live_events_unsubscribes`（`_stream_events` 层）。详细分析和实测脚本记入 `docs/references/sse-starlette.md`。
+- 2026-09-27 — T8：SSE 事件类型直接复用 `TurnRunner`/`SessionBus` 已经在用的 `type` 字符串（`text_delta`/`text`/`tool_call`/`tool_result`/`snapshot`/`notice`/`error`/`workspace_changed`/`turn_status`），`_stream_events` 不做二次映射，只在 `api/sessions.py` 模块文档里统一注明这份对应关系（简报"控制者裁定 6"要求"在一个地方"）——T6/T5 里这些字符串本就和设计 §3.1/评审要点列出的线上事件名完全一致，没有必要再引入一层转换表。
+- 2026-09-27 — T8：SSE 消息用 sse-starlette 的 dict 形式（`{"event":..., "data": json.dumps(...), "id": str(seq)}`）；`data` 里除了原始 payload 还塞一份 `seq`（持久事件是真实序号，瞬时事件是 `None`），方便前端不用单独解析 SSE 帧的 `id` 字段；只有持久事件才带顶层 `id`，瞬时事件的消息字典里完全没有这个 key（不是 `id: null`）。
+- 2026-09-27 — T8（第二次审查后修正，替换本条最初的结论）：`httpx` 0.28.1 的 `ASGITransport` 会在返回响应前把整个 ASGI 应用调用跑到完成（缓冲全部 body 后才返回），对不会自己结束的 SSE 流没法用 `httpx.AsyncClient.stream()` 读到中间数据，这个实测结论仍然成立；但最初报告里"因此 HTTP 层没法测断线重连、只能测生成器"的结论**过宽**——第二次审查指出可以自己实现 ASGI 的 `receive`/`send` 两个回调直接驱动 `app(scope, receive, send)`，完全绕开 `httpx.ASGITransport`，能拿到真正逐块到达的响应体，也能在任意时刻用一个 `asyncio.Event` 模拟客户端断开（`receive()` 挂起到事件置位再返回 `http.disconnect`）。改用这种方式后补齐了 HTTP 层的响应头、SSE 帧 `id`/`event`/`data` 格式、`Last-Event-ID`、非法 `after_seq`/`Last-Event-ID` 的 400、真实断线清理、断线重连端到端不丢不重（`backend/tests/api/test_stream.py::TestStreamHttpLayer`、`TestFakeTurnFullEventFlow`）。核心回放/去重/转发/未知类型过滤逻辑仍然直接调用 `_stream_events`（这一层用生成器测最直接，不是因为 HTTP 层测不了）。详见 `docs/references/sse-starlette.md`。
+- 2026-09-27 — T8（第二次审查中发现的环境问题）：`sse_starlette.sse.AppStatus.should_exit_event` 是进程级单例，第一次真正跑到 `EventSourceResponse.__call__` 时惰性创建并绑定到当时的事件循环；`pytest-asyncio` 默认每个测试函数一个新事件循环，第二个真正建立 SSE 连接的测试会在不同循环上 `await` 这个旧循环的 `anyio.Event`，报 "is bound to a different event loop"（包在 `anyio` 的 `ExceptionGroup` 里，容易被误判成别的 bug）。修复：`test_stream.py` 加了 `_reset_sse_starlette_app_status` 自动夹具，每个测试前后把这两个类属性清空。详见 `docs/references/sse-starlette.md`。
+- 2026-09-27 — T8：补充的仓储函数——`db.repo.sessions.list_sessions(engine, project_id, stage)`（`GET .../sessions` 用）、`db.repo.turns.latest_turn(engine, session_id)`（`cancel`/`continue` 用）；`agent.runtime.RuntimeFactory.has(name)`。均为只读查询或注册表判断，不改变已有函数的签名和语义。
+- 2026-09-27 — T8（第二次审查后修正）：创建会话时"模型配置不存在"改成 400（原来是 404）——和"runtime 未注册"共用同一类语义（"这个会话开局就没法运行任何一轮"，属于请求/配置问题），不再区分 404/400；`api/sessions.py` 模块文档里说明了理由。
+- 2026-09-27 — T8（第二次审查后新增）：`api/sessions.py` 新增 `WIRE_EVENT_TYPES`（9 个线上事件名的唯一定义，控制者裁定 6），`_sse_message` 遇到不在这个集合里的 `type` 时记日志并跳过、不产出 SSE 帧（防御性检查——正常路径不会出现，`TurnRunner`/`SessionBus` 目前只产出这 9 种）；`agent/bus.py` 模块文档补了一句说明设计 §3.1 里的 `suggestion` 是持久事件类型但 M1 没有代码产出它。
+- 2026-09-27 — T8（第二次审查后新增）：`after_seq`/`Last-Event-ID` 的非法输入（非数字、负数）统一在 `_parse_after_seq` 里转成 400，而不是让 `int()` 抛出的 `ValueError` 变成未处理的 500；`after_seq` 查询参数存在时优先于 `Last-Event-ID` 请求头（都缺省则从 0 开始）。
+- 2026-09-27 — T8（第二次审查后新增）：补了一条 api 测试验证"项目忙不拒绝消息"（控制者裁定 3 的另一半，之前只测了"同一会话忙 → 409"，没测"同项目其他会话忙 → 202 排队"）——用同一个项目的另一个阶段开一个会话发消息，断言 202 且 turn 状态是 `queued`，释放忙会话后能正常跑完变成 `done`。
+
+- 2026-09-27 — T9：联网工具开关放在阶段定义上：`StageDefinition` 协议新增 `allow_web: bool`（topic 为 True，narrative/animation 为 False），`TurnContext` 新增 `allow_web: bool = False`，由 TurnRunner 从阶段定义填入；ClaudeRuntime 只在 `allow_web` 时加 WebSearch/WebFetch（控制者裁定）。
+- 2026-09-27 — T9：`events.Usage` 新增 `auth: Literal["api_key", "login"] | None = None`，TurnRunner 改为直接读 `event.auth`（原来用 `getattr` 兼容 T6 测试里的子类）；T6 的对应测试改为直接构造 `Usage(auth="login")`。
+- 2026-09-27 — T9：Claude 原生工具名不映射成规范名，而是把 `Write`/`Edit`/`MultiEdit`/`NotebookEdit`/`Bash` 加入 `events.FILE_TOOL_NAMES`——界面显示 SDK 真实调用的工具名；这些工具参数里没有 `path`，TurnRunner 推送空路径列表（"路径未知，整体刷新"）。业务工具的 `ToolCall.name` 去掉 `mcp__studio__` 前缀，与 FakeRuntime 的 `call_tool` 一致。
+- 2026-09-27 — T9：登录模式下"移除" `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` 的做法是在 `env` 中置为空字符串——SDK 把 `env` 合并在 `os.environ` 之上，无法删除键；CLI 把空值当作未设置（源码核实，见 references）。API key 模式同样把 `ANTHROPIC_AUTH_TOKEN` 置空，避免 shell 里残留的 token 干扰认证。
+- 2026-09-27 — T9：API key 模式把 `CLAUDE_CONFIG_DIR` 指向 `<data_dir>/claude/`（源码确认可行，会话存储随之移入数据目录）；登录模式不改（改了会读不到 macOS 钥匙串里的登录凭据）。R4 最终结论在 T15。
+- 2026-09-27 — T9：每轮花费按"本次累计值 − 上次记录的累计值"求差，记录落盘在 `<data_dir>/claude/studio-cost-ledger/<session_id>.json`，不改数据库表；累计值变小时视为重新计数，累计值为 0 时不记录（规则见 references"本项目的用法"）。
+- 2026-09-27 — T9：成本预算在 API key 模式下交给 SDK 的 `max_budget_usd`（CLI 源码确认它只统计本次 `query()` 调用，即本轮），因为 result 消息只在一轮结束时才带成本，运行中无法由 TurnRunner 按成本打断；步数预算由 ClaudeRuntime 在工具调用数超限时 `interrupt()`（TurnRunner 的步数检查仍然有效）。
+- 2026-09-27 — T9：选项里另加了简报未列出的三项隔离设置：`strict_mcp_config=True`（不加载本机/项目的其他 MCP server）、`verbatim_prompts=True`（用户消息里含前言等工作区派生文本，禁止 CLI 展开其中的 `@path`）、sandbox 的 `allowUnsandboxedCommands=False`（否则模型可逐条命令绕过沙箱）。
+- 2026-09-27 — T9：`main` 总是注册 `claude`（没有 key 也无害，缺 key 在对应 turn 中报 `failed`）；`register_claude` 从 `studio.agent.claude_runtime` 导入，不放进 `studio.agent.__init__`，避免 import `studio.agent` 时就加载 SDK。
+- 2026-09-27 — T9：`claude-agent-sdk` 依赖写成 `>=0.2.160,<0.3`，与其他依赖的上界风格一致。
+- 2026-09-27 — T10：OpenAIRuntime 按 `provider` 分两条路径：`openai` → `OpenAIResponsesModel`（显式 `AsyncOpenAI(api_key, base_url)`）+ 原生 `ApplyPatchTool`/`ShellTool`（`allow_web` 时加 `WebSearchTool`）；`litellm` → `LitellmModel`（显式传 key，不改 `os.environ`）+ 兜底文件工具，无 Shell、无联网（控制者裁定）。其他 provider → 本轮 `failed`。
+- 2026-09-27 — T10：`workspace.files` 新增 `delete_file(workdir, relpath, scope)`（`ApplyPatchEditor.delete_file` 需要，规则 6 要求落盘都经过 workspace）。`WorkspaceApplyPatchEditor` 失败时返回 `ApplyPatchResult(status="failed")` 而不是抛异常（抛异常 SDK 也能处理，但会多打一条错误日志）；`move_to` 先检查两端都可写再动文件。
+- 2026-09-27 — T10：`events.FILE_TOOL_NAMES` 加入 `apply_patch`、`edit_file`。`apply_patch` 的 `ToolCall.args` 由运行时整理成 `{"type", "path", "diff"}`，所以 TurnRunner 按 `args["path"]` 能推送精确的 `workspace_changed` 路径；`shell` 的 args 是 `{"commands": [...]}`，推空列表。托管 `web_search_call` 没有输出条目，运行时在 `ToolCall` 后立即补一个 `ToolResult`，避免界面上的工具调用一直挂起。
+- 2026-09-27 — T10：用量每次模型调用（`RunHooks.on_llm_end`）产出一个 `Usage` 事件（Claude 是每轮一个），TurnRunner 累加，成本预算因此能在轮中途打断；单价单位定为**美元 / 百万 token**（写进 `ModelProfileValue` 字段说明和 references）；配置了成本上限但缺单价时本轮直接 `failed`（沿用旧项目"没单价就拒绝运行"的保护）。预算判定和停止仍由 TurnRunner 经取消令牌完成，运行时只负责响应取消（`RunResultStreaming.cancel()`）。
+- 2026-09-27 — T10：会话历史裁剪用 `RunConfig.session_input_callback` 按用户消息切分、只发最近 N 轮（`Settings.openai_history_turns`，默认 20，新增配置字段），库里保留全部；没有用 `SessionSettings.limit`（它按条目数截取，可能从工具调用/结果中间切断）。首轮 `resume_ref` 为空时生成新的 uuid 作为 `SQLiteSession` id。
+- 2026-09-27 — T10：Shell executor 不传名字含 KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL 的环境变量（避免 agent 的命令读到 API key）；单条命令默认超时 120 秒、上限 600 秒，超时杀整个进程组；非零退出码或超时的调用标为 `is_error`。
+- 2026-09-27 — T10：业务 `ToolSpec` → `FunctionTool` 优先用 strict schema，SDK 无法转换（`UserError`）时退回非 strict；每次调用的 `ToolResult` 按 `call_id` 暂存，事件转换时直接取用，保留 `is_error` 和原始图片。
+- 2026-09-27 — T10：`max_turns=200`（SDK 默认 10 太小，步数预算由 TurnRunner 按 `max_steps_per_turn` 强制）；`RunConfig(tracing_disabled=True)`（SDK 默认会把追踪上传到 OpenAI）。`openai-agents` 依赖写成 `>=0.22.3,<0.23`。
+- 2026-09-27 — T10 审查后：Shell executor 在命令结束（任何退出码）后总是 `killpg` 整个进程组，取消分支也会等进程退出——否则 `nohup … &` 这类后台进程能在轮末 `guard` 和快照之后改工作区，改动进入下一轮基线、永远不会被还原。等待 shell 退出改为轮询 `proc.returncode`（`proc.wait()` 要等管道关闭，会被后台进程拖住）；输出边读边截，超过上限（字符上限 ×4 字节）立即杀进程组并标为失败。
+- 2026-09-27 — T10 审查后：`workspace.files` 新增 `normalize_relpath`，`write_text`/`delete_file` 在 `safe_path` 和 `is_writable` 之前统一规范化（`narrative/./timing.json`、`narrative//timing.json` 原来能绕过 `tool_managed` 检查）；`apply_patch.to_workspace_relpath` 复用它，editor 与事件转换共用同一套路径规范。
+- 2026-09-27 — T10 审查后：apply_patch 的 `ToolCall.args` 用规范化后的工作区相对路径，并带上 `move_to`；TurnRunner 的 `workspace_changed` 同时推送 `path` 和 `move_to`（改名时两个路径都要刷新）。
+- 2026-09-27 — T10 审查后：缺单价用 `events.Usage.priced: bool = True` 表达（最小改动：`cost_usd` 保持 float，不影响 Claude/Fake 和 T6 的累加逻辑）。OpenAIRuntime 在配置缺单价时发 `priced=False`；TurnRunner 每轮第一次收到时落库一条 `notice`（`kind="cost_unpriced"`，"未配置单价，成本未统计"），turn 行的 `cost_usd` 记为空，界面不会显示成 $0。
+- 2026-09-27 — T10 审查后：`scripts/dev.sh` 在 `backend/.env` 存在时 `set -a; . backend/.env; set +a` 导出（控制者裁定；不新增依赖），dev-setup 已更新。
+- 2026-09-27 — T10 审查后：业务工具 schema 退回非 strict 时记一条警告日志；references 与代码注释写明环境变量过滤只减少 key 被意外打印、Shell 没有沙箱可读本机任意文件。
+- 2026-09-27 — T11：`components.json` 的 `style` 手动改成 `new-york-v4`（CLI `--defaults` 给的 `reka-nova` 没有 `dashboard-01`），`registries` 加 `@ai-elements` 指向 `https://registry.ai-elements-vue.com/{name}.json`——细节和实测过程见 `docs/references/frontend-stack.md`。
+- 2026-09-27 — T11：dashboard-01 区块里的图表（`ChartAreaInteractive`）、数据表（`DataTable`/`DragHandle`/`DraggableRow`/`features.ts`）、云文档分组（`NavDocuments`/`NavSecondary`）判定为与本项目无关的 demo 内容，删除并卸载对应依赖（`@tanstack/vue-table`、`@unovis/ts`、`@unovis/vue`）；`AppSidebar`/`NavMain`/`NavUser`/`SiteHeader` 改写为使用真实路由（`/projects`、`/ideas`、`/settings`）和 `@lucide/vue` 图标（`@tabler/icons-vue` 未装上，见下方「意外与发现」），保留侧边栏+顶栏外壳结构。
+- 2026-09-27 — T11：`tsconfig.json`/`tsconfig.app.json` 的路径别名只写 `paths`、不写 `baseUrl`（TS 6.0 起 `baseUrl` 已废弃报 `TS5101`，`paths` 单独生效）。
+- 2026-09-27 — T11：ESLint flat config 直接用 `eslint.config.ts`（未加 `jiti`，Node 24.11 原生能跑）；分层规则用 `no-restricted-imports` 的 `patterns` 实现，不引入 `eslint-plugin-boundaries`（依赖清单之外）。
+- 2026-09-27 — T11 审查后修复：分层规则只匹配 `@/...` 别名时相对路径（`../projects/X.vue`）能绕过检查，改成同一个 `no-restricted-imports` 调用里同时列出别名 pattern 和"禁止任何向上跳出当前目录的相对 import"pattern（`../*` 到 `../*/*/*/*/*`，覆盖 5 层）；`composables/`、`api/`、`types/` 也补了同样的向上跳转限制。细节和验证输出见 `.superpowers/sdd/m1-skeleton/task-11-report.md`「审查后的修复」。
+- 2026-09-27 — T12：SSE 客户端的重连去重两道保险——服务端已经按 `seq <= last_seq` 去重（T8），`sse.ts` 的 `openStream` 在客户端再按 payload 里的 `seq` 做一次同样的判断（`seq` 非空且 `<= 上次记的 seq` 就丢弃）——不是不信任后端，是防御性编程：`after_seq` 本来就是前端自己维护、自己传回去的状态，客户端측按同一个字段再核一遍成本几乎为零，能防住"服务端某次实现改动/边界条件回归"这类问题继续传播到 UI。
+- 2026-09-27 — T12：`useSessionStream` 不把用户消息文本放进 SSE 事件、也不改后端补发——后端从未把 `user_message` 当作一种事件发布（`TurnRunner._persist`/`_publish` 只发 `text`/`tool_call`/… 这几种"agent 产出"，用户自己发的文本只落在 `turns.user_message` 列）；改成"见到某个 turn 的第一条事件才插入这个 turn 的用户消息"，数据来自挂载时一次性的 `GET /sessions/{id}`。已知代价：挂载之后才发的新消息，这个 turn 还没被 `GET` 拉到过，`ensureUserMessage` 只能插空文本占位——记入「下一步」，留给 T13 的发送逻辑做乐观更新。
+- 2026-09-27 — T12：`sse.ts` 的重连退避 `sleep()` 即使延迟是 0ms 也强制走一次真正的 `setTimeout`宏任务，不用 `Promise.resolve()` 的快速路径——vitest 测试里用 mock fetch 连续制造"立刻失败/立刻结束"的场景时，纯微任务的 `Promise.resolve()` 会让重连循环变成不给事件循环宏任务（定时器）任何执行机会的忙循环，饿死测试自己用来轮询断言/触发 abort 的定时器，实测直接把 worker 进程点到 OOM（`Reached heap limit`）；换成真定时器后同样的测试用例正常在数百毫秒内跑完。
+- 2026-09-27 — T13：`useSessionStream` 的乐观插入用一个"占位 `turnId`（`local-<n>`）+ FIFO 队列"实现，而不是让 `SessionPanel` 自己维护一份临时消息列表再和真实 turn 合并——理由是 `items` 数组本身、`ensureUserMessage` 的插入位置逻辑已经在 `useSessionStream` 内部，占位跟真实 turn 的"原地替换"（而不是先插占位、来了真实事件再追加一条、需要另外删除旧占位）只有在同一个模块里操作同一份 `items.value` 才能做到零闪烁；FIFO（而不是按文本匹配或按 turnId 预测）是因为发送顺序和 turn 创建顺序在单会话内必然一致（后端按会话串行化，见控制者裁定 3 的"忙"语义），先进先出足够正确且不需要猜测后端还没告诉前端的 turn id。
+- 2026-09-27 — T13：阶段导航的 `[定稿]`/`[重新打开]` 按钮可见性直接判断 `currentStageInfo.status`（`active`/`stale` 显示定稿，`finalized`/`stale` 显示重新打开），没有抽成 `stageStatus.ts` 里的纯函数——`stageStatusStyle` 只负责"这个阶段本身长什么样、能不能点去看它"，按钮的可见性是"当前正在看的这一个阶段"的额外规则，和阶段列表渲染是两件事，抽在一起会让 `stageStatusStyle` 的返回值多出和渲染阶段列表无关的字段，判断为不值得为此拆分。
+- 2026-09-27 — T13 审查后修复：`ProjectWorkbenchPage` 原来只 `watch(stage, ...)` 清空 `sessionId`，改成 `watch(() => sessionResetKey(projectId.value, stage.value), ...)`——新增的纯函数 `sessionResetKey(projectId, stage)` 把两个值拼成一个比较键，项目或阶段任一个变化都会让键变化、触发一次清空；单独抽出来是因为这条 watch 表达式本身不好直接单测（依赖 `useRoute()`），拼键这一步是唯一有分支意义的逻辑，抽出来之后可以离开组件单测四种组合。
+- 2026-09-27 — T13 审查后修复：`addLocalUserMessage` 改为返回它插入的占位 `turnId`（原来是 `void`），新增 `removeLocalUserMessage(placeholderId)`——发送请求本身失败时占位必须能被撤回，否则占位会一直占着 `useSessionStream` 内部 FIFO 队列的队首，下一条真正发出去的消息对应的真实 turn 会被错误配对到这条"其实没发出去"的占位上。`removeLocalUserMessage` 对已经被真实 turn 认领的占位（`turnId` 已经被原地替换过）或者本来就不存在的 id 是安全的 no-op。
+- 2026-09-27 — T13 审查后修复：`ToolCallItem.result` 补上 `images: ToolResultImage[]` 字段（透传自 `ToolResultPayload.images`，之前直接丢弃）。M1 后端只持久化 `media_type`、不存图片内容（T6 控制者裁定），前端因此也只能显示"含 N 张图片，不可预览"的文字提示，不是真缩略图——记入「已知限制」，留给 M2 判断是否需要在后端补图片内容持久化。
+- 2026-09-28 — T14：`CodeEditor.vue` 不直接 `import ... from '@codemirror/state'`（哪怕只是 `import type`）——它只是 `codemirror` 包的间接依赖，不在「依赖清单」允许的四个包里，pnpm 严格 `node_modules` 下从 `frontend/src` 这一层解析不到（`frontend/node_modules/@codemirror/` 下只有 `lang-json`/`lang-markdown`/`lang-python` 三个符号链接，没有 `state`）。改用 `type Extension = typeof basicSetup` 让 TypeScript 通过 `codemirror` 自己的 `.d.ts`（它在自己的依赖闭包内能解析到 `@codemirror/state`）间接拿到同一个类型，不需要我们自己写这条 import。只读态/语言切换没有用 `Compartment` 动态重新配置（`codemirror` 包不重新导出它），改成整个销毁重建 `EditorView`——这两者只在切文件、agent 运行状态变化时触发，频率低，代价可以接受。
+- 2026-09-28 — T14：画布是否只读的 `busy` 由 `ProjectWorkbenchPage.vue` 单独开一条 `useSessionStream(sessionId)` 连接算出（只用它的 `turnStatus`，`items` 不用），而不是把 `SessionPanel.vue` 内部已经在用的那条连接的状态提升到页面层——一个会话因此同时有两条 SSE 连接。本地单人应用、SSE 事件量很小，这个代价换来的是 `FileCanvas` 不需要 import `features/workbench`（ESLint 分层规则禁止 features 互相 import），也不需要改动 `SessionPanel` 已经稳定的内部状态管理。`isBusyStatus(status)` 提成 `turnControls.ts` 的独立导出（原来 `BUSY_STATUSES` 只在 `computeTurnControls` 内部用）。
+- 2026-09-28 — T14：AC4 走查发现一个隐蔽 bug 并修复——`SnapshotTimeline.vue` 的 [确认回滚] 按钮用 `<AlertDialogAction @click="confirmRollback">`，而 `AlertDialogAction` 底层是 reka-ui 的 `DialogClose`：它自己的 `onClick`（把 `open` 置 `false`）和我们绑的 `@click` 加在同一个 DOM 按钮上，谁先谁后不由调用方控制。当 `DialogClose` 的处理先跑时，`<AlertDialog @update:open="... rollbackTarget = null">` 会抢在 `confirmRollback` 读到 `rollbackTarget.value` 之前把它清空，函数里的早退分支直接返回——**回滚请求完全不会发出，也没有任何报错或异常**，只有靠实际点开浏览器、检查网络请求列表才发现（`read_network_requests` 过滤 `rollback` 长期无匹配）。修复：另开一个不接入 Vue 响应式、不受 `update:open` 影响的普通变量 `pendingRollbackId` 单独记住待回滚的 id，`confirmRollback` 从它读，彻底绕开这条事件顺序竞态。这类"两个 `@click` 绑在同一个由第三方组件管理开关状态的按钮上"的模式以后要留意，`AlertDialogAction`/`DialogClose` 不是只做视觉展示的哑组件。
+- 2026-09-28 — T15：冒烟用例复制种子配置（真实模型名与单价）为 `smoke-<名>` 再加预算上限（`max_cost_per_turn`：claude-sonnet 0.30、gpt 0.25、deepseek 0.05，合计 0.60 ≤ 1 美元；每轮最多 8 步），不改种子本身的上限 — 预算只属于冒烟测试；复制种子能顺带验证种子模型名可用。
+- 2026-09-28 — T15：冒烟用的阶段定义包一层真实占位阶段（`SmokeStage`：提示词、可写范围、上下游不变，加 `smoke_image`，关联网工具）— 业务工具只在测试里存在，不进 `stages/`；关联网让一轮更短更可控。
+- 2026-09-28 — T15：`smoke_image` 返回左蓝右黄的 64×32 PNG（标准库 `zlib`/`struct` 手写），工具文本不提颜色，要求模型说出两种颜色才算"看到"图片（R2）；Claude 与 OpenAI Responses 断言，LiteLLM 只记录（控制者裁定）。
+- 2026-09-28 — T15：种子配置按官方页面核实：`claude-sonnet-5` 有效（$2/$10）；`gpt-5` 仍在售（$1.25/$10）；`deepseek-chat` 已于 2026-07-24 停用，改为 `deepseek/deepseek-flash`（按高峰价 $0.30/$1.20 计）；四个真实配置 `supports_vision=True`（`deepseek-flash` 支持图片输入）。Claude 两个配置的单价只作参考（ClaudeRuntime 用 SDK 的 `total_cost_usd`，不用单价）。
+- 2026-09-28 — T15：R3 结论成立，保留 Bash + SDK sandbox（不启用设计 §9 的"关闭 Bash"对策）；R5 结论成立，不需要额外对策（事前 hook + 只读文件权限 + 事后 guard 三层）。
+- 2026-09-28 — T15 审查后修复：宿主环境变量的隔离从源头做，不再只靠文档里的手动 `env -i`。① `ClaudeRuntime.build_env` 两种认证模式都把继承来的宿主变量置空（`HOST_BLANKED_ENV` 明确列出的认证/provider/模型覆盖/宿主标记变量 + `HOST_BLANKED_PREFIXES` 前缀 `CLAUDE_CODE_HOST_`、`CLAUDE_CODE_SDK_HAS_`、`CLAUDE_CODE_MESSAGING_`、`CLAUDE_CODE_SESSION_`、`CLAUDE_CODE_REMOTE`、`CLAUDE_CODE_DESKTOP_`），`ANTHROPIC_BASE_URL` 没有配置 `base_url` 时换成 `https://api.anthropic.com`（CLI 里有 `??` 写法，空串不等于未设置）；不动 `CLAUDE_CODE_ENTRYPOINT`、`CLAUDE_CODE_SDK_READS_SESSION_STATE`（SDK 自己处理）和 `CLAUDE_CONFIG_DIR`（登录模式要用），覆盖 `make dev`。② `make smoke` 用 `env -i` 只带白名单变量（`HOME`/`PATH`/`USER`/`LANG`/`TMPDIR`/`SHELL` + 三个 key + `STUDIO_*`）运行 pytest。这一条同时关闭 T9 审查遗留的"env 泄漏"小问题。依据见 references（claude-agent-sdk.md 宿主变量一条）。
+- 2026-09-28 — F1：以 `~` 开头（含 `~user`）或首尾带空白的 Read/Glob/Grep/Write 类路径直接拒绝，而不是 `expanduser`/`strip` 后再判断 — 内置 CLI 的 `expandPath` 先 `trim()`，再把 `~`、`~/…` 展开成家目录（`~user` 不展开，按相对路径处理），而 hook 用 `Path` 按原串判断，两者不一致就能绕过（审查发现 `" /etc/passwd"`、`" ~/.ssh/id_rsa"` 被放行）；直接拒绝不必逐字复刻 CLI 的规则，`~user` 也一并拒绝以免依赖这一细节；误伤的只有名字以 `~` 开头或首尾带空白的文件（前者可用 `./~x`），代价可接受。兜底文件工具（OpenAI 路径）是自己的 Python 实现、不展开 `~`，不受影响。
+- 2026-09-28 — F2：种子对由配置决定的字段（`claude-sonnet.base_url`、`gpt.base_url`、`gpt.model`）在配置值非空且与库中不同时**更新已有行**，只动这些字段；配置为空不清空已有值 — 负责人要求已有库也能生效；只更新配置明确给出的值，避免覆盖将来设置页（M5）里用户手动改的其他字段；清空要靠手动改或删库，写进 dev-setup。
+- 2026-09-28 — F2：OpenRouter 经核实支持 Responses API 的 `apply_patch`（客户端应用）与 `web_search`，但 `shell` 没有客户端执行模式（`local` 环境不支持，命令进托管沙箱）→ 不改用 Chat Completions，只做最小改动：`provider=openai` 且 `base_url` 主机不是 `api.openai.com` 时自动不提供 `ShellTool`，补兜底只读工具 `list_files`/`read_file`（`native_shell_supported`）。用自动判断而不是显式开关：没有已知的网关支持本地 shell，判断条件简单可测；将来遇到支持的网关再加开关。来源与日期见 references/openai-agents-sdk.md。
+- 2026-09-28 — F2：OpenRouter 上 `openai/gpt-5` 单价与官方一致（$1.25/$10，`GET https://openrouter.ai/api/v1/models`），种子单价不随网关变化。
+- 2026-09-28 — F2 审查后：`provider=openai` 且主机不是 `api.openai.com` 时，`ModelSettings(store=False, response_include=["reasoning.encrypted_content"])` — OpenRouter 的 Responses API 不保存条目，回放只带 id 的 reasoning 条目会报 "Item not found"；官方 API 和 LiteLLM 路径保持原设置不变。
+- 2026-09-28 — 追加修复 2·G1：文件消失后不提供[另存为原路径重新创建]/[丢弃]的横幅交互，选最小方案（干净则关闭、脏则只读保留）— "重新创建"涉及要不要立刻写工作区、算不算新一轮改动，这些语义没有在设计里定义，贸然实现一个以后大概率要推翻重做的交互不如先不做；用户仍然可以手动复制内容、切到别的文件再切回来观察（此时文件已确认不在，`fileMissing` 仍为真，只读横幅还在）。
+- 2026-09-28 — 追加修复 2·G1：判定"文件消失"用文件树成员关系（`fileTree.value` 已加载且不含当前路径），没有额外去接内容查询的 404 错误 — 触发这个 bug 的场景（回滚/文件被删）已经会让文件树重新拉取并更新（`workspace_changed` → `invalidateWorkspace`），文件树的信号既够用又比等一次注定失败的 GET 更快、更不会有重试噪音；`useFileContentQuery` 的 `enabled` 里同时接了 `!fileMissing`，文件消失后不会再对该路径发请求。
+- 2026-09-28 — 追加修复 2·G2：种子对 `gpt` 单价的受控更新沿用 F2 对 `base_url`/`model` 的规则（配置值非空且与库中不同才更新，空值不清空），不新增一套单独的语义 — 两者都是"由环境配置决定、需要在已有库上生效"的字段，规则统一便于理解和维护；顺带把 `_gateway_overrides` 的过滤条件从 `if value`（真值）改成 `if value is not None`，因为单价字段存在合法的边界值 `0.0`（真值过滤会把它误判为"未配置"），`base_url`/`model` 两个字符串字段的空串已经在 `_blank_is_unset` 里被转成 `None`，改用 `is not None` 判断对它们的行为没有变化。
+- 2026-09-28 — 追加修复 2·G2：`gpt-5-2025-08-07`（OpenRouter 经 Azure/OpenAI 后端）不支持 `apply_patch` 工具（`make smoke` 第 2 次运行实测 400，`data/evidence/m1/smoke-run2.log`），负责人据此把种子 `gpt` 换成 OpenRouter 的 `openai/gpt-6-luna`（$0.10/$0.50 每百万 token，来源 `GET https://openrouter.ai/api/v1/models`，2026-09-28）并已在 `backend/.env` 改了 `STUDIO_OPENAI_MODEL` — 这也是本次要新增单价配置项的直接原因：换模型后种子默认单价（对应 `gpt-5`）明显偏高，成本统计会失真。本任务不验证新模型是否真的支持 `apply_patch`（那需要再跑一次 `make smoke`，由负责人决定是否消耗剩余额度），只负责让单价可配置。
+- 2026-09-28 — 追加 3：种子 `deepseek.supports_vision` 由 `True` 改为 `False`，但**不扩展**种子的受控更新范围去覆盖已有库的这个字段 — 受控更新（F2/G2）目前只用于"由 `backend/.env` 配置决定、需要跟着环境走"的字段（`base_url`/`model`/单价）；`supports_vision` 是模型本身的能力，不该由环境配置驱动，扩大受控更新的适用范围会让这条规则的语义变得模糊（"什么时候种子可以改写已有行"）。选择让已有库保持旧值、在 dev-setup 写清楚手动修复步骤，比悄悄让种子在更多字段上"自动纠正"已有数据更可预期。
+- 2026-09-28 — 追加 3：`OpenAIRuntime` 按 `model_profile.supports_vision` 过滤发给模型的图片，而不是"把图片作为下一条用户消息重新发一次" — 后者对不支持视觉的模型同样没用（模型看不懂图片，无论以什么形式发送），只会多花一次模型调用的钱；`ToolResult.images` 仍完整保留在 `turn.results`（事件、画布展示不受影响），只是不再进入发给模型的 `function_call_output`，改用文字说明"模型不支持图片"，让模型不去编造颜色。
+
+## 意外与发现
+
+<!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
+
+- 2026-09-26 — 已确认 shadcn-vue 的 registry 列表中包含 `@ai-elements`，地址 `https://registry.ai-elements-vue.com/{name}.json`（来源：shadcn-vue 仓库 `apps/v4/public/r/registries.json`）；T11 时补进 frontend-stack.md。
+- 2026-09-26 — 写计划时 PyPI 上的最新版本：`claude-agent-sdk 0.2.160`、`openai-agents 0.22.3`；以安装时锁定的版本为准。
+- 2026-09-27 — T2 开始时工作区里已有一份未提交的 `db` 模块（`engine.py`/`models.py`/migrations/`tests/db/` 下 `test_engine.py`、`test_migrate.py`、`test_repo_profiles.py`、`test_repo_projects.py`），`pyproject.toml` 也已加上 `sqlalchemy`/`alembic` 依赖，但 `repo/` 目录本身不存在，`test_repo_*.py` 处于 RED（`ModuleNotFoundError`）——沿用这份已有实现（引擎、ORM 模型、迁移、测试用例均符合本任务要求，engine/migrate 相关测试本就是绿的），只补齐缺失的 `repo/projects.py`、`repo/profiles.py` 让 RED 转 GREEN，未重写已有代码。
+- 2026-09-27 — T6：`runner.py` 实现完约 480 行（审查修复后约 516 行，含较长的中文 docstring），超出计划预期的 ~400 行；按控制者指示没有自行拆分，在报告中提出（可选的拆分：把 `_finish` 收尾与事件处理移到单独模块）。
+- 2026-09-27 — T7：`studio.main` 之前只 import `studio.config`，"只有 db 定义 ORM 模型" 这条 import-linter 契约（`source_modules = ["studio.main"]`）此前没写 `allow_indirect_imports = true` 也能通过，因为压根没有间接路径。main 组装 `agent`/`api` 之后，经 `db.repo`（合法路径）间接用到 `db.models` 的依赖链一下子多了六条，契约随之报"BROKEN"——这是 import-linter 默认对 `forbidden` 类型契约做整条依赖链的传递闭包检查，不是只查直接 import；照 `workspace`/`agent` 两个同名契约的先例给 main 和新增的 `api` 契约都加上 `allow_indirect_imports = true` 后恢复绿。以后任何模块第一次从"只 import 一两个叶子模块"变成"组装/依赖一堆东西"时，都要留意同样的契约可能从"凑巧通过"变成"报错"。
+- 2026-09-27 — T8：实测发现 `httpx`（本项目锁定 0.28.1）的 `ASGITransport.handle_async_request` 会把整个 ASGI 应用调用跑到完成、缓冲全部响应体之后才返回 `Response`——对一个正常很快结束的接口没有影响，但对 `GET /sessions/{id}/stream` 这种"不断开就不会自己结束"的 SSE 流，意味着经 `httpx.AsyncClient` + `ASGITransport` 的 `client.stream()` 永远拿不到任何中间数据，只会一直阻塞到外部 `asyncio.wait_for` 超时。这个结论本身成立，但第一版报告据此得出"HTTP 层没法测断线重连"过宽——第二次审查指出直接实现 ASGI 的 `receive`/`send` 回调驱动 `app(scope, receive, send)` 就能拿到真正的逐块响应、也能模拟真实断线，已按这个方式补齐 HTTP 层测试。已记入 `docs/references/sse-starlette.md`（新建，索引加进 `docs/references/README.md`）。
+- 2026-09-27 — T8：过程中发现一个真实的（非测试假象）订阅者泄漏 bug——如果一次 SSE 连接的全部数据都能靠"回放已落库事件"满足、从未真正走到"订阅总线取实时事件"这一步就断开，早期实现里 `SessionBus.subscribe()` 返回的异步生成器会处于"从未 `__anext__` 过"的状态；Python 对这种"冷"生成器调用 `aclose()` 不会执行它的 `finally`，订阅永久残留，正是评审关注点 2 要防的问题，且会在真实部署中复现（不局限于测试）。第一版修复（预热任务 + `wait_for(shield, timeout=0)`）第二次审查证明仍然依赖调度顺序、不够可靠；最终改成结构性修复——`SessionBus.subscribe()` 返回一个 `close()` 同步幂等的 `Subscription` 对象，彻底不依赖生成器有没有被迭代过。修复方案和实测细节见上面「决策记录」T8 对应条目和 `docs/references/sse-starlette.md`。
+- 2026-09-27 — T8：第二次审查发现 `sse_starlette.sse.AppStatus.should_exit_event` 是进程级单例，第一次真正用到时惰性绑定到当时的事件循环；本项目 `pytest-asyncio` 默认每个测试函数一个新事件循环，测试文件里一旦有第二个测试真正建立 SSE 连接就会报"绑定了不同的事件循环"（包在 `anyio` 的 `ExceptionGroup` 里，日志显示成"Task exception was never retrieved"，容易被误判成别的 bug）。这是只有测试套件补齐 HTTP 层用例、多个测试都真正走到 `EventSourceResponse.__call__` 之后才会暴露的问题（T8 第一版只有一个这样的测试，没有触发）。修复：`test_stream.py` 加自动夹具，每个测试前后重置这两个类属性。记入 `docs/references/sse-starlette.md`。
+
+- 2026-09-27 — T9：`total_cost_usd` 的累计语义在 Python 源码里看不出来（由 CLI 产生），最终从内置 CLI 可执行文件里嵌入的消息 schema 说明文本中确认：恢复的会话从 transcript 保存的累计值继续，`max_budget_usd` 只统计本次调用。已写进 references。
+- 2026-09-27 — T9：`main` 总是注册 `claude` 之后，T8 的 `test_unregistered_runtime_is_400`（原来用 `claude-sonnet` 配置代表"未注册的运行时"）失败，改为临时插入一个 runtime 为 `unregistered` 的模型配置。
+- 2026-09-27 — T10：`openai-agents 0.22.3` 自带测试替身 `agents.testing.ScriptedModel`，可以直接驱动真实的 `Runner.run_streamed`（含 `apply_patch_call`），不需要自己 mock `Model` 接口；但它的自动流式不支持 `shell_call`，Shell 用例用 `ModelStep.stream([...])` 手写两条流事件。
+- 2026-09-27 — T10：`ToolCallItem.raw_item` 对 `apply_patch_call`/`shell_call` 是 dict，对 `function_call` 是 Pydantic 对象，转换时两种都要处理。`agents` 顶层没有导出 `ToolContext`（要从 `agents.tool_context` 导入）。
+- 2026-09-27 — T10：`uv add "openai-agents[litellm]"` 把 `websockets` 从 17.1 降到 16.1.1（原因是 `openai-agents 0.22.3` 自身声明了 `websockets>=15,<17`，不是 litellm；litellm 只在 `proxy` extra 里约束 websockets，本项目没装），`uvicorn[standard]` 仍可用，`make check` 全绿。
+- 2026-09-27 — T10 审查后：asyncio 的 `Process.wait()`/`communicate()` 要等所有管道关闭才返回，后台子进程继承 stdout 时会一直等到它结束——第一版"命令结束后 killpg"的修复因此对 `(sleep; touch) &` 无效（测试发现），改为轮询 `returncode`。已写进 references。
+- 2026-09-27 — T11：`pnpm create vite@latest frontend -- --template vue-ts`（简报里的写法）实测生成的是 vanilla-ts 模板，不是 vue-ts——`create-vite` 不认识 `pnpm create` 通过 `--` 转发的参数形式；换成 `pnpm create vite@latest frontend --template vue-ts`（`--template` 直接跟在包名后面，不经过 `--`）才生效。已记入 frontend-stack.md。
+- 2026-09-27 — T11：`shadcn-vue add dashboard-01` 只落地了区块引用的组件文件，没有落地 `page.vue`（它的 `target` 是 Nuxt/Next 风格的 `pages/dashboard/index.vue`，纯 Vite 项目没有匹配目录，CLI 静默跳过）——外壳页面（`SidebarProvider`+`AppSidebar`+`SidebarInset`+`SiteHeader`+`<router-view>`）是本任务手写组装的，不是 CLI 生成物。已记入 frontend-stack.md。
+- 2026-09-27 — T11：dashboard-01 注册表声明依赖 `@tabler/icons-vue`，但这次 `shadcn-vue add` 执行中该包实际没有被装进 `package.json`（怀疑是过程中出现的 `ECONNRESET` 重试导致某个子步骤被跳过，CLI 没有报错）——发现时机是删除 demo 内容、改写图标导入之后已经不再需要这个包，未进一步排查是否是 CLI 或网络的偶发问题；如果后续任务需要装它，先确认是否已在 `package.json` 里。
+- 2026-09-27 — T12：实测确认 vite 的 `http-proxy` 对 SSE 接口不缓冲——起临时数据目录的 fake 运行时后端 + `pnpm run dev` 前端，经代理创建项目/会话、发一条消息，`turn_status`/`text`/`tool_call`/`tool_result`/`workspace_changed`/`snapshot` 全部在发消息后 ~80ms 内送达，而这条 SSE 连接在此之后又存活了 7 秒多（期间收到 `sse-starlette` 的心跳 `: ping - <时间戳>`）才被主动关闭；如果代理缓冲到连接关闭才转发，事件不可能提前 7 秒被读到。心跳帧格式（注释行）此前没有记录，一并补进 `docs/references/sse-starlette.md`。`docs/references/frontend-stack.md` 对应的 "⚠️ T12 实测" 行改为 ✅。
+- 2026-09-27 — T12：`useSessionStream` 的测试里给 `openStream` 打桩后用 `vi.spyOn(queryClient, 'invalidateQueries')` 断言失效的 query key——TanStack Query v5 的 `invalidateQueries` 默认按前缀模糊匹配，测试直接比较 `call[0]?.queryKey` 和 `queryKeys.fileTree(projectId)`/`queryKeys.snapshots(projectId)` 的字面量数组即可，不需要真的往 `QueryClient` 里塞数据。
+- 2026-09-27 — T12 审查后修复：审查发现 `useSessionStream` 的 `watch(sessionId, ...)` 回调有竞态——`sessionId` 在上一次回调还卡在 `await getSession(...)` 时又变了一次，第二次回调的 `disconnect()` 是空操作（这时候共享的 `controller` 变量还是 `null`，因为第一次回调压根还没走到 `connect()`），两次回调后来都会各自 `connect()`，导致两条 SSE 流同时往同一份 `items`/`turnStatus` 写数据，旧会话的流永远不会被 abort。审查者用"`getSession('s1')` 比 `'s2'` 晚 resolve"复现。修复：加一个 `generation` 计数器，每次 `watch` 回调开始时自增并记下自己的编号；`await` 之后、以及 `connect()` 传给 `openStream` 的 `onEvent`/`onStatus` 回调触发时都检查编号是否还等于最新的 `generation`，不等就丢弃（不写状态、不 `connect()`）——保证任意时刻只有"当前最新"的一次回调可能真正打开连接，旧的现役连接仍然在新回调一开始就被 `disconnect()` 同步掐断。回归测试见 `useSessionStream.spec.ts` 新增的两条「审查回归」用例（修复前跑这两条会失败：第一条报 `openStreamMock` 被调用 2 次而不是 1 次，第二条报过期事件的 `turn_id` 出现在了 `items` 里；已用 `git stash` 临时切回审查前的 `useSessionStream.ts`、只保留新测试跑一遍确认真的会失败，再切回修复后的实现确认转绿）。
+- 2026-09-27 — T12 审查后修复：`http.ts`/`endpoints.ts` 原来直接把 `projectId`/`stage`/`sessionId`/`snapshotId`/文件路径用模板字符串拼进 URL 路径，没有编码——名字里如果出现 `#`（被 `new URL()` 当成 fragment 起点）、`?`（当成 query 起点）、空格等字符，会拼出错误的路径。修复：`http.ts` 新增 `encodePathSegment`（单个动态段整体 `encodeURIComponent`）和 `encodeFilePath`（按 `/` 切开逐段编码、保留分隔符，用于文件路径这种"本来就该有多段"的值），`endpoints.ts` 里所有拼路径的地方都过一遍对应的函数。新增 `endpoints.spec.ts`（5 个用例）和 `http.spec.ts` 里 3 个新用例验证编码结果和实际发给 `fetch` 的 URL。
+- 2026-09-27 — T13：ESLint 的 features 分层规则（`no-restricted-imports` 挡 `@/features/**`）连同一个 feature 目录内部互相引用也一起挡住了——第一版 `StageNav.vue`/`SessionPanel.vue` 用 `@/features/workbench/xxx` 引用同目录的 `stageStatus.ts`/`turnControls.ts`/`SessionTimelineItem.vue`，`pnpm run lint` 报 "features/* 之间互不 import"；改成相对路径 `./xxx`（同目录，不含 `..`，规则本就放行）后通过。spec 文件同理：`stageStatus.spec.ts`/`turnControls.spec.ts` 原来也用 `@/features/workbench/...` 导入被测模块，一并改成 `./`。以后 `features/<name>/` 目录内部互相引用一律用相对路径，跨 feature 才谈得上"要不要用 `@/`"（本来就不允许）。
+- 2026-09-27 — T13：手动浏览器验证时 `pnpm dlx shadcn-vue@latest add alert-dialog --yes` 一次成功（12.3s，只新增了 `components/ui/alert-dialog/` 10 个文件，没有改 `package.json`——`reka-ui` 已经在依赖里），说明沙箱环境本次有可用的出网权限；T11 记录过的网络不稳定（`@tabler/icons-vue` 没装上）这次没有重现。
+- 2026-09-27 — T13：`Claude_Browser` 的 `computer` 工具第一次 `screenshot` 有时会返回刚触发导航/点击前的旧画面（例如点击项目卡片后 URL 已经变成 `/projects/{id}/topic`，但截图仍显示项目列表），需要额外 `wait` 或再截一次图才能看到最新状态；`read_page`（accessibility tree）没有这个滞后，更适合用来确认"实际渲染了什么"，截图更适合确认"样式对不对"。
+- 2026-09-28 — T14 走查/审查修复：上面这条"T14 开始前基线不是绿的"的判断是**错的**，已撤销。复审时发现第一次 `pnpm run typecheck` 报的 4 处 `vue-tsc` 错误是**本地缓存导致的假阳性**，不是真实的基线问题：`node_modules/.tmp/tsconfig.app.tsbuildinfo`（`vue-tsc` 的增量编译缓存，路径见 `tsconfig.app.json` 的 `tsBuildInfoFile`）当时残留着更早、和当前 `tsconfig`/依赖版本不匹配的状态；`git stash` 掉本任务改动后"复测"其实复用了同一份脏缓存，两次都读到同样的假错误，让人误以为是"改动前后一致的 pre-existing 问题"。清掉 `node_modules/.tmp` 和 `node_modules/.vite` 后干净重跑 `vue-tsc --noEmit`，在 T13 提交（`27b7427`）状态、以及仅撤销 T14 那 4 个"修复"文件的状态下，都是 **0 错误**——`api/sse.ts`、`components/ai-elements/prompt-input/PromptInput.vue`、`composables/{queries,useSessionStream}.spec.ts` 的原始写法本来就是对的，不需要任何改动。四处"修复"已全部 `git checkout 27b7427 --` 撤销，改回原样，`make check` 干净重跑仍然全绿。教训：怀疑"基线不绿"时，先删 `frontend/node_modules/.tmp`（`vue-tsc`/`tsc` 的 `tsBuildInfoFile` 输出目录）和 `node_modules/.vite` 再跑，不要只用 `git stash` 对照（stash 不会清缓存，两次跑的是同一份缓存、结论会自我印证）。
+- 2026-09-28 — T15：真实模型（登录模式，`claude-sonnet-5`）在第一轮用 **Bash**（`printf > topic/smoke.md`）而不是 Write 建文件——Bash 写工作区内的文件既不经 `PreToolUse` hook 也不受沙箱限制，阶段可写范围只能靠轮末 guard 兜底（与设计一致，但说明 guard 在真实使用里是主力防线之一，不只是"兜底"）。
+- 2026-09-28 — T15：R5 实测中 Bash 写 `upstream/topic/smoke.md` 失败的原因是只读副本的文件权限 `0o444`（zsh 报 `permission denied`），不是沙箱（沙箱允许写 `cwd` 内）；Edit 被 hook 拒绝。两层都挡住了，guard 这次没有需要还原的东西（`guard_restored` 提示为空）；guard 还原 `upstream/` 漂移的路径由 T4/T6 契约测试覆盖。
+- 2026-09-28 — T15：登录模式下 result 的 `total_cost_usd` 不是 0，而是按 API 价估算的值（三轮约 $0.055、$0.016、$0.093），turn 的 `cost_usd` 照记但只作参考（`cost_advisory`）。
+- 2026-09-28 — T15：Claude Code 宿主给子进程注入了 `CLAUDECODE`、`CLAUDE_CODE_*`、`ANTHROPIC_BASE_URL` 等变量，SDK 的 `env` 只能覆盖不能删除；为了让登录用例代表普通终端里的 `make dev`，本次用 `env -i HOME=… PATH=… make smoke` 运行（写进了 verification runbook）。（审查后修复：改为从源头处理，见决策记录。）
+- 2026-09-28 — T15：SDK 实际启动的是 wheel 内置 CLI 2.1.283，不是 `~/.local/bin/claude`（2.1.228）；冒烟用例用"能找到 `claude` CLI"作为"本机装过并登录过 Claude Code"的近似判断。
+- 2026-09-28 — T15：登录用例的 transcript 和工具结果图片会留在负责人的 `~/.claude/projects/<由临时工作区路径推出的目录>/` 下，测试不自动删除（不在测试里删用户配置目录的东西），runbook 里提示可手动清理。
+
+- 2026-09-28 — （最终审查 L3）vite 开发代理（http-proxy）在后端进程被杀后**不会结束**已经在转发的 SSE 响应：经 5173 的 `curl -N` 一直挂到 `--max-time`（退出码 28），浏览器永远不进入重连，I3 的"重连后刷新 turn 状态"也就不会触发。修复：`vite.config.ts` 的 proxy `configure` 里上游响应 `close` 时 `res.destroy()`；复测 kill 的同一秒客户端连接结束（退出码 52），页面经 502 退避后重连并刷新为 `interrupted`。
+- 2026-09-28 — （最终审查 L3）uvicorn 收到 SIGTERM 后先等待所有连接（包括浏览器的 SSE）关闭，再执行 lifespan 关闭；实测运行中的 Fake turn 在等待期间自然跑完成 `done`，lifespan 的 interrupted 收尾没有机会触发（L2 已覆盖该路径）。登记为 TD-22。
+- 2026-09-28 — （最终审查 AC5）sse-starlette 的帧以 CRLF 结尾，shell 里用 `grep '^id:' | awk` 取出的 seq 带 `\r`，拼进 URL 后请求静默失败；验证脚本要先 `tr -d '\r'`。
+- 2026-09-28 — （最终审查 I6）修复前的 import-linter 契约下，`workspace→agent`、`db→workspace`、`config→workspace`、`stages→db.models` 四种违规全部通过（13 kept, 0 broken）；新增 `layers` 契约与 stages 的规则 5 后四种各自失败。
+- 2026-09-28 — F2：OpenRouter 的 Responses API 是无状态的（`store` 只能为 false，`previous_response_id` 非空报 400），本项目本来就用 `SQLiteSession` 回放完整历史、不设这两个参数，不受影响；多轮回放 `reasoning` 条目、`usage` 是否齐全仍待 `make smoke` 实测（已记 references）。
+- 2026-09-28 — F2：现有单元测试里直接 `Settings(...)` 会读 `backend/.env`；新增字段后用三个 `STUDIO_*` 网关变量跑了一遍全量后端测试（512 通过），确认负责人写入 `.env` 后 `make check` 不受影响；新测试显式传 `None` 保持与 `.env` 无关。
+
+## 已知限制（非本任务缺陷，留给后续任务）
+
+- `useSessionStream` 的 `items` 数组只增不减，长会话（很多轮 turn）会让这个数组无限增长，没有做虚拟滚动或历史裁剪——T13 接入真实会话面板、出现长会话性能问题时再按需处理（比如只保留最近 N 轮 + "加载更早"的分页）。
+- T14：通用画布只对 `busy`（agent 运行中）和 `upstream/` 两种情况提前算出只读，不复刻后端 `is_writable`（§4.3）完整的阶段可写范围规则——落在范围之外的手动编辑，编辑器本身不会置灰，保存时后端 403 拒绝，前端把错误信息显示出来（"保存失败：不在当前阶段的可写范围内"），不是静默失败，但用户要点一次保存才会看到。M1 阶段占位定义的可写范围目前和"整个工作区减 upstream"基本重合，这个差异实际不常触发；如果后续阶段的可写范围变复杂（比如某些子目录 tool_managed），可以考虑把 `is_writable` 的规则搬一份到前端做即时反馈。
+- T14：`FileCanvas`/`SnapshotTimeline` 判断"是否有一轮在跑"（`busy`）综合两个信号（`turnControls.combineBusy`，见 T14 审查后修复的决策记录）：`ProjectDetailOut.busy`（轮询，3 秒间隔，覆盖任意会话/标签页）+ 当前选中会话的 turn 状态（`ProjectWorkbenchPage` 单独开的第二条 `useSessionStream` SSE 连接，只用它的 `turnStatus`，和 `SessionPanel` 内部那条并存，近乎实时但只覆盖当前会话）。同一个会话因此同时有两条 SSE 连接，本地单人应用可以接受；如果以后要减少连接数，可以考虑把 `turnStatus` 从 `SessionPanel` 提升到页面层、两边共用一条连接。轮询这一路依赖浏览器标签页"可见"（`document.visibilityState !== 'hidden'`，TanStack Query 默认行为），标签页切到后台时会暂停，故意没有设 `refetchIntervalInBackground: true`——真实用户切到别的标签页时没必要为了这个画布继续发请求。
+- T13 审查发现：工具结果里的图片（`ToolResultPayload.images`）在 M1 没法在会话面板里预览缩略图——T6 的控制者裁定是后端只持久化 `ToolResultImage.media_type`，不存图片内容本身（图片数据可能很大，M1 没有实现对应的存储/清理机制）。前端 `ToolCallItem.result.images` 保留了这个字段、`SessionTimelineItem` 在工具结果下面渲染一句"含 N 张图片（M1 未存图片内容，不可预览）"的文字占位，不是真缩略图。M2 落地 `render_preview` 关键帧时，如果产物预览需要真的显示图片，要先在后端补图片内容的持久化（存到 blob 或工作区文件，再由前端按路径/id 拉取），这属于新的设计决策，不是简单的前端改动。
+
+## 阻塞
+
+<!-- 触发 SOP §6 升级条件时填写：问题、已尝试的办法、可选方案和推荐。解决后保留记录，并注明怎么解决的。 -->
+
+- 无
+
+## 验证记录
+
+<!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
+
+- 2026-09-28 — T14 — AC4（画布 + 快照时间线全部交互）：`make check` 全绿（后端 423 + 前端 102 个测试）；浏览器走查（`mcp__Claude_Browser__*`，`.claude/launch.json` 的 `api`/`frontend` 配置，`STUDIO_ENABLE_FAKE_RUNTIME=true`）覆盖：新建项目 → 新建 `fake` 会话 → 发消息 → 流式文本 + 可折叠 `write_file` 工具调用 → 画布出现 `topic/fake-note.md` → 时间线出现新快照 → 打开文件用 CodeMirror 编辑并保存（`PUT` 200）→ 再发一条消息，agent 前言里正确带出用户手动修改的 diff，时间线依次出现 `手动编辑`/`Agent 一轮` 两条快照 → 选中两个快照 [对比] 显示 `新增：topic/fake-note.md` → [回滚到此] 二次确认 → 回滚成功（时间线新增"回滚"快照，画布文件树回到只有 `style/STYLE.md`）。走查记录（含发现并修复的回滚竞态 bug）见 `data/evidence/m1/t14-ac4-walkthrough.md`。未覆盖：`busy=true` 时画布只读的浏览器实测截图、未保存修改冲突横幅的端到端截图（原因和纯函数单测覆盖情况见该文件「未覆盖 / 已知限制」一节和计划「下一步」）。
+- 2026-09-28 — T14 审查后修复：`make check` 全绿（后端 425 + 前端 112 个测试）。① `curl` 直接验证 `GET /projects/{id}` 返回体含 `"busy":false`；浏览器走查确认前端确实读到这个字段（`read_network_requests` 看到响应体）。② `useProjectQuery` 的 `refetchInterval:3000` 本身没问题，但验证时发现 TanStack Query 默认只在"页面可见"时执行间隔轮询（`focusManager.isFocused()`，取 `document.visibilityState !== 'hidden'`，源码见 `@tanstack/query-core` 的 `queryObserver.js#updateRefetchInterval`）——本次用的浏览器自动化工具打开的标签页 `document.visibilityState` 恒为 `"hidden"`（不是真人在用真实浏览器窗口那种"标签页在后台但仍算可见"），轮询天然不会触发；用 `Object.defineProperty(document, 'visibilityState', {value: 'visible'})` 临时打桩后，轮询请求立刻出现，证明代码本身没问题，只是走查环境的限制。这是 TanStack Query 的标准默认行为（真实用户打开且聚焦这个标签页时会正常轮询），没有设 `refetchIntervalInBackground: true` 强制后台轮询——控制者要求的是"页面打开时轮询"，不是"标签页切到后台也要轮询"，默认行为已经满足，强行打开后台轮询只会增加不必要的请求。③④ 重新走查确认 [确认回滚] 只发一次 `POST`（`disabled` 生效）、[取消] 能正确清空 `pendingRollbackId`。
+- 2026-09-28 — T15 — AC10（部分）：`env -i HOME=$HOME PATH=... make smoke 2>&1 | tee data/evidence/m1/smoke-run1.log`（M1 期间第 1 次运行）→ `1 passed, 3 skipped, 430 deselected in 63.45s`。`test_claude_login` 通过；`test_claude_api_key`/`test_openai_responses`/`test_deepseek_litellm` 因未设置 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`DEEPSEEK_API_KEY` 跳过——**未验证**。逐轮观察见 `data/evidence/m1/smoke/20260927T195536Z-claude-login.json`（时间戳为 UTC）。登录用例三轮都是 `done`，步数 2/1/3，参考成本 $0.055/$0.016/$0.093（订阅额度，无 API 费用）。第一轮：模型建了 `topic/smoke.md`、调用 `smoke_image`，工具结果带 `image/png`，回答"左半边是蓝色，右半边是黄色"。AC10 整体仍未勾选：Claude API key、OpenAI、DeepSeek 三种接入方式待补跑。
+- 2026-09-28 — T15 — R1（LiteLLM 模型上的 `ApplyPatchTool`/`ShellTool`）：**未验证（缺 `DEEPSEEK_API_KEY`）**。现状即设计 §9 的对策：LiteLLM 路径只给兜底文件工具、不给 Shell（T10）。references 保持 ⚠️。
+- 2026-09-28 — T15 — R2（工具返回图片）：Claude（登录模式）**成立**——模型正确说出图片两半的颜色（工具文本不含颜色）；CLI 回传的图片是 Anthropic API 形态，另附 `[Image: source: <路径>]` 文本块。OpenAI Responses、LiteLLM（DeepSeek）**未验证（缺 key）**；LiteLLM 侧对策按控制者裁定未预先实现。
+- 2026-09-28 — T15 — R3（macOS 上 Claude sandbox）：**成立**。第二轮让模型用 Bash 原样执行 `touch <$TMPDIR 下工作区外路径>; touch <仓库 data/evidence/m1/r3-scratch/r3-probe>; curl https://example.com`：两个 `touch` 都是 `Operation not permitted`，探针文件不存在；`curl` 被沙箱网络代理拒绝（`CONNECT tunnel failed, response 403`，`<sandbox_violations>deny network-outbound example.com:443`）。第一轮 Bash 在工作区内写文件成功。结论：沙箱只允许写 `cwd`，Bash 默认无外网；保留 Bash，不启用"关闭 Bash"的对策。
+- 2026-09-28 — T15 — R4（Claude 会话存储）：登录模式**按设计工作**——不改 `CLAUDE_CONFIG_DIR`，transcript 落在 `~/.claude/projects/<cwd 推出的 key>/<session_id>.jsonl`，`<data_dir>/claude/projects` 为空；第二轮 `resume` 后正确复述第一轮回答；成本账本显示恢复会话的 `total_cost_usd` 从 transcript 保存的累计值继续（0.055074 + 0.0157014 = 0.0707754）。API key 模式（`CLAUDE_CONFIG_DIR=<data_dir>/claude`）**未验证（缺 `ANTHROPIC_API_KEY`）**，`test_claude_api_key` 已写好断言。
+- 2026-09-28 — T15 — R5（读取 `upstream/` 后尝试写入）：**真实运行**了一轮叙事阶段 turn（登录模式；先把选题定稿，让 `upstream/topic/smoke.md` 出现），明确要求模型读取后用 Edit 追加、再用 Bash `echo >>` 追加：读取成功；Edit 被 `PreToolUse` hook 拒绝（`is_error=True`，内容 `PreToolUse:Edit hook error: upstream/topic/smoke.md 不在本阶段可写范围内…`）；Bash 因只读副本文件权限 `0o444` 失败；模型没有重试并如实报告；轮末文件内容仍是 `smoke ok`。未被要求时模型是否会主动写 `upstream/`：本次样本中没有观察到（第一、二轮都没碰 `upstream/`），但样本很小。guard 对 `upstream/` 漂移的还原由 T4/T6 契约测试覆盖（本次没有触发）。结论：成立，事前拦截返回错误、事后防线兜底，符合设计 §9。
+- 2026-09-28 — T15 — `make check`：全绿（后端 430 个测试 + 前端 116 个，后端新增 5 个：种子单价 1 个 + 冒烟辅助离线测试 4 个；4 个冒烟用例被 `-m 'not smoke'` 排除）。
+- 2026-09-28 — T15 审查后修复：`make check` 全绿（后端 436 个测试，新增 6 个 `build_env` 单测；前端 116 个）。按审查要求**没有**重跑 `make smoke`（M1 额度仍剩 4 次）；`make smoke` 的白名单环境用一个只打印环境变量名的假 `UV` 验证过：`STUDIO_SMOKE_SKIP_LOGIN=1 OPENAI_API_KEY='a b' make smoke UV=<假脚本>` → 子进程只看到 `HOME LANG OPENAI_API_KEY PATH PWD SHELL SHLVL STUDIO_SMOKE_SKIP_LOGIN TMPDIR USER`（`_`/`PWD`/`SHLVL` 由 shell 自动设置），含空格的值没有被拆开。登录用例在 `finally` 里删掉空的 `data/evidence/m1/r3-scratch/` 目录（本次残留的空目录已手动删除）。
+- 2026-09-28 — 最终审查修复 — AC1：`make check` → ruff、ruff format、pyright（0 errors）、lint-imports（15 kept, 0 broken）、pytest（490 passed, 4 deselected）、eslint、vue-tsc、vitest（15 文件 125 个）、文档检查，`make check 全部通过`，退出码 0；`make check-fast` → 文档检查 + `ruff check` + `eslint`，退出码 0。输出：`data/evidence/m1/ac1-make-check.txt`、`ac1-make-check-fast.txt`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC2：新增 `layers` 契约（main > api > stages > agent > workspace > db > config）与"stages 不直接 import db.models"。临时在 `workspace/layout.py`、`db/engine.py`、`config.py`、`stages/topic/__init__.py` 末尾分别加 `import studio.agent.events`、`import studio.workspace.layout`、`import studio.workspace.layout`、`import studio.db.models`，每次 `lint-imports` 都是 `14 kept, 1 broken`、退出码 1（`make check` 因此失败）；改动已还原。对照：旧契约下四处违规都是 `13 kept, 0 broken`。输出：`data/evidence/m1/ac2-import-linter-violations.txt`。结论：通过（规则 4 的 engines/search 尚不存在）。
+- 2026-09-28 — 最终审查修复 — AC3（L3）：`STUDIO_DATA_DIR=<scratchpad>/m1-final-data STUDIO_ENABLE_FAKE_RUNTIME=true STUDIO_FAKE_DELAY_SECONDS=8 make dev` → uvicorn 日志 `Will watch for changes in these directories: ['…/backend/src']`，`lsof` 显示 `127.0.0.1:8000` 与 `127.0.0.1:5173` 在监听；期间 Fake agent 跑了 10 轮（每轮写 `topic/fake-note.md`）外加手动 PUT 与回滚，日志中 reload 相关行 0 条、`Started server process` 1 次。输出：`data/evidence/m1/ac3-make-dev.txt`。结论：通过（`make setup` 本次未重跑，T1/T11 已验证）。
+- 2026-09-28 — 最终审查修复 — AC5（L3）：同一会话已有 32 条持久事件；`curl -N ".../stream?after_seq=29"` 只回放 id 30–32；`Last-Event-ID: 29` 结果相同；`after_seq=36` 连上后 1 秒发消息，逐行时间戳显示 `turn_status×2`、`id 37 text` 立即到达，8 秒后 `id 38–40` 与 `workspace_changed`、`turn_status(done)` 到达（实时流，不是连接关闭时一次性吐出）。输出：`data/evidence/m1/ac5-sse-resume.txt`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC6（L2）：`pytest tests/agent/test_runner.py::TestGuard tests/workspace/test_scope.py tests/workspace/test_upstream.py` → 30 passed（含 Shell 越界写入还原并在下一轮前言列出、写 `upstream/` 还原、工具托管文件改写还原，及本次新增的符号链接目录写穿、目录挡路、`upstream` 为符号链接/普通文件/`chmod 000`、不可读文件计为漂移）。输出：`data/evidence/m1/l2-ac6-ac9-tests.txt`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC7（L2）：`pytest tests/agent/test_runner.py::TestPreambleAcrossTurns tests/workspace/test_snapshot.py::TestRollback tests/api/test_snapshots.py::TestRollback` → 17 passed（`user_edit` 快照与前言 diff、回滚通知、回滚前先快照手动编辑且回滚可撤销）。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC8（L2 + L3）：L2 `pytest …TestNormalTurn …TestFailureAndCancel …TestBudget …TestRecovery …TestShutdown tests/api/test_lifespan.py tests/api/test_sessions.py` → 36 passed（完成、失败 `partial`、取消、步数/成本超预算、重启恢复 `interrupted`、关闭收尾、`/continue` 只对 `interrupted`/`budget_exceeded` 开放）。L3：Fake 8 秒延迟，发消息 2 秒后 `kill -9` api（SQLite 中 turn 为 `running`），重启后 `GET /sessions` 该 turn 为 `interrupted`（有 end_snapshot）；第二次在浏览器同时打开该会话时重复，页面重连后显示 [继续]，点击后乐观插入"继续"，新一轮 `done`。SIGTERM 场景见「意外与发现」（TD-22）。输出：`data/evidence/m1/ac8-restart.txt`、`m6-l4-running-state.md`。结论：通过。
+- 2026-09-28 — 最终审查修复 — AC9（L2）：`pytest tests/agent/test_claude_runtime.py tests/agent/test_openai_runtime.py tests/agent/test_apply_patch.py tests/agent/test_fallback_tools.py` → 136 passed（事件转换、业务工具含图片结果、会话恢复、取消、预算；新增密钥置空、读取范围 hook、缺 mimeType 图片块、客户端构造异常、Shell 用注入的 environ）。结论：通过。
+- 2026-09-28 — 最终审查修复 — M6 / T13 / T14 补验（L4）：`STUDIO_FAKE_DELAY_SECONDS=8`，内置浏览器（面板隐藏，交互用页面内 JS 驱动、DOM 读取状态，无截图）。运行中：输入框禁用、[停止] 出现、CodeMirror `contenteditable=false`、全部 [回滚到此] 禁用、提示"agent 运行中，暂不能回滚"；结束后全部恢复。接口层运行中 PUT/回滚/定稿/同会话再发消息均 409，`Host: evil.example` → 400。时间线里 `created=false` 的快照显示"本轮没有改动文件，未创建新快照"。未验证：未保存修改的冲突横幅（没有构造并发编辑场景）。输出：`data/evidence/m1/m6-l4-running-state.md`。
+- 2026-09-28 — 验收前追加 3（`make smoke` run2/run3，补齐 AC10、R1、R2、R4）：run2（`STUDIO_OPENAI_MODEL` 仍是 OpenRouter 的 `openai/gpt-5`）——`claude-api-key` PASSED（首轮 R2 看到颜色，第二轮 `resume` 复述正确，transcript 落在 `<data_dir>/claude/projects`，经 ccproxy 网关）；`claude-login` PASSED；`openai`（OpenRouter `openai/gpt-5`）FAILED，`BadRequestError: 400 Tool 'apply_patch' is not supported with gpt-5-2025-08-07`（已按此把种子模型换成 `openai/gpt-6-luna`，见「追加修复 2·G2」）；`deepseek`（litellm `deepseek/deepseek-flash`，兜底文件工具）PASSED，但模型如实说自己看不到图片颜色（`r2_saw_colours=False`）。run3（模型已换成 `openai/gpt-6-luna`，$0.10/$0.50）——`claude-api-key` FAILED：`API Error: Connection dropped (ECONNRESET)`，判定网络瞬时故障（run2 同一网关同一用例已通过），不重跑；`claude-login` PASSED；`openai`（`gpt-6-luna`）PASSED，R2 看到颜色，成本 $0.0004047；`deepseek` PASSED，但 R2 仍是 `False`。`make smoke` 已用 3/5 次。**AC10**：四个用例都至少成功一轮（`claude-api-key` 用 run2 的结果），已勾选。**R1**（LiteLLM 上的原生 apply_patch/shell）：结论为按设计对策——LiteLLM 路径不提供原生工具、只给兜底文件工具，`write_file` 在 DeepSeek 上跑通；原生工具本就不在该路径提供，未尝试也不需要尝试。OpenRouter 上 `shell` 已按主机判断去除（`native_shell_supported`），与本次结果一致。**R2**：Claude、OpenAI 都通过（模型说出图片两半颜色）；DeepSeek（`deepseek/deepseek-flash`）两次运行一致地看不懂图片——结论：`supports_vision` 改为 `False`，`OpenAIRuntime` 按该字段过滤业务工具的图片输出（本次任务改动，见「决策记录」）。**R4**：API key 模式在 run2 单轮 + resume 都通过，转结论"已验证"；run3 的连接重置计为网络瞬时问题，不影响该结论。`references/openai-agents-sdk.md`、`claude-agent-sdk.md` 对应行已改 ✅/❌（日期 2026-09-28，来源 `data/evidence/m1/smoke-run2.log`、`smoke-run3.log`、`smoke/*.json`）。证据见 `data/evidence/m1/smoke-run2.log`、`smoke-run3.log`、`smoke/20260928T02*.json`、`smoke/20260928T04*.json`。

@@ -1,0 +1,181 @@
+[project]
+name = "studio"
+version = "0.1.0"
+description = "ai-video-studio 后端"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.5,<3",
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.13,<2",
+    "sse-starlette>=2.1,<3",
+    "claude-agent-sdk>=0.2.160,<0.3",
+    "openai-agents[litellm]>=0.22.3,<0.23",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6,<1",
+    "pyright>=1.1,<2",
+    "import-linter>=2.1,<3",
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.24,<1",
+    "httpx>=0.27,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/studio"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 的依赖注入约定就是在参数默认值里调用 `Depends()`/`Query()`（结果
+# 不可变、每次调用等价于工厂函数），B008（"不要在默认值里调用函数"）不适用
+# 于这个模式。
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-m 'not smoke'"
+markers = [
+    "smoke: 需要真实 API key 的冒烟测试，默认从 `make check` 排除，由 `make smoke` 运行",
+]
+
+[tool.importlinter]
+# R1（控制者裁定）：每个任务新建模块时，把 ARCHITECTURE §2 对应的分层规则
+# 补进这里。T1 时只有 studio.config 和 studio.main；T2 新增 studio.db。
+root_package = "studio"
+
+[[tool.importlinter.contracts]]
+name = "config 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.config"]
+forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "config 不依赖 db（config 层不依赖任何其他模块）"
+type = "forbidden"
+source_modules = ["studio.config"]
+forbidden_modules = ["studio.db"]
+
+[[tool.importlinter.contracts]]
+name = "只有 db 定义 ORM 模型；其他模块只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.main"]
+forbidden_modules = ["studio.db.models"]
+# T7 之前 main 只 import studio.config，没有走到 db.repo 的间接路径；现在
+# main 组装 agent/api，经 db.repo（合法路径）间接用到 db.models 很正常，
+# 只禁止绕过 repo 直接 import 模型（和 workspace/agent 的同名契约一致）。
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "workspace 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.workspace"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "workspace 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.workspace"]
+forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "agent 不 import stages（规则 2）：TurnRunner 只认识阶段定义协议"
+type = "forbidden"
+source_modules = ["studio.agent"]
+forbidden_modules = ["studio.stages"]
+
+[[tool.importlinter.contracts]]
+name = "agent 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.agent"]
+forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "agent 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.agent"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "各阶段之间互不 import（规则 3）：共用代码放进 stages.common"
+type = "independence"
+modules = [
+    "studio.stages.topic",
+    "studio.stages.narrative",
+    "studio.stages.animation",
+]
+
+[[tool.importlinter.contracts]]
+name = "stages 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.stages"]
+forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "只有 main 能 import api（规则 1：api 是组装层）"
+type = "forbidden"
+source_modules = [
+    "studio.config",
+    "studio.db",
+    "studio.workspace",
+    "studio.agent",
+    "studio.stages",
+]
+forbidden_modules = ["studio.api"]
+
+[[tool.importlinter.contracts]]
+name = "api 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.api"]
+forbidden_modules = ["studio.main"]
+
+[[tool.importlinter.contracts]]
+name = "api 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.api"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "分层（ARCHITECTURE §2 依赖表）：main > api > stages > agent > workspace > db > config"
+type = "layers"
+# 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines/search/jobs/
+# worker 在 M1 还不存在，等对应里程碑新建模块时按 R1 补进来（engines、search 与 db
+# 同为只依赖 config 的纯能力层）。各阶段之间的独立性由上面的 independence 契约保证。
+layers = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.config",
+]
+
+[[tool.importlinter.contracts]]
+name = "stages 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.stages"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
