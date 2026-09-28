@@ -318,6 +318,8 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — 验收前追加 F1（Read/Glob/Grep/Write 拦截放过 `~` 路径）— 完成：`_escapes` 与 `write_denial_reason` 对以 `~` 开头的路径（含 `~user/…`）直接拒绝；TestReadScopeHook 新增 8 条、TestWriteScopeHook 新增 3 条 deny 用例（见本提交）。
 - 2026-09-28 — 验收前追加 F2（网关配置：Claude → ccproxy.yukework.com，OpenAI → OpenRouter）— 完成：`Settings` 新增 `anthropic_base_url`/`openai_base_url`/`openai_model`；`seed_model_profiles(settings=...)` 写入并更新已有行的这几个字段，`main` 与冒烟 `build_harness` 用同一个 `Settings` 调种子；OpenAI 运行时在非官方 `base_url` 上不提供 Shell、改给 `list_files`/`read_file`；references、dev-setup、verification、`.env.example` 已更新；后端 512 个测试（新增 15 个）（见本提交）。
 - 2026-09-28 — F1/F2 审查后修复 — 完成：读写 hook 拒绝首尾带空白（含 U+FEFF）的路径与 glob 模式（CLI 先 trim 再展开）；OpenAI 运行时对非官方主机设 `store=False` + `response_include=["reasoning.encrypted_content"]`；修正计划中被 shell 展开的单价和 F1 理由（CLI 只展开 `~`、`~/`）（见本提交）。
+- 2026-09-28 — 验收前追加修复 2·G1（回滚删除当前打开文件后编辑器仍显示旧内容）— 完成：新增纯函数 `computeMissingFileAction`（`frontend/src/features/canvas/generic/missingFile.ts`），`FileCanvas.vue` 用文件树是否还包含当前选中路径判定"文件消失"（`fileMissing` computed），干净缓冲区直接清空 `selectedPath` 关闭编辑器，脏缓冲区保留内容只读展示 + 提示"该文件已不存在（可能被回滚或删除）"，不提供"另存为原路径重新创建"（理由见文件内注释）；同时把内容查询的 `enabled` 条件加上 `!fileMissing`，避免文件消失后继续对已经不存在的路径发 GET。新增 `missingFile.spec.ts` 3 个用例；`make check` 全绿（后端 537 个测试，前端 128 个 vitest，新增 3 个）（见本提交）。
+- 2026-09-28 — 验收前追加修复 2·G2（gpt 种子单价可配置）— 完成：`Settings` 新增 `openai_price_input`/`openai_price_output`（`STUDIO_OPENAI_PRICE_INPUT`/`STUDIO_OPENAI_PRICE_OUTPUT`），复用 `_blank_is_unset` 校验器；`seed_model_profiles` 的 `_gateway_overrides` 把这两个字段并入 `gpt` 的受控更新范围（配置值非空且与已有行不同才更新，过滤条件从 `if value`（真值）改成 `if value is not None`，避免以后单价恰好为 `0.0` 时被误当作"未配置"过滤掉）；`.env.example`、`dev-setup.md` 补充说明和"换模型记得配单价"的提示；`docs/references/openai-agents-sdk.md` 记录 `gpt-5-2025-08-07` 经 OpenRouter/Azure 不支持 `apply_patch` 工具（`make smoke` 第 2 次运行实测 400，`data/evidence/m1/smoke-run2.log`）——这是负责人把种子模型换成 `openai/gpt-6-luna`（$0.10/$0.50 每百万 token）的直接原因。新增 6 个后端测试（`test_config.py` 2 个、`test_repo_profiles.py` 4 个）；`make check` 全绿（后端 537 个测试，本次 G1+G2 合计新增后端 6 个、前端 3 个）（见本提交）。需要在 `backend/.env` 追加：`STUDIO_OPENAI_PRICE_INPUT=0.10`、`STUDIO_OPENAI_PRICE_OUTPUT=0.50`（`STUDIO_OPENAI_MODEL=openai/gpt-6-luna` 已经在 `backend/.env` 里，本次未改）。
 
 ## 下一步
 
@@ -326,6 +328,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 已有的 `data/studio.db` 里 `deepseek` 配置仍是旧模型名、无单价（种子只插不更），需要删库重建或手动改行。
 - 延后的技术债已登记到 `docs/quality/tech-debt.md`（TD-1…TD-24），M2 开始前挑选处理；模块评级见 `docs/quality/QUALITY.md`。
 - **F1/F2 已完成（2026-09-28）**：控制者在 `backend/.env` 加入 `STUDIO_ANTHROPIC_BASE_URL`、`STUDIO_OPENAI_BASE_URL`、`STUDIO_OPENAI_MODEL` 三行后运行 `make smoke`，补齐 AC10：Claude 经 ccproxy 网关（API key 模式、R4）、OpenAI 经 OpenRouter（无 Shell，apply_patch 建文件；核对多轮 reasoning 回放与 usage）、DeepSeek（LiteLLM、R2）。已有 `data/studio.db` 下次启动时种子会自动更新这三个字段。
+- **追加修复 2·G2 待办**：负责人已把 `backend/.env` 的 `STUDIO_OPENAI_MODEL` 改成 `openai/gpt-6-luna`（原因：`gpt-5-2025-08-07` 经 OpenRouter 不支持 `apply_patch`，见「决策记录」和 `docs/references/openai-agents-sdk.md`），还需要追加 `STUDIO_OPENAI_PRICE_INPUT=0.10`、`STUDIO_OPENAI_PRICE_OUTPUT=0.50` 这两行，否则 `gpt` 的成本统计仍按 `gpt-5` 的单价 $1.25/$10 估算（偏高）。补上后下次任意方式启动后端（`make dev`/`make smoke`）种子会自动把 `gpt` 行的单价更新过去，不需要删库重建。补完这两行、且负责人愿意再跑一次 `make smoke`（M1 额度还剩 4 次）时，可以顺带验证换模型后 `apply_patch`/成本统计是否正常，覆盖 AC10 剩余的 OpenAI 部分。
 
 ## 决策记录
 
@@ -450,6 +453,10 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — F2：OpenRouter 经核实支持 Responses API 的 `apply_patch`（客户端应用）与 `web_search`，但 `shell` 没有客户端执行模式（`local` 环境不支持，命令进托管沙箱）→ 不改用 Chat Completions，只做最小改动：`provider=openai` 且 `base_url` 主机不是 `api.openai.com` 时自动不提供 `ShellTool`，补兜底只读工具 `list_files`/`read_file`（`native_shell_supported`）。用自动判断而不是显式开关：没有已知的网关支持本地 shell，判断条件简单可测；将来遇到支持的网关再加开关。来源与日期见 references/openai-agents-sdk.md。
 - 2026-09-28 — F2：OpenRouter 上 `openai/gpt-5` 单价与官方一致（$1.25/$10，`GET https://openrouter.ai/api/v1/models`），种子单价不随网关变化。
 - 2026-09-28 — F2 审查后：`provider=openai` 且主机不是 `api.openai.com` 时，`ModelSettings(store=False, response_include=["reasoning.encrypted_content"])` — OpenRouter 的 Responses API 不保存条目，回放只带 id 的 reasoning 条目会报 "Item not found"；官方 API 和 LiteLLM 路径保持原设置不变。
+- 2026-09-28 — 追加修复 2·G1：文件消失后不提供[另存为原路径重新创建]/[丢弃]的横幅交互，选最小方案（干净则关闭、脏则只读保留）— "重新创建"涉及要不要立刻写工作区、算不算新一轮改动，这些语义没有在设计里定义，贸然实现一个以后大概率要推翻重做的交互不如先不做；用户仍然可以手动复制内容、切到别的文件再切回来观察（此时文件已确认不在，`fileMissing` 仍为真，只读横幅还在）。
+- 2026-09-28 — 追加修复 2·G1：判定"文件消失"用文件树成员关系（`fileTree.value` 已加载且不含当前路径），没有额外去接内容查询的 404 错误 — 触发这个 bug 的场景（回滚/文件被删）已经会让文件树重新拉取并更新（`workspace_changed` → `invalidateWorkspace`），文件树的信号既够用又比等一次注定失败的 GET 更快、更不会有重试噪音；`useFileContentQuery` 的 `enabled` 里同时接了 `!fileMissing`，文件消失后不会再对该路径发请求。
+- 2026-09-28 — 追加修复 2·G2：种子对 `gpt` 单价的受控更新沿用 F2 对 `base_url`/`model` 的规则（配置值非空且与库中不同才更新，空值不清空），不新增一套单独的语义 — 两者都是"由环境配置决定、需要在已有库上生效"的字段，规则统一便于理解和维护；顺带把 `_gateway_overrides` 的过滤条件从 `if value`（真值）改成 `if value is not None`，因为单价字段存在合法的边界值 `0.0`（真值过滤会把它误判为"未配置"），`base_url`/`model` 两个字符串字段的空串已经在 `_blank_is_unset` 里被转成 `None`，改用 `is not None` 判断对它们的行为没有变化。
+- 2026-09-28 — 追加修复 2·G2：`gpt-5-2025-08-07`（OpenRouter 经 Azure/OpenAI 后端）不支持 `apply_patch` 工具（`make smoke` 第 2 次运行实测 400，`data/evidence/m1/smoke-run2.log`），负责人据此把种子 `gpt` 换成 OpenRouter 的 `openai/gpt-6-luna`（$0.10/$0.50 每百万 token，来源 `GET https://openrouter.ai/api/v1/models`，2026-09-28）并已在 `backend/.env` 改了 `STUDIO_OPENAI_MODEL` — 这也是本次要新增单价配置项的直接原因：换模型后种子默认单价（对应 `gpt-5`）明显偏高，成本统计会失真。本任务不验证新模型是否真的支持 `apply_patch`（那需要再跑一次 `make smoke`，由负责人决定是否消耗剩余额度），只负责让单价可配置。
 
 ## 意外与发现
 

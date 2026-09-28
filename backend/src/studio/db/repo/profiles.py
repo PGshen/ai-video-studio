@@ -11,6 +11,13 @@
 `openai/gpt-5` 的单价与 OpenAI 官方相同（$1.25/$10，OpenRouter `/api/v1/models`，
 2026-09-28），单价不随网关变化。
 
+`gpt` 的单价同样可由配置覆盖（`openai_price_input`/`openai_price_output`，G2，
+2026-09-28）：换模型时（例如换成单价不同的 OpenRouter 型号）种子默认单价
+（$1.25/$10，对应 `gpt-5`）会偏高，用同样的受控更新规则——配置值非空且与已有
+行不同时才更新，配置值为空不清空已有值。换模型的背景见
+`docs/references/openai-agents-sdk.md`（`apply_patch` 与 `gpt-5-2025-08-07` 不兼容
+的核实记录）和计划「决策记录」。
+
 `claude-login` 的 `api_key_env` 为空表示使用本机已登录的 Claude Code 订阅账号，
 不新增字段，复用设计已有的 `api_key_env`。
 """
@@ -117,16 +124,21 @@ _FAKE_PROFILE: dict[str, Any] = {
 }
 
 
-def _gateway_overrides(settings: Settings | None) -> dict[str, dict[str, str]]:
-    """按种子 `name` 给出由配置决定、且配置值非空的字段。"""
+def _gateway_overrides(settings: Settings | None) -> dict[str, dict[str, Any]]:
+    """按种子 `name` 给出由配置决定、且配置值非空的字段（网关地址/模型/单价）。"""
     if settings is None:
         return {}
-    candidates = {
+    candidates: dict[str, dict[str, Any]] = {
         "claude-sonnet": {"base_url": settings.anthropic_base_url},
-        "gpt": {"base_url": settings.openai_base_url, "model": settings.openai_model},
+        "gpt": {
+            "base_url": settings.openai_base_url,
+            "model": settings.openai_model,
+            "price_input": settings.openai_price_input,
+            "price_output": settings.openai_price_output,
+        },
     }
     return {
-        name: {field: value for field, value in fields.items() if value}
+        name: {field: value for field, value in fields.items() if value is not None}
         for name, fields in candidates.items()
     }
 

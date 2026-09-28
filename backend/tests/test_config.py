@@ -71,3 +71,27 @@ def test_gateway_settings_empty_string_means_unset(monkeypatch: pytest.MonkeyPat
     assert settings.anthropic_base_url is None
     assert settings.openai_base_url is None
     assert settings.openai_model is None
+
+
+def test_openai_price_settings_read_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studio.config import Settings
+
+    monkeypatch.setenv("STUDIO_OPENAI_PRICE_INPUT", "0.10")
+    monkeypatch.setenv("STUDIO_OPENAI_PRICE_OUTPUT", "0.50")
+
+    settings = Settings()
+
+    assert settings.openai_price_input == 0.10
+    assert settings.openai_price_output == 0.50
+
+
+def test_openai_price_settings_empty_string_means_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studio.config import Settings
+
+    monkeypatch.setenv("STUDIO_OPENAI_PRICE_INPUT", "  ")
+    monkeypatch.setenv("STUDIO_OPENAI_PRICE_OUTPUT", "  ")
+
+    settings = Settings()
+
+    assert settings.openai_price_input is None
+    assert settings.openai_price_output is None

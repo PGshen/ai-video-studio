@@ -36,6 +36,7 @@
 | ✅ 已验证（2026-09-28，文档） | （OpenRouter）OpenAI 形状的 `web_search` 被映射到 OpenRouter 的 web search 服务端工具，`engine` 缺省 `auto`：GPT-5 及以后用 OpenAI 原生搜索，否则回退 Exa | Web Search 指南（https://openrouter.ai/docs/guides/features/server-tools/web-search.md） |
 | ✅ 已验证（2026-09-28） | （OpenRouter）`openai/gpt-5` 单价 $1.25 / $10（每百万 token 输入/输出），与 OpenAI 官方一致 | `GET https://openrouter.ai/api/v1/models`（公开接口，无需 key） |
 | ⚠️ 未验证（2026-09-28，待 `make smoke`） | 经 OpenRouter 时：多轮回放的 `reasoning` 条目是否被接受（本项目对非官方主机显式 `store=False` + `response_include=["reasoning.encrypted_content"]`，让存进 `SQLiteSession` 的 reasoning 条目自带加密内容，避免只带 id 回放时报 "Item not found"）；`response.usage` 是否齐全（成本按它计算）；`web_search` 是否真的可用 | — |
+| ❌ 已验证不成立（2026-09-28，`make smoke` 第 2 次运行实测） | （OpenRouter）`gpt-5-2025-08-07`（OpenRouter 上 `openai/gpt-5` 解析到的具体版本，经 Azure/OpenAI 后端）**不支持** `apply_patch` 工具：请求直接被上游拒绝，`BadRequestError: 400 - {"error": {"message": "Provider returned error", "metadata": {"raw": "{\"error\": {\"message\": \"Tool 'apply_patch' is not supported with gpt-5-2025-08-07.\", ...}}", "provider_name": "Azure", ...}}}`，`previous_errors` 里 `provider_name: OpenAI` 同样报错——不是 OpenRouter 路由到的某一家后端的个例。与上面"OpenRouter 的 Responses API 支持 `apply_patch`"（API 形状层面）并不矛盾：API 接受这个工具定义，但 `gpt-5-2025-08-07` 这个具体模型版本不接受 | `data/evidence/m1/smoke-run2.log`（负责人本机运行，本项目未重跑） |
 
 ## 本项目的用法（T10）
 

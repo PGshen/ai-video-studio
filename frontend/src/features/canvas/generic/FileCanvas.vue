@@ -11,6 +11,8 @@
  *   让 `useFileContentQuery` 重新拉取，命中冲突时不覆盖，显示横幅。
  * - 保存：`useWriteFileMutation`（`PUT .../files/{path}?stage=`），403/409
  *   转成中文提示，不静默失败。
+ * - 当前打开的文件从文件树消失（回滚/被删）：`missingFile.ts` 决定关闭
+ *   编辑器还是保留只读内容（追加修复 G1，2026-09-28）。
  */
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -21,6 +23,7 @@ import CodeEditor from './CodeEditor.vue'
 import { computeReadonly } from './editorReadonly'
 import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from './conflictState'
 import { editorLanguage, isTextFile } from './fileKind'
+import { computeMissingFileAction } from './missingFile'
 
 const props = defineProps<{
   projectId: string
@@ -37,9 +40,19 @@ const selectedEntry = computed(
 )
 const isTextSelected = computed(() => selectedPath.value !== null && isTextFile(selectedPath.value))
 
+// 文件树已加载、且选中的路径不在其中：文件被回滚/删除了（G1）。文件树
+// 首次加载完成之前不判定，避免选中文件还没来得及被这次查询看到就被
+// 误判为"消失"。
+const fileMissing = computed(
+  () =>
+    selectedPath.value !== null &&
+    fileTree.value !== undefined &&
+    !fileTree.value.files.some((f) => f.path === selectedPath.value),
+)
+
 const { data: fileContent, isPending: contentPending } = useFileContentQuery(
   () => props.projectId,
-  () => (isTextSelected.value ? selectedPath.value : null),
+  () => (isTextSelected.value && !fileMissing.value ? selectedPath.value : null),
 )
 
 const buffer = ref<BufferState | null>(null)
@@ -54,6 +67,16 @@ watch(selectedPath, () => {
 watch(fileContent, (content) => {
   if (content === undefined || !isTextSelected.value) return
   buffer.value = buffer.value === null ? initBuffer(content) : serverUpdate(buffer.value, content)
+})
+
+// 文件消失：干净就关闭编辑器；脏就保留内容只读展示，见 `missingFile.ts`。
+watch(fileMissing, (missing) => {
+  if (!missing) return
+  const action = computeMissingFileAction({ fileMissing: missing, dirty: buffer.value?.dirty ?? false })
+  if (action === 'close') {
+    selectedPath.value = null
+    buffer.value = null
+  }
 })
 
 const currentLanguage = computed(() => editorLanguage(selectedPath.value ?? ''))
@@ -118,6 +141,16 @@ function onLoadLatest(): void {
         <p class="text-muted-foreground text-sm">
           从左侧选择一个文件
         </p>
+      </template>
+      <template v-else-if="fileMissing && buffer">
+        <div class="border-destructive bg-destructive/10 rounded border px-3 py-2 text-sm">
+          该文件已不存在（可能被回滚或删除）。已保留你未保存的修改，只读展示——不会自动重新创建文件。
+        </div>
+        <CodeEditor
+          :content="buffer.content"
+          :language="currentLanguage"
+          readonly
+        />
       </template>
       <template v-else-if="!isTextSelected">
         <p class="text-muted-foreground text-sm">

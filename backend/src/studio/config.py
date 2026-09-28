@@ -62,8 +62,22 @@ class Settings(BaseSettings):
     openai_model: str | None = None
     """种子 `gpt` 的模型名（`STUDIO_OPENAI_MODEL`），例如 OpenRouter 上的 `openai/gpt-5`；
     未设置时用种子默认值 `gpt-5`。"""
+    openai_price_input: float | None = None
+    """种子 `gpt` 的输入单价，美元 / 百万 token（`STUDIO_OPENAI_PRICE_INPUT`）；换模型
+    （例如 OpenRouter 上单价与 gpt-5 不同的型号）时用它覆盖种子默认单价 $1.25，
+    未设置时不变（G2，2026-09-28）。"""
+    openai_price_output: float | None = None
+    """种子 `gpt` 的输出单价，美元 / 百万 token（`STUDIO_OPENAI_PRICE_OUTPUT`）；
+    未设置时不变（默认 $10）。"""
 
-    @field_validator("anthropic_base_url", "openai_base_url", "openai_model", mode="before")
+    @field_validator(
+        "anthropic_base_url",
+        "openai_base_url",
+        "openai_model",
+        "openai_price_input",
+        "openai_price_output",
+        mode="before",
+    )
     @classmethod
     def _blank_is_unset(cls, value: object) -> object:
         if isinstance(value, str):

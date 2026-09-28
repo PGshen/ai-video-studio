@@ -44,11 +44,14 @@ make setup
 | `STUDIO_ANTHROPIC_BASE_URL` | `claude-sonnet`（API key 模式）的 `base_url`，ClaudeRuntime 把它作为 `ANTHROPIC_BASE_URL` 传给 CLI；`claude-login` 不受影响 | `https://ccproxy.yukework.com` |
 | `STUDIO_OPENAI_BASE_URL` | `gpt` 的 `base_url`（`AsyncOpenAI(base_url=...)`） | `https://openrouter.ai/api/v1` |
 | `STUDIO_OPENAI_MODEL` | `gpt` 的模型名；不设则为 `gpt-5` | `openai/gpt-5`（OpenRouter 的模型 id 带厂商前缀） |
+| `STUDIO_OPENAI_PRICE_INPUT` | `gpt` 的输入单价，USD/百万 token；不设则用种子默认值 $1.25（对应 `gpt-5`） | `0.10` |
+| `STUDIO_OPENAI_PRICE_OUTPUT` | `gpt` 的输出单价，USD/百万 token；不设则用种子默认值 $10 | `0.50` |
 
 - key 仍然是 `ANTHROPIC_API_KEY`（填网关接受的 key）和 `OPENAI_API_KEY`（走 OpenRouter 时填 OpenRouter key）。
-- 种子规则：配置值非空时，新库直接用它建行；**已有的库**在值不同时只更新这两个字段（其他字段、单价、预算不动）。配置值为空（或删掉这一行）时不会把已有值清空——要回到官方地址，需要把 `base_url` 手动改回空或删库重建。
+- 种子规则：配置值非空时，新库直接用它建行；**已有的库**在值不同时只更新对应字段（`base_url`/`model` 两个一组，`price_input`/`price_output` 两个一组，互不影响预算等其他字段）。配置值为空（或删掉这一行）时不会把已有值清空——要回到官方地址/默认单价，需要把对应变量手动改回空或删库重建。
 - `gpt` 走非 `api.openai.com` 的地址（例如 OpenRouter）时，OpenAI 运行时**不提供 Shell**（OpenRouter 的 `shell` 只在托管沙箱里执行，看不到本地工作区），改给只读的 `list_files`/`read_file`，写文件仍用原生 `apply_patch`；联网搜索仍是 `web_search`。依据见 `docs/references/openai-agents-sdk.md`。
-- 单价：OpenRouter 上 `openai/gpt-5` 与 OpenAI 官方同价（$1.25/$10 每百万 token），种子单价不变。
+- 单价：OpenRouter 上 `openai/gpt-5` 与 OpenAI 官方同价（$1.25/$10 每百万 token），种子单价不变。换成单价不同的型号（例如 OpenRouter 上单价更低的替代型号）时用 `STUDIO_OPENAI_PRICE_INPUT`/`STUDIO_OPENAI_PRICE_OUTPUT` 覆盖，否则成本统计会用 `gpt-5` 的单价偏高估算（G2，2026-09-28）。
+- `gpt-5-2025-08-07`（OpenRouter 经 Azure/OpenAI 后端）不支持 `apply_patch` 工具，调用会返回 400 `Tool 'apply_patch' is not supported with gpt-5-2025-08-07.`（`make smoke` 第 2 次运行实测，2026-09-28，见 `docs/references/openai-agents-sdk.md`）；换用支持 `apply_patch` 的型号时记得同时按上面两行设置单价。
 
 ## 启动
 

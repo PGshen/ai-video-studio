@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import cast
 
 from sqlalchemy import Engine
 
@@ -107,13 +108,15 @@ def test_list_model_profiles_returns_plain_values_not_orm(migrated_engine: Engin
 # ---- gateway overrides from Settings (F2) --------------------------------------
 
 
-def _settings(tmp_path: Path, **values: str) -> Settings:
+def _settings(tmp_path: Path, **values: str | float) -> Settings:
     # Explicit None beats whatever backend/.env holds, so tests stay hermetic.
     return Settings(
         data_dir=tmp_path / "data",
-        anthropic_base_url=values.get("anthropic_base_url"),
-        openai_base_url=values.get("openai_base_url"),
-        openai_model=values.get("openai_model"),
+        anthropic_base_url=cast("str | None", values.get("anthropic_base_url")),
+        openai_base_url=cast("str | None", values.get("openai_base_url")),
+        openai_model=cast("str | None", values.get("openai_model")),
+        openai_price_input=cast("float | None", values.get("openai_price_input")),
+        openai_price_output=cast("float | None", values.get("openai_price_output")),
     )
 
 
@@ -181,3 +184,64 @@ def test_seed_empty_setting_does_not_clear_existing_value(
     gpt = get_model_profile(migrated_engine, "gpt")
     assert gpt is not None
     assert (gpt.base_url, gpt.model) == ("https://openrouter.example/api/v1", "openai/gpt-5")
+
+
+# ---- gpt price overrides from Settings (G2) -------------------------------------
+
+_PRICES: dict[str, str | float] = {
+    "openai_price_input": 0.10,
+    "openai_price_output": 0.50,
+}
+
+
+def test_seed_applies_price_settings_to_new_gpt_row(
+    migrated_engine: Engine, tmp_path: Path
+) -> None:
+    seed_model_profiles(
+        migrated_engine, enable_fake_runtime=False, settings=_settings(tmp_path, **_PRICES)
+    )
+    gpt = get_model_profile(migrated_engine, "gpt")
+    sonnet = get_model_profile(migrated_engine, "claude-sonnet")
+    assert gpt is not None and sonnet is not None
+    assert (gpt.price_input, gpt.price_output) == (0.10, 0.50)
+    # Only the gpt row is affected; other seeds keep their default prices.
+    assert (sonnet.price_input, sonnet.price_output) == (2.0, 10.0)
+
+
+def test_seed_without_price_settings_keeps_default_gpt_price(
+    migrated_engine: Engine, tmp_path: Path
+) -> None:
+    seed_model_profiles(migrated_engine, enable_fake_runtime=False, settings=_settings(tmp_path))
+    gpt = get_model_profile(migrated_engine, "gpt")
+    assert gpt is not None
+    assert (gpt.price_input, gpt.price_output) == (1.25, 10.0)
+
+
+def test_seed_updates_existing_gpt_row_price_only_when_configured(
+    migrated_engine: Engine, tmp_path: Path
+) -> None:
+    seed_model_profiles(migrated_engine, enable_fake_runtime=False)
+    before = {p.name: p for p in list_model_profiles(migrated_engine)}
+
+    seed_model_profiles(
+        migrated_engine, enable_fake_runtime=False, settings=_settings(tmp_path, **_PRICES)
+    )
+    after = {p.name: p for p in list_model_profiles(migrated_engine)}
+
+    assert after["gpt"] == dataclasses.replace(before["gpt"], price_input=0.10, price_output=0.50)
+    # base_url/model untouched since no gateway settings were provided this time.
+    assert after["gpt"].base_url == before["gpt"].base_url
+    assert after["gpt"].model == before["gpt"].model
+    assert after["claude-sonnet"] == before["claude-sonnet"]
+
+
+def test_seed_empty_price_setting_does_not_clear_existing_price(
+    migrated_engine: Engine, tmp_path: Path
+) -> None:
+    seed_model_profiles(
+        migrated_engine, enable_fake_runtime=False, settings=_settings(tmp_path, **_PRICES)
+    )
+    seed_model_profiles(migrated_engine, enable_fake_runtime=False, settings=_settings(tmp_path))
+    gpt = get_model_profile(migrated_engine, "gpt")
+    assert gpt is not None
+    assert (gpt.price_input, gpt.price_output) == (0.10, 0.50)
