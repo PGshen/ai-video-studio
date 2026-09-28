@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待负责人验收 |
+| 状态 | 已完成 |
 | 里程碑 | M1 |
 | 设计依据 | [架构设计 §2–§4、§6、§7、§9、§10](../../design/2026-09-26-architecture.md)；模块与分层见 [ARCHITECTURE.md](../../ARCHITECTURE.md) |
 | 分支 | `m1-skeleton` |
-| 批准记录 | 2026-09-27：负责人批准计划（含 Claude 本机登录支持），执行方式为 Subagent-driven |
+| 批准记录 | 2026-09-27：负责人批准计划（含 Claude 本机登录支持），执行方式为 Subagent-driven；2026-09-28：负责人验收通过（AC4 以会话内浏览器截图 + `data/evidence/m1/ac4-screenshots-2026-09-28.md` 为证） |
 
 ## 目标
 
@@ -61,7 +61,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - [x] AC1：`make check` 为绿，且包含后端 ruff / pyright / import-linter / pytest、前端 eslint / vue-tsc / vitest、文档检查；`make check-fast` 包含 ruff 和 eslint。（验证：运行命令，贴输出摘要）
 - [x] AC2：import-linter 契约强制 ARCHITECTURE §2 的分层规则 1–5；故意加一条违规 import 时 `make check` 失败。（验证：临时改动 + 输出）
 - [x] AC3：`make setup && make dev` 后，api 监听 `127.0.0.1:8000`，前端监听 `127.0.0.1:5173`；uvicorn reload 只监听 `backend/src`，agent 写工作区文件不会触发重启。（验证：L3，观察日志）
-- [ ] AC4：使用 Fake 模型配置，在浏览器中完成：创建项目 → 进入选题阶段 → 发消息 → 看到流式文本和可折叠的工具调用 → 画布出现 agent 写入的文件 → 时间线出现新快照 → 对比 → 回滚 → 手动编辑并保存。（验证：L4 截图，存 `data/evidence/m1/`）
+- [x] AC4：使用 Fake 模型配置，在浏览器中完成：创建项目 → 进入选题阶段 → 发消息 → 看到流式文本和可折叠的工具调用 → 画布出现 agent 写入的文件 → 时间线出现新快照 → 对比 → 回滚 → 手动编辑并保存。（验证：L4 截图，存 `data/evidence/m1/`）
 - [x] AC5：SSE 续传：`curl -N .../stream?after_seq=N` 只回放 seq > N 的已落库事件，然后接实时流。（验证：L3）
 - [x] AC6：越界写入（包括通过 Shell、写入 `upstream/`、改工具托管文件）在本轮结束时被还原，下一轮前言中列出被还原的路径。（验证：L2 契约测试）
 - [x] AC7：用户手动编辑后发下一条消息，先产生 `user_edit` 快照，前言包含 diff 摘要；回滚后前言包含回滚通知。（验证：L2）
@@ -324,13 +324,15 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 ## 下一步
 
-- **等待负责人验收 M1**：验收标准已全部满足（AC1–AC10 均已勾选，见「验收标准」）。`make smoke` 本 M1 期间已用 3/5 次，剩余 2 次留给负责人自行需要时使用，不建议无必要再跑。
-- 已有的 `data/studio.db`（在本次改动之前已创建过 `deepseek` 行的库）里 `deepseek.supports_vision` 仍是旧值 `True`，种子只插入不更新——需要手动 `UPDATE model_profiles SET supports_vision = 0 WHERE name = 'deepseek'` 或删库重建，见 `docs/runbooks/dev-setup.md`「已知限制」。
-- 延后的技术债已登记到 `docs/quality/tech-debt.md`（TD-1…TD-24），M2 开始前挑选处理；模块评级见 `docs/quality/QUALITY.md`。
+- M1 已完成并合并到 main。下一份计划：M2 动画阶段（设计 §10）。开始前先从 [tech-debt.md](../../quality/tech-debt.md) 挑选 TD 项处理或排进 M2。
+- 已有的 `data/studio.db` 若在 2026-09-28 之前创建，`deepseek.supports_vision` 需手动改为 0 或删库重建，见 `docs/runbooks/dev-setup.md`「已知限制」。
+- `make smoke` 本 M1 期间已用 3/5 次。
 
 ## 决策记录
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
+
+- 2026-09-28 — 收尾：影响超出本计划的决定已写成 ADR：[0007 项目级串行运行](../../decisions/0007-项目级串行运行.md)、[0008 模型接入方式](../../decisions/0008-模型接入方式.md)。
 
 - 2026-09-26 — SQLAlchemy 使用同步引擎，异步代码中直接调用短事务 — 单人本地、SQLite 写操作毫秒级；避免引入 aiosqlite 和异步 ORM 的复杂度。
 - 2026-09-26 — SSE 的 `after_seq` 指会话内单调递增的 `turn_events.seq`，瞬时事件不带 seq、不回放 — 设计要求续传，但没规定 seq 的作用域；会话级最方便前端续传。

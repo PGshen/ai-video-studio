@@ -28,7 +28,7 @@
 | `make setup` | 安装依赖，启用 git hooks |
 | `make check` | **唯一的质量关口**：lint、类型检查、测试、结构测试、文档检查。合并前必须全部通过 |
 | `make check-fast` | pre-commit 运行的快速子集 |
-| `make dev` | 启动 api、worker、frontend |
+| `make dev` | 启动 api 和 frontend（worker 在 M2 加入） |
 | `make smoke` | 需要真实 API key 的冒烟测试（默认不包含在 `make check` 中） |
 
 运行和自验证的方法见 [docs/runbooks/verification.md](docs/runbooks/verification.md)，环境搭建见 [docs/runbooks/dev-setup.md](docs/runbooks/dev-setup.md)。
