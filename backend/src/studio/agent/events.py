@@ -112,7 +112,9 @@ class Usage:
     includes_carryover: bool = False
     """`True`：`cost_usd` 还含同一 SDK 会话上一轮没拿到结果消息（被强制取消或出错）
     的花费。ClaudeRuntime 只能从 SDK 的会话累计值求差，那一轮的花费到本轮才算得出，
-    因此计入本轮并标注，不重复计、也不丢（TD-11，M1x T3）。"""
+    因此计入本轮并标注（TD-11，M1x T3）。这只保证"最终拿到结果消息时不会重复计"，
+    不保证"不丢"：会话首轮就被强制取消时没有下一轮可以归属，那笔花费直接丢失，
+    是目前唯一已知的例外（TD-25）。"""
 
 
 @dataclass(frozen=True, slots=True)

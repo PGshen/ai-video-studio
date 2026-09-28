@@ -24,9 +24,12 @@ logger = logging.getLogger(__name__)
 def recover_on_startup(runner: TurnRunner) -> None:
     """上次进程遗留的 `running`/`queued` turn → `interrupted`。
 
-    `running` 的 turn 先做一份 `partial` 快照（产物永远不丢，§7），再改状态；
-    没有越界检查（本轮工具写入记录已随进程丢失）。`queued` 的 turn 从未
-    开始，排队信息只在内存里，同样标记为 `interrupted`，否则会话会一直"忙"。
+    `running` 的 turn 先按该阶段的 `write_scope` 做一次越界检查/还原
+    （`_guard_recovered_turn`，TD-7；本轮工具写入记录已随进程丢失，`guard`
+    因此只能按可写范围区分，不能像正常收尾那样保留"工具管理但范围外"的
+    文件），再做一份 `partial` 快照（产物永远不丢，§7），最后改状态。
+    `queued` 的 turn 从未开始，排队信息只在内存里，同样标记为 `interrupted`，
+    否则会话会一直"忙"。
     """
     for turn in turns_repo.list_unfinished_turns(runner._engine):
         try:
