@@ -647,6 +647,10 @@ class TestWriteScopeHook:
             ("NotebookEdit", {"notebook_path": "/etc/x.ipynb"}),
             ("Write", {"file_path": "upstream/topic/brief.md"}),
             ("Write", {}),
+            # Claude Code file tools expand a leading `~` (F1).
+            ("Write", {"file_path": "~/topic/brief.md"}),
+            ("Edit", {"file_path": "~root/.bashrc"}),
+            ("NotebookEdit", {"notebook_path": "~"}),
         ],
     )
     async def test_out_of_scope_denied(
@@ -699,6 +703,15 @@ class TestReadScopeHook:
             ("Glob", {"pattern": "/Users/**/.env"}),
             ("Grep", {"pattern": "KEY", "path": ".."}),
             ("Grep", {"pattern": "KEY", "glob": "../**"}),
+            # Claude Code file tools expand a leading `~` (F1).
+            ("Read", {"file_path": "~"}),
+            ("Read", {"file_path": "~/.ssh/id_rsa"}),
+            ("Read", {"file_path": "~root/x"}),
+            ("Glob", {"pattern": "*", "path": "~/.aws"}),
+            ("Glob", {"pattern": "~root/**"}),
+            ("Grep", {"pattern": "KEY", "path": "~"}),
+            ("Grep", {"pattern": "KEY", "path": "~root/x"}),
+            ("Grep", {"pattern": "KEY", "glob": "~/**"}),
         ],
     )
     async def test_outside_workspace_denied(

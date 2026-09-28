@@ -264,6 +264,8 @@ def write_denial_reason(workdir: Path, scope: WriteScope, tool_input: dict[str, 
     allowed = "、".join(scope.writable) or "（无）"
     if not isinstance(raw, str) or not raw:
         return f"无法确定写入目标路径，已拒绝。本阶段可写：{allowed}"
+    if raw.startswith("~"):
+        return f"{raw} 在项目工作区之外，已拒绝。本阶段可写：{allowed}"
     target = Path(raw)
     if not target.is_absolute():
         target = workdir / target
@@ -277,7 +279,13 @@ def write_denial_reason(workdir: Path, scope: WriteScope, tool_input: dict[str, 
 
 
 def _escapes(workdir: Path, raw: str) -> bool:
-    """`raw`（相对 `workdir` 或绝对路径）解析符号链接和 `..` 之后是否落在 `workdir` 外。"""
+    """`raw`（相对 `workdir` 或绝对路径）解析符号链接和 `..` 之后是否落在 `workdir` 外。
+
+    以 `~` 开头的一律算越界：Claude Code 的文件工具会展开 `~`、`~user`，而 `Path`
+    把它当普通相对段（F1）。
+    """
+    if raw.startswith("~"):
+        return True
     target = Path(raw)
     if not target.is_absolute():
         target = workdir / target
@@ -290,7 +298,7 @@ def read_denial_reason(workdir: Path, tool_name: str, tool_input: dict[str, Any]
 
     - Read：`file_path` 必填，解析后必须在工作区内；
     - Glob/Grep：`path` 缺省即工作区（cwd），给了就必须在工作区内；glob 模式
-      （Glob 的 `pattern`、Grep 的 `glob`）不能是绝对路径或含 `..`。
+      （Glob 的 `pattern`、Grep 的 `glob`）不能是绝对路径、以 `~` 开头或含 `..`。
     """
     refuse = "只能读取项目工作区内的文件，已拒绝：{}"
     if tool_name == "Read":

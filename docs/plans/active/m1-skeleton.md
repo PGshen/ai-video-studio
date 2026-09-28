@@ -315,6 +315,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T14 审查后修复（第二轮）— 完成，`make check` 全绿（后端 425 个测试不变；前端 116 个 vitest，新增 `snapshotSelection.spec.ts` 的 `canRollback` 4 条）：第一轮只在 `FileCanvas` 接了 `combineBusy` 的结果，`SnapshotTimeline` 没接——`ProjectWorkbenchPage.vue` 之前没传 `busy` prop 给它，[回滚到此] 一直可点，agent 运行中点开二次确认弹窗、真正提交时才被后端 409 拒绝。补上：`SnapshotTimeline` 新增 `busy: boolean` prop（`ProjectWorkbenchPage` 传 `canvasBusy`），新增纯函数 `snapshotSelection.canRollback(busy, isPending)`（`!busy && !isPending`），[回滚到此] 按钮和弹窗里的 [确认回滚] 都用它算 `disabled`；忙时头部提示文案从"选中两个快照可以对比"换成"agent 运行中，暂不能回滚"。[对比]（选快照看 diff）不受影响，busy 时也能看——不改工作区，没有 409 风险。
 
 - 2026-09-28 — T15：冒烟测试与 R1–R5 验证 — 完成（部分未验证）：`make smoke` 目标与 `backend/tests/smoke/`（4 个用例 + 4 个离线辅助测试）落地；种子配置核实并更新模型名/单价（`deepseek/deepseek-flash`，四个真实配置都填了单价与 `supports_vision`）；`make smoke` 第 1 次运行（本 M1 共用 5 次额度中的 1 次）：`test_claude_login` 通过，其余 3 个缺 key 跳过；R3、R5、Claude 侧 R2、登录模式 R4 有结论，R1、OpenAI/LiteLLM 侧 R2、API key 模式 R4 未验证；`make check` 全绿（见本提交）。- 2026-09-28 — M1 最终整体审查修复（C1、I2–I7、M1–M12）— 完成，`make check` 全绿（后端 490 个测试、前端 125 个 vitest、import-linter 15 条契约）；AC1–AC3、AC5–AC9 补齐证据并勾选，见「验证记录」；报告见 `.superpowers/sdd/m1-skeleton/final-fix-report.md`（见本提交及之前 8 个修复提交）。
+- 2026-09-28 — 验收前追加 F1（Read/Glob/Grep/Write 拦截放过 `~` 路径）— 完成：`_escapes` 与 `write_denial_reason` 对以 `~` 开头的路径（含 `~user/…`）直接拒绝；TestReadScopeHook 新增 8 条、TestWriteScopeHook 新增 3 条 deny 用例（见本提交）。
 
 ## 下一步
 
@@ -441,6 +442,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T15：种子配置按官方页面核实：`claude-sonnet-5` 有效（$2/$10）；`gpt-5` 仍在售（$1.25/$10）；`deepseek-chat` 已于 2026-07-24 停用，改为 `deepseek/deepseek-flash`（按高峰价 $0.30/$1.20 计）；四个真实配置 `supports_vision=True`（`deepseek-flash` 支持图片输入）。Claude 两个配置的单价只作参考（ClaudeRuntime 用 SDK 的 `total_cost_usd`，不用单价）。
 - 2026-09-28 — T15：R3 结论成立，保留 Bash + SDK sandbox（不启用设计 §9 的"关闭 Bash"对策）；R5 结论成立，不需要额外对策（事前 hook + 只读文件权限 + 事后 guard 三层）。
 - 2026-09-28 — T15 审查后修复：宿主环境变量的隔离从源头做，不再只靠文档里的手动 `env -i`。① `ClaudeRuntime.build_env` 两种认证模式都把继承来的宿主变量置空（`HOST_BLANKED_ENV` 明确列出的认证/provider/模型覆盖/宿主标记变量 + `HOST_BLANKED_PREFIXES` 前缀 `CLAUDE_CODE_HOST_`、`CLAUDE_CODE_SDK_HAS_`、`CLAUDE_CODE_MESSAGING_`、`CLAUDE_CODE_SESSION_`、`CLAUDE_CODE_REMOTE`、`CLAUDE_CODE_DESKTOP_`），`ANTHROPIC_BASE_URL` 没有配置 `base_url` 时换成 `https://api.anthropic.com`（CLI 里有 `??` 写法，空串不等于未设置）；不动 `CLAUDE_CODE_ENTRYPOINT`、`CLAUDE_CODE_SDK_READS_SESSION_STATE`（SDK 自己处理）和 `CLAUDE_CONFIG_DIR`（登录模式要用），覆盖 `make dev`。② `make smoke` 用 `env -i` 只带白名单变量（`HOME`/`PATH`/`USER`/`LANG`/`TMPDIR`/`SHELL` + 三个 key + `STUDIO_*`）运行 pytest。这一条同时关闭 T9 审查遗留的"env 泄漏"小问题。依据见 references（claude-agent-sdk.md 宿主变量一条）。
+- 2026-09-28 — F1：以 `~` 开头的 Read/Glob/Grep/Write 类路径直接拒绝，而不是 `expanduser` 后再判断是否在工作区内 — Claude Code 文件工具会展开 `~`/`~user`，而 `Path` 把它当普通相对段；直接拒绝同时覆盖 `~user`（不必依赖本机用户表），误伤的只有工作区里名字以 `~` 开头的文件（可改用 `./~x` 访问），代价可接受。兜底文件工具（OpenAI 路径）是自己的 Python 实现、不展开 `~`，不受影响。
 
 ## 意外与发现
 
