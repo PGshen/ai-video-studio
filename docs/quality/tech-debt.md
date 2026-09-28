@@ -7,8 +7,8 @@
 | TD-6 | 2026-09-28 | `agent/preamble.py: _upstream_changes`、`agent/stage_flow.py` | stale 判断按整项目快照 id，上游产物目录没变也会标 stale / 出现空的上游变更提示 | 多余的 stale 与空提示 | 按上游产物目录的清单比较（M3 做按镜头 id 的摘要时一起改） | M1 T6 审查 |
 | TD-9 | 2026-09-28 | `agent/preamble.py: _user_edits` | 用户修改按路径合并窗口内所有 `user_edit` 快照，罕见情况下把其他阶段 agent 的改动算作用户修改 | 前言里的“用户修改”偶尔不准 | 只合并本会话窗口内、非 turn 产生的差异 | M1 T6 审查 |
 | TD-14 | 2026-09-28 | `agent/shell.py: LocalShellExecutor` | `setsid` 主动脱离进程组的后台进程不会被 `killpg` 杀掉（drain 窗口取消已在 M1x T6 修复：显式取消并等待 reader） | 恶意命令可留下后台进程，且 sandbox-exec 下仍可能在沙箱写权限范围内活动 | 按会话 cgroup 或容器限制 | M1 T10 审查；M1x T6 修复 reader 部分 |
-| TD-19 | 2026-09-28 | `agent/runner.py: recover_on_startup`、`api/sessions.py: continue` | 重启后排队中的 turn 被标 `interrupted`；[继续] 只发“继续”，原消息没有重发 | 排队中的消息在重启后丢失语义 | 对从未开始的 turn 提供“重新发送原消息” | M1 最终审查（M5 处理） |
-| TD-21 | 2026-09-28 | `agent/runner.py: _handle`（tool_result） | 工具结果里的图片只持久化 `media_type`，不存内容 | 回放/刷新后看不到图片，前端只能显示占位文字 | M2 落地 `render_preview` 时把图片存进 blob 库 | M1 T6 / T13（M2 处理） |
+| TD-19 | 2026-09-28 | `agent/recovery.py: recover_on_startup`、`api/sessions.py: continue` | 重启后排队中的 turn 被标 `interrupted`；[继续] 只发“继续”，原消息没有重发 | 排队中的消息在重启后丢失语义 | 对从未开始的 turn 提供“重新发送原消息” | M1 最终审查（M5 处理） |
+| TD-21 | 2026-09-28 | `agent/turn_events.py: handle`（tool_result） | 工具结果里的图片只持久化 `media_type`，不存内容 | 回放/刷新后看不到图片，前端只能显示占位文字 | M2 落地 `render_preview` 时把图片存进 blob 库 | M1 T6 / T13（M2 处理） |
 | TD-22 | 2026-09-28 | `main.py` lifespan、uvicorn | uvicorn 收到 SIGTERM 后先等所有连接（含 SSE）关闭才执行 lifespan 关闭；`TurnRunner.shutdown` 在这之后才运行 | 实测：浏览器开着 SSE 时，优雅关闭期间运行中的 turn 先自然跑完，lifespan 的 interrupted 收尾很少真正触发；`kill -9`/崩溃仍由 `recover_on_startup` 兜底 | 关闭信号到达时主动结束 SSE 流，或设置 `--timeout-graceful-shutdown` | M1 最终审查 L3 实测（暂无实际症状，出现再处理） |
 | TD-23 | 2026-09-28 | `api/files.py`、`api/snapshots.py`、`api/projects.py` | 为消除 TOCTOU，这些端点改成 `async def`，其中的同步 SQLite/文件 IO（回滚大工作区时可能上百毫秒）在事件循环上执行 | 回滚期间 SSE 等其他请求短暂卡顿 | 需要时改成 TurnRunner 的项目级 `asyncio.Lock` + 线程里做 IO | M1 最终审查 I4（暂无实际症状，出现再处理） |
 | TD-24 | 2026-09-28 | `frontend/src/composables/useSessionStream.ts` | 时间线 `items` 无上限增长 | 超长会话内存与渲染变慢 | 分页或虚拟列表 | M1 T12 审查（暂无实际症状，出现再处理） |
@@ -35,7 +35,7 @@
 | TD-12 | 2026-09-28 | M1x T3：`run_turn` 在 connect 前后检查取消令牌，`max_cost_per_turn == 0` 直接拒绝不连 SDK |
 | TD-13 | 2026-09-28 | 随 TD-8 一并修复（`_after_tool_result` 识别 `file_path`/`notebook_path`） |
 | TD-15 | 2026-09-28 | M1x T7：`agent/runner.py` 拆分为 `runner.py`/`turn_state.py`/`turn_events.py`/`turn_finish.py`/`recovery.py`，622→340 行 |
-| TD-16 | 2026-09-28 | M1x T6：`agent/openai_runtime.py` 拆分出 `agent/shell.py`、`agent/openai_tools.py`，764→362 行 |
+| TD-16 | 2026-09-28 | M1x T6：`agent/openai_runtime.py` 拆分出 `agent/shell.py`、`agent/openai_tools.py`，764→362 行；T9 接入 Shell 沙箱又加了代码，复核时实测为 764→374 行 |
 | TD-17 | 2026-09-28 | M1x T5：新增 `TurnContext.tool_context()`，三个运行时统一通过它构造 `ToolContext` |
 | TD-18 | 2026-09-28 | M1x T5：步数预算只由 runner 计数（`_handle(ToolCall)` → `_exceed_budget`），运行时不再各自计步 |
 | TD-20 | 2026-09-28 | M1x T9：OpenAI 路径 `LocalShellExecutor` 经 macOS `sandbox-exec` 执行（拒读仓库与 `data_dir`、只写工作区、禁网）；非 macOS 或无 `sandbox-exec` 时不提供 Shell，见 ADR `docs/decisions/0009-Shell沙箱.md`、`data/evidence/m1x/` |
