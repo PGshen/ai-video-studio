@@ -12,6 +12,7 @@ writes its observations to `data/evidence/m1/smoke/` (git-ignored).
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 from collections.abc import Iterator
@@ -25,6 +26,7 @@ from studio.agent.stage_flow import finalize
 from studio.db.repo.sessions import get_session
 
 from .support import (
+    M1X_EVIDENCE_DIR,
     REPO_ROOT,
     SmokeHarness,
     TurnOutcome,
@@ -199,6 +201,103 @@ async def test_claude_login(harness: SmokeHarness) -> None:
             probe.unlink(missing_ok=True)
         with contextlib.suppress(OSError):  # kept only if something else is inside
             outside_repo.rmdir()
+
+
+# ---- Claude, local login: cancel mid-turn, then another turn (M1x T3, TD-11) --------
+
+SHORT_PROMPT = "这是自动化测试。只回复两个字：好的。不要调用任何工具。"
+SLOW_PROMPT = (
+    "这是自动化测试。用 Bash 工具原样执行下面这条命令一次，然后报告输出：\n"
+    "sleep 30 && echo slow-done"
+)
+
+
+def _ledger_entry(h: SmokeHarness, sdk_ref: str) -> dict[str, Any] | None:
+    path = h.data_dir / "claude" / "studio-cost-ledger" / f"{sdk_ref}.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+async def _cancel_scenario(h: SmokeHarness, out: dict[str, Any]) -> None:
+    """Settled turn → turn cancelled at its first tool call → settled turn.
+
+    The ledger holds the SDK's cumulative `total_cost_usd` of the latest result, so
+    every turn's `cost_usd` must equal the difference of consecutive ledger totals.
+    """
+    profile = h.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+    session_id = h.session(profile, "claude")
+
+    before = await h.turn(session_id, SHORT_PROMPT)
+    out["turn_before"] = outcome_summary(before)
+    assert before.turn.status == "done", before.turn.error
+    session = get_session(h.engine, session_id)
+    assert session is not None and session.sdk_ref
+    sdk_ref = session.sdk_ref
+    out["ledger_before"] = _ledger_entry(h, sdk_ref)
+
+    cancelled = await h.turn_cancelled_at_tool_call(session_id, SLOW_PROMPT)
+    out["turn_cancelled"] = outcome_summary(cancelled)
+    out["ledger_after_cancel"] = _ledger_entry(h, sdk_ref)
+    session = get_session(h.engine, session_id)
+    out["sdk_ref_after_cancel"] = session.sdk_ref if session is not None else None
+    assert "Bash" in cancelled.tool_names, cancelled.text  # it was cancelled mid-tool
+    assert cancelled.turn.status == "cancelled", cancelled.turn.error
+
+    after = await h.turn(session_id, SHORT_PROMPT)
+    out["turn_after"] = outcome_summary(after)
+    out["ledger_after"] = _ledger_entry(h, sdk_ref)
+    assert after.turn.status == "done", after.turn.error
+
+
+def _check_costs(out: dict[str, Any]) -> None:
+    total_before = out["ledger_before"]["total_cost_usd"]
+    total_cancel = out["ledger_after_cancel"]["total_cost_usd"]
+    total_after = out["ledger_after"]["total_cost_usd"]
+    cost_cancelled = out["turn_cancelled"]["cost_usd"] or 0.0
+    cost_after = out["turn_after"]["cost_usd"]
+    out["check"] = {
+        "cancelled_turn_cost": cost_cancelled,
+        "cancelled_turn_expected": total_cancel - total_before,
+        "next_turn_cost": cost_after,
+        "next_turn_expected": total_after - total_cancel,
+        "sum_of_turns": out["turn_before"]["cost_usd"] + cost_cancelled + cost_after,
+        "sdk_cumulative": total_after,
+    }
+    check = out["check"]
+    assert check["cancelled_turn_cost"] == pytest.approx(check["cancelled_turn_expected"])
+    assert check["next_turn_cost"] == pytest.approx(check["next_turn_expected"])
+    # Nothing counted twice, nothing lost: the turns add up to the SDK's cumulative total.
+    assert check["sum_of_turns"] == pytest.approx(check["sdk_cumulative"])
+
+
+async def test_claude_login_cancel_then_turn(tmp_path: Path) -> None:
+    if os.environ.get("STUDIO_SMOKE_SKIP_LOGIN") == "1":
+        pytest.skip("STUDIO_SMOKE_SKIP_LOGIN=1，跳过本机登录用例")
+    if _claude_cli() is None:
+        pytest.skip("未找到 claude CLI（本机未安装/未登录 Claude Code），跳过本机登录用例")
+
+    evidence: dict[str, Any] = {}
+    # A: normal stop (runner grace 10 s) — the interrupted CLI still sends a result.
+    graceful = build_harness(tmp_path / "graceful")
+    # B: forced stop (grace 0) — the task is cancelled before any result arrives.
+    forced = build_harness(tmp_path / "forced", cancel_grace_seconds=0.0)
+    try:
+        evidence["graceful"] = {}
+        await _cancel_scenario(graceful, evidence["graceful"])
+        _check_costs(evidence["graceful"])
+        assert evidence["graceful"]["ledger_after_cancel"]["unsettled"] is False
+
+        evidence["forced"] = {}
+        await _cancel_scenario(forced, evidence["forced"])
+        # No result for the forced turn: it reports no cost, the ledger is marked
+        # unsettled, and its spend shows up in the next turn's difference.
+        assert evidence["forced"]["turn_cancelled"]["cost_usd"] in (None, 0.0)
+        assert evidence["forced"]["ledger_after_cancel"]["unsettled"] is True
+        _check_costs(evidence["forced"])
+        assert evidence["forced"]["ledger_after"]["unsettled"] is False
+    finally:
+        record_evidence("claude-login-cancel", evidence, M1X_EVIDENCE_DIR)
+        graceful.engine.dispose()
+        forced.engine.dispose()
 
 
 # ---- OpenAI Responses API --------------------------------------------------------

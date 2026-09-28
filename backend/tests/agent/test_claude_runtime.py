@@ -59,13 +59,30 @@ _LOGIN_PROFILE = dataclasses.replace(_API_PROFILE, id="p-login", api_key_env=Non
 _ENVIRON = {"TEST_ANTHROPIC_KEY": "sk-test", "ANTHROPIC_API_KEY": "sk-from-shell"}
 
 
-class FakeClient:
-    """Replays `messages`; with `hold=True` it blocks after them until `interrupt()`."""
+_ABORTED = object()
+"""Default `interrupt_result`: an `aborted_streaming` result with a zero total."""
 
-    def __init__(self, options: ClaudeAgentOptions, messages: list[Message], hold: bool) -> None:
+
+class FakeClient:
+    """Replays `messages`; with `hold=True` it blocks after them until `interrupt()`,
+    then yields `interrupt_result` (`None`: never yields a result, keeps blocking)."""
+
+    def __init__(
+        self,
+        options: ClaudeAgentOptions,
+        messages: list[Message],
+        hold: bool,
+        interrupt_result: Any = _ABORTED,
+        on_connect: Callable[[], None] | None = None,
+        hang_connect: bool = False,
+    ) -> None:
         self.options = options
+        self.hang_connect = hang_connect
+        self.connect_cancelled = False
         self.messages = messages
         self.hold = hold
+        self.interrupt_result = interrupt_result
+        self.on_connect = on_connect
         self.prompts: list[Any] = []
         self.interrupted = asyncio.Event()
         self.connected = False
@@ -73,6 +90,14 @@ class FakeClient:
 
     async def connect(self) -> None:
         self.connected = True
+        if self.on_connect is not None:
+            self.on_connect()
+        if self.hang_connect:  # e.g. a CLI that never finishes initialising
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.connect_cancelled = True
+                raise
 
     async def query(self, prompt: str | AsyncIterable[dict[str, Any]]) -> None:
         if isinstance(prompt, str):
@@ -86,7 +111,12 @@ class FakeClient:
             await asyncio.sleep(0)
         if self.hold:
             await self.interrupted.wait()
-            yield _result(0.0, terminal_reason="aborted_streaming")
+            if self.interrupt_result is None:
+                await asyncio.Event().wait()  # the CLI never answers
+            elif self.interrupt_result is _ABORTED:
+                yield _result(0.0, terminal_reason="aborted_streaming")
+            else:
+                yield self.interrupt_result
 
     async def interrupt(self) -> None:
         self.interrupted.set()
@@ -98,13 +128,31 @@ class FakeClient:
 class Clients:
     """Client factory that records every client it creates."""
 
-    def __init__(self, messages: list[Message] | None = None, *, hold: bool = False) -> None:
+    def __init__(
+        self,
+        messages: list[Message] | None = None,
+        *,
+        hold: bool = False,
+        interrupt_result: Any = _ABORTED,
+        on_connect: Callable[[], None] | None = None,
+        hang_connect: bool = False,
+    ) -> None:
+        self.hang_connect = hang_connect
         self.messages = messages or [_result(0.0)]
         self.hold = hold
+        self.interrupt_result = interrupt_result
+        self.on_connect = on_connect
         self.created: list[FakeClient] = []
 
     def __call__(self, options: ClaudeAgentOptions) -> FakeClient:
-        client = FakeClient(options, self.messages, self.hold)
+        client = FakeClient(
+            options,
+            self.messages,
+            self.hold,
+            self.interrupt_result,
+            self.on_connect,
+            self.hang_connect,
+        )
         self.created.append(client)
         return client
 
@@ -795,6 +843,201 @@ class TestCancelAndBudget:
             _ctx(workdir, profile=_LOGIN_PROFILE, budget=Budget(max_cost_usd=1.0)),
         )
         assert clients.last.options.max_budget_usd is None
+
+
+def _costs(result: list[events.AgentEvent]) -> list[tuple[float, bool]]:
+    return [(e.cost_usd, e.includes_carryover) for e in result if isinstance(e, events.Usage)]
+
+
+class TestCancelBeforeSdk:
+    """TD-12: cancellation during setup ends the turn at once, without waiting for
+    the runner's grace period; a zero cost budget never starts the model."""
+
+    async def test_cancelled_before_connect_does_not_start_sdk(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        clients = Clients()
+        token = CancelToken()
+        token.cancel()
+
+        result = await _run(
+            _runtime(data_dir, clients), _ctx(workdir, resume_ref=SESSION, cancel_token=token)
+        )
+
+        assert clients.created == []
+        assert result == [events.TurnEnd(resume_ref=SESSION, status="cancelled")]
+
+    async def test_cancelled_during_connect_ends_without_query(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        token = CancelToken()
+        clients = Clients(on_connect=token.cancel)
+
+        result = await asyncio.wait_for(
+            _run(
+                _runtime(data_dir, clients),
+                _ctx(workdir, resume_ref=SESSION, cancel_token=token),
+            ),
+            timeout=1,
+        )
+
+        assert clients.last.connected and clients.last.prompts == []
+        assert clients.last.disconnected
+        assert result == [events.TurnEnd(resume_ref=SESSION, status="cancelled")]
+
+    async def test_cancel_while_connect_hangs_ends_at_once(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        token = CancelToken()
+        clients = Clients(on_connect=token.cancel, hang_connect=True)
+
+        result = await asyncio.wait_for(
+            _run(
+                _runtime(data_dir, clients),
+                _ctx(workdir, resume_ref=SESSION, cancel_token=token),
+            ),
+            timeout=1,
+        )
+
+        assert clients.last.connect_cancelled and clients.last.prompts == []
+        assert result == [events.TurnEnd(resume_ref=SESSION, status="cancelled")]
+
+    @pytest.mark.parametrize("profile", [_API_PROFILE, _LOGIN_PROFILE], ids=["api", "login"])
+    async def test_zero_cost_budget_is_refused(
+        self, profile: ModelProfileValue, workdir: Path, data_dir: Path
+    ) -> None:
+        clients = Clients()
+
+        result = await _run(
+            _runtime(data_dir, clients),
+            _ctx(workdir, profile=profile, resume_ref=SESSION, budget=Budget(max_cost_usd=0)),
+        )
+
+        assert clients.created == []
+        (end,) = result
+        assert isinstance(end, events.TurnEnd)
+        assert (end.status, end.resume_ref) == ("budget_exceeded", SESSION)
+        assert end.error is not None
+
+
+class TestCancelledTurnCost:
+    """TD-11: a cancelled turn's spend is neither counted twice nor silently lost."""
+
+    async def test_cancel_with_result_records_its_own_cost(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        await _run(_runtime(data_dir, Clients([_result(0.5)])), _ctx(workdir))
+        token = CancelToken()
+        clients = Clients(
+            [_assistant(TextBlock(text="开始"))],
+            hold=True,
+            interrupt_result=_result(0.7, terminal_reason="aborted_streaming"),
+        )
+        cancelled: list[events.AgentEvent] = []
+        async for event in _runtime(data_dir, clients).run_turn(
+            _ctx(workdir, resume_ref=SESSION, cancel_token=token)
+        ):
+            cancelled.append(event)
+            if isinstance(event, events.TextBlock):
+                token.cancel()
+        after = await _run(
+            _runtime(data_dir, Clients([_result(0.9)])), _ctx(workdir, resume_ref=SESSION)
+        )
+
+        assert cancelled[-1] == events.TurnEnd(resume_ref=SESSION, status="cancelled")
+        assert _costs(cancelled) == [(pytest.approx(0.2), False)]
+        assert _costs(after) == [(pytest.approx(0.2), False)]
+
+    async def test_force_cancelled_turn_is_carried_into_next_turn(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        await _run(_runtime(data_dir, Clients([_result(0.5)])), _ctx(workdir))
+        token = CancelToken()
+        clients = Clients(
+            [SystemMessage(subtype="init", data={"session_id": SESSION})],
+            hold=True,
+            interrupt_result=None,
+        )
+
+        async def consume() -> list[events.AgentEvent]:
+            return await _run(
+                _runtime(data_dir, clients), _ctx(workdir, resume_ref=SESSION, cancel_token=token)
+            )
+
+        # Like TurnRunner: set the token, then force-cancel the task after the grace period.
+        task = asyncio.create_task(consume())
+        while not (clients.created and clients.last.prompts):  # the query has been sent
+            await asyncio.sleep(0)
+        token.cancel()
+        await clients.last.interrupted.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert clients.last.disconnected
+
+        next_turn = await _run(
+            _runtime(data_dir, Clients([_result(1.0)])), _ctx(workdir, resume_ref=SESSION)
+        )
+        settled = await _run(
+            _runtime(data_dir, Clients([_result(1.1)])), _ctx(workdir, resume_ref=SESSION)
+        )
+
+        # The unsettled spend (1.0 - 0.5) shows up once, flagged, in the next turn.
+        assert _costs(next_turn) == [(pytest.approx(0.5), True)]
+        assert _costs(settled) == [(pytest.approx(0.1), False)]
+
+    async def test_failed_turn_without_result_is_carried_too(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        await _run(_runtime(data_dir, Clients([_result(0.5)])), _ctx(workdir))
+        # No result message at all (e.g. the CLI died mid-turn).
+        broken = await _run(
+            _runtime(data_dir, Clients([_assistant(TextBlock(text="半"))])),
+            _ctx(workdir, resume_ref=SESSION),
+        )
+        next_turn = await _run(
+            _runtime(data_dir, Clients([_result(0.8)])), _ctx(workdir, resume_ref=SESSION)
+        )
+
+        assert isinstance(broken[-1], events.TurnEnd) and broken[-1].status == "failed"
+        assert _costs(next_turn) == [(pytest.approx(0.3), True)]
+
+
+class TestLedgerKey:
+    """TD-11: the ledger is keyed by the SDK session id of the result."""
+
+    async def test_result_session_entry_is_used_when_present(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        other = "22222222-2222-2222-2222-222222222222"
+        await _run(_runtime(data_dir, Clients([_result(0.5)])), _ctx(workdir))
+        await _run(_runtime(data_dir, Clients([_result(0.6, session_id=other)])), _ctx(workdir))
+
+        result = await _run(
+            _runtime(data_dir, Clients([_result(0.8, session_id=other)])),
+            _ctx(workdir, resume_ref=SESSION),
+        )
+
+        assert _costs(result) == [(pytest.approx(0.2), False)]
+
+    async def test_unknown_result_session_falls_back_to_resume_ref(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        other = "22222222-2222-2222-2222-222222222222"
+        await _run(_runtime(data_dir, Clients([_result(0.5)])), _ctx(workdir))
+
+        # E.g. a forked session: its cumulative continues from the resumed transcript.
+        forked = await _run(
+            _runtime(data_dir, Clients([_result(0.8, session_id=other)])),
+            _ctx(workdir, resume_ref=SESSION),
+        )
+        again = await _run(
+            _runtime(data_dir, Clients([_result(0.9, session_id=other)])),
+            _ctx(workdir, resume_ref=other),
+        )
+
+        assert _costs(forked) == [(pytest.approx(0.3), False)]
+        assert _costs(again) == [(pytest.approx(0.1), False)]
 
 
 class TestRegister:

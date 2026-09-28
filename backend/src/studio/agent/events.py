@@ -109,6 +109,10 @@ class Usage:
     """`False`：模型配置没有单价，`cost_usd` 只是 0 占位、没有统计成本（OpenAIRuntime，
     T10 审查后修复）。TurnRunner 据此每轮发一次 `cost_unpriced` 提示，并把 turn 的
     `cost_usd` 记为空，界面不会显示成 $0。"""
+    includes_carryover: bool = False
+    """`True`：`cost_usd` 还含同一 SDK 会话上一轮没拿到结果消息（被强制取消或出错）
+    的花费。ClaudeRuntime 只能从 SDK 的会话累计值求差，那一轮的花费到本轮才算得出，
+    因此计入本轮并标注，不重复计、也不丢（TD-11，M1x T3）。"""
 
 
 @dataclass(frozen=True, slots=True)

@@ -84,7 +84,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：测试先红后绿；`make check` 绿。
 - **验证命令**：`make check`
 
-### T3：Claude 运行时的取消与成本口径（TD-11、TD-12）（待开始）
+### T3：Claude 运行时的取消与成本口径（TD-11、TD-12）（完成）
 
 - **目标**：取消能在 connect 阶段立即生效；0 预算直接拒绝；成本账本读写用同一个 SDK 会话 id；强制取消后本轮花费不计入下一轮。
 - **涉及文件**：`backend/src/studio/agent/claude_runtime.py`、`backend/tests/agent/test_claude_runtime.py`、`docs/references/claude-agent-sdk.md`。
@@ -170,10 +170,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 
 - 2026-09-28 — T1 — 完成（TD-2/TD-3/TD-4/TD-5 均已修复，测试先红后绿，`make check` 全绿；commit 在提交后补）。
 - 2026-09-28 — T2 — 完成（TD-7/TD-8/TD-13 均已修复，测试先红后绿，`make check` 全绿）。
+- 2026-09-28 — T3 — 完成（TD-11/TD-12 均已修复：connect 前/中取消立即结束、0 预算不启动 CLI、账本按 SDK 会话 id、无 result 的一轮记"待校准"并入下一轮且以 `Usage.includes_carryover` 标注；mock 测试先红后绿，`make check` 全绿；本机登录冒烟"中途取消 + 再发一轮"两种取消方式都与 SDK 累计值对上）。
 
 ## 下一步
 
-- 从 T3 开始。
+- 从 T4 开始。
 
 ## 决策记录
 
@@ -182,10 +183,17 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T1/TD-3：没有另外暴露 `backend_src_dir()`，测试改用 `repo_root() / "backend" / "src"` 构造越界路径 — controller 只裁定要暴露 `repo_root()`，`backend/src` 是 config 文档里写明的固定相对布局，测试用这个相对路径拼接足够，不需要再加一个公开访问点。
 - 2026-09-28 — T1/TD-5：把 `_prune_empty_dirs` 从 `snapshot.py` 搬到 `workspace/layout.py`（改名 `prune_empty_dirs`，去掉下划线），供 `snapshot.rollback` 和新加的 `scope.guard` 共用 — 两个模块本来就都依赖 `layout`，比互相 import 私有函数更干净；同时把 `EXCLUDED_TOP_DIRS - {"upstream"}` 提成 `layout.HIDDEN_TOP_DIRS`，`api/files.py` 和 `workspace/files.py` 都改用它，不再各自算一遍。
 - 2026-09-28 — T2/TD-7：恢复时的越界 guard 用 turn 的 `start_snapshot_id`（`get_snapshot` 取其 manifest）做 `before`，`session.stage` 经 `StageRegistry.get` 拿 `write_scope`；`tool_writes` 传空字典（本轮工具写入记录随进程丢失，guard 因此不能区分"工具管理但范围外"的文件，只能按可写范围还原——M1 已有的工具管理文件都在各自阶段的可写范围内，不受影响）。起始快照缺失（`start_snapshot_id is None` 或快照已不存在）或阶段未注册时跳过 guard，只记日志，仍然做 `partial` 快照并标记 `interrupted`。
+- 2026-09-28 — T3/TD-11：`events.Usage` 新增 `includes_carryover: bool = False`（唯一的公共接口变化）——`True` 表示 `cost_usd` 含同一 SDK 会话上一轮没拿到 result（强制取消或出错）的花费。选这个方案是因为 ClaudeRuntime 只能从 SDK 累计值求差：没拿到 result 的那一轮算不出自己的花费，并入下一轮并标注，既不重复计也不丢。账本文件加 `unsettled` 字段（旧文件缺字段按 `False` 读）；拿到 result 且累计值 > 0 时写入新累计值并清除标记。出错（`failed`）且没拿到 result 的一轮同样记"待校准"，不只限取消。
+- 2026-09-28 — T3/TD-11：账本读取键 = result 的 `session_id`；该会话没有记录时退回 `ctx.resume_ref` 的记录（fork 之类换了会话 id 但累计值接着 transcript 的情况）；没有 `resume_ref`（新会话）时不查账本，累计值从 0 开始（保持原 `test_new_session_ignores_ledger` 的行为）。两种差异场景都有测试固定（`TestLedgerKey`）。
+- 2026-09-28 — T3/TD-12：成本上限取 `ctx.budget.max_cost_usd`（runner 从 `profile.max_cost_per_turn` 填入，二者同值）；`<= 0` 时**两种认证方式都**不启动 CLI、直接 `budget_exceeded`（登录模式平时不强制成本，但 0 是明确的"不花钱"意图，按计划"不应启动模型"处理）。connect 与取消令牌并发等待，令牌先置位就取消 connect（SDK 的 `connect()` 在 `BaseException` 时自己 `disconnect()` 清理子进程），不必等 runner 的 10s 宽限期；取消检查顺序为：取消 → 0 预算 → 认证。
+- 2026-09-28 — T3：真实验证用例放在 `backend/tests/smoke/test_smoke.py::test_claude_login_cancel_then_turn`（名字含 `claude_login`，`-k claude_login` 会选中），为此给 `support.build_harness` 加了 `cancel_grace_seconds` 参数、`SmokeHarness.turn_cancelled_at_tool_call`、`record_evidence(directory=...)`（证据写到 `data/evidence/m1x/smoke/`）；都是测试代码。
 
 ## 意外与发现
 
-- 无
+- 2026-09-28 — T3：本机登录实测（`make smoke SMOKE_ARGS="-k claude_login"`）里，正常停止（runner 宽限 10s）时被 `interrupt()` 的 CLI 很快发出 result，累计值**非零且包含被中断那一轮的花费**（0.048899 → 0.056600），所以宽限期内拿到 result 是常态；强制取消（宽限 0，没有 result）后，下一轮 result 的累计值仍包含被取消那一轮的花费（下一轮差值 0.011227，同题的正常一轮约 0.0055），说明 CLI 在被 disconnect 前已把累计值写进 transcript，"并入下一轮"不会丢。证据 `data/evidence/m1x/smoke/20260928T055935Z-claude-login-cancel.json`、`data/evidence/m1x/smoke-t3-run1.log`。
+- 2026-09-28 — T3：强制取消落在**新会话的第一轮**时（还没有 `sdk_ref`），runner 拿不到 `TurnEnd.resume_ref`，下一轮会开新的 SDK 会话，那一轮的花费无法从累计值找回（账本虽然记了"待校准"，但不会再被读到）。影响仅限"新会话第一轮就被强制取消"，金额是那一轮已花的部分；未处理，T10 收尾时登记。
+- 2026-09-28 — T3：冒烟 run2（`data/evidence/m1x/smoke-t3-run2.log`）中强制取消场景失败：辅助函数一直等不到 Bash 的 `tool_call`，300s 超时。那一轮的事件没来得及写进证据，原因无法确认（推测模型没调用工具就结束了这一轮，而辅助函数没判断 turn 已结束）。已改为 turn 结束也停止等待、并断言确实在 Bash 调用中被取消，run3、run4 均通过。
+- 2026-09-28 — T3：`runner` 目前不读 `Usage.includes_carryover`（只累加 `cost_usd`），标注只在事件层；要在界面上显示"含上一轮残余"需要 runner 落库/推送，本任务不改 runner（T5/T7 会动 runner），T10 收尾时登记。
 
 ## 阻塞
 
@@ -193,4 +201,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 
 ## 验证记录
 
-- 无
+- T3（TD-12）：`uv run pytest tests/agent/test_claude_runtime.py -k "CancelBeforeSdk"` — connect 前取消不创建客户端、connect 中取消不发 query、connect 挂起时取消 1s 内结束、0 预算（API/登录）不创建客户端；先红（`data/evidence/m1x/t3-red.log`，9 项失败）后绿（`data/evidence/m1x/t3-green.log`）。通过。
+- T3（TD-11）：`-k "CancelledTurnCost or LedgerKey or UsageDelta"` — 取消时拿到 result 记本轮差值；强制取消/出错无 result → 下一轮差值含残余且 `includes_carryover=True`，再下一轮恢复正常；账本键差异场景固定。通过。
+- T3 真实验证：`make smoke SMOKE_ARGS="-k claude_login"`（本机登录订阅账号），`test_claude_login_cancel_then_turn` 两个场景（正常停止、宽限 0 强制取消）中每轮 `cost_usd` 等于相邻两次 SDK 累计值之差，各轮之和等于最终累计值。run1/run3/run4 通过，run2 失败（见「意外与发现」）；日志 `data/evidence/m1x/smoke-t3-run{1,2,3,4}.log`，观察值 `data/evidence/m1x/smoke/*.json`。通过。
+- T3：`make check` 全绿。
