@@ -53,6 +53,10 @@ make setup
 - 单价：OpenRouter 上 `openai/gpt-5` 与 OpenAI 官方同价（$1.25/$10 每百万 token），种子单价不变。换成单价不同的型号（例如 OpenRouter 上单价更低的替代型号）时用 `STUDIO_OPENAI_PRICE_INPUT`/`STUDIO_OPENAI_PRICE_OUTPUT` 覆盖，否则成本统计会用 `gpt-5` 的单价偏高估算（G2，2026-09-28）。
 - `gpt-5-2025-08-07`（OpenRouter 经 Azure/OpenAI 后端）不支持 `apply_patch` 工具，调用会返回 400 `Tool 'apply_patch' is not supported with gpt-5-2025-08-07.`（`make smoke` 第 2 次运行实测，2026-09-28，见 `docs/references/openai-agents-sdk.md`）；换用支持 `apply_patch` 的型号时记得同时按上面两行设置单价。
 
+### 已知限制
+
+- `deepseek` 种子的 `supports_vision` 已改为 `False`（`deepseek/deepseek-flash` 不支持图片输入，2026-09-28 冒烟实测，见 `docs/references/openai-agents-sdk.md` R2）。`seed_model_profiles` 只在建新行时使用种子默认值，**已有数据库**里若在这次改动之前已插入过 `deepseek` 行（`supports_vision=True`），本次改动不会自动更新它——需要手动执行 `sqlite3 <data_dir>/studio.db "UPDATE model_profiles SET supports_vision = 0 WHERE name = 'deepseek';"`，或者直接删掉整个 `data/`（或 `STUDIO_DATA_DIR` 指向的目录）重建。
+
 ## 启动
 
 ```bash

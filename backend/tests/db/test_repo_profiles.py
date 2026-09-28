@@ -88,7 +88,22 @@ def test_seed_prices_per_million_tokens(migrated_engine: Engine) -> None:
         profile = get_model_profile(migrated_engine, name)
         assert profile is not None
         assert (profile.price_input, profile.price_output) == (price_in, price_out), name
-        assert profile.supports_vision, name
+
+
+def test_seed_supports_vision_flags(migrated_engine: Engine) -> None:
+    """R2（2026-09-28 冒烟 run2/run3，docs/references/openai-agents-sdk.md）：
+    deepseek-flash 不支持图片输入，种子改为 supports_vision=False；其余三个仍为真。"""
+    seed_model_profiles(migrated_engine, enable_fake_runtime=False)
+    expected = {
+        "claude-sonnet": True,
+        "claude-login": True,
+        "gpt": True,
+        "deepseek": False,
+    }
+    for name, supports_vision in expected.items():
+        profile = get_model_profile(migrated_engine, name)
+        assert profile is not None
+        assert profile.supports_vision is supports_vision, name
 
 
 def test_get_model_profile_unknown_name_returns_none(migrated_engine: Engine) -> None:

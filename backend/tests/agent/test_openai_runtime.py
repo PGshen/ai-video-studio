@@ -274,6 +274,33 @@ class TestEventConversion:
             "output"
         ]
 
+    async def test_business_tool_image_result_hidden_when_no_vision(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """R2（deepseek-flash 不支持图片，2026-09-28 冒烟 run2/run3）：
+        supports_vision=False 时模型看到的工具输出只剩文本 + 说明，不含图片。"""
+
+        def render(_ctx: ToolContext, args: _Args) -> ToolResult:
+            return ToolResult(text="渲染好了", images=[events.ImageData("image/png", "aW1n")])
+
+        models = Models(
+            [[function_call("echo", {"text": "x"}, call_id="c1")], [assistant_message("好")]]
+        )
+        profile = dataclasses.replace(_OPENAI, supports_vision=False)
+        out = await _run(
+            _runtime(data_dir, models),
+            _ctx(workdir, tools=[_echo_spec(render)], profile=profile),
+        )
+
+        # Events keep the original ToolResult (images metadata for the canvas/UI).
+        (result,) = _of(out, events.ToolResult)
+        assert result.images == [events.ImageData("image/png", "aW1n")]
+        # But the second model call only sees text, with a note explaining why.
+        outputs = [
+            item for item in models.calls[1].input if item.get("type") == "function_call_output"
+        ]
+        assert outputs[0]["output"] == "渲染好了\n（模型不支持图片，已省略图片内容）"
+
     async def test_business_tool_bad_args_is_error_result(
         self, workdir: Path, data_dir: Path
     ) -> None:

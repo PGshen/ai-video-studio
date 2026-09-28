@@ -10,8 +10,9 @@
 - `litellm` → `LitellmModel`（显式传 `api_key`/`base_url`，不改 `os.environ`），
   兜底文件工具（`fallback_tools`），不提供 Shell，M1 不提供联网工具（Tavily 在 M4）。
 
-两条路径的业务 `ToolSpec` 都转成 `FunctionTool`，调用走 `invoke_tool`，图片结果
-转成 `ToolOutputImage`（data URL）。
+两条路径的业务 `ToolSpec` 都转成 `FunctionTool`，调用走 `invoke_tool`；`model_profile.
+supports_vision` 为真时图片结果转成 `ToolOutputImage`（data URL），为假时（R2，
+docs/references/openai-agents-sdk.md）只发文本、注明"模型不支持图片"（`_sdk_output`）。
 
 - **认证**：`api_key_env` 必填，每轮从环境变量读 key；缺失 → 本轮 `failed`。
 - **会话**：`SQLiteSession(<session_id>, <data_dir>/openai_sessions.db)`；首轮生成
@@ -372,8 +373,14 @@ class LocalShellExecutor:
 # ---- business tools -----------------------------------------------------
 
 
-def _sdk_output(result: ToolResult) -> str | list[ToolOutputText | ToolOutputImage]:
-    if not result.images:
+def _sdk_output(
+    result: ToolResult, *, supports_vision: bool
+) -> str | list[ToolOutputText | ToolOutputImage]:
+    if not result.images or not supports_vision:
+        if result.images and not supports_vision:
+            # R2（LiteLLM/非视觉模型，docs/references/openai-agents-sdk.md）：模型看不懂
+            # 图片输入，发了也只会让模型编造颜色；只保留文本指标并注明原因。
+            return f"{result.text}\n（模型不支持图片，已省略图片内容）"
         return result.text
     return [ToolOutputText(text=result.text)] + [
         ToolOutputImage(image_url=f"data:{image.media_type};base64,{image.data_base64}")
@@ -382,10 +389,17 @@ def _sdk_output(result: ToolResult) -> str | list[ToolOutputText | ToolOutputIma
 
 
 def build_function_tool(
-    spec: ToolSpec, tool_ctx: ToolContext, results: dict[str, ToolResult]
+    spec: ToolSpec,
+    tool_ctx: ToolContext,
+    results: dict[str, ToolResult],
+    *,
+    supports_vision: bool = True,
 ) -> FunctionTool:
     """业务 `ToolSpec` → `FunctionTool`。每次调用的 `ToolResult` 按 `call_id` 记进
-    `results`，事件转换时直接取用（保留 `is_error` 和原始图片）。
+    `results`，事件转换时直接取用（保留 `is_error` 和原始图片）。`supports_vision`
+    为 `False`（模型配置 `supports_vision=false`）时，发给模型的工具输出不带图片，
+    只保留文本（`_sdk_output`）；`results` 里仍保留原始 `ToolResult.images`，供事件/
+    画布使用。
     """
 
     async def on_invoke(context: SdkToolContext[Any], raw_args: str) -> Any:
@@ -399,7 +413,7 @@ def build_function_tool(
             else:
                 result = ToolResult(text="参数必须是 JSON 对象", is_error=True)
         results[context.tool_call_id] = result
-        return _sdk_output(result)
+        return _sdk_output(result, supports_vision=supports_vision)
 
     schema = spec.input_model.model_json_schema()
     try:
@@ -656,7 +670,12 @@ class OpenAIRuntime:
                 native.append(WebSearchTool())
         else:
             specs += build_fallback_tools(ctx.write_scope)
-        return [build_function_tool(spec, tool_ctx, turn.results) for spec in specs] + native
+        return [
+            build_function_tool(
+                spec, tool_ctx, turn.results, supports_vision=ctx.model_profile.supports_vision
+            )
+            for spec in specs
+        ] + native
 
     def _setup(self, ctx: TurnContext) -> Model:
         profile = ctx.model_profile

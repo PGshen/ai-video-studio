@@ -20,6 +20,13 @@
 
 `claude-login` 的 `api_key_env` 为空表示使用本机已登录的 Claude Code 订阅账号，
 不新增字段，复用设计已有的 `api_key_env`。
+
+`deepseek` 种子的 `supports_vision` 为 `False`（T15 误设为 `True`，2026-09-28 冒烟
+run2/run3 实测纠正：`deepseek/deepseek-flash` 不支持图片输入，见
+docs/references/openai-agents-sdk.md R2 结论）。种子只插入不存在的配置，已有库里
+误设为 `True` 的 `deepseek` 行不会被这次改动自动更新（不扩展受控更新规则覆盖范围）；
+需要手动 `UPDATE model_profiles SET supports_vision = 0 WHERE name = 'deepseek'`
+或删库重建（见 docs/runbooks/dev-setup.md「已知限制」）。
 """
 
 from __future__ import annotations
@@ -109,7 +116,7 @@ _SEED_PROFILES: list[dict[str, Any]] = [
         "model": "deepseek/deepseek-flash",
         "runtime": "openai",
         "api_key_env": "DEEPSEEK_API_KEY",
-        "supports_vision": True,
+        "supports_vision": False,
         "price_input": 0.30,
         "price_output": 1.20,
     },
