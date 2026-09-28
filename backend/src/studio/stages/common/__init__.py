@@ -1,9 +1,15 @@
 """各阶段共用代码（设计 §4.3 表格；ARCHITECTURE §2）。
 
-M1 只提供占位阶段定义（`stages.topic`/`stages.narrative`/`stages.animation`），
-还没有需要跨阶段共享的业务逻辑（例如 `suggest_upstream_change`），所以这个
-包暂时是空的；`stages.<x>` 之间互不 import（ARCHITECTURE §2 规则 3），共用
-代码之后加进来时放在这里。
+`suggest_upstream_change`（设计 §5.3/§5.4）是第一个共用业务工具：任意阶段
+都可能需要向上游提出回退建议，逻辑只写一份，放在这里；`stages.<x>` 之间
+互不 import（ARCHITECTURE §2 规则 3）。
 """
 
 from __future__ import annotations
+
+from studio.stages.common.suggest_upstream_change import (
+    SuggestUpstreamChangeArgs,
+    build_suggest_upstream_change_tool,
+)
+
+__all__ = ["SuggestUpstreamChangeArgs", "build_suggest_upstream_change_tool"]
