@@ -8,6 +8,7 @@ import asyncio
 import dataclasses
 import logging
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -135,10 +136,34 @@ def data_dir(tmp_path: Path) -> Path:
     return tmp_path / "data"
 
 
-def _runtime(data_dir: Path, models: Models, *, history_turns: int = 20) -> OpenAIRuntime:
+def _runtime(
+    data_dir: Path,
+    models: Models,
+    *,
+    history_turns: int = 20,
+    repo_root: Path | None = None,
+    sandbox: bool = True,
+) -> OpenAIRuntime:
+    # Tool-surface tests inject the sandbox check so they run on every platform; tests that
+    # actually execute shell commands are marked `darwin_only`.
     return OpenAIRuntime(
-        data_dir, model_factory=models, environ=_ENVIRON, history_turns=history_turns
+        data_dir,
+        model_factory=models,
+        environ=_ENVIRON,
+        history_turns=history_turns,
+        repo_root=repo_root,
+        sandbox_available=lambda: sandbox,
     )
+
+
+def _yes() -> bool:
+    return True
+
+
+darwin_only = pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="Shell 经 sandbox-exec 执行，只存在于 macOS（计划 M1x T9 写明的 skipif 理由）",
+)
 
 
 async def _run(runtime: OpenAIRuntime, ctx: TurnContext) -> list[events.AgentEvent]:
@@ -400,15 +425,19 @@ class TestNativeTools:
             assert settings.response_include is None
 
     def test_native_shell_supported(self) -> None:
-        assert native_shell_supported(_OPENAI)
+        assert native_shell_supported(_OPENAI, sandbox_available=_yes)
         for url in ("https://api.openai.com/v1", "https://API.openai.com/v1/"):
-            assert native_shell_supported(dataclasses.replace(_OPENAI, base_url=url))
+            assert native_shell_supported(
+                dataclasses.replace(_OPENAI, base_url=url), sandbox_available=_yes
+            )
         for url in (
             "https://openrouter.ai/api/v1",
             "https://api.openai.com.evil.example/v1",
             "http://127.0.0.1:4000/v1",
         ):
-            assert not native_shell_supported(dataclasses.replace(_OPENAI, base_url=url))
+            assert not native_shell_supported(
+                dataclasses.replace(_OPENAI, base_url=url), sandbox_available=_yes
+            )
 
     async def test_web_search_only_when_allowed(self, workdir: Path, data_dir: Path) -> None:
         models = Models([[assistant_message("ok")]])
@@ -442,6 +471,40 @@ class TestNativeTools:
         assert rejected.is_error and "style/STYLE.md" in rejected.text
         assert "apply_patch" in events.FILE_TOOL_NAMES
 
+    async def test_no_sandbox_drops_shell_adds_read_tools(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """Fail closed (TD-20): without sandbox-exec (non-macOS) there is no native shell."""
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models, sandbox=False), _ctx(workdir))
+
+        tools = models.calls[0].tools
+        assert not any(isinstance(tool, ShellTool) for tool in tools)
+        names = {tool.name for tool in tools if isinstance(tool, FunctionTool)}
+        assert names == {"list_files", "read_file"}
+
+    @darwin_only
+    async def test_shell_sandbox_denies_repo_and_data_dir(
+        self, tmp_path: Path, workdir: Path, data_dir: Path
+    ) -> None:
+        """The runtime passes [repo_root, data_dir] as the shell's deny-read list (TD-20)."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "secret.env").write_text("repo-secret")
+        other = data_dir / "projects" / "other"
+        other.mkdir(parents=True)
+        (other / "s.md").write_text("other-secret")
+        commands = [f"cat {repo / 'secret.env'}", "cat ../other/s.md", "echo ok > mine.md"]
+        models = Models([_shell_step("s1", commands), [assistant_message("好")]])
+        out = await _run(_runtime(data_dir, models, repo_root=repo), _ctx(workdir))
+
+        (result,) = _of(out, events.ToolResult)
+        assert result.is_error
+        assert "repo-secret" not in result.text and "other-secret" not in result.text
+        assert result.text.count("Operation not permitted") == 2
+        assert (workdir / "mine.md").read_text() == "ok\n"
+
+    @darwin_only
     async def test_shell_runs_in_workdir(self, workdir: Path, data_dir: Path) -> None:
         models = Models([_shell_step("s1", ["pwd"]), [assistant_message("好")]])
         out = await _run(_runtime(data_dir, models), _ctx(workdir))
@@ -453,6 +516,7 @@ class TestNativeTools:
         assert str(workdir.resolve()) in result.text
         assert not result.is_error
 
+    @darwin_only
     async def test_failing_shell_command_is_error_result(
         self, workdir: Path, data_dir: Path
     ) -> None:
@@ -724,6 +788,7 @@ class TestShellProcessGroup:
     """`LocalShellExecutor` 本身的行为测试在 `test_shell.py`；这里只留取消如何贯穿
     整个 OpenAIRuntime（含 SDK Runner、事件流）的集成测试。"""
 
+    @darwin_only
     async def test_cancel_while_shell_runs(self, workdir: Path, data_dir: Path) -> None:
         models = Models([_shell_step("s1", ["echo $$ > pgid; sleep 30"])])
         token = CancelToken()

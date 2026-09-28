@@ -1,8 +1,8 @@
 """OpenAI Agents SDK `ShellTool` 的本地 executor（TD-16 从 `openai_runtime.py` 拆出）。
 
-没有沙箱：命令能读本机任意文件、写工作区内任意路径。T9 会在这里接入 macOS
-`sandbox-exec` 包裹子进程，所以真正 spawn 子进程的调用（`_run`）保持在这一个
-小而明确命名的地方。
+每条命令经 macOS `sandbox-exec` 运行（T9，TD-20，配置见 `shell_sandbox`）：只能写
+当前工作区和它的 `.cache/tmp`，读不到 `deny_read`（运行时传仓库根与 `data_dir`）中
+工作区以外的部分，没有网络。真正 spawn 子进程的调用集中在 `_run`。
 """
 
 from __future__ import annotations
@@ -12,21 +12,25 @@ import contextlib
 import os
 import re
 import signal
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from agents import ShellCallOutcome, ShellCommandOutput, ShellCommandRequest, ShellResult
+
+from studio.agent.shell_sandbox import SANDBOX_EXEC, sandbox_tmpdir, seatbelt_profile
 
 SHELL_DEFAULT_TIMEOUT_S = 120.0
 SHELL_MAX_TIMEOUT_S = 600.0
 SHELL_MAX_OUTPUT_CHARS = 20_000
 _SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
-"""名字匹配的环境变量不传给 Shell 子进程。只是减少 key **意外**泄露（例如命令
-把环境打印出来）：Shell 没有沙箱，命令仍能读取本机任意文件（包括 `backend/.env`）。"""
+"""名字匹配的环境变量不传给 Shell 子进程，减少 key 被命令意外打印出来；读文件的
+边界由沙箱（`deny_read`）负责。"""
 
 
-def _shell_env(environ: Mapping[str, str]) -> dict[str, str]:
-    return {name: value for name, value in environ.items() if not _SECRET_ENV_RE.search(name)}
+def _shell_env(environ: Mapping[str, str], tmpdir: Path) -> dict[str, str]:
+    env = {name: value for name, value in environ.items() if not _SECRET_ENV_RE.search(name)}
+    env["TMPDIR"] = str(tmpdir)
+    return env
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -81,11 +85,12 @@ _READER_DRAIN_TIMEOUT_S = 2.0
 
 
 class LocalShellExecutor:
-    """`ShellTool` 的本地 executor：命令在工作区目录下逐条执行。
+    """`ShellTool` 的本地 executor：命令在工作区目录下、`sandbox-exec` 沙箱内逐条执行。
 
-    **没有沙箱**：命令能读本机任意文件、写工作区内任意路径，不经过事前拦截；
-    工作区内的越界改动由轮末的 `guard` 还原（设计 §4.3 第 2 道防线），工作区外的
-    改动没有防线。
+    沙箱（`shell_sandbox.seatbelt_profile`）只放行写当前工作区（含 `TMPDIR` =
+    `<workdir>/.cache/tmp`），拒读 `deny_read` 但放回当前工作区，禁止网络。工作区内
+    越出阶段可写范围的改动仍由轮末 `guard` 还原（设计 §4.3 第 2 道防线）。调用方须
+    先确认 `shell_sandbox.sandbox_available()`（运行时经 `native_shell_supported`）。
 
     每条命令在自己的进程组里运行（`start_new_session`）；命令结束（无论退出码）、
     超时、输出超限或被取消时都杀掉整个进程组，所以 `nohup ... &` 之类的后台进程
@@ -105,8 +110,13 @@ class LocalShellExecutor:
         default_timeout_s: float = SHELL_DEFAULT_TIMEOUT_S,
         max_output_chars: int = SHELL_MAX_OUTPUT_CHARS,
         environ: Mapping[str, str] | None = None,
+        deny_read: Sequence[Path] = (),
+        sandbox_exec: Path = SANDBOX_EXEC,
     ) -> None:
         self._workdir = workdir
+        self._tmpdir = sandbox_tmpdir(workdir.resolve())
+        self._profile = seatbelt_profile(workdir, deny_read)
+        self._sandbox_exec = sandbox_exec
         self._environ = environ if environ is not None else os.environ
         self._failed = failed
         self._default_timeout_s = default_timeout_s
@@ -130,13 +140,19 @@ class LocalShellExecutor:
     async def _run(
         self, command: str, timeout: float, limit: int
     ) -> tuple[ShellCommandOutput, bool]:
-        proc = await asyncio.create_subprocess_shell(
+        self._tmpdir.mkdir(parents=True, exist_ok=True)
+        proc = await asyncio.create_subprocess_exec(
+            str(self._sandbox_exec),
+            "-p",
+            self._profile,
+            "/bin/sh",
+            "-c",
             command,
             cwd=self._workdir,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_shell_env(self._environ),
+            env=_shell_env(self._environ, self._tmpdir),
             start_new_session=True,
         )
         overflowed = False

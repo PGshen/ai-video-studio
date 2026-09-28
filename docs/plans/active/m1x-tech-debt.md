@@ -146,7 +146,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：冒烟日志存 `data/evidence/m1x/`；`make check` 绿。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k claude_login"`
 
-### T9：OpenAI 路径 Shell 沙箱（TD-20）（待开始）
+### T9：OpenAI 路径 Shell 沙箱（TD-20）（完成）
 
 - **目标**：`LocalShellExecutor` 在 macOS 上经 `sandbox-exec` 运行，限制读、写和网络；其他平台不提供 Shell（失败关闭）。
 - **涉及文件**：`backend/src/studio/agent/shell.py`（T6 产物）、新建 `backend/src/studio/agent/shell_sandbox.py`（生成 Seatbelt 配置）、`backend/src/studio/agent/openai_runtime.py`（`native_shell_supported` 增加平台条件）、`backend/tests/agent/test_shell_sandbox.py`、`docs/decisions/0009-Shell沙箱.md`、`docs/references/openai-agents-sdk.md`。
@@ -176,10 +176,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T6 — 完成（TD-16：`openai_runtime.py` 764→362 行；`LocalShellExecutor`/`_read_capped`/`_wait_for_exit`/`_kill_group`/`_shell_env`/相关常量纯搬移到新建的 `agent/shell.py`（199 行），业务工具桥接（`build_function_tool`/`_sdk_output`）与 item→事件转换（`_tool_call`/`_tool_result`/`_Turn`/`convert`，原 `_convert`）纯搬移到新建的 `agent/openai_tools.py`（240 行）；`test_openai_runtime.py` 里纯测 `LocalShellExecutor` 的用例迁到新建的 `backend/tests/agent/test_shell.py`（断言不改，只改 import），只测运行时整体取消行为的 `test_cancel_while_shell_runs` 留在原文件。TD-14：RED 测试 `test_shell.py::TestCancelReaderCleanup::test_no_pending_reader_tasks_after_cancel_during_drain`（monkeypatch `_read_capped` 制造可控的 drain 窗口，`asyncio.wait_for` 外部超时触发取消，检查 `asyncio.all_tasks()`）先红后绿；修复把 `_run` 里两处取消入口合并成一个 `except asyncio.CancelledError`，统一 `reader.cancel()` 后 `asyncio.wait_for(asyncio.gather(*readers, return_exceptions=True), _READER_DRAIN_TIMEOUT_S)`。`make check` 全绿，import-linter 契约无需新增（三个模块都在 `studio.agent` 包内，受既有契约覆盖）；ARCHITECTURE.md §2 agent 行更新拆分说明）。
 - 2026-09-28 — T7 — 完成（TD-15：`runner.py` 622→340 行，纯搬移，不改逻辑；新建 `agent/turn_state.py`（70 行，`_Job`/`_State` 共享结构）、`agent/turn_events.py`（124 行，`handle`/`_after_tool_result`/`_exceed_budget`/截断三件套/`TOOL_RESULT_MAX_CHARS`）、`agent/turn_finish.py`（121 行，`finish`/`finish_turn_row`）、`agent/recovery.py`（83 行，`recover_on_startup`/`_recover_turn`/`_guard_recovered_turn`）。设计选择：不用协作类，改成"自由函数 + 显式传入 `runner: TurnRunner`"（如 `turn_events.handle(runner, job, state, event)`），`_persist`/`_publish`/`_publish_status`/`_safe_persist`/`_request_stop` 仍是 `TurnRunner` 的方法（总线/持久化/调度是 `TurnRunner` 的核心职责，四个新模块通过持有的 `runner` 引用调用），新模块用 `TYPE_CHECKING` 引入 `TurnRunner` 类型避免运行时循环 import。`TurnRunner`/`SessionBusyError`/`SessionNotFoundError`/`TOOL_RESULT_MAX_CHARS` 仍可从 `studio.agent.runner` 导入（`__all__` 显式声明，`TOOL_RESULT_MAX_CHARS` re-export 自 `turn_events`）。import-linter 无需新增契约（四个新模块都在 `studio.agent` 包内，受既有的"agent 不 import stages/main"等契约覆盖）。测试只改了两处 import/monkeypatch 目标（见「决策记录」），断言一行未改；`make check` 全绿（后端 569 passed / 5 deselected，前端 128 passed）。ARCHITECTURE.md §2 agent 行更新拆分说明。
 - 2026-09-28 — T8 — 完成（先纯搬移拆分：`claude_runtime.py` 746→385 行，拆出 `claude_env.py`/`claude_scope.py`/`claude_messages.py`；再做 TD-1：`claude_scope.sandbox_settings(workdir, repo_root, data_dir)` 每轮生成 sandbox，`filesystem.denyRead=[仓库根, data_dir]`、`allowRead=[当前工作区]`，`register_claude` 从 `repo_root()`/`Settings.data_dir` 传入；选题阶段 `allow_web=False`（M4 带域名白名单再开）。实测 CLI `allowRead` 优先于 `denyRead`，不需要逐项列兄弟路径。单测先红后绿（`data/evidence/m1x/t8-red.log`、`t8-green.log`）；`make check` 全绿（后端 574 passed / 6 deselected，前端 128 passed）；`make smoke SMOKE_ARGS="-k claude_login"` run2 三项全过（run1 中 T3 的取消用例因模型拒绝执行 `sleep 30` 失败，与本任务无关），新用例 `test_claude_login_sandbox_read` 两次都过：读工作区成功，读 `backend/.env`/仓库文件/其他项目/数据目录文件均 `Operation not permitted`，`ls`/`python3` 正常。references 已补实测结论并改写剩余风险；runtime 最终 393 行）。
+- 2026-09-28 — T9 — 完成（TD-20：新建 `agent/shell_sandbox.py`（`seatbelt_profile`/`sandbox_available`/`sandbox_tmpdir`），`LocalShellExecutor` 每条命令经 `/usr/bin/sandbox-exec -p <profile> /bin/sh -c` 执行（`create_subprocess_exec`，进程组语义不变），拒读仓库根与 `data_dir`、放回当前工作区，只写工作区/`.cache/tmp`/`/dev/null`/`/dev/tty`/`/dev/fd`，禁网，`TMPDIR` 指向 `<workdir>/.cache/tmp`；`native_shell_supported` 在非 macOS 或无 `sandbox-exec` 时失败关闭。本机真实执行：写/读工作区、`upstream/`、`ls`、`python3`、`$TMPDIR` 正常；`backend/.env`（绝对与 `../` 相对路径）、其他项目、`studio.db`、符号链接越界读均被拒；写 `~/`、`/tmp`、其他项目失败；`curl` 失败。先红后绿（`data/evidence/m1x/t9-red.log` 51 failed、`t9-green.log` 80 passed），`make check` 全绿（后端 597 passed / 6 deselected，前端 128 passed）。ADR 0009；references 已更新。未跑真实 OpenAI 模型冒烟（不在预授权内））。
 
 ## 下一步
 
-- 从 T9 开始。
+- 从 T10 开始。
 
 ## 决策记录
 
@@ -201,6 +202,9 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T8/TD-1：`ClaudeRuntime.__init__` 新增关键字参数 `repo_root: Path | None = None`（缺省取 `studio.config.repo_root()`），`register_claude` 显式传入；sandbox 用运行时构造时的 `data_dir`。三个路径都 `resolve()` 成真实路径（macOS 的 `/var`→`/private/var`）。denyRead 同时列仓库根和 `data_dir`：`data_dir` 不在仓库下时（测试、自定义 `STUDIO_DATA_DIR`）也被拒读。
 - 2026-09-28 — T8：冒烟用例 `test_claude_login_sandbox_read` 把数据目录放在仓库 `data/smoke-tmp/<uuid>/` 下（与 `make dev` 的真实布局一致：工作区在被拒读的仓库根和 `data_dir` 之下），结束后删除。探针做成工作区里的 `topic/probe.sh`，让模型执行 `sh topic/probe.sh`：只打印 READABLE/DENIED 和 `cat` 的 stderr，不打印文件内容（`backend/.env` 是真实密钥文件）。直接让模型 `cat ../../../backend/.env` 会被模型以"越界读取凭据"为由拒绝（见「意外与发现」）。
 
+- 2026-09-28 — T9/TD-20：`LocalShellExecutor` 新增关键字参数 `deny_read: Sequence[Path] = ()`、`sandbox_exec: Path = SANDBOX_EXEC`；`OpenAIRuntime` 新增 `repo_root: Path | None = None`（缺省 `studio.config.repo_root()`）与 `sandbox_available: Callable[[], bool]`（缺省检测本机，测试注入），拒读列表 `[repo_root, data_dir]`——与 T8 的 Claude 路径同一做法。`register_openai` 不改（用缺省值，与 `repo_root()` 等价）。`native_shell_supported(profile, *, sandbox_available=...)` 以关键字参数注入平台判断；`shell_sandbox.sandbox_available(platform=None, sandbox_exec=SANDBOX_EXEC)` 同样可注入。executor 在沙箱不可用时不自行降级：是否提供 Shell 由运行时经 `native_shell_supported` 决定（失败关闭）。
+- 2026-09-28 — T9：写放行在 brief 列出的 `/dev/null`、`/dev/tty` 之外加了 `(subpath "/dev/fd")`——不放行时 `echo x > /dev/stderr`、`> /dev/stdout` 报 `Operation not permitted`（脚本里常见）；`/dev/fd/N` 只能重开进程已有的描述符，不扩大写范围。
+- 2026-09-28 — T9：skipif（计划已写明理由）用在 `test_shell_sandbox.py::TestSandboxedExecution`、`test_shell.py` 整个模块（全部是经 `sandbox-exec` 的真实执行）、`test_openai_runtime.py` 中三条真实执行 Shell 的用例（`test_shell_runs_in_workdir`、`test_failing_shell_command_is_error_result`、`test_cancel_while_shell_runs`）和新增的 `test_shell_sandbox_denies_repo_and_data_dir`。工具面测试（有无 `ShellTool`）通过注入 `sandbox_available` 在所有平台跑，新增 `test_no_sandbox_drops_shell_adds_read_tools` 固定失败关闭。
 ## 意外与发现
 
 - 2026-09-28 — T3：本机登录实测（`make smoke SMOKE_ARGS="-k claude_login"`）里，正常停止（runner 宽限 10s）时被 `interrupt()` 的 CLI 很快发出 result，累计值**非零且包含被中断那一轮的花费**（0.048899 → 0.056600），所以宽限期内拿到 result 是常态；强制取消（宽限 0，没有 result）后，下一轮 result 的累计值仍包含被取消那一轮的花费（下一轮差值 0.011227，同题的正常一轮约 0.0055），说明 CLI 在被 disconnect 前已把累计值写进 transcript，"并入下一轮"不会丢。证据 `data/evidence/m1x/smoke/20260928T055935Z-claude-login-cancel.json`、`data/evidence/m1x/smoke-t3-run1.log`。
@@ -216,6 +220,9 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T8：冒烟 run1 中 T3 的 `test_claude_login_cancel_then_turn` 失败：模型拒绝执行 `sleep 30 && echo slow-done`（称"长时间的前置 sleep 被禁止"，还把本项目的上下文前言当作可疑的伪装指令），没有发生工具调用。与 T8 改动无关（run2 同一用例通过），属于模型行为不稳定；如再出现，可把慢命令换成不以 sleep 开头的写法。未处理，T10 收尾时考虑登记。
 - 2026-09-28 — T8：位于仓库内的工具（`backend/.venv`、`frontend/node_modules`）现在 Bash 读不到；M1 的 agent 不需要它们（本机 `python3` 在 `~/miniconda3`），M2 若要让 agent 在 Bash 里跑项目内的工具，需要把相应路径加进 `allowRead`。
 
+- 2026-09-28 — T9：macOS 的 `mktemp`（不带模板）不看 `TMPDIR`，用 `confstr(_CS_DARWIN_USER_TEMP_DIR)`（`/var/folders/...`），沙箱内失败；`mktemp "$TMPDIR/x.XXXX"` 与 Python `tempfile` 正常。未处理（要放行 `/var/folders/...` 会让命令能写本用户共享临时目录），记入 ADR 0009 与 references。
+- 2026-09-28 — T9：`uv run` 启动的后端 PATH 以 `backend/.venv/bin` 开头；沙箱内 `/bin/sh` 查找命令时跳过读不到的目录，`python3` 落到下一个 PATH 项（本机 `~/miniconda3/bin/python3`），不会因 repo venv 失败，但项目依赖（如 `pydantic`）不可用——符合"agent 的 Shell 用系统/用户 Python"。
+- 2026-09-28 — T9：`(deny network*)` 下 `curl https://example.com` 报 `Could not resolve host`（DNS 也被挡），直连 IP 报 `Couldn't connect`；本机回环同样不通。
 ## 阻塞
 
 - 无
@@ -239,3 +246,5 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - T8（TD-1）：`uv run pytest tests/agent/test_claude_runtime.py tests/stages tests/agent/test_runner.py` — 先红（`data/evidence/m1x/t8-red.log`：`sandbox_settings` 不存在导致收集失败；`test_web_tools_disabled_until_domain_policy` 失败）后绿（`t8-green.log`）。通过。
 - T8 真实验证：`make smoke SMOKE_ARGS="-k claude_login"`（本机登录订阅账号）。run1（`data/evidence/m1x/smoke-t8-run1.log`）：`test_claude_login`、`test_claude_login_sandbox_read` 通过，T3 取消用例因模型拒绝 `sleep 30` 失败；run2（`smoke-t8-run2.log`）三项全过。观察值 `data/evidence/m1x/smoke/20260928T072906Z-claude-login-sandbox.json`、`20260928T073116Z-claude-login-sandbox.json`；`test_claude_login` 的 R3 探针（工作区外写入被拒、无外网、R5 upstream 未被改）在新 sandbox 下仍成立（`data/evidence/m1/smoke/20260928T073016Z-claude-login.json`）。补充：直接调 CLI 的对照探针 `data/evidence/m1x/t8-cli-probe.log`。通过。
 - T8：`make check` 全绿；`wc -l backend/src/studio/agent/claude_runtime.py` = 393。
+- T9（TD-20）：`uv run pytest tests/agent/test_shell_sandbox.py tests/agent/test_openai_runtime.py tests/agent/test_shell.py` — 先红（`data/evidence/m1x/t9-red.log`：生产代码还原到 HEAD 时 51 failed，`deny_read`/`repo_root`/`sandbox_available` 参数不存在）后绿（`t9-green.log`，80 passed）。本机真实布局探针（数据目录在 worktree 仓库根下、后端 PATH 以 `backend/.venv/bin` 开头）`data/evidence/m1x/t9-sandbox-probe.log`：逐条命令的退出码与输出。通过。
+- T9：`make check` 全绿（后端 597 passed / 6 deselected，前端 128 passed）。

@@ -4,9 +4,11 @@
 
 - `openai` → `OpenAIResponsesModel`（显式 `AsyncOpenAI(api_key, base_url)`），原生
   `ApplyPatchTool`（`WorkspaceApplyPatchEditor`，经 `workspace.files` 落盘）+
-  `ShellTool`（`LocalShellExecutor`，工作目录为工作区）；`ctx.allow_web` 时加托管
-  `WebSearchTool`。`base_url` 不是官方 API（例如 OpenRouter）时不提供 Shell，改给
-  兜底只读工具 `list_files`/`read_file`（`native_shell_supported`）。
+  `ShellTool`（`LocalShellExecutor`，工作目录为工作区，经 macOS `sandbox-exec` 拒读仓库根
+  与 `data_dir`、只写工作区、无网络，见 `shell_sandbox`）；`ctx.allow_web` 时加托管
+  `WebSearchTool`。`base_url` 不是官方 API（例如 OpenRouter）或本机没有 `sandbox-exec`
+  （非 macOS）时不提供 Shell，改给兜底只读工具 `list_files`/`read_file`
+  （`native_shell_supported`）。
 - `litellm` → `LitellmModel`（显式传 `api_key`/`base_url`，不改 `os.environ`），
   兜底文件工具（`fallback_tools`），不提供 Shell，M1 不提供联网工具（Tavily 在 M4）。
 
@@ -67,7 +69,9 @@ from studio.agent.fallback_tools import build_fallback_tools
 from studio.agent.openai_tools import _Turn, build_function_tool, convert
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.shell import LocalShellExecutor
+from studio.agent.shell_sandbox import sandbox_available as _sandbox_available
 from studio.config import Settings
+from studio.config import repo_root as _repo_root
 from studio.db.repo.profiles import ModelProfileValue
 
 logger = logging.getLogger(__name__)
@@ -108,15 +112,18 @@ FALLBACK_READ_TOOLS = frozenset({"list_files", "read_file"})
 """网关（非 `api.openai.com`）上代替 Shell 的兜底只读工具；写入仍走原生 `apply_patch`。"""
 
 
-def native_shell_supported(profile: ModelProfileValue) -> bool:
+def native_shell_supported(
+    profile: ModelProfileValue, *, sandbox_available: Callable[[], bool] = _sandbox_available
+) -> bool:
     """`provider=openai` 的配置能否用本地执行的原生 `ShellTool`。
 
-    只有官方 API（`base_url` 为空或主机是 `api.openai.com`）支持：OpenRouter 的
+    本机必须能用 `sandbox-exec` 包裹 Shell（macOS，TD-20）；否则失败关闭、不提供 Shell。
+    此外只有官方 API（`base_url` 为空或主机是 `api.openai.com`）支持：OpenRouter 的
     Responses API 对 `shell` 没有客户端执行模式，`local` 环境不受支持，命令会进它的
     托管沙箱，看不到工作区（F2，2026-09-28 核实，见 docs/references/openai-agents-sdk.md）。
     其他网关按同样保守处理。
     """
-    return is_official_openai(profile)
+    return sandbox_available() and is_official_openai(profile)
 
 
 def is_official_openai(profile: ModelProfileValue) -> bool:
@@ -244,8 +251,13 @@ class OpenAIRuntime:
         history_turns: int = 20,
         model_factory: ModelFactory = build_model,
         environ: Mapping[str, str] | None = None,
+        repo_root: Path | None = None,
+        sandbox_available: Callable[[], bool] = _sandbox_available,
     ) -> None:
         self._sessions_db = data_dir / SESSIONS_DB
+        # Shell sandbox deny-read list, same policy as the Claude Bash sandbox (TD-1/TD-20).
+        self._shell_deny_read = [repo_root if repo_root is not None else _repo_root(), data_dir]
+        self._sandbox_available = sandbox_available
         self._history_turns = history_turns
         self._model_factory = model_factory
         self._environ = environ if environ is not None else os.environ
@@ -258,14 +270,14 @@ class OpenAIRuntime:
             native.append(
                 ApplyPatchTool(editor=WorkspaceApplyPatchEditor(ctx.workdir, ctx.write_scope))
             )
-            if native_shell_supported(ctx.model_profile):
-                native.append(
-                    ShellTool(
-                        executor=LocalShellExecutor(
-                            ctx.workdir, turn.failed_calls, environ=self._environ
-                        )
-                    )
+            if native_shell_supported(ctx.model_profile, sandbox_available=self._sandbox_available):
+                executor = LocalShellExecutor(
+                    ctx.workdir,
+                    turn.failed_calls,
+                    environ=self._environ,
+                    deny_read=self._shell_deny_read,
                 )
+                native.append(ShellTool(executor=executor))
             else:
                 specs += [
                     spec

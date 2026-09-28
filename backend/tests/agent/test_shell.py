@@ -1,9 +1,14 @@
-"""`LocalShellExecutor` 的测试（TD-16 从 `test_openai_runtime.py` 迁出）。"""
+"""`LocalShellExecutor` 的测试（TD-16 从 `test_openai_runtime.py` 迁出）。
+
+命令都经 `sandbox-exec` 真实执行，只在 macOS 上跑（计划 M1x T9 写明的 skipif 理由）；
+沙箱策略本身的测试在 `test_shell_sandbox.py`。
+"""
 
 from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,6 +17,11 @@ from agents.tool import ShellActionRequest
 
 from studio.agent import shell as shell_module
 from studio.agent.shell import LocalShellExecutor
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="Shell 经 sandbox-exec 执行，只存在于 macOS（计划 M1x T9 写明的 skipif 理由）",
+)
 
 
 def _request(commands: list[str], timeout_ms: int | None = None) -> ShellCommandRequest:
