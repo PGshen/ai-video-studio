@@ -39,7 +39,7 @@
 
 - [x] AC1：`ManimRenderEngine.validate_code` 和 `.render` 在新代码路径下通过（渲染一个极小的手写镜头，得到 mp4）（验证：`pytest backend/tests/engines/test_manim_engine.py`）
 - [x] AC2：`render_preview(scene_id)` 对一个两镜头的 fixture，返回每个 beat 的关键帧图片、渲染时长与配音时长的偏差；120 秒超时能被触发并返回工具错误而不是挂起整轮（验证：`pytest backend/tests/engines/test_manim_preview.py`）
-- [ ] AC3：`jobs` 仓储的领取语义防止同一任务被并发领取两次；心跳过期的 `running` 任务在 worker 启动时被标记 `failed`（验证：`pytest backend/tests/jobs/`）
+- [x] AC3：`jobs` 仓储的领取语义防止同一任务被并发领取两次；心跳过期的 `running` 任务在 worker 启动时被标记 `failed`（验证：`pytest backend/tests/jobs/`）
 - [ ] AC4：手工 fixture 项目上，从"叙事已定稿"状态开始，animation agent（`FakeRuntime`）跑一轮，调用 `validate_scenes` 和 `render_preview` 都能拿到预期结果；点击"渲染成片"后 worker 产出 `output/final.mp4` + `output/final.json`，"成片定稿"后阶段状态变 `finalized` 且项目标记完成（验证：`pytest backend/tests/api/test_animation_flow.py`，慢测试单独跑）
 - [ ] AC5：`animation` 阶段的 `suggest_upstream_change` 工具调用后 `suggestions` 表新增一条 `status=open` 的记录（验证：`pytest backend/tests/stages/test_common.py`）
 - [ ] AC6：前端动画画布能显示镜头列表、代码编辑器、预览关键帧和渲染成片进度/播放器（验证：`make dev` 手动走查 + `pytest frontend`；截图见「验证记录」）
@@ -81,7 +81,7 @@
 - **完成标准**：`pytest backend/tests/engines/test_manim_preview.py` 通过。
 - **验证命令**：`make check`（渲染类测试若标记为慢测试，另跑 `pytest backend/tests/engines -m slow`）
 
-### T3：`jobs` 模块——SQLite 任务队列（待开始）
+### T3：`jobs` 模块——SQLite 任务队列（完成）
 
 - **目标**：`studio.jobs` 提供创建、领取、心跳、进度更新、完成/失败、查询的仓储函数，基于已存在的 `Job` ORM（`backend/src/studio/db/models.py:158`，M1 已建表）。
 - **涉及文件**：新建 `backend/src/studio/jobs/__init__.py`、`backend/src/studio/jobs/repo.py`；`backend/tests/jobs/test_repo.py`（新建）。
@@ -236,10 +236,11 @@
 
 - 2026-09-28 — T1：`engines.render` 协议与 manim 引擎迁移 — 完成。`engines/render/{base,format}.py` + `engines/render/manim/{script,process,engine}.py`（决策记录 D1 的拆分）；`backend/tests/engines/test_manim_engine.py` 迁移全部静态分析用例并新增一条端到端 mp4 渲染用例（AC1）；新增 `slow` pytest marker 与 `manim`/`pyflakes` 依赖；新增 import-linter 契约"engines 是纯能力层"；pyright 全绿（`EngineRegistry` 加了 `RenderEngine` 上界、修了几处 possibly-unbound/None 缩窄）。`make check` 全绿（见本提交）。
 - 2026-09-28 — T2：`engines.render` 预览渲染与关键帧抽取 — 完成。新建 `engines/render/manim/keyframes.py`（`extract_keyframe`/`probe_duration_seconds`，ffmpeg/ffprobe 子进程）；`ManimRenderEngine.render_preview` 实现：低清（480×270/15fps）渲染 → 按 `beat_end_times` + 起始偏移抽关键帧 → 有 `audio_duration_seconds` 时算时长偏差；超时走 `run_render` 自身的 `timeout_seconds`（可传参，测试用极小值触发，不用真等 120 秒），映射成"预览渲染超时"。过程中发现 manim `add_sound()` 的音轨最短 1 秒的坑（决策记录 D10，同时写进 `docs/references/manim.md`）。`backend/tests/engines/test_manim_preview.py` 4 个用例（AC2）。`make check` 全绿（见本提交）。
+- 2026-09-28 — T3：`jobs` 模块——SQLite 任务队列 — 完成。`create_job`/`claim_next`/`heartbeat`/`update_progress`/`complete`/`fail`/`get_job`/`list_jobs`/`reap_stale_running`；实际的 `Job` 模型读写按 ARCHITECTURE 规则 5 落在新建的 `db/repo/jobs.py`，`jobs/repo.py` 只转发（决策记录 D11），公共接口仍是计划里写的 `studio.jobs.*`。新增两条 import-linter 契约（"jobs 不直接依赖 db.models"、"jobs 不依赖 main"）。`backend/tests/jobs/test_repo.py` 7 个用例（AC3），`reap_stale_running` 用直接改写 `heartbeat_at` 而不是等待真实超时来区分"过期"和"新鲜"两条任务。`make check` 全绿（见本提交）。
 
 ## 下一步
 
-- 从 T3 开始：`jobs` 模块——SQLite 任务队列。新建 `backend/src/studio/jobs/{__init__.py,repo.py}`，实现 `create_job`/`claim_next`/`heartbeat`/`update_progress`/`complete`/`fail`/`get_job`/`list_jobs`/`reap_stale_running`，基于已有的 `Job` ORM（`backend/src/studio/db/models.py:158`）。先写 `backend/tests/jobs/test_repo.py` 里的失败测试，再实现。
+- 从 T4 开始：手工叙事 fixture 与开发种子脚本。新建 `backend/tests/fixtures/animation/{narrative.json,timing.json,audio/*.wav,seed.py}`，`seed_animation_project(engine, blobs, *, data_dir) -> project_id` 建项目、写 narrative 阶段产物、调用 `stage_flow.finalize` 把 animation 阶段从 `locked` 变 `active`；fixture 的音频要 ≥ 1.0s（`docs/references/manim.md`，避免 manim 的静音底轨下限干扰 T5/T7/T8 用到的时长计算）。
 
 ## 决策记录
 
@@ -255,6 +256,7 @@
 - 2026-09-28 — D8（T1）：新增 `slow` pytest marker，`addopts` 改成 `-m 'not smoke and not slow'`——凡是会起 manim 子进程（dry-run 校验或全画质渲染）的测试都标 `@pytest.mark.slow`，默认 `make check` 跑的 `pytest` 会把它们跳过（deselected，不是失败），需要时用 `pytest ... -m slow` 单独跑；纯字符串拼装/AST 变换的测试（`_build_manim_script`/`_prepare_manim_code` 等）不标，仍在默认范围内。T1 自验证时两组都手动跑过一遍，见「验证记录」。
 - 2026-09-28 — D9（T1）：`pyright` 是 studio 项目的机器检查（legacy 项目没有），迁移代码时补了几处类型收紧，不改变行为：`EngineRegistry[T]` 加上界 `T: RenderEngine`；`process.py` 里 `proc.stdout`（PIPE 模式下运行时保证非 None）加了 `assert`；`script.py` 的签名校验里 `**{kw.arg: None for kw in node.keywords}` 改成过滤掉 `kw.arg is None` 的项（上面已有等价的运行时 guard，这里只是让 pyright 也能看见）；`_build_manim_script` 里 `duration` 提前初始化为 `0.0`，避免 pyright 认为它在第二个 `if include_audio:` 块里"可能未绑定"。
 - 2026-09-28 — D10（T2）：`extract_keyframe` 的 ffprobe 探测总时长要用 `-select_streams v:0`（视频流）而不是 `format=duration`（容器整体）——manim 的 `add_sound()` 会给音轨套一层至少 1 秒的静音底轨（见「意外与发现」和 `docs/references/manim.md`），容器时长会被音轨拖长，用它算"目标镜头的实际渲染时长"会系统性偏大。抽帧时的安全上限也要留整整一帧（`1/fps`）而不是半帧：ffmpeg 的 `-frames:v 1` 找的是"第一个 PTS ≥ 目标时刻"的帧，最后一帧的 PTS 是 `(nb_frames-1)/fps`，比视频时长（`nb_frames/fps`）少一帧，留少了会抽不到东西。`extract_keyframe` 的 `-ss` 放在 `-i` 之后（解码寻址而非快速寻址）：预览视频很短，快速寻址靠关键帧索引经常直接跳过内容，短视频里解码开销可以忽略。
+- 2026-09-28 — D11（T3）：计划里 T3 写的文件路径是 `backend/src/studio/jobs/repo.py`，但 `Job` ORM 模型的直接读写按 ARCHITECTURE 规则 5（"只有 `db` 定义 ORM 模型；其他模块只通过 `db.repo` 读写"）不该放在 `studio.jobs` 包里——`workspace`/`agent`/`stages`/`api` 都有一条"不直接依赖 `db.models`"的 import-linter 契约，`jobs` 不应该是例外。把实现挪到新建的 `studio/db/repo/jobs.py`（和 `projects.py`/`stages.py`/`snapshots.py` 同级），`studio/jobs/repo.py` 改成纯转发（`from studio.db.repo.jobs import ...`），`studio.jobs` 对外的公共接口（函数名、`JobValue`）和计划里写的完全一样，只是实现的物理位置变了。
 
 ## 意外与发现
 
@@ -274,3 +276,4 @@
 
 - AC1（2026-09-28，L2）：`pytest backend/tests/engines/test_manim_engine.py` → `18 passed, 5 deselected`（慢测试被 `slow` marker 跳过）；`pytest backend/tests/engines/test_manim_engine.py -m slow` → `5 passed`，其中 `test_render_produces_mp4_for_minimal_two_scene_script` 对两个极简镜头（`Dot()`/`Square()`，各配一段脚本生成的静音 wav）跑 `ManimRenderEngine.render`，断言 `success is True` 且拿到非空 `video_bytes`；`test_validate_code_attributes_runtime_error_to_originating_scene` 覆盖 traceback 定位回具体镜头号。`make check` 全绿（后端 619 passed / 11 deselected，前端 128 passed，import-linter 16 kept，pyright 0 errors）。
 - AC2（2026-09-28，L2）：`pytest backend/tests/engines/test_manim_preview.py` → `1 passed, 3 deselected`（超时用例默认就跑，见下）；`pytest backend/tests/engines/test_manim_preview.py -m slow` → `3 passed`：两镜头 fixture（各 1.0s）对第二个镜头调 `render_preview`，`test_render_preview_returns_one_keyframe_per_beat` 断言关键帧数等于 beat 数（2 个）且每张图非空；`test_render_preview_computes_duration_deviation` 断言时长偏差在 0.3s 容忍范围内；`test_render_preview_skips_deviation_without_audio_duration` 断言不给 `audio_duration_seconds` 时偏差是 `None`。`test_render_preview_times_out_without_waiting_120_seconds`（不标 slow，靠 `timeout_seconds=0.001` 参数触发，不用真等 120 秒）断言 `success is False`、`error_message == "预览渲染超时"`。`pytest backend/tests/engines -m slow` → `8 passed`（T1+T2 一起跑）。`make check` 全绿（后端 620 passed / 14 deselected，前端 128 passed，import-linter 16 kept，pyright 0 errors）。
+- AC3（2026-09-28，L2）：`pytest backend/tests/jobs/` → `7 passed`：`test_claim_next_claims_once_then_queue_is_empty` 断言同一条 `queued` 任务只能领到一次，第二次返回 `None`；`test_reap_stale_running_only_affects_expired_heartbeats` 建两条 `running` 任务，手动把其中一条的 `heartbeat_at` 改到 120 秒前，`reap_stale_running(heartbeat_timeout_seconds=60)` 后只有那条变 `failed`，另一条仍是 `running`。`make check` 全绿（后端 627 passed / 14 deselected，前端 128 passed，import-linter 18 kept，pyright 0 errors）。

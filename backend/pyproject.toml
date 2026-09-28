@@ -196,3 +196,16 @@ forbidden_modules = [
     "studio.db",
 ]
 allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "jobs 不直接依赖 db.models，只通过 db.repo 读写（规则 5）"
+type = "forbidden"
+source_modules = ["studio.jobs"]
+forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "jobs 不依赖 main（组装层不能被下层反向依赖）"
+type = "forbidden"
+source_modules = ["studio.jobs"]
+forbidden_modules = ["studio.main"]
