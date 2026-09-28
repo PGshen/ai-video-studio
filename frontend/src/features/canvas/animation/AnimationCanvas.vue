@@ -13,6 +13,10 @@
  * 文本文件；也不需要 `upstream/` 只读判断——`animation/scenes/**` 一直是
  * 本阶段自己的可写范围，只读的原因只有"agent 正在跑一轮"（`props.busy`）
  * 一种。
+ *
+ * 任务 T13 加了 `FinalRenderPanel`（成片面板：渲染成片/进度/播放器/成片
+ * 定稿），挂在镜头列表+编辑器这个 grid 下方，只在镜头列表已知（叙事已
+ * 物化且解析无误）时显示——见该组件顶部注释。
  */
 import { computed, ref, watch, watchEffect } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -23,6 +27,7 @@ import { ApiError } from '@/api/http'
 import type { FileWriteResult } from '@/types/api'
 import SceneList from './SceneList.vue'
 import KeyframeStrip from './KeyframeStrip.vue'
+import FinalRenderPanel from './FinalRenderPanel.vue'
 import { NARRATIVE_JSON_PATH, parseNarrativeSceneIds } from './narrativeScenes'
 import { computeSceneStatuses } from './sceneStatus'
 import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from './conflictState'
@@ -170,116 +175,124 @@ function onLoadLatest(): void {
 </script>
 
 <template>
-  <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-3">
-    <template v-if="!narrativeMaterialized">
-      <p class="text-muted-foreground col-span-2 text-sm">
-        还没有镜头列表：`upstream/narrative/` 要在这个会话跑过第一轮对话后才会物化。
-        请先在左侧发一条消息开始一轮。
-      </p>
-    </template>
-    <template v-else-if="narrativeParse.error">
-      <p class="text-destructive col-span-2 text-sm">
-        解析 narrative.json 失败：{{ narrativeParse.error }}
-      </p>
-    </template>
-    <template v-else>
-      <SceneList
-        :scenes="scenes"
-        :selected-id="selectedSceneId"
-        @select="(id) => (selectedSceneId = id)"
-      />
+  <div class="flex min-h-0 flex-1 flex-col gap-3">
+    <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-3">
+      <template v-if="!narrativeMaterialized">
+        <p class="text-muted-foreground col-span-2 text-sm">
+          还没有镜头列表：`upstream/narrative/` 要在这个会话跑过第一轮对话后才会物化。
+          请先在左侧发一条消息开始一轮。
+        </p>
+      </template>
+      <template v-else-if="narrativeParse.error">
+        <p class="text-destructive col-span-2 text-sm">
+          解析 narrative.json 失败：{{ narrativeParse.error }}
+        </p>
+      </template>
+      <template v-else>
+        <SceneList
+          :scenes="scenes"
+          :selected-id="selectedSceneId"
+          @select="(id) => (selectedSceneId = id)"
+        />
 
-      <div class="flex min-h-0 flex-col gap-2">
-        <template v-if="!selectedSceneId">
-          <p class="text-muted-foreground text-sm">
-            从左侧选择一个镜头
-          </p>
-        </template>
-        <template v-else-if="fileMissing && buffer">
-          <div class="border-destructive bg-destructive/10 rounded border px-3 py-2 text-sm">
-            该镜头的代码文件已不存在（可能被回滚或删除）。已保留你未保存的修改，只读展示——不会自动重新创建文件。
-          </div>
-          <CodeEditor
-            :content="buffer.content"
-            :language="SCENE_LANGUAGE"
-            readonly
-          />
-        </template>
-        <template v-else-if="!buffer">
-          <p class="text-muted-foreground text-sm">
-            加载中…
-          </p>
-        </template>
-        <template v-else>
-          <div
-            v-if="buffer.conflict"
-            class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
-          >
-            <span>这个镜头的代码在你编辑期间被更新了（可能是 agent 写的）。</span>
-            <div class="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                @click="onKeepMine"
-              >
-                保留我的修改
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                @click="onLoadLatest"
-              >
-                载入最新
-              </Button>
-            </div>
-          </div>
-
-          <p
-            v-if="readonly"
-            class="text-muted-foreground text-xs"
-          >
-            只读：agent 正在运行
-          </p>
-          <p
-            v-else-if="!sceneExists"
-            class="text-muted-foreground text-xs"
-          >
-            这个镜头还没有代码，写完后保存即可创建 {{ selectedScene?.path }}
-          </p>
-
-          <CodeEditor
-            :content="buffer.content"
-            :language="SCENE_LANGUAGE"
-            :readonly="readonly"
-            @update:content="onEdit"
-          />
-
-          <div class="flex items-center justify-between">
-            <p
-              v-if="saveError"
-              class="text-destructive text-xs"
-            >
-              {{ saveError }}
+        <div class="flex min-h-0 flex-col gap-2">
+          <template v-if="!selectedSceneId">
+            <p class="text-muted-foreground text-sm">
+              从左侧选择一个镜头
             </p>
-            <span
-              v-else-if="buffer.dirty"
+          </template>
+          <template v-else-if="fileMissing && buffer">
+            <div class="border-destructive bg-destructive/10 rounded border px-3 py-2 text-sm">
+              该镜头的代码文件已不存在（可能被回滚或删除）。已保留你未保存的修改，只读展示——不会自动重新创建文件。
+            </div>
+            <CodeEditor
+              :content="buffer.content"
+              :language="SCENE_LANGUAGE"
+              readonly
+            />
+          </template>
+          <template v-else-if="!buffer">
+            <p class="text-muted-foreground text-sm">
+              加载中…
+            </p>
+          </template>
+          <template v-else>
+            <div
+              v-if="buffer.conflict"
+              class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
+            >
+              <span>这个镜头的代码在你编辑期间被更新了（可能是 agent 写的）。</span>
+              <div class="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  @click="onKeepMine"
+                >
+                  保留我的修改
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  @click="onLoadLatest"
+                >
+                  载入最新
+                </Button>
+              </div>
+            </div>
+
+            <p
+              v-if="readonly"
               class="text-muted-foreground text-xs"
             >
-              有未保存的修改
-            </span>
-            <span v-else />
-            <Button
-              size="sm"
-              :disabled="!buffer.dirty || readonly || writeMutation.isPending.value"
-              @click="onSave"
+              只读：agent 正在运行
+            </p>
+            <p
+              v-else-if="!sceneExists"
+              class="text-muted-foreground text-xs"
             >
-              保存
-            </Button>
-          </div>
+              这个镜头还没有代码，写完后保存即可创建 {{ selectedScene?.path }}
+            </p>
 
-          <KeyframeStrip :scene-id="selectedSceneId" />
-        </template>
-      </div>
-    </template>
+            <CodeEditor
+              :content="buffer.content"
+              :language="SCENE_LANGUAGE"
+              :readonly="readonly"
+              @update:content="onEdit"
+            />
+
+            <div class="flex items-center justify-between">
+              <p
+                v-if="saveError"
+                class="text-destructive text-xs"
+              >
+                {{ saveError }}
+              </p>
+              <span
+                v-else-if="buffer.dirty"
+                class="text-muted-foreground text-xs"
+              >
+                有未保存的修改
+              </span>
+              <span v-else />
+              <Button
+                size="sm"
+                :disabled="!buffer.dirty || readonly || writeMutation.isPending.value"
+                @click="onSave"
+              >
+                保存
+              </Button>
+            </div>
+
+            <KeyframeStrip :scene-id="selectedSceneId" />
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <FinalRenderPanel
+      v-if="narrativeMaterialized && !narrativeParse.error"
+      :project-id="projectId"
+      :scene-count="scenes.length"
+    />
   </div>
 </template>

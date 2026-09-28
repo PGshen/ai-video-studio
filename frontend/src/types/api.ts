@@ -23,6 +23,8 @@ export interface ProjectOut {
   idea_id: string | null
   current_stage: string
   settings: Record<string, unknown>
+  /** "成片定稿"（T11）后设为完成时间；`null` 表示项目尚未完成（任务 T13）。 */
+  completed_at: string | null
 }
 
 export interface ProjectDetailOut extends ProjectOut {
@@ -114,6 +116,23 @@ export interface MessageCreate {
 /** `POST .../messages`、`.../cancel`、`.../continue` 的响应：正在处理的 turn id。 */
 export interface TurnAccepted {
   turn_id: string
+}
+
+/**
+ * `jobs` 表一行（后端 `api/schemas.py::JobOut`，任务 T13）：渲染成片任务的
+ * 状态、进度、错误、结果。不含 `payload`/`heartbeat_at`——这两个是 worker
+ * 内部字段，前端不需要（后端 `JobOut` 文档同款理由）。
+ */
+export interface JobOut {
+  id: string
+  type: string
+  project_id: string
+  status: string
+  progress: number
+  error: string | null
+  result: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
 }
 
 export interface ModelProfileOut {

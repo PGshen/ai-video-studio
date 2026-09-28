@@ -8,6 +8,7 @@ import { encodeFilePath, encodePathSegment, request, requestText } from '@/api/h
 import type {
   FileTreeOut,
   FileWriteResult,
+  JobOut,
   MessageCreate,
   ModelProfileOut,
   ProjectCreate,
@@ -18,6 +19,7 @@ import type {
   SessionOut,
   SnapshotDiffOut,
   SnapshotOut,
+  StageOut,
   TurnAccepted,
 } from '@/types/api'
 
@@ -139,4 +141,31 @@ export function sessionStreamUrl(sessionId: string): string {
 
 export function listModelProfiles(): Promise<ModelProfileOut[]> {
   return request('/model-profiles')
+}
+
+// ---- jobs / 成片渲染（任务 T13，对应 `api/jobs.py`、`api/animation.py`）----
+
+export function createRenderJob(projectId: string): Promise<JobOut> {
+  return request(`/projects/${encodePathSegment(projectId)}/render`, { method: 'POST' })
+}
+
+export function getJob(projectId: string, jobId: string): Promise<JobOut> {
+  return request(
+    `/projects/${encodePathSegment(projectId)}/jobs/${encodePathSegment(jobId)}`,
+  )
+}
+
+export function finalizeRender(projectId: string): Promise<StageOut> {
+  return request(`/projects/${encodePathSegment(projectId)}/animation/finalize-render`, {
+    method: 'POST',
+  })
+}
+
+/**
+ * 成片下载/播放地址（`GET /projects/{id}/output/final.mp4`）：直接给
+ * `<video>` 标签当 `src` 用，不用专门写一个 fetch 函数下载字节——同
+ * `sessionStreamUrl` 的做法。
+ */
+export function finalVideoUrl(projectId: string): string {
+  return `/api/projects/${encodePathSegment(projectId)}/output/final.mp4`
 }
