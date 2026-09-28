@@ -316,6 +316,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 
 - 2026-09-28 — T15：冒烟测试与 R1–R5 验证 — 完成（部分未验证）：`make smoke` 目标与 `backend/tests/smoke/`（4 个用例 + 4 个离线辅助测试）落地；种子配置核实并更新模型名/单价（`deepseek/deepseek-flash`，四个真实配置都填了单价与 `supports_vision`）；`make smoke` 第 1 次运行（本 M1 共用 5 次额度中的 1 次）：`test_claude_login` 通过，其余 3 个缺 key 跳过；R3、R5、Claude 侧 R2、登录模式 R4 有结论，R1、OpenAI/LiteLLM 侧 R2、API key 模式 R4 未验证；`make check` 全绿（见本提交）。- 2026-09-28 — M1 最终整体审查修复（C1、I2–I7、M1–M12）— 完成，`make check` 全绿（后端 490 个测试、前端 125 个 vitest、import-linter 15 条契约）；AC1–AC3、AC5–AC9 补齐证据并勾选，见「验证记录」；报告见 `.superpowers/sdd/m1-skeleton/final-fix-report.md`（见本提交及之前 8 个修复提交）。
 - 2026-09-28 — 验收前追加 F1（Read/Glob/Grep/Write 拦截放过 `~` 路径）— 完成：`_escapes` 与 `write_denial_reason` 对以 `~` 开头的路径（含 `~user/…`）直接拒绝；TestReadScopeHook 新增 8 条、TestWriteScopeHook 新增 3 条 deny 用例（见本提交）。
+- 2026-09-28 — 验收前追加 F2（网关配置：Claude → ccproxy.yukework.com，OpenAI → OpenRouter）— 完成：`Settings` 新增 `anthropic_base_url`/`openai_base_url`/`openai_model`；`seed_model_profiles(settings=...)` 写入并更新已有行的这几个字段，`main` 与冒烟 `build_harness` 用同一个 `Settings` 调种子；OpenAI 运行时在非官方 `base_url` 上不提供 Shell、改给 `list_files`/`read_file`；references、dev-setup、verification、`.env.example` 已更新；后端 512 个测试（新增 15 个）（见本提交）。
 
 ## 下一步
 
@@ -323,6 +324,7 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - AC10 待补：负责人在 `backend/.env` 提供 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY` 后再跑一次 `make smoke`（M1 额度还剩 4 次），补齐 Claude API key 模式与 R4、OpenAI Responses、DeepSeek（LiteLLM）与 R2；R1 需要临时给 LiteLLM 接原生工具手动试。R2 在 LiteLLM 上不成立时按设计 §9 实现"文本说明 + 图片作为下一条输入"的对策。
 - 已有的 `data/studio.db` 里 `deepseek` 配置仍是旧模型名、无单价（种子只插不更），需要删库重建或手动改行。
 - 延后的技术债已登记到 `docs/quality/tech-debt.md`（TD-1…TD-24），M2 开始前挑选处理；模块评级见 `docs/quality/QUALITY.md`。
+- **F1/F2 已完成（2026-09-28）**：控制者在 `backend/.env` 加入 `STUDIO_ANTHROPIC_BASE_URL`、`STUDIO_OPENAI_BASE_URL`、`STUDIO_OPENAI_MODEL` 三行后运行 `make smoke`，补齐 AC10：Claude 经 ccproxy 网关（API key 模式、R4）、OpenAI 经 OpenRouter（无 Shell，apply_patch 建文件；核对多轮 reasoning 回放与 usage）、DeepSeek（LiteLLM、R2）。已有 `data/studio.db` 下次启动时种子会自动更新这三个字段。
 
 ## 决策记录
 
@@ -443,6 +445,9 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — T15：R3 结论成立，保留 Bash + SDK sandbox（不启用设计 §9 的"关闭 Bash"对策）；R5 结论成立，不需要额外对策（事前 hook + 只读文件权限 + 事后 guard 三层）。
 - 2026-09-28 — T15 审查后修复：宿主环境变量的隔离从源头做，不再只靠文档里的手动 `env -i`。① `ClaudeRuntime.build_env` 两种认证模式都把继承来的宿主变量置空（`HOST_BLANKED_ENV` 明确列出的认证/provider/模型覆盖/宿主标记变量 + `HOST_BLANKED_PREFIXES` 前缀 `CLAUDE_CODE_HOST_`、`CLAUDE_CODE_SDK_HAS_`、`CLAUDE_CODE_MESSAGING_`、`CLAUDE_CODE_SESSION_`、`CLAUDE_CODE_REMOTE`、`CLAUDE_CODE_DESKTOP_`），`ANTHROPIC_BASE_URL` 没有配置 `base_url` 时换成 `https://api.anthropic.com`（CLI 里有 `??` 写法，空串不等于未设置）；不动 `CLAUDE_CODE_ENTRYPOINT`、`CLAUDE_CODE_SDK_READS_SESSION_STATE`（SDK 自己处理）和 `CLAUDE_CONFIG_DIR`（登录模式要用），覆盖 `make dev`。② `make smoke` 用 `env -i` 只带白名单变量（`HOME`/`PATH`/`USER`/`LANG`/`TMPDIR`/`SHELL` + 三个 key + `STUDIO_*`）运行 pytest。这一条同时关闭 T9 审查遗留的"env 泄漏"小问题。依据见 references（claude-agent-sdk.md 宿主变量一条）。
 - 2026-09-28 — F1：以 `~` 开头的 Read/Glob/Grep/Write 类路径直接拒绝，而不是 `expanduser` 后再判断是否在工作区内 — Claude Code 文件工具会展开 `~`/`~user`，而 `Path` 把它当普通相对段；直接拒绝同时覆盖 `~user`（不必依赖本机用户表），误伤的只有工作区里名字以 `~` 开头的文件（可改用 `./~x` 访问），代价可接受。兜底文件工具（OpenAI 路径）是自己的 Python 实现、不展开 `~`，不受影响。
+- 2026-09-28 — F2：种子对由配置决定的字段（`claude-sonnet.base_url`、`gpt.base_url`、`gpt.model`）在配置值非空且与库中不同时**更新已有行**，只动这些字段；配置为空不清空已有值 — 负责人要求已有库也能生效；只更新配置明确给出的值，避免覆盖将来设置页（M5）里用户手动改的其他字段；清空要靠手动改或删库，写进 dev-setup。
+- 2026-09-28 — F2：OpenRouter 经核实支持 Responses API 的 `apply_patch`（客户端应用）与 `web_search`，但 `shell` 没有客户端执行模式（`local` 环境不支持，命令进托管沙箱）→ 不改用 Chat Completions，只做最小改动：`provider=openai` 且 `base_url` 主机不是 `api.openai.com` 时自动不提供 `ShellTool`，补兜底只读工具 `list_files`/`read_file`（`native_shell_supported`）。用自动判断而不是显式开关：没有已知的网关支持本地 shell，判断条件简单可测；将来遇到支持的网关再加开关。来源与日期见 references/openai-agents-sdk.md。
+- 2026-09-28 — F2：OpenRouter 上 `openai/gpt-5` 单价与官方一致（.25/，`GET https://openrouter.ai/api/v1/models`），种子单价不随网关变化。
 
 ## 意外与发现
 
@@ -485,6 +490,8 @@ T15 需要真实 key 和付费调用。**批准本计划即视为同意**：由�
 - 2026-09-28 — （最终审查 L3）uvicorn 收到 SIGTERM 后先等待所有连接（包括浏览器的 SSE）关闭，再执行 lifespan 关闭；实测运行中的 Fake turn 在等待期间自然跑完成 `done`，lifespan 的 interrupted 收尾没有机会触发（L2 已覆盖该路径）。登记为 TD-22。
 - 2026-09-28 — （最终审查 AC5）sse-starlette 的帧以 CRLF 结尾，shell 里用 `grep '^id:' | awk` 取出的 seq 带 `\r`，拼进 URL 后请求静默失败；验证脚本要先 `tr -d '\r'`。
 - 2026-09-28 — （最终审查 I6）修复前的 import-linter 契约下，`workspace→agent`、`db→workspace`、`config→workspace`、`stages→db.models` 四种违规全部通过（13 kept, 0 broken）；新增 `layers` 契约与 stages 的规则 5 后四种各自失败。
+- 2026-09-28 — F2：OpenRouter 的 Responses API 是无状态的（`store` 只能为 false，`previous_response_id` 非空报 400），本项目本来就用 `SQLiteSession` 回放完整历史、不设这两个参数，不受影响；多轮回放 `reasoning` 条目、`usage` 是否齐全仍待 `make smoke` 实测（已记 references）。
+- 2026-09-28 — F2：现有单元测试里直接 `Settings(...)` 会读 `backend/.env`；新增字段后用三个 `STUDIO_*` 网关变量跑了一遍全量后端测试（512 通过），确认负责人写入 `.env` 后 `make check` 不受影响；新测试显式传 `None` 保持与 `.env` 无关。
 
 ## 已知限制（非本任务缺陷，留给后续任务）
 

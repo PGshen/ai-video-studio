@@ -53,6 +53,23 @@ class Settings(BaseSettings):
     用于手动验证"运行中"状态和重启中断；默认 0。"""
     openai_history_turns: int = 20
     """OpenAI 运行时发给模型的会话历史只保留最近这么多轮（设计 §4.1“保留最近 N 轮”）。"""
+    anthropic_base_url: str | None = None
+    """Claude API key 模式（种子 `claude-sonnet`）走的网关地址（`STUDIO_ANTHROPIC_BASE_URL`）。
+    由 `seed_model_profiles` 写进模型配置的 `base_url`；登录模式（`claude-login`）不受影响。"""
+    openai_base_url: str | None = None
+    """OpenAI 运行时（种子 `gpt`）的 base_url（`STUDIO_OPENAI_BASE_URL`），例如 OpenRouter
+    `https://openrouter.ai/api/v1`；非 `api.openai.com` 时不提供原生 Shell，见 openai_runtime。"""
+    openai_model: str | None = None
+    """种子 `gpt` 的模型名（`STUDIO_OPENAI_MODEL`），例如 OpenRouter 上的 `openai/gpt-5`；
+    未设置时用种子默认值 `gpt-5`。"""
+
+    @field_validator("anthropic_base_url", "openai_base_url", "openai_model", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
 
     @field_validator("data_dir")
     @classmethod

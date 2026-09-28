@@ -3,7 +3,13 @@
 种子的模型名与单价在 T15（2026-09-28）按各家官方页面核实：Claude 模型表
 （`claude-sonnet-5`，$2/$10）、OpenAI 定价页（`gpt-5`，$1.25/$10）、DeepSeek 定价页
 （`deepseek-chat` 已于 2026-07-24 停用，现名 `deepseek-flash`，按高峰价 $0.30/$1.20
-计，宁可高估）。种子只插入不存在的配置，已有数据库里的旧行不会被更新。
+计，宁可高估）。种子只插入不存在的配置，已有数据库里的旧行不会被更新——
+例外是由配置（`Settings`）决定的网关字段（F2，2026-09-28）：`claude-sonnet` 的
+`base_url` ← `anthropic_base_url`，`gpt` 的 `base_url` ← `openai_base_url`、`model` ←
+`openai_model`。配置值非空时，新行用它插入，已有行在值不同时只更新这两个字段；
+配置值为空时新行用默认值（无 `base_url`、`gpt-5`），已有行不动。OpenRouter 上
+`openai/gpt-5` 的单价与 OpenAI 官方相同（$1.25/$10，OpenRouter `/api/v1/models`，
+2026-09-28），单价不随网关变化。
 
 `claude-login` 的 `api_key_env` 为空表示使用本机已登录的 Claude Code 订阅账号，
 不新增字段，复用设计已有的 `api_key_env`。
@@ -16,6 +22,7 @@ from typing import Any
 
 from sqlalchemy import Engine, select
 
+from studio.config import Settings
 from studio.db.engine import session_scope
 from studio.db.models import ModelProfile
 
@@ -110,16 +117,41 @@ _FAKE_PROFILE: dict[str, Any] = {
 }
 
 
-def seed_model_profiles(engine: Engine, *, enable_fake_runtime: bool) -> None:
-    """插入种子模型配置；按 `name` 判断是否已存在，已存在则跳过（幂等）。"""
+def _gateway_overrides(settings: Settings | None) -> dict[str, dict[str, str]]:
+    """按种子 `name` 给出由配置决定、且配置值非空的字段。"""
+    if settings is None:
+        return {}
+    candidates = {
+        "claude-sonnet": {"base_url": settings.anthropic_base_url},
+        "gpt": {"base_url": settings.openai_base_url, "model": settings.openai_model},
+    }
+    return {
+        name: {field: value for field, value in fields.items() if value}
+        for name, fields in candidates.items()
+    }
+
+
+def seed_model_profiles(
+    engine: Engine, *, enable_fake_runtime: bool, settings: Settings | None = None
+) -> None:
+    """插入种子模型配置；按 `name` 判断是否已存在，已存在则跳过（幂等）。
+
+    `settings` 给出网关字段（见模块说明）：非空时用于新行，并更新已有行的这些字段。
+    """
     specs = [_FAKE_PROFILE, *_SEED_PROFILES] if enable_fake_runtime else list(_SEED_PROFILES)
+    overrides = _gateway_overrides(settings)
 
     with session_scope(engine) as session:
-        existing_names = set(session.scalars(select(ModelProfile.name)))
+        existing = {row.name: row for row in session.scalars(select(ModelProfile))}
         for spec in specs:
-            if spec["name"] in existing_names:
+            fields = overrides.get(spec["name"], {})
+            row = existing.get(spec["name"])
+            if row is None:
+                session.add(ModelProfile(**{**spec, **fields}))
                 continue
-            session.add(ModelProfile(**spec))
+            for field, value in fields.items():
+                if getattr(row, field) != value:
+                    setattr(row, field, value)
 
 
 def list_model_profiles(engine: Engine) -> list[ModelProfileValue]:

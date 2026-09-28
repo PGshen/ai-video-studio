@@ -7,12 +7,16 @@ import struct
 import zlib
 from pathlib import Path
 
+import pytest
+
 from studio.agent.tools import ToolContext, invoke_tool
+from studio.db.repo.profiles import get_model_profile_by_id
 from studio.stages.topic import STAGE as TOPIC
 
 from .support import (
     SMOKE_COLOURS,
     SmokeStage,
+    build_harness,
     make_two_colour_png,
     mentions_colours,
     smoke_image_tool,
@@ -70,3 +74,23 @@ def test_smoke_stage_adds_the_tool_and_keeps_everything_else() -> None:
     assert [tool.name for tool in stage.tools()] == ["smoke_image"]
     assert stage.write_scope() == TOPIC.write_scope()
     assert stage.allow_web is False
+
+
+def test_harness_profiles_use_gateway_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Smoke profiles are copied from seed rows built with the same Settings (F2)."""
+    monkeypatch.setenv("STUDIO_ANTHROPIC_BASE_URL", "https://anthropic-gw.example")
+    monkeypatch.setenv("STUDIO_OPENAI_BASE_URL", "https://openrouter.example/api/v1")
+    monkeypatch.setenv("STUDIO_OPENAI_MODEL", "openai/gpt-5")
+    harness = build_harness(tmp_path)
+    try:
+        gpt = get_model_profile_by_id(harness.engine, harness.profile("gpt"))
+        sonnet = get_model_profile_by_id(harness.engine, harness.profile("claude-sonnet"))
+        login = get_model_profile_by_id(harness.engine, harness.profile("claude-login"))
+    finally:
+        harness.engine.dispose()
+    assert gpt is not None and sonnet is not None and login is not None
+    assert (gpt.base_url, gpt.model) == ("https://openrouter.example/api/v1", "openai/gpt-5")
+    assert sonnet.base_url == "https://anthropic-gw.example"
+    assert login.base_url is None

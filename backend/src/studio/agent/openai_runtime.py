@@ -5,7 +5,8 @@
 - `openai` → `OpenAIResponsesModel`（显式 `AsyncOpenAI(api_key, base_url)`），原生
   `ApplyPatchTool`（`WorkspaceApplyPatchEditor`，经 `workspace.files` 落盘）+
   `ShellTool`（`LocalShellExecutor`，工作目录为工作区）；`ctx.allow_web` 时加托管
-  `WebSearchTool`。
+  `WebSearchTool`。`base_url` 不是官方 API（例如 OpenRouter）时不提供 Shell，改给
+  兜底只读工具 `list_files`/`read_file`（`native_shell_supported`）。
 - `litellm` → `LitellmModel`（显式传 `api_key`/`base_url`，不改 `os.environ`），
   兜底文件工具（`fallback_tools`），不提供 Shell，M1 不提供联网工具（Tavily 在 M4）。
 
@@ -41,6 +42,7 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from agents import (
     Agent,
@@ -114,6 +116,23 @@ def openai_client(profile: ModelProfileValue, api_key: str) -> AsyncOpenAI:
 
 
 SUPPORTED_PROVIDERS = ("openai", "litellm")
+
+OFFICIAL_OPENAI_HOST = "api.openai.com"
+FALLBACK_READ_TOOLS = frozenset({"list_files", "read_file"})
+"""网关（非 `api.openai.com`）上代替 Shell 的兜底只读工具；写入仍走原生 `apply_patch`。"""
+
+
+def native_shell_supported(profile: ModelProfileValue) -> bool:
+    """`provider=openai` 的配置能否用本地执行的原生 `ShellTool`。
+
+    只有官方 API（`base_url` 为空或主机是 `api.openai.com`）支持：OpenRouter 的
+    Responses API 对 `shell` 没有客户端执行模式，`local` 环境不受支持，命令会进它的
+    托管沙箱，看不到工作区（F2，2026-09-28 核实，见 docs/references/openai-agents-sdk.md）。
+    其他网关按同样保守处理。
+    """
+    if not profile.base_url:
+        return True
+    return (urlsplit(profile.base_url).hostname or "").lower() == OFFICIAL_OPENAI_HOST
 
 
 def _check_provider(profile: ModelProfileValue) -> None:
@@ -597,13 +616,20 @@ class OpenAIRuntime:
             native.append(
                 ApplyPatchTool(editor=WorkspaceApplyPatchEditor(ctx.workdir, ctx.write_scope))
             )
-            native.append(
-                ShellTool(
-                    executor=LocalShellExecutor(
-                        ctx.workdir, turn.failed_calls, environ=self._environ
+            if native_shell_supported(ctx.model_profile):
+                native.append(
+                    ShellTool(
+                        executor=LocalShellExecutor(
+                            ctx.workdir, turn.failed_calls, environ=self._environ
+                        )
                     )
                 )
-            )
+            else:
+                specs += [
+                    spec
+                    for spec in build_fallback_tools(ctx.write_scope)
+                    if spec.name in FALLBACK_READ_TOOLS
+                ]
             if ctx.allow_web:
                 native.append(WebSearchTool())
         else:

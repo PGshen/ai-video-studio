@@ -227,12 +227,15 @@ def build_harness(tmp_path: Path) -> SmokeHarness:
     data_dir = tmp_path / "data"
     engine = make_engine(tmp_path / "studio.db")
     migrate(engine)
-    seed_model_profiles(engine, enable_fake_runtime=False)
+    # Same Settings source as `make dev` (env / backend/.env), so the seed rows carry
+    # the configured gateways (STUDIO_ANTHROPIC_BASE_URL, STUDIO_OPENAI_BASE_URL,
+    # STUDIO_OPENAI_MODEL) and `profile()` copies them.
+    settings = Settings(data_dir=data_dir)
+    seed_model_profiles(engine, enable_fake_runtime=False, settings=settings)
     registry = StageRegistry()
     registry.register(SmokeStage(TOPIC))
     registry.register(_NoWebStage(NARRATIVE))
     registry.register(_NoWebStage(ANIMATION))
-    settings = Settings(data_dir=data_dir)
     factory = RuntimeFactory()
     register_claude(factory, settings)
     register_openai(factory, settings)

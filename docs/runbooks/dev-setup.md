@@ -35,6 +35,21 @@ make setup
 - 后端配置从 `backend/.env` 读取（`STUDIO_` 前缀的环境变量），参考 `backend/.env.example`：数据目录、host/port、并发数、是否启用 Fake 运行时。模型 key（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）不是 `Settings` 字段，运行时按模型配置的 `api_key_env` 从**进程环境变量**读取；也写在 `backend/.env` 里——`scripts/dev.sh`（`make dev`）启动前会用 `set -a; . backend/.env; set +a` 把它整体导出到环境中（`make smoke` 在 T15 同样处理）。直接手动运行 `uvicorn` 时要自己导出，否则 key 读不到，对应模型的 turn 会以"环境变量未设置"失败。`backend/.env` 按 shell 语法解析（值里有空格或特殊字符要加引号）。
 - 数据目录（`data_dir`）默认为仓库根目录下的 `data/`，可以用 `STUDIO_DATA_DIR` 指向其他位置；解析后的路径不能落在 `backend/src` 之下（否则启动时报错），因为那会被 uvicorn `--reload` 监听到。
 
+## 模型网关（可选）
+
+模型配置（`model_profiles`）的 `base_url`/`model` 可以由 `backend/.env` 里的三个可选项决定，启动时由种子写入（`seed_model_profiles`，F2）：
+
+| 变量 | 作用于 | 例子 |
+|---|---|---|
+| `STUDIO_ANTHROPIC_BASE_URL` | `claude-sonnet`（API key 模式）的 `base_url`，ClaudeRuntime 把它作为 `ANTHROPIC_BASE_URL` 传给 CLI；`claude-login` 不受影响 | `https://ccproxy.yukework.com` |
+| `STUDIO_OPENAI_BASE_URL` | `gpt` 的 `base_url`（`AsyncOpenAI(base_url=...)`） | `https://openrouter.ai/api/v1` |
+| `STUDIO_OPENAI_MODEL` | `gpt` 的模型名；不设则为 `gpt-5` | `openai/gpt-5`（OpenRouter 的模型 id 带厂商前缀） |
+
+- key 仍然是 `ANTHROPIC_API_KEY`（填网关接受的 key）和 `OPENAI_API_KEY`（走 OpenRouter 时填 OpenRouter key）。
+- 种子规则：配置值非空时，新库直接用它建行；**已有的库**在值不同时只更新这两个字段（其他字段、单价、预算不动）。配置值为空（或删掉这一行）时不会把已有值清空——要回到官方地址，需要把 `base_url` 手动改回空或删库重建。
+- `gpt` 走非 `api.openai.com` 的地址（例如 OpenRouter）时，OpenAI 运行时**不提供 Shell**（OpenRouter 的 `shell` 只在托管沙箱里执行，看不到本地工作区），改给只读的 `list_files`/`read_file`，写文件仍用原生 `apply_patch`；联网搜索仍是 `web_search`。依据见 `docs/references/openai-agents-sdk.md`。
+- 单价：OpenRouter 上 `openai/gpt-5` 与 OpenAI 官方同价（$1.25/$10 每百万 token），种子单价不变。
+
 ## 启动
 
 ```bash

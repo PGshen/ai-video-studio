@@ -45,3 +45,20 @@ async def test_shutdown_interrupts_running_turn(tmp_path: Path) -> None:
         assert turn.end_snapshot_id is not None
     finally:
         check.dispose()
+
+
+async def test_startup_seed_uses_gateway_settings(tmp_path: Path) -> None:
+    """F2: `main` passes Settings to the seed, so configured gateways reach the profiles."""
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        anthropic_base_url="https://anthropic-gw.example",
+        openai_base_url="https://openrouter.example/api/v1",
+        openai_model="openai/gpt-5",
+    )
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        gpt = get_model_profile(app.state.engine, "gpt")
+        sonnet = get_model_profile(app.state.engine, "claude-sonnet")
+    assert gpt is not None and sonnet is not None
+    assert (gpt.base_url, gpt.model) == ("https://openrouter.example/api/v1", "openai/gpt-5")
+    assert sonnet.base_url == "https://anthropic-gw.example"

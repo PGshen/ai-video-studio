@@ -47,6 +47,7 @@ from studio.agent.openai_runtime import (
     OpenAIRuntime,
     build_function_tool,
     build_model,
+    native_shell_supported,
     openai_client,
     register_openai,
     turn_cost,
@@ -321,6 +322,44 @@ class TestNativeTools:
         assert not any(isinstance(tool, WebSearchTool) for tool in tools)
         names = {tool.name for tool in tools if isinstance(tool, FunctionTool)}
         assert names == {"echo"}
+
+    async def test_official_base_url_keeps_shell(self, workdir: Path, data_dir: Path) -> None:
+        profile = dataclasses.replace(_OPENAI, base_url="https://api.openai.com/v1")
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=profile))
+
+        assert any(isinstance(tool, ShellTool) for tool in models.calls[0].tools)
+
+    async def test_gateway_base_url_drops_shell_adds_read_tools(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """OpenRouter has no client-side shell (only hosted sandboxes that cannot see
+        the workspace), so a non-OpenAI base_url gets apply_patch + read-only fallback
+        tools instead of ShellTool (F2, docs/references/openai-agents-sdk.md)."""
+        profile = dataclasses.replace(_OPENAI, base_url="https://openrouter.ai/api/v1")
+        models = Models([[assistant_message("ok")]])
+        await _run(
+            _runtime(data_dir, models),
+            _ctx(workdir, profile=profile, tools=[_echo_spec()], allow_web=True),
+        )
+
+        tools = models.calls[0].tools
+        assert not any(isinstance(tool, ShellTool) for tool in tools)
+        assert any(isinstance(tool, ApplyPatchTool) for tool in tools)
+        assert any(isinstance(tool, WebSearchTool) for tool in tools)
+        names = {tool.name for tool in tools if isinstance(tool, FunctionTool)}
+        assert names == {"echo", "list_files", "read_file"}
+
+    def test_native_shell_supported(self) -> None:
+        assert native_shell_supported(_OPENAI)
+        for url in ("https://api.openai.com/v1", "https://API.openai.com/v1/"):
+            assert native_shell_supported(dataclasses.replace(_OPENAI, base_url=url))
+        for url in (
+            "https://openrouter.ai/api/v1",
+            "https://api.openai.com.evil.example/v1",
+            "http://127.0.0.1:4000/v1",
+        ):
+            assert not native_shell_supported(dataclasses.replace(_OPENAI, base_url=url))
 
     async def test_web_search_only_when_allowed(self, workdir: Path, data_dir: Path) -> None:
         models = Models([[assistant_message("ok")]])

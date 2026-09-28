@@ -44,3 +44,30 @@ def test_get_settings_returns_cached_singleton() -> None:
     second = get_settings()
 
     assert first is second
+
+
+def test_gateway_settings_read_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studio.config import Settings
+
+    monkeypatch.setenv("STUDIO_ANTHROPIC_BASE_URL", "https://anthropic-gw.example")
+    monkeypatch.setenv("STUDIO_OPENAI_BASE_URL", "https://openrouter.example/api/v1")
+    monkeypatch.setenv("STUDIO_OPENAI_MODEL", "openai/gpt-5")
+
+    settings = Settings()
+
+    assert settings.anthropic_base_url == "https://anthropic-gw.example"
+    assert settings.openai_base_url == "https://openrouter.example/api/v1"
+    assert settings.openai_model == "openai/gpt-5"
+
+
+def test_gateway_settings_empty_string_means_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studio.config import Settings
+
+    for name in ("STUDIO_ANTHROPIC_BASE_URL", "STUDIO_OPENAI_BASE_URL", "STUDIO_OPENAI_MODEL"):
+        monkeypatch.setenv(name, "  ")
+
+    settings = Settings()
+
+    assert settings.anthropic_base_url is None
+    assert settings.openai_base_url is None
+    assert settings.openai_model is None

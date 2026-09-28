@@ -43,7 +43,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     engine = make_engine(settings.data_dir / "studio.db")
     migrate(engine)
-    seed_model_profiles(engine, enable_fake_runtime=settings.enable_fake_runtime)
+    seed_model_profiles(engine, enable_fake_runtime=settings.enable_fake_runtime, settings=settings)
 
     registry = StageRegistry()
     for stage in (TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE):
