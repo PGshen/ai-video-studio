@@ -23,3 +23,4 @@ agent SDK 和前端组件库更新很快，AI 的训练知识可能已经过时�
 | [frontend-stack.md](frontend-stack.md) | shadcn-vue、@ai-elements、Tailwind v4 |
 | [sse-starlette.md](sse-starlette.md) | sse-starlette、httpx `ASGITransport` 流式测试的限制 |
 | [legacy-assets.md](legacy-assets.md) | 旧项目 `../ai-video` 中可迁移的资产 |
+| [manim.md](manim.md) | manim（Manim Community）渲染引擎 |
