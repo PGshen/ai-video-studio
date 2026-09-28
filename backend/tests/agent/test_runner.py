@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
+from collections import Counter, deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from event_asserts import assert_in_order, type_counts
 from studio.agent import events, fake
 from studio.agent.bus import BusEvent, SessionBus
 from studio.agent.fake import FakeRuntime, FakeStep
@@ -150,7 +151,16 @@ class TestNormalTurn:
 
         assert turn.status == "done"
         rows = list_events(h.env.engine, session_id)
-        assert [r.type for r in rows] == ["text", "tool_call", "tool_result", "snapshot"]
+        row_types = [r.type for r in rows]
+        # TD-10：断言相对顺序和不变量，而不是绑定完整的事件类型列表——runner
+        # 按 T6/T7 拆分模块时，没有因果关系的事件谁先持久化是实现细节。
+        assert type_counts(row_types) == Counter(
+            {"text": 1, "tool_call": 1, "tool_result": 1, "snapshot": 1}
+        )
+        # 因果链：说话 → 调工具 → 工具结果 → 快照（快照必须在 turn_end 之前，
+        # 这里体现为它是持久化事件里最后被记的一条）。
+        assert_in_order(row_types, "text", "tool_call", "tool_result", "snapshot")
+        # 持久化的 seq 必须连续单调，从 1 开始。
         assert [r.seq for r in rows] == [1, 2, 3, 4]
         assert rows[0].payload == {"turn_id": turn.id, "text": "好的"}
 

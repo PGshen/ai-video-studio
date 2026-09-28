@@ -96,7 +96,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：测试绿；references 补一行实测结论。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k claude_login"`
 
-### T4：完整一轮测试改为断言相对顺序（TD-10）（待开始）
+### T4：完整一轮测试改为断言相对顺序（TD-10）（完成）
 
 - **目标**：runner 调整事件顺序时不必同步改大量断言。
 - **涉及文件**：`backend/tests/api/test_stream.py`、`backend/tests/agent/test_runner.py`，可在 `backend/tests/` 下新增断言辅助函数。
@@ -171,10 +171,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T1 — 完成（TD-2/TD-3/TD-4/TD-5 均已修复，测试先红后绿，`make check` 全绿；commit 在提交后补）。
 - 2026-09-28 — T2 — 完成（TD-7/TD-8/TD-13 均已修复，测试先红后绿，`make check` 全绿）。
 - 2026-09-28 — T3 — 完成（TD-11/TD-12 均已修复：connect 前/中取消立即结束、0 预算不启动 CLI、账本按 SDK 会话 id、无 result 的一轮记"待校准"并入下一轮且以 `Usage.includes_carryover` 标注；mock 测试先红后绿，`make check` 全绿；本机登录冒烟"中途取消 + 再发一轮"两种取消方式都与 SDK 累计值对上）。
+- 2026-09-28 — T4 — 完成（TD-10：`backend/tests/event_asserts.py` 新增 `assert_in_order`/`type_counts`；`test_stream.py::test_default_fake_script_produces_expected_wire_events` 与 `test_runner.py::test_events_persisted_published_and_snapshotted` 改为断言相对顺序和不变量；本地把 `runner.py` 的 `workspace_changed` 发布挪到 `_finish` 快照之后（不提交），确认旧的完整列表断言红、新断言绿后已还原，`git diff -- backend/src` 为空；`make check` 全绿）。
 
 ## 下一步
 
-- 从 T4 开始。
+- 从 T5 开始。
 
 ## 决策记录
 
@@ -187,6 +188,8 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T3/TD-11：账本读取键 = result 的 `session_id`；该会话没有记录时退回 `ctx.resume_ref` 的记录（fork 之类换了会话 id 但累计值接着 transcript 的情况）；没有 `resume_ref`（新会话）时不查账本，累计值从 0 开始（保持原 `test_new_session_ignores_ledger` 的行为）。两种差异场景都有测试固定（`TestLedgerKey`）。
 - 2026-09-28 — T3/TD-12：成本上限取 `ctx.budget.max_cost_usd`（runner 从 `profile.max_cost_per_turn` 填入，二者同值）；`<= 0` 时**两种认证方式都**不启动 CLI、直接 `budget_exceeded`（登录模式平时不强制成本，但 0 是明确的"不花钱"意图，按计划"不应启动模型"处理）。connect 与取消令牌并发等待，令牌先置位就取消 connect（SDK 的 `connect()` 在 `BaseException` 时自己 `disconnect()` 清理子进程），不必等 runner 的 10s 宽限期；取消检查顺序为：取消 → 0 预算 → 认证。
 - 2026-09-28 — T3：真实验证用例放在 `backend/tests/smoke/test_smoke.py::test_claude_login_cancel_then_turn`（名字含 `claude_login`，`-k claude_login` 会选中），为此给 `support.build_harness` 加了 `cancel_grace_seconds` 参数、`SmokeHarness.turn_cancelled_at_tool_call`、`record_evidence(directory=...)`（证据写到 `data/evidence/m1x/smoke/`）；都是测试代码。
+- 2026-09-28 — T4：辅助函数放在 `backend/tests/event_asserts.py`（`tests/` 目录本身没有 `__init__.py`，两个子包 `tests/api`、`tests/agent` 各自是独立的顶层包，pytest 因此把 `tests/` 加进 `sys.path`），两边都用 `from event_asserts import assert_in_order, type_counts` 绝对导入，不新增 `tests/__init__.py`（避免改变现有的测试收集/导入方式，超出本任务范围）。
+- 2026-09-28 — T4：只改了 `test_stream.py`/`test_runner.py` 里两条绑定"完整事件类型列表"的断言；`test_runner.py` 里 `types[-2:] == ["error", "snapshot"]`（失败收尾）这类只看首尾两个元素的小断言本身已经是相对位置表达，没有改动必要，保留不动。
 
 ## 意外与发现
 
@@ -205,3 +208,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - T3（TD-11）：`-k "CancelledTurnCost or LedgerKey or UsageDelta"` — 取消时拿到 result 记本轮差值；强制取消/出错无 result → 下一轮差值含残余且 `includes_carryover=True`，再下一轮恢复正常；账本键差异场景固定。通过。
 - T3 真实验证：`make smoke SMOKE_ARGS="-k claude_login"`（本机登录订阅账号），`test_claude_login_cancel_then_turn` 两个场景（正常停止、宽限 0 强制取消）中每轮 `cost_usd` 等于相邻两次 SDK 累计值之差，各轮之和等于最终累计值。run1/run3/run4 通过，run2 失败（见「意外与发现」）；日志 `data/evidence/m1x/smoke-t3-run{1,2,3,4}.log`，观察值 `data/evidence/m1x/smoke/*.json`。通过。
 - T3：`make check` 全绿。
+- T4（TD-10）RED/GREEN 证据：本地把 `runner.py::_after_tool_result` 里发布 `workspace_changed` 的调用改成先缓存进 `_State`，挪到 `_finish` 里快照持久化之后再发布（`workspace_changed` 与 `snapshot` 之间原本没有因果约束，属于"无关事件"）。此时：
+  - 旧写法（完整事件类型列表）在 `test_stream.py::test_default_fake_script_produces_expected_wire_events` 上失败：`At index 5 diff: 'snapshot' != 'workspace_changed'`。
+  - 新写法（`assert_in_order` + 计数 + `workspace_changed`/`tool_result`、`snapshot`/`turn_end` 的相对位置）在同一份改动下仍然通过（`test_stream.py`、`test_runner.py::test_events_persisted_published_and_snapshotted` 均绿）。
+  - 之后 `cp /tmp/runner.py.orig src/studio/agent/runner.py` 还原，`git diff -- backend/src/studio/agent/runner.py` 为空，未提交任何生产代码改动。
+- T4：断言语义映射（旧断言 → 新写法里对应的不变量）：
+  - `test_stream.py` 里 `names == [8 个事件的完整列表]` → 拆成：①`type_counts(names)` 断言每种类型各出现几次（不比较顺序）；②`turn_statuses == ["queued","running","done"]`（turn 生命周期顺序，不能松动）；③`names[0]/names[-1] == "turn_status"` 且首尾分别是 queued/done（`turn_start` 最先、`turn_end` 最后）；④`assert_in_order(names, "text", "tool_call", "tool_result")`（说话 → 调工具 → 工具结果的因果链）；⑤`workspace_changed` 的下标晚于 `tool_result`（`workspace_changed` 在对应 `tool_result` 之后）；⑥`snapshot` 的下标早于最后一个元素（快照事件在 `turn_end` 之前）。
+  - `test_runner.py` 里 `[r.type for r in rows] == ["text","tool_call","tool_result","snapshot"]` → 拆成 `type_counts` 断言各类型出现次数、`assert_in_order(row_types, "text","tool_call","tool_result","snapshot")` 断言因果链（含快照在 `turn_end` 之前，这里体现为它是持久化事件里的最后一条）；`[r.seq for r in rows] == [1,2,3,4]`（持久化 seq 单调连续）保留不变——它本来就不是"事件类型顺序"断言。
+- T4：`make check` 全绿。
