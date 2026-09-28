@@ -116,7 +116,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：`grep -rn "ToolContext(" backend/src` 只剩 `runtime.py` 一处（`tools.py` 定义除外）；`make check` 绿。
 - **验证命令**：`make check`
 
-### T6：拆出 Shell executor（TD-16、TD-14 reader 部分）（待开始）
+### T6：拆出 Shell executor（TD-16、TD-14 reader 部分）（完成）
 
 - **目标**：`openai_runtime.py` 降到 400 行以内；取消时 reader 任务被显式取消并等待结束。
 - **涉及文件**：新建 `backend/src/studio/agent/shell.py`（`LocalShellExecutor`、`_read_capped`、`_wait_for_exit`、`_kill_group`、`_shell_env`、常量）；必要时再拆 `agent/openai_tools.py`（`build_function_tool`、`_sdk_output`、`_tool_call`/`_tool_result` 转换）；`backend/tests/agent/test_shell.py`（从现有测试迁出）；import-linter 契约与 ARCHITECTURE.md 同步。
@@ -173,10 +173,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T3 — 完成（TD-11/TD-12 均已修复：connect 前/中取消立即结束、0 预算不启动 CLI、账本按 SDK 会话 id、无 result 的一轮记"待校准"并入下一轮且以 `Usage.includes_carryover` 标注；mock 测试先红后绿，`make check` 全绿；本机登录冒烟"中途取消 + 再发一轮"两种取消方式都与 SDK 累计值对上）。
 - 2026-09-28 — T4 — 完成（TD-10：`backend/tests/event_asserts.py` 新增 `assert_in_order`/`type_counts`；`test_stream.py::test_default_fake_script_produces_expected_wire_events` 与 `test_runner.py::test_events_persisted_published_and_snapshotted` 改为断言相对顺序和不变量；本地把 `runner.py` 的 `workspace_changed` 发布挪到 `_finish` 快照之后（不提交），确认旧的完整列表断言红、新断言绿后已还原，`git diff -- backend/src` 为空；`make check` 全绿）。
 - 2026-09-28 — T5 — 完成（TD-17：`TurnContext.tool_context()`，Fake/Claude/OpenAI 三个运行时改用它，`grep -rn "ToolContext(" backend/src` 只剩 `runtime.py`；TD-18：Fake/Claude 运行时删除步数计数，Claude 不再因步数自行 interrupt，改由 runner 置位取消令牌、watcher 转成 `interrupt()`，runner 最终状态仍为 `budget_exceeded`；OpenAI `max_turns` 改为由 `max_steps` 推导的宽松兜底；测试先红（4 项）后绿，`make check` 全绿）。
+- 2026-09-28 — T6 — 完成（TD-16：`openai_runtime.py` 764→362 行；`LocalShellExecutor`/`_read_capped`/`_wait_for_exit`/`_kill_group`/`_shell_env`/相关常量纯搬移到新建的 `agent/shell.py`（199 行），业务工具桥接（`build_function_tool`/`_sdk_output`）与 item→事件转换（`_tool_call`/`_tool_result`/`_Turn`/`convert`，原 `_convert`）纯搬移到新建的 `agent/openai_tools.py`（240 行）；`test_openai_runtime.py` 里纯测 `LocalShellExecutor` 的用例迁到新建的 `backend/tests/agent/test_shell.py`（断言不改，只改 import），只测运行时整体取消行为的 `test_cancel_while_shell_runs` 留在原文件。TD-14：RED 测试 `test_shell.py::TestCancelReaderCleanup::test_no_pending_reader_tasks_after_cancel_during_drain`（monkeypatch `_read_capped` 制造可控的 drain 窗口，`asyncio.wait_for` 外部超时触发取消，检查 `asyncio.all_tasks()`）先红后绿；修复把 `_run` 里两处取消入口合并成一个 `except asyncio.CancelledError`，统一 `reader.cancel()` 后 `asyncio.wait_for(asyncio.gather(*readers, return_exceptions=True), _READER_DRAIN_TIMEOUT_S)`。`make check` 全绿，import-linter 契约无需新增（三个模块都在 `studio.agent` 包内，受既有契约覆盖）；ARCHITECTURE.md §2 agent 行更新拆分说明）。
 
 ## 下一步
 
-- 从 T6 开始。
+- 从 T7 开始。
 
 ## 决策记录
 
@@ -201,6 +202,9 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T3：冒烟 run2（`data/evidence/m1x/smoke-t3-run2.log`）中强制取消场景失败：辅助函数一直等不到 Bash 的 `tool_call`，300s 超时。那一轮的事件没来得及写进证据，原因无法确认（推测模型没调用工具就结束了这一轮，而辅助函数没判断 turn 已结束）。已改为 turn 结束也停止等待、并断言确实在 Bash 调用中被取消，run3、run4 均通过。
 - 2026-09-28 — T3：`runner` 目前不读 `Usage.includes_carryover`（只累加 `cost_usd`），标注只在事件层；要在界面上显示"含上一轮残余"需要 runner 落库/推送，本任务不改 runner（T5/T7 会动 runner），T10 收尾时登记。
 - 2026-09-28 — T5：FakeRuntime 原来的"步数"是脚本步骤数（`say`/`sleep`/`use_cost` 都算），不是工具调用数，和 runner 的口径（`ToolCall` 数）本来就不一致——这正是 TD-18 说的风险；删掉后新 runner 测试（3 次写入、`max_steps_per_turn=1`）的 tool_call 数从 1 变成 2，与 Claude/OpenAI 路径一致。
+- 2026-09-28 — T6：`_Turn`（每轮的工具结果/失败调用/待发用量）和 `turn_cost` 跟着事件转换一起搬进 `agent/openai_tools.py`（brief 只点名了转换函数，`_Turn` 是转换和 `_UsageHooks`/`OpenAIRuntime` 共用的状态，切分到哪边都要跨模块暴露；选择放进 `openai_tools.py` 是因为 `_tool_result`/`convert` 直接读它的字段，`_UsageHooks`/`OpenAIRuntime` 只是把它当参数传递，依赖方向更自然）。原模块私有的 `_convert` 改名为公开的 `convert`（跨模块调用不再用下划线前缀）。`build_function_tool` 里的 `logger.warning` 记录模块名跟着从 `studio.agent.openai_runtime` 变成 `studio.agent.openai_tools`，`test_non_strict_fallback_logs_warning` 的 `caplog.at_level(..., logger=...)` 同步改了参数值（断言内容不变）。没有加任何 re-export shim：`grep -rn` 确认 `LocalShellExecutor`/`build_function_tool`/`turn_cost`/`_Turn` 只被测试和 `openai_runtime.py` 自己引用，测试的 import 直接改成新模块路径。
+- 2026-09-28 — T6：`TestShellProcessGroup` 里 `test_background_processes_die_with_the_command`/`test_output_flood_is_capped_and_killed` 只测 `LocalShellExecutor` 本身，随 `TestShellExecutor` 一起搬进 `test_shell.py`；`test_cancel_while_shell_runs` 经由完整的 `OpenAIRuntime.run_turn`（SDK `Runner.run_streamed` + `ScriptedModel`）驱动取消，测的是运行时整体行为而不是 executor 本身，留在 `test_openai_runtime.py`（brief"迁移后的 shell 测试不改断言"针对的是纯 executor 测试，这条不算）。
+- 2026-09-28 — T6：TD-14 的 RED 测试没有用真实子进程造成的时序竞争（如 `setsid` detach 逃逸进程组——这台 macOS 开发机没有 `setsid` 命令），改用 `monkeypatch.setattr(shell_module, "_read_capped", slow_read_capped)` 让 reader 可控地"卡" 1 秒，再用 `asyncio.wait_for(executor(...), timeout=0.2)` 从外部在 drain 窗口内触发取消，可确定性复现修复前的 bug（reader 任务残留）。
 
 ## 阻塞
 

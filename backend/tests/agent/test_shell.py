@@ -10,6 +10,7 @@ import pytest
 from agents import RunContextWrapper, ShellCallData, ShellCommandRequest
 from agents.tool import ShellActionRequest
 
+from studio.agent import shell as shell_module
 from studio.agent.shell import LocalShellExecutor
 
 
@@ -123,3 +124,30 @@ class TestShellProcessGroup:
         assert failed == {"s1"}
 
 
+class TestCancelReaderCleanup:
+    """TD-14：取消时（无论落在等待进程退出，还是落在之后的 reader drain 窗口内）都要
+    显式取消 reader 任务并等它们真正结束，不留下未完成的 task。"""
+
+    async def test_no_pending_reader_tasks_after_cancel_during_drain(
+        self, workdir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def slow_read_capped(stream: object, cap: int, on_overflow: object) -> bytes:
+            # Simulate a reader that is still draining (e.g. a detached child still holding
+            # the pipe) when cancellation lands inside the post-exit drain window.
+            await asyncio.sleep(1.0)
+            return b""
+
+        monkeypatch.setattr(shell_module, "_read_capped", slow_read_capped)
+        executor = LocalShellExecutor(workdir, set())
+
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(executor(_request(["true"])), timeout=0.2)
+
+        pending_readers = [
+            task
+            for task in asyncio.all_tasks()
+            if not task.done()
+            and (coro := task.get_coro()) is not None
+            and getattr(coro, "__name__", "") == "slow_read_capped"
+        ]
+        assert pending_readers == []

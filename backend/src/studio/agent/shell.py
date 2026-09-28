@@ -153,25 +153,30 @@ class LocalShellExecutor:
         ]
         try:
             exited = await _wait_for_exit(proc, timeout)
-        except asyncio.CancelledError:
+            timed_out = not exited
+            # Always kill the group: background children must not outlive the command.
             _kill_group(proc)
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(proc.wait(), _READER_DRAIN_TIMEOUT_S)
+            done, pending = await asyncio.wait(
+                [*readers, asyncio.ensure_future(proc.wait())], timeout=_READER_DRAIN_TIMEOUT_S
+            )
+            for task in pending:
+                task.cancel()
+            stdout, stderr = (
+                reader.result() if reader in done and not reader.cancelled() else b""
+                for reader in readers
+            )
+        except asyncio.CancelledError:
+            # TD-14: cancellation can land either while waiting for the process to exit or
+            # while draining the readers above; either way, explicitly cancel the readers and
+            # wait for them to actually finish instead of leaving them dangling.
+            _kill_group(proc)
             for reader in readers:
                 reader.cancel()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(
+                    asyncio.gather(*readers, return_exceptions=True), _READER_DRAIN_TIMEOUT_S
+                )
             raise
-        timed_out = not exited
-        # Always kill the group: background children must not outlive the command.
-        _kill_group(proc)
-        done, pending = await asyncio.wait(
-            [*readers, asyncio.ensure_future(proc.wait())], timeout=_READER_DRAIN_TIMEOUT_S
-        )
-        for task in pending:
-            task.cancel()
-        stdout, stderr = (
-            reader.result() if reader in done and not reader.cancelled() else b""
-            for reader in readers
-        )
 
         stdout_text = _truncate(stdout.decode("utf-8", errors="replace"), limit)
         stderr_text = _truncate(stderr.decode("utf-8", errors="replace"), limit)
