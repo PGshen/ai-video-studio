@@ -13,6 +13,8 @@ dependencies = [
     "sse-starlette>=2.1,<3",
     "claude-agent-sdk>=0.2.160,<0.3",
     "openai-agents[litellm]>=0.22.3,<0.23",
+    "manim>=0.18,<1",
+    "pyflakes>=3.4,<4",
 ]
 
 [dependency-groups]
@@ -53,9 +55,10 @@ typeCheckingMode = "standard"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-m 'not smoke'"
+addopts = "-m 'not smoke and not slow'"
 markers = [
     "smoke: 需要真实 API key 的冒烟测试，默认从 `make check` 排除，由 `make smoke` 运行",
+    "slow: 需要实际起 manim/ffmpeg 子进程渲染的慢测试，默认从 `make check` 排除，用 `-m slow` 单独跑",
 ]
 
 [tool.importlinter]
@@ -160,9 +163,9 @@ allow_indirect_imports = true
 [[tool.importlinter.contracts]]
 name = "分层（ARCHITECTURE §2 依赖表）：main > api > stages > agent > workspace > db > config"
 type = "layers"
-# 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines/search/jobs/
-# worker 在 M1 还不存在，等对应里程碑新建模块时按 R1 补进来（engines、search 与 db
-# 同为只依赖 config 的纯能力层）。各阶段之间的独立性由上面的 independence 契约保证。
+# 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines（M2 T1）已有
+# 独立的 forbidden 契约（只依赖 config，见下）；search/jobs/worker 还不存在，等对应
+# 里程碑新建模块时按 R1 补进来。各阶段之间的独立性由上面的 independence 契约保证。
 layers = [
     "studio.main",
     "studio.api",
@@ -178,4 +181,18 @@ name = "stages 不直接依赖 db.models，只通过 db.repo 读写（规则 5�
 type = "forbidden"
 source_modules = ["studio.stages"]
 forbidden_modules = ["studio.db.models"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "engines 是纯能力层（规则 4）：只依赖 config，不访问数据库，不知道项目和阶段的存在"
+type = "forbidden"
+source_modules = ["studio.engines"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+]
 allow_indirect_imports = true

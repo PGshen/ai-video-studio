@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     openai_price_output: float | None = None
     """种子 `gpt` 的输出单价，美元 / 百万 token（`STUDIO_OPENAI_PRICE_OUTPUT`）；
     未设置时不变（默认 $10）。"""
+    manim_timeout_seconds: float = 600.0
+    """manim 全画质渲染子进程的超时时间（`STUDIO_MANIM_TIMEOUT_SECONDS`）。"""
 
     @field_validator(
         "anthropic_base_url",

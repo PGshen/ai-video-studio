@@ -25,7 +25,7 @@ ai-video-studio/
 |---|---|---|
 | `config` | 配置：数据目录、模型 key、搜索 key | — |
 | `db` | SQLite 连接（WAL）、ORM 模型、迁移 | `config` |
-| `engines.render`（M2+） | manim 渲染：预览、成片、关键帧抽取 | `config` |
+| `engines.render` | manim 渲染：静态校验、全画质渲染（`manim/{script,process,engine}.py`）、预览与关键帧抽取（T2） | `config` |
 | `engines.tts`（M2+） | 语音合成、beat 对齐 | `config` |
 | `search`（M4） | 搜索提供方接口，以及 Tavily 实现 | `config` |
 | `workspace` | 工作区布局（`layout`）、快照库与 diff/回滚（`snapshot`、`blobs`）、越界检查（`scope`）、上游只读副本（`upstream`）、受控文件读写与建/删工作区（`files`） | `db`、`config` |
@@ -46,7 +46,7 @@ ai-video-studio/
 5. **只有 `db` 定义 ORM 模型**；其他模块通过 `db` 提供的仓储函数读写数据。
 6. **`workspace` 是唯一读写工作区文件的模块**；agent 的原生文件工具除外，它们受越界检查约束。
 
-规则 1–5 的机器检查：一条 `layers` 契约（`main > api > stages > agent > workspace > db > config`，下层不能 import 上层，含间接 import）覆盖依赖表；`agent` 不 import `stages`（规则 2）另有单独契约；三个阶段之间是 `independence` 契约（规则 3）；`workspace`/`agent`/`stages`/`api`/`main` 各有一条"不直接 import `db.models`"的契约（规则 5）。规则 4（`engines`/`search`）待模块建立时补。规则 6 靠代码评审：api 通过 `workspace.files`（`write_text`、`init_workspace`、`remove_workspace` 等）和 `workspace.snapshot` 操作工作区。
+规则 1–5 的机器检查：一条 `layers` 契约（`main > api > stages > agent > workspace > db > config`，下层不能 import 上层，含间接 import）覆盖依赖表；`agent` 不 import `stages`（规则 2）另有单独契约；三个阶段之间是 `independence` 契约（规则 3）；`workspace`/`agent`/`stages`/`api`/`main` 各有一条"不直接 import `db.models`"的契约（规则 5）。规则 4：`engines` 已有一条"只依赖 `config`"的 `forbidden` 契约（M2 T1）；`search`（M4）待模块建立时补。规则 6 靠代码评审：api 通过 `workspace.files`（`write_text`、`init_workspace`、`remove_workspace` 等）和 `workspace.snapshot` 操作工作区。
 
 ## 3. 前端模块（`frontend/src/`）
 
