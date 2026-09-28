@@ -350,6 +350,32 @@ class TestNativeTools:
         names = {tool.name for tool in tools if isinstance(tool, FunctionTool)}
         assert names == {"echo", "list_files", "read_file"}
 
+    @pytest.mark.parametrize(
+        ("profile", "gateway"),
+        [
+            (_OPENAI, False),
+            (dataclasses.replace(_OPENAI, base_url="https://api.openai.com/v1"), False),
+            (dataclasses.replace(_OPENAI, base_url="https://openrouter.ai/api/v1"), True),
+            (dataclasses.replace(_LITELLM, base_url="https://openrouter.ai/api/v1"), False),
+        ],
+    )
+    async def test_stateless_settings_only_on_openai_gateways(
+        self, workdir: Path, data_dir: Path, profile: ModelProfileValue, gateway: bool
+    ) -> None:
+        """OpenRouter's Responses API stores nothing, so replayed reasoning items must
+        carry their encrypted content (F2 review)."""
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=profile))
+
+        settings = models.calls[0].model_settings
+        assert settings.include_usage is True
+        if gateway:
+            assert settings.store is False
+            assert settings.response_include == ["reasoning.encrypted_content"]
+        else:
+            assert settings.store is None
+            assert settings.response_include is None
+
     def test_native_shell_supported(self) -> None:
         assert native_shell_supported(_OPENAI)
         for url in ("https://api.openai.com/v1", "https://API.openai.com/v1/"):

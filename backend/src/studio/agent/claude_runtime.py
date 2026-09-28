@@ -258,12 +258,28 @@ class CostLedger:
         tmp.replace(path)
 
 
+_PADDING = "\ufeff"
+"""JS `String.prototype.trim()` also strips U+FEFF, which Python's `str.strip()` keeps."""
+
+
+def _padded(raw: str) -> bool:
+    """首尾带空白（含 U+FEFF）的路径/模式一律拒绝。
+
+    内置 CLI 的 `expandPath` 先 `trim()` 再展开 `~`、解析相对路径，而 hook 按原串判断：
+    `" /etc/passwd"` 在 hook 看来是工作区内的相对路径，CLI 实际读的却是 `/etc/passwd`。
+    直接拒绝比模仿 CLI 的 trim 规则更稳妥，正常的工具调用不会带这样的路径。
+    """
+    return raw != raw.strip() or raw.strip(_PADDING) != raw
+
+
 def write_denial_reason(workdir: Path, scope: WriteScope, tool_input: dict[str, Any]) -> str | None:
     """Write/Edit 类工具的目标不在 `scope` 内时返回拒绝原因，否则 `None`。"""
     raw = tool_input.get("file_path") or tool_input.get("notebook_path")
     allowed = "、".join(scope.writable) or "（无）"
     if not isinstance(raw, str) or not raw:
         return f"无法确定写入目标路径，已拒绝。本阶段可写：{allowed}"
+    if _padded(raw):
+        return f"路径 {raw!r} 首尾带空白，已拒绝。本阶段可写：{allowed}"
     if raw.startswith("~"):
         return f"{raw} 在项目工作区之外，已拒绝。本阶段可写：{allowed}"
     target = Path(raw)
@@ -281,10 +297,11 @@ def write_denial_reason(workdir: Path, scope: WriteScope, tool_input: dict[str, 
 def _escapes(workdir: Path, raw: str) -> bool:
     """`raw`（相对 `workdir` 或绝对路径）解析符号链接和 `..` 之后是否落在 `workdir` 外。
 
-    以 `~` 开头的一律算越界：Claude Code 的文件工具会展开 `~`、`~user`，而 `Path`
-    把它当普通相对段（F1）。
+    以 `~` 开头的一律算越界（F1）：内置 CLI 的 `expandPath` 会把 `~`、`~/…` 展开成家目录，
+    而 `Path` 把它当普通相对段。`~user/…` CLI 不展开（按工作区内的相对路径处理），
+    这里同样拒绝，免得依赖这一细节。首尾带空白的也算越界（见 `_padded`）。
     """
-    if raw.startswith("~"):
+    if _padded(raw) or raw.startswith("~"):
         return True
     target = Path(raw)
     if not target.is_absolute():
@@ -298,7 +315,7 @@ def read_denial_reason(workdir: Path, tool_name: str, tool_input: dict[str, Any]
 
     - Read：`file_path` 必填，解析后必须在工作区内；
     - Glob/Grep：`path` 缺省即工作区（cwd），给了就必须在工作区内；glob 模式
-      （Glob 的 `pattern`、Grep 的 `glob`）不能是绝对路径、以 `~` 开头或含 `..`。
+      （Glob 的 `pattern`、Grep 的 `glob`）不能是绝对路径、以 `~` 开头、含 `..` 或首尾带空白。
     """
     refuse = "只能读取项目工作区内的文件，已拒绝：{}"
     if tool_name == "Read":
@@ -311,7 +328,9 @@ def read_denial_reason(workdir: Path, tool_name: str, tool_input: dict[str, Any]
     if raw_path is not None and (not isinstance(raw_path, str) or _escapes(workdir, raw_path)):
         return refuse.format(raw_path)
     pattern = tool_input.get("pattern" if tool_name == "Glob" else "glob")
-    if isinstance(pattern, str) and (pattern.startswith(("/", "~")) or ".." in Path(pattern).parts):
+    if isinstance(pattern, str) and (
+        _padded(pattern) or pattern.startswith(("/", "~")) or ".." in Path(pattern).parts
+    ):
         return refuse.format(pattern)
     return None
 

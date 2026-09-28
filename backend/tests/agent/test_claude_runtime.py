@@ -651,6 +651,12 @@ class TestWriteScopeHook:
             ("Write", {"file_path": "~/topic/brief.md"}),
             ("Edit", {"file_path": "~root/.bashrc"}),
             ("NotebookEdit", {"notebook_path": "~"}),
+            # The CLI trims paths before expanding them.
+            ("Write", {"file_path": " ~/topic/brief.md"}),
+            ("Edit", {"file_path": "\t/etc/hosts"}),
+            ("Write", {"file_path": " topic/brief.md"}),
+            ("Write", {"file_path": "topic/brief.md "}),
+            ("Write", {"file_path": "\ufefftopic/brief.md"}),
         ],
     )
     async def test_out_of_scope_denied(
@@ -712,6 +718,17 @@ class TestReadScopeHook:
             ("Grep", {"pattern": "KEY", "path": "~"}),
             ("Grep", {"pattern": "KEY", "path": "~root/x"}),
             ("Grep", {"pattern": "KEY", "glob": "~/**"}),
+            # The CLI trims paths before expanding them.
+            ("Read", {"file_path": " /etc/passwd"}),
+            ("Read", {"file_path": " ~/.ssh/id_rsa"}),
+            ("Read", {"file_path": "\t~/.ssh/id_rsa"}),
+            ("Read", {"file_path": " ../../x"}),
+            ("Read", {"file_path": "topic/brief.md\n"}),
+            ("Read", {"file_path": "\u00a0~/.ssh/id_rsa"}),
+            ("Grep", {"pattern": "KEY", "path": " ~"}),
+            ("Grep", {"pattern": "KEY", "glob": " /etc/*"}),
+            ("Glob", {"pattern": " /etc/*"}),
+            ("Glob", {"pattern": "*", "path": "\t/Users"}),
         ],
     )
     async def test_outside_workspace_denied(

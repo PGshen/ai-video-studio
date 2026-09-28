@@ -130,6 +130,11 @@ def native_shell_supported(profile: ModelProfileValue) -> bool:
     托管沙箱，看不到工作区（F2，2026-09-28 核实，见 docs/references/openai-agents-sdk.md）。
     其他网关按同样保守处理。
     """
+    return is_official_openai(profile)
+
+
+def is_official_openai(profile: ModelProfileValue) -> bool:
+    """`base_url` 为空或主机正好是 `api.openai.com`。"""
     if not profile.base_url:
         return True
     return (urlsplit(profile.base_url).hostname or "").lower() == OFFICIAL_OPENAI_HOST
@@ -140,6 +145,23 @@ def _check_provider(profile: ModelProfileValue) -> None:
         raise TurnSetupError(
             f"OpenAI 运行时不支持 provider={profile.provider}（只支持 openai、litellm）"
         )
+
+
+def model_settings(profile: ModelProfileValue) -> ModelSettings:
+    """每轮的 `ModelSettings`。
+
+    `provider=openai` 且走网关（非官方主机，例如 OpenRouter）时：OpenRouter 的 Responses
+    API 无状态、不保存任何条目，回放的 `reasoning` 条目只带 id 会报 "Item not found"，
+    所以显式 `store=False` 并请求 `reasoning.encrypted_content`，让会话里存下的
+    reasoning 条目自带内容（F2 审查，2026-09-28）。
+    """
+    if profile.provider == "openai" and not is_official_openai(profile):
+        return ModelSettings(
+            include_usage=True,
+            store=False,
+            response_include=["reasoning.encrypted_content"],
+        )
+    return ModelSettings(include_usage=True)
 
 
 def build_model(profile: ModelProfileValue, api_key: str) -> Model:
@@ -660,7 +682,7 @@ class OpenAIRuntime:
             name="studio",
             instructions=ctx.system_prompt,
             model=model,
-            model_settings=ModelSettings(include_usage=True),
+            model_settings=model_settings(ctx.model_profile),
             tools=self._tools(ctx, turn),
         )
         self._sessions_db.parent.mkdir(parents=True, exist_ok=True)
