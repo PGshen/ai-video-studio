@@ -18,9 +18,9 @@
   工具，handler 走 `invoke_tool`，`ToolResult.images` → MCP image content。
 - **权限**：`PreToolUse` hook 拒绝写到 `ctx.write_scope` 之外的 Write/Edit/
   MultiEdit/NotebookEdit，拒绝读工作区之外的 Read/Glob/Grep；Bash 不做事前检查
-  （开 SDK sandbox，事后 `guard` 兜底）。继承来的名字像密钥的环境变量一律置空。
-  剩余风险（WebFetch 放行所有域名、sandbox 只管 Bash 且不限制读）见
-  docs/references/claude-agent-sdk.md。
+  （开 SDK sandbox：拒读仓库与数据目录、放回本轮工作区，TD-1；事后 `guard` 兜底写入）。
+  继承来的名字像密钥的环境变量一律置空。各阶段暂不开联网（M4 带域名白名单再开）。
+  剩余风险见 docs/references/claude-agent-sdk.md。
 - **用量**：result 消息的 `total_cost_usd` 在恢复的会话里是累计值，这里按
   `CostLedger`（键为 SDK 会话 id）记录的上次累计值求差，`Usage` 是本轮的值。
   一轮没拿到 result（被强制取消、出错）时账本标"待校准"，那一轮的花费并入
@@ -73,12 +73,13 @@ from studio.agent.claude_messages import (
 from studio.agent.claude_scope import (
     GUARDED_WRITE_TOOLS,
     READ_TOOLS,
-    SANDBOX,
     read_scope_hook,
+    sandbox_settings,
     write_scope_hook,
 )
 from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext
 from studio.config import Settings
+from studio.config import repo_root as default_repo_root
 
 logger = logging.getLogger(__name__)
 
@@ -208,9 +209,12 @@ class ClaudeRuntime:
         self,
         data_dir: Path,
         *,
+        repo_root: Path | None = None,
         client_factory: ClientFactory = _default_client,
         environ: Mapping[str, str] | None = None,
     ) -> None:
+        self._data_dir = data_dir
+        self._repo_root = repo_root if repo_root is not None else default_repo_root()
         self._claude_dir = data_dir / "claude"
         self._ledger = CostLedger(self._claude_dir / "studio-cost-ledger")
         self._client_factory = client_factory
@@ -245,7 +249,7 @@ class ClaudeRuntime:
             resume=ctx.resume_ref,
             env=env,
             hooks={"PreToolUse": [write_hook, read_hook]},
-            sandbox=SANDBOX,
+            sandbox=sandbox_settings(workdir, self._repo_root, self._data_dir),
             include_partial_messages=True,
             # The prompt embeds workspace-derived text (preamble); never expand @paths in it.
             verbatim_prompts=True,
@@ -385,4 +389,5 @@ def register_claude(factory: RuntimeFactory, settings: Settings) -> None:
     缺 key 的问题在对应的 turn 里报 `failed`。
     """
     data_dir = settings.data_dir
-    factory.register("claude", lambda: ClaudeRuntime(data_dir))
+    root = default_repo_root()
+    factory.register("claude", lambda: ClaudeRuntime(data_dir, repo_root=root))

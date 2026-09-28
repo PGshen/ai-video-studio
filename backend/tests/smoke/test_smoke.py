@@ -15,6 +15,7 @@ import contextlib
 import json
 import os
 import shutil
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -298,6 +299,87 @@ async def test_claude_login_cancel_then_turn(tmp_path: Path) -> None:
         record_evidence("claude-login-cancel", evidence, M1X_EVIDENCE_DIR)
         graceful.engine.dispose()
         forced.engine.dispose()
+
+
+# ---- Claude, local login: Bash read-deny sandbox (M1x T8, TD-1) --------------------
+
+SANDBOX_MARKER = "t8-inside-ok"
+
+
+def _probe_script(targets: dict[str, Path | str]) -> str:
+    """Shell script that reports, per target, whether `cat` could read it (contents
+    never printed), then checks that ordinary tools still run under the sandbox."""
+    lines = [
+        f'if cat "{path}" >/dev/null 2>&1; then echo "READABLE {name}"; '
+        f'else echo "DENIED {name}"; fi'
+        for name, path in targets.items()
+    ]
+    # stderr only (stdout discarded): shows the sandbox's error message, never contents.
+    lines += [f'cat "{path}" 2>&1 >/dev/null' for path in targets.values()]
+    lines += [
+        "cat topic/x.md",
+        "ls >/dev/null && echo ls-ok",
+        "ls /usr/bin >/dev/null && echo usr-bin-ok",
+        "python3 -c 'print(\"py-ok\")'",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+async def test_claude_login_sandbox_read() -> None:
+    """Real layout: data dir inside the repo. Bash reads the current workspace, but not
+    the repo (`backend/.env`), other projects or the data dir's own files."""
+    if os.environ.get("STUDIO_SMOKE_SKIP_LOGIN") == "1":
+        pytest.skip("STUDIO_SMOKE_SKIP_LOGIN=1，跳过本机登录用例")
+    if _claude_cli() is None:
+        pytest.skip("未找到 claude CLI（本机未安装/未登录 Claude Code），跳过本机登录用例")
+    env_file = REPO_ROOT / "backend" / ".env"
+    assert os.access(env_file, os.R_OK), "前置条件：backend/.env 存在且本进程可读"
+
+    base = REPO_ROOT / "data" / "smoke-tmp" / uuid.uuid4().hex
+    h = build_harness(base)
+    evidence: dict[str, Any] = {"data_dir": str(h.data_dir), "workdir": str(h.workdir)}
+    try:
+        other = h.data_dir / "projects" / "other-project" / "topic" / "y.md"
+        other.parent.mkdir(parents=True)
+        other.write_text("other project\n", encoding="utf-8")
+        canary = h.data_dir / "canary.db"
+        canary.write_text("data dir file\n", encoding="utf-8")
+        inside = h.workdir / "topic" / "x.md"
+        inside.parent.mkdir(parents=True, exist_ok=True)
+        inside.write_text(SANDBOX_MARKER + "\n", encoding="utf-8")
+        targets: dict[str, Path | str] = {
+            "workspace": "topic/x.md",
+            "workspace-abs": inside,
+            "backend-env": env_file,
+            "repo-file": REPO_ROOT / "AGENTS.md",
+            "other-project": other,
+            "data-dir-file": canary,
+        }
+        (h.workdir / "topic" / "probe.sh").write_text(_probe_script(targets), encoding="utf-8")
+
+        profile = h.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+        session_id = h.session(profile, "claude")
+        outcome = await h.turn(
+            session_id,
+            "这是自动化测试。用 Bash 工具原样执行 `sh topic/probe.sh` 一次（不要改写、不要重试），"
+            "然后原样报告输出。",
+        )
+        evidence["turn"] = outcome_summary(outcome)
+        output = "\n".join(str(r["text"]) for r in outcome.tool_results("Bash"))
+        evidence["bash_output"] = output
+        assert outcome.turn.status == "done", outcome.turn.error
+        for name in ("workspace", "workspace-abs"):
+            assert f"READABLE {name}" in output, output
+        for name in ("backend-env", "repo-file", "other-project", "data-dir-file"):
+            assert f"DENIED {name}" in output, output
+        for marker in (SANDBOX_MARKER, "ls-ok", "usr-bin-ok", "py-ok"):
+            assert marker in output, output
+    finally:
+        record_evidence("claude-login-sandbox", evidence, M1X_EVIDENCE_DIR)
+        h.engine.dispose()
+        shutil.rmtree(base, ignore_errors=True)
+        with contextlib.suppress(OSError):  # kept only if another run is using it
+            base.parent.rmdir()
 
 
 # ---- OpenAI Responses API --------------------------------------------------------

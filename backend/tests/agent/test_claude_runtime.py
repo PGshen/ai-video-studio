@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 from collections.abc import AsyncIterable, AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from claude_agent_sdk import (
     ToolUseBlock,
     UserMessage,
 )
+from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 from claude_agent_sdk.types import HookContext, PreToolUseHookInput
 from pydantic import BaseModel
 
@@ -28,9 +30,10 @@ from studio.agent import events
 from studio.agent.claude_env import DEFAULT_BASE_URL, LOGIN_BLANKED_ENV, build_env
 from studio.agent.claude_messages import build_sdk_tool
 from studio.agent.claude_runtime import ClaudeRuntime, register_claude
+from studio.agent.claude_scope import sandbox_settings
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
-from studio.config import Settings
+from studio.config import Settings, repo_root
 from studio.db.repo.profiles import ModelProfileValue
 from studio.workspace.scope import WriteScope
 
@@ -1047,6 +1050,68 @@ class TestLedgerKey:
 
         assert _costs(forked) == [(pytest.approx(0.3), False)]
         assert _costs(again) == [(pytest.approx(0.1), False)]
+
+
+class TestSandbox:
+    """TD-1: Bash sandbox denies reads of the repo and the data dir, re-allows the workdir."""
+
+    def test_sandbox_settings(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        data = repo / "data"
+        workdir = data / "projects" / "p1"
+        workdir.mkdir(parents=True)
+
+        settings = sandbox_settings(workdir, repo, data)
+
+        assert settings == {
+            "enabled": True,
+            "autoAllowBashIfSandboxed": True,
+            "allowUnsandboxedCommands": False,
+            "filesystem": {
+                "denyRead": [str(repo.resolve()), str(data.resolve())],
+                "allowRead": [str(workdir.resolve())],
+            },
+        }
+
+    def test_paths_are_resolved(self, tmp_path: Path) -> None:
+        real = tmp_path / "real"
+        (real / "data" / "projects" / "p1").mkdir(parents=True)
+        link = tmp_path / "link"
+        link.symlink_to(real)
+
+        fs = sandbox_settings(link / "data" / "projects" / "p1", link, link / "data")["filesystem"]
+
+        assert fs["denyRead"] == [str(real.resolve()), str((real / "data").resolve())]
+        assert fs["allowRead"] == [str((real / "data" / "projects" / "p1").resolve())]
+
+    async def test_options_use_turn_workdir(
+        self, tmp_path: Path, workdir: Path, data_dir: Path
+    ) -> None:
+        clients = Clients()
+        repo = tmp_path / "repo"
+        runtime = ClaudeRuntime(data_dir, repo_root=repo, client_factory=clients, environ=_ENVIRON)
+        await _run(runtime, _ctx(workdir))
+
+        sandbox = clients.last.options.sandbox
+        assert sandbox == sandbox_settings(workdir, repo, data_dir)
+
+    async def test_repo_root_defaults_to_config(self, workdir: Path, data_dir: Path) -> None:
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir))
+
+        sandbox = clients.last.options.sandbox
+        assert sandbox == sandbox_settings(workdir, repo_root(), data_dir)
+
+    async def test_filesystem_reaches_cli_settings(self, workdir: Path, data_dir: Path) -> None:
+        """The SDK merges `sandbox` into the `--settings` JSON as-is (extra keys kept)."""
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir))
+
+        transport = SubprocessCLITransport(prompt="", options=clients.last.options)
+        value = transport._build_settings_value()
+        assert value is not None
+        cli_settings = json.loads(value)
+        assert cli_settings["sandbox"]["filesystem"]["allowRead"] == [str(workdir.resolve())]
 
 
 class TestRegister:

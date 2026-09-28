@@ -32,6 +32,7 @@ from studio.db.repo.turns import (
     list_events,
     mark_turn_running,
 )
+from studio.stages.topic import TopicStage
 from studio.workspace import WriteScope, files, rollback
 
 from .conftest import StudioEnv
@@ -416,6 +417,10 @@ class TestWorkspaceChangedPaths:
 
 class TestAllowWeb:
     async def test_allow_web_follows_stage_definition(self, h: Harness) -> None:
+        class WebTopic(TopicStage):
+            allow_web = True
+
+        h.env.registry.register(WebTopic())
         await h.run(h.session(stage="topic"), [fake.say("a")])
         await h.run(h.session(stage="narrative"), [fake.say("b")])
 

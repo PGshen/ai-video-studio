@@ -18,7 +18,9 @@ _WRITE_SCOPE = WriteScope(writable=["topic/**"], tool_managed=[])
 
 class TopicStage:
     name = "topic"
-    allow_web = True
+    # TD-1: off until M4, which re-enables web tools together with a domain allowlist
+    # (WebFetch/WebSearch otherwise reach any domain and could exfiltrate workspace text).
+    allow_web = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")

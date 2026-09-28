@@ -25,8 +25,9 @@ class TestTopicStage:
     def test_no_business_tools_in_m1(self) -> None:
         assert topic_stage.tools() == []
 
-    def test_web_tools_allowed(self) -> None:
-        assert topic_stage.allow_web is True
+    def test_web_tools_disabled_until_domain_policy(self) -> None:
+        # TD-1: no stage gets web tools until M4 adds a domain allowlist.
+        assert topic_stage.allow_web is False
 
     def test_system_prompt_is_non_empty(self) -> None:
         assert topic_stage.system_prompt().strip() != ""

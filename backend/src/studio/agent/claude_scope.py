@@ -1,13 +1,14 @@
 """Claude 原生工具的读写范围（从 `claude_runtime` 拆出，见其模块文档的"权限"一节）。
 
 `PreToolUse` hook 拒绝写到可写范围之外的 Write/Edit/MultiEdit/NotebookEdit、
-拒绝读工作区之外的 Read/Glob/Grep；Bash 靠 SDK sandbox（`SANDBOX`）。
+拒绝读工作区之外的 Read/Glob/Grep；Bash 靠 SDK sandbox（`sandbox_settings`：
+按本轮工作区生成，拒读仓库与数据目录）。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Required, TypedDict
 
 from claude_agent_sdk.types import (
     HookCallback,
@@ -24,13 +25,40 @@ GUARDED_WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 READ_TOOLS = ("Read", "Glob", "Grep")
 """受读取范围 hook 约束的原生只读工具：路径必须落在工作区内（含 `upstream/`）。"""
 
-SANDBOX: SandboxSettings = {
-    "enabled": True,
-    "autoAllowBashIfSandboxed": True,
-    # Without this the model can opt out per command via dangerouslyDisableSandbox.
-    "allowUnsandboxedCommands": False,
-}
-"""Bash sandbox。R3 已在 T15 实测（macOS，2026-09-28）：工作区外写入、外网都被拦住，保留 Bash。"""
+
+class SandboxFilesystem(TypedDict):
+    """CLI 的 `sandbox.filesystem` 中本项目用到的部分（SDK 的 `SandboxSettings` 没有
+    声明这个字段；CLI 另有 `allowWrite`/`denyWrite`）。"""
+
+    denyRead: list[str]
+    allowRead: list[str]
+
+
+class StudioSandboxSettings(SandboxSettings, total=False):
+    """`SandboxSettings` 加上 `filesystem`。SDK 把 `options.sandbox` 原样合并进 `--settings`
+    的 JSON（`subprocess_cli.py: _build_settings_value`），多出的键会带给 CLI。"""
+
+    filesystem: Required[SandboxFilesystem]
+
+
+def sandbox_settings(workdir: Path, repo_root: Path, data_dir: Path) -> StudioSandboxSettings:
+    """本轮的 Bash sandbox（TD-1）：拒读仓库和数据目录，再放回当前工作区。
+
+    CLI 的 `allowRead` 优先于 `denyRead`（2026-09-28 实测，见
+    docs/references/claude-agent-sdk.md），所以拒读父目录后能放回其下的工作区；
+    其他项目的工作区、`studio.db`、`backend/.env` 仍读不到。路径全部解析成真实路径
+    （macOS 的 `/var` → `/private/var` 之类）。R3（T15 实测）：工作区外写入、外网都被拦住。
+    """
+    return {
+        "enabled": True,
+        "autoAllowBashIfSandboxed": True,
+        # Without this the model can opt out per command via dangerouslyDisableSandbox.
+        "allowUnsandboxedCommands": False,
+        "filesystem": {
+            "denyRead": [str(repo_root.resolve()), str(data_dir.resolve())],
+            "allowRead": [str(workdir.resolve())],
+        },
+    }
 
 
 _PADDING = "\ufeff"
