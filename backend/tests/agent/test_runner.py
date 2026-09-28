@@ -959,7 +959,7 @@ class TestReviewFixes:
     def test_recovery_continues_after_one_failure(
         self, h: Harness, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from studio.agent import runner as runner_module
+        from studio.agent import recovery as recovery_module
 
         sessions = [h.session(), h.session(stage="narrative")]
         turns = []
@@ -968,7 +968,7 @@ class TestReviewFixes:
             assert turn is not None
             mark_turn_running(h.env.engine, turn.id, start_snapshot_id=None)
             turns.append(turn.id)
-        real = runner_module.create_snapshot
+        real = recovery_module.create_snapshot
         calls: list[int] = []
 
         def flaky(*args: Any, **kwargs: Any) -> Any:
@@ -977,7 +977,7 @@ class TestReviewFixes:
                 raise RuntimeError("disk full")
             return real(*args, **kwargs)
 
-        monkeypatch.setattr(runner_module, "create_snapshot", flaky)
+        monkeypatch.setattr(recovery_module, "create_snapshot", flaky)
         h.runner.recover_on_startup()
 
         second = get_turn(h.env.engine, turns[1])

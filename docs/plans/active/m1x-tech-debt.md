@@ -125,7 +125,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：`wc -l agent/openai_runtime.py` ≤ 400；`make check` 绿。
 - **验证命令**：`make check`
 
-### T7：拆分 TurnRunner（TD-15）（待开始）
+### T7：拆分 TurnRunner（TD-15）（完成）
 
 - **目标**：`runner.py` ≤ 400 行，M2 加 worker/渲染相关逻辑时有清楚的落点。
 - **涉及文件**：`backend/src/studio/agent/runner.py` 拆为 `runner.py`（公开接口 `TurnRunner`、调度与排队）、`turn_events.py`（`_handle`/`_after_tool_result`/截断/持久化与推送）、`turn_finish.py`（`_finish`、guard、快照、`_finish_turn_row`）、`recovery.py`（`recover_on_startup`）；ARCHITECTURE.md 与 import-linter 同步。
@@ -174,10 +174,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T4 — 完成（TD-10：`backend/tests/event_asserts.py` 新增 `assert_in_order`/`type_counts`；`test_stream.py::test_default_fake_script_produces_expected_wire_events` 与 `test_runner.py::test_events_persisted_published_and_snapshotted` 改为断言相对顺序和不变量；本地把 `runner.py` 的 `workspace_changed` 发布挪到 `_finish` 快照之后（不提交），确认旧的完整列表断言红、新断言绿后已还原，`git diff -- backend/src` 为空；`make check` 全绿）。
 - 2026-09-28 — T5 — 完成（TD-17：`TurnContext.tool_context()`，Fake/Claude/OpenAI 三个运行时改用它，`grep -rn "ToolContext(" backend/src` 只剩 `runtime.py`；TD-18：Fake/Claude 运行时删除步数计数，Claude 不再因步数自行 interrupt，改由 runner 置位取消令牌、watcher 转成 `interrupt()`，runner 最终状态仍为 `budget_exceeded`；OpenAI `max_turns` 改为由 `max_steps` 推导的宽松兜底；测试先红（4 项）后绿，`make check` 全绿）。
 - 2026-09-28 — T6 — 完成（TD-16：`openai_runtime.py` 764→362 行；`LocalShellExecutor`/`_read_capped`/`_wait_for_exit`/`_kill_group`/`_shell_env`/相关常量纯搬移到新建的 `agent/shell.py`（199 行），业务工具桥接（`build_function_tool`/`_sdk_output`）与 item→事件转换（`_tool_call`/`_tool_result`/`_Turn`/`convert`，原 `_convert`）纯搬移到新建的 `agent/openai_tools.py`（240 行）；`test_openai_runtime.py` 里纯测 `LocalShellExecutor` 的用例迁到新建的 `backend/tests/agent/test_shell.py`（断言不改，只改 import），只测运行时整体取消行为的 `test_cancel_while_shell_runs` 留在原文件。TD-14：RED 测试 `test_shell.py::TestCancelReaderCleanup::test_no_pending_reader_tasks_after_cancel_during_drain`（monkeypatch `_read_capped` 制造可控的 drain 窗口，`asyncio.wait_for` 外部超时触发取消，检查 `asyncio.all_tasks()`）先红后绿；修复把 `_run` 里两处取消入口合并成一个 `except asyncio.CancelledError`，统一 `reader.cancel()` 后 `asyncio.wait_for(asyncio.gather(*readers, return_exceptions=True), _READER_DRAIN_TIMEOUT_S)`。`make check` 全绿，import-linter 契约无需新增（三个模块都在 `studio.agent` 包内，受既有契约覆盖）；ARCHITECTURE.md §2 agent 行更新拆分说明）。
+- 2026-09-28 — T7 — 完成（TD-15：`runner.py` 622→340 行，纯搬移，不改逻辑；新建 `agent/turn_state.py`（70 行，`_Job`/`_State` 共享结构）、`agent/turn_events.py`（124 行，`handle`/`_after_tool_result`/`_exceed_budget`/截断三件套/`TOOL_RESULT_MAX_CHARS`）、`agent/turn_finish.py`（121 行，`finish`/`finish_turn_row`）、`agent/recovery.py`（83 行，`recover_on_startup`/`_recover_turn`/`_guard_recovered_turn`）。设计选择：不用协作类，改成"自由函数 + 显式传入 `runner: TurnRunner`"（如 `turn_events.handle(runner, job, state, event)`），`_persist`/`_publish`/`_publish_status`/`_safe_persist`/`_request_stop` 仍是 `TurnRunner` 的方法（总线/持久化/调度是 `TurnRunner` 的核心职责，四个新模块通过持有的 `runner` 引用调用），新模块用 `TYPE_CHECKING` 引入 `TurnRunner` 类型避免运行时循环 import。`TurnRunner`/`SessionBusyError`/`SessionNotFoundError`/`TOOL_RESULT_MAX_CHARS` 仍可从 `studio.agent.runner` 导入（`__all__` 显式声明，`TOOL_RESULT_MAX_CHARS` re-export 自 `turn_events`）。import-linter 无需新增契约（四个新模块都在 `studio.agent` 包内，受既有的"agent 不 import stages/main"等契约覆盖）。测试只改了两处 import/monkeypatch 目标（见「决策记录」），断言一行未改；`make check` 全绿（后端 569 passed / 5 deselected，前端 128 passed）。ARCHITECTURE.md §2 agent 行更新拆分说明。
 
 ## 下一步
 
-- 从 T7 开始。
+- 从 T8 开始。
 
 ## 决策记录
 
@@ -205,6 +206,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T6：`_Turn`（每轮的工具结果/失败调用/待发用量）和 `turn_cost` 跟着事件转换一起搬进 `agent/openai_tools.py`（brief 只点名了转换函数，`_Turn` 是转换和 `_UsageHooks`/`OpenAIRuntime` 共用的状态，切分到哪边都要跨模块暴露；选择放进 `openai_tools.py` 是因为 `_tool_result`/`convert` 直接读它的字段，`_UsageHooks`/`OpenAIRuntime` 只是把它当参数传递，依赖方向更自然）。原模块私有的 `_convert` 改名为公开的 `convert`（跨模块调用不再用下划线前缀）。`build_function_tool` 里的 `logger.warning` 记录模块名跟着从 `studio.agent.openai_runtime` 变成 `studio.agent.openai_tools`，`test_non_strict_fallback_logs_warning` 的 `caplog.at_level(..., logger=...)` 同步改了参数值（断言内容不变）。没有加任何 re-export shim：`grep -rn` 确认 `LocalShellExecutor`/`build_function_tool`/`turn_cost`/`_Turn` 只被测试和 `openai_runtime.py` 自己引用，测试的 import 直接改成新模块路径。
 - 2026-09-28 — T6：`TestShellProcessGroup` 里 `test_background_processes_die_with_the_command`/`test_output_flood_is_capped_and_killed` 只测 `LocalShellExecutor` 本身，随 `TestShellExecutor` 一起搬进 `test_shell.py`；`test_cancel_while_shell_runs` 经由完整的 `OpenAIRuntime.run_turn`（SDK `Runner.run_streamed` + `ScriptedModel`）驱动取消，测的是运行时整体行为而不是 executor 本身，留在 `test_openai_runtime.py`（brief"迁移后的 shell 测试不改断言"针对的是纯 executor 测试，这条不算）。
 - 2026-09-28 — T6：TD-14 的 RED 测试没有用真实子进程造成的时序竞争（如 `setsid` detach 逃逸进程组——这台 macOS 开发机没有 `setsid` 命令），改用 `monkeypatch.setattr(shell_module, "_read_capped", slow_read_capped)` 让 reader 可控地"卡" 1 秒，再用 `asyncio.wait_for(executor(...), timeout=0.2)` 从外部在 drain 窗口内触发取消，可确定性复现修复前的 bug（reader 任务残留）。
+- 2026-09-28 — T7：两处测试改动，均只改 import/monkeypatch 目标，断言不变——`test_runner.py::test_finish_turn_is_retried_once` 的 `monkeypatch.setattr(runner_module.turns_repo, "finish_turn", flaky)` 不用改（`turns_repo` 是模块别名，patch 的是 `studio.db.repo.turns` 模块本身的属性，`turn_finish.py` 里 `from studio.db.repo import turns as turns_repo` 拿到的是同一个模块对象，调用方在哪个文件无所谓）；`test_recovery_continues_after_one_failure` 的 `monkeypatch.setattr(runner_module, "create_snapshot", flaky)` 必须改成 `monkeypatch.setattr(recovery_module, "create_snapshot", flaky)`——`create_snapshot` 是按名字导入的函数引用，`_recover_turn` 搬到 `recovery.py` 后它在自己的模块命名空间里解析 `create_snapshot`，patch 旧位置不再生效。
 
 ## 阻塞
 
