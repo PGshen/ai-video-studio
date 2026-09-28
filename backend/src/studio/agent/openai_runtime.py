@@ -32,15 +32,10 @@ docs/references/openai-agents-sdk.md）只发文本、注明"模型不支持图�
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import json
 import logging
 import os
-import re
-import signal
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -48,48 +43,32 @@ from urllib.parse import urlsplit
 from agents import (
     Agent,
     ApplyPatchTool,
-    FunctionTool,
-    ItemHelpers,
     MaxTurnsExceeded,
-    MessageOutputItem,
     Model,
     ModelResponse,
     ModelSettings,
     OpenAIResponsesModel,
-    RawResponsesStreamEvent,
     RunConfig,
     RunContextWrapper,
     RunHooks,
-    RunItemStreamEvent,
     Runner,
     RunResultStreaming,
-    ShellCallOutcome,
-    ShellCommandOutput,
-    ShellCommandRequest,
-    ShellResult,
     ShellTool,
     SQLiteSession,
     Tool,
-    ToolCallItem,
-    ToolCallOutputItem,
-    ToolOutputImage,
-    ToolOutputText,
     TResponseInputItem,
-    UserError,
     WebSearchTool,
 )
-from agents.tool_context import ToolContext as SdkToolContext
-from agents.usage import Usage as SdkUsage
 from openai import AsyncOpenAI
 
 from studio.agent import events
-from studio.agent.apply_patch import WorkspaceApplyPatchEditor, to_workspace_relpath
+from studio.agent.apply_patch import WorkspaceApplyPatchEditor
 from studio.agent.fallback_tools import build_fallback_tools
+from studio.agent.openai_tools import _Turn, build_function_tool, convert
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
-from studio.agent.tools import ToolContext, ToolResult, ToolSpec, invoke_tool
+from studio.agent.shell import LocalShellExecutor
 from studio.config import Settings
 from studio.db.repo.profiles import ModelProfileValue
-from studio.workspace.files import ScopeError
 
 logger = logging.getLogger(__name__)
 
@@ -110,13 +89,6 @@ def max_turns(budget: Budget) -> int:
         return MAX_TURNS
     return budget.max_steps * 2 + 2
 
-
-SHELL_DEFAULT_TIMEOUT_S = 120.0
-SHELL_MAX_TIMEOUT_S = 600.0
-SHELL_MAX_OUTPUT_CHARS = 20_000
-_SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
-"""名字匹配的环境变量不传给 Shell 子进程。只是减少 key **意外**泄露（例如命令
-把环境打印出来）：Shell 没有沙箱，命令仍能读取本机任意文件（包括 `backend/.env`）。"""
 
 ModelFactory = Callable[[ModelProfileValue, str], Model]
 
@@ -190,16 +162,6 @@ def build_model(profile: ModelProfileValue, api_key: str) -> Model:
     return LitellmModel(model=profile.model, base_url=profile.base_url, api_key=api_key)
 
 
-def turn_cost(profile: ModelProfileValue, input_tokens: int, output_tokens: int) -> float:
-    """按模型配置单价（美元 / 百万 token）计算成本；缺单价的一侧按 0 计。
-
-    缓存命中的输入 token 也按普通输入价计（宁可高估，和旧项目的做法一致）。
-    """
-    price_in = profile.price_input or 0.0
-    price_out = profile.price_output or 0.0
-    return (input_tokens * price_in + output_tokens * price_out) / 1_000_000
-
-
 def _api_key(profile: ModelProfileValue, environ: Mapping[str, str]) -> str:
     if not profile.api_key_env:
         raise TurnSetupError(
@@ -211,275 +173,6 @@ def _api_key(profile: ModelProfileValue, environ: Mapping[str, str]) -> str:
     return key
 
 
-# ---- shell --------------------------------------------------------------
-
-
-def _shell_env(environ: Mapping[str, str]) -> dict[str, str]:
-    return {name: value for name, value in environ.items() if not _SECRET_ENV_RE.search(name)}
-
-
-def _truncate(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    return text[:limit] + f"\n…（输出过长，已截断，共 {len(text)} 字符）"
-
-
-def _kill_group(proc: asyncio.subprocess.Process) -> None:
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(proc.pid, signal.SIGKILL)
-
-
-async def _read_capped(
-    stream: asyncio.StreamReader | None, cap: int, on_overflow: Callable[[], None]
-) -> bytes:
-    """读到 EOF，只保留前 `cap` 字节；超过时调用一次 `on_overflow`（杀进程组），
-    之后继续读并丢弃，直到管道关闭。"""
-    if stream is None:
-        return b""
-    kept = bytearray()
-    overflowed = False
-    while chunk := await stream.read(65536):
-        room = cap - len(kept)
-        if room > 0:
-            kept += chunk[:room]
-        if len(chunk) > room and not overflowed:
-            overflowed = True
-            on_overflow()
-    return bytes(kept)
-
-
-async def _wait_for_exit(proc: asyncio.subprocess.Process, timeout: float) -> bool:
-    """等 shell 进程本身退出（`True`）或超时（`False`）。
-
-    不能用 `proc.wait()`：asyncio 要等所有管道都关闭才让它返回，而后台子进程
-    继承了 stdout，会一直拖到它们自己结束——那样就来不及在它们改工作区之前杀掉。
-    `returncode` 在进程退出时就会被设置，这里轮询它。
-    """
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    while proc.returncode is None:
-        if loop.time() >= deadline:
-            return False
-        await asyncio.sleep(0.02)
-    return True
-
-
-_READER_DRAIN_TIMEOUT_S = 2.0
-"""命令结束并杀掉进程组后，等管道读完的上限；逃出进程组（`setsid`）又占着管道的
-进程会让读取一直挂起，超时后放弃读取。"""
-
-
-class LocalShellExecutor:
-    """`ShellTool` 的本地 executor：命令在工作区目录下逐条执行。
-
-    **没有沙箱**：命令能读本机任意文件、写工作区内任意路径，不经过事前拦截；
-    工作区内的越界改动由轮末的 `guard` 还原（设计 §4.3 第 2 道防线），工作区外的
-    改动没有防线。
-
-    每条命令在自己的进程组里运行（`start_new_session`）；命令结束（无论退出码）、
-    超时、输出超限或被取消时都杀掉整个进程组，所以 `nohup ... &` 之类的后台进程
-    不会活过这次调用——否则它们可能在轮末 `guard` 和快照之后才改工作区，改动会
-    进入下一轮的基线、永远不会被还原。用 `setsid` 等方式主动脱离进程组的进程
-    管不到。
-
-    超时、输出超限或非零退出码的调用记进 `failed`，运行时据此把对应的
-    `ToolResult` 标记为 `is_error`。
-    """
-
-    def __init__(
-        self,
-        workdir: Path,
-        failed: set[str],
-        *,
-        default_timeout_s: float = SHELL_DEFAULT_TIMEOUT_S,
-        max_output_chars: int = SHELL_MAX_OUTPUT_CHARS,
-        environ: Mapping[str, str] | None = None,
-    ) -> None:
-        self._workdir = workdir
-        self._environ = environ if environ is not None else os.environ
-        self._failed = failed
-        self._default_timeout_s = default_timeout_s
-        self._max_output_chars = max_output_chars
-
-    async def __call__(self, request: ShellCommandRequest) -> ShellResult:
-        action = request.data.action
-        timeout = action.timeout_ms / 1000 if action.timeout_ms else self._default_timeout_s
-        timeout = min(timeout, SHELL_MAX_TIMEOUT_S)
-        limit = min(action.max_output_length or self._max_output_chars, self._max_output_chars)
-        outputs: list[ShellCommandOutput] = []
-        for command in action.commands:
-            output, failed = await self._run(command, timeout, limit)
-            outputs.append(output)
-            if failed:
-                self._failed.add(request.data.call_id)
-            if output.status == "timeout":
-                break
-        return ShellResult(output=outputs)
-
-    async def _run(
-        self, command: str, timeout: float, limit: int
-    ) -> tuple[ShellCommandOutput, bool]:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=self._workdir,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=_shell_env(self._environ),
-            start_new_session=True,
-        )
-        overflowed = False
-
-        def on_overflow() -> None:
-            nonlocal overflowed
-            overflowed = True
-            _kill_group(proc)
-
-        cap = limit * 4  # UTF-8 needs at most 4 bytes per character
-        readers = [
-            asyncio.create_task(_read_capped(stream, cap, on_overflow))
-            for stream in (proc.stdout, proc.stderr)
-        ]
-        try:
-            exited = await _wait_for_exit(proc, timeout)
-        except asyncio.CancelledError:
-            _kill_group(proc)
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(proc.wait(), _READER_DRAIN_TIMEOUT_S)
-            for reader in readers:
-                reader.cancel()
-            raise
-        timed_out = not exited
-        # Always kill the group: background children must not outlive the command.
-        _kill_group(proc)
-        done, pending = await asyncio.wait(
-            [*readers, asyncio.ensure_future(proc.wait())], timeout=_READER_DRAIN_TIMEOUT_S
-        )
-        for task in pending:
-            task.cancel()
-        stdout, stderr = (
-            reader.result() if reader in done and not reader.cancelled() else b""
-            for reader in readers
-        )
-
-        stdout_text = _truncate(stdout.decode("utf-8", errors="replace"), limit)
-        stderr_text = _truncate(stderr.decode("utf-8", errors="replace"), limit)
-        if timed_out:
-            note = f"命令超时（{timeout:g} 秒），已终止"
-            return ShellCommandOutput(
-                stdout=stdout_text,
-                stderr=f"{stderr_text}\n{note}" if stderr_text else note,
-                outcome=ShellCallOutcome(type="timeout"),
-                command=command,
-            ), True
-        if overflowed:
-            stderr_text += f"\n…（输出超过上限 {limit} 字符，命令已被终止）"
-        output = ShellCommandOutput(
-            stdout=stdout_text,
-            stderr=stderr_text,
-            outcome=ShellCallOutcome(type="exit", exit_code=proc.returncode),
-            command=command,
-        )
-        return output, overflowed or proc.returncode != 0
-
-
-# ---- business tools -----------------------------------------------------
-
-
-def _sdk_output(
-    result: ToolResult, *, supports_vision: bool
-) -> str | list[ToolOutputText | ToolOutputImage]:
-    if not result.images or not supports_vision:
-        if result.images and not supports_vision:
-            # R2（LiteLLM/非视觉模型，docs/references/openai-agents-sdk.md）：模型看不懂
-            # 图片输入，发了也只会让模型编造颜色；只保留文本指标并注明原因。
-            return f"{result.text}\n（模型不支持图片，已省略图片内容）"
-        return result.text
-    return [ToolOutputText(text=result.text)] + [
-        ToolOutputImage(image_url=f"data:{image.media_type};base64,{image.data_base64}")
-        for image in result.images
-    ]
-
-
-def build_function_tool(
-    spec: ToolSpec,
-    tool_ctx: ToolContext,
-    results: dict[str, ToolResult],
-    *,
-    supports_vision: bool = True,
-) -> FunctionTool:
-    """业务 `ToolSpec` → `FunctionTool`。每次调用的 `ToolResult` 按 `call_id` 记进
-    `results`，事件转换时直接取用（保留 `is_error` 和原始图片）。`supports_vision`
-    为 `False`（模型配置 `supports_vision=false`）时，发给模型的工具输出不带图片，
-    只保留文本（`_sdk_output`）；`results` 里仍保留原始 `ToolResult.images`，供事件/
-    画布使用。
-    """
-
-    async def on_invoke(context: SdkToolContext[Any], raw_args: str) -> Any:
-        try:
-            args = json.loads(raw_args or "{}")
-        except json.JSONDecodeError as exc:
-            result = ToolResult(text=f"参数不是合法的 JSON：{exc}", is_error=True)
-        else:
-            if isinstance(args, dict):
-                result = await invoke_tool(spec, tool_ctx, args)
-            else:
-                result = ToolResult(text="参数必须是 JSON 对象", is_error=True)
-        results[context.tool_call_id] = result
-        return _sdk_output(result, supports_vision=supports_vision)
-
-    schema = spec.input_model.model_json_schema()
-    try:
-        return FunctionTool(
-            name=spec.name,
-            description=spec.description,
-            params_json_schema=schema,
-            on_invoke_tool=on_invoke,
-            strict_json_schema=True,
-        )
-    except UserError as exc:
-        # Some Pydantic schemas cannot be made strict (e.g. open dicts); fall back to non-strict.
-        logger.warning(
-            "工具 %s 的参数 schema 无法转成 strict 模式，改用非 strict：%s", spec.name, exc
-        )
-        return FunctionTool(
-            name=spec.name,
-            description=spec.description,
-            params_json_schema=schema,
-            on_invoke_tool=on_invoke,
-            strict_json_schema=False,
-        )
-
-
-# ---- turn state and event conversion -------------------------------------
-
-
-@dataclass
-class _Turn:
-    profile: ModelProfileValue
-    workdir: Path
-    results: dict[str, ToolResult] = field(default_factory=dict)
-    failed_calls: set[str] = field(default_factory=set)
-    pending_usage: list[SdkUsage] = field(default_factory=list)
-
-    @property
-    def priced(self) -> bool:
-        return self.profile.price_input is not None and self.profile.price_output is not None
-
-    def drain_usage(self) -> list[events.AgentEvent]:
-        drained, self.pending_usage = self.pending_usage, []
-        return [
-            events.Usage(
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                cost_usd=turn_cost(self.profile, usage.input_tokens, usage.output_tokens),
-                auth="api_key",
-                priced=self.priced,
-            )
-            for usage in drained
-        ]
-
-
 class _UsageHooks(RunHooks[Any]):
     def __init__(self, turn: _Turn) -> None:
         self._turn = turn
@@ -488,101 +181,6 @@ class _UsageHooks(RunHooks[Any]):
         self, context: RunContextWrapper[Any], agent: Agent[Any], response: ModelResponse
     ) -> None:
         self._turn.pending_usage.append(response.usage)
-
-
-def _get(obj: Any, key: str) -> Any:
-    if isinstance(obj, Mapping):
-        return obj.get(key)
-    return getattr(obj, key, None)
-
-
-def _parse_args(raw: Any) -> dict[str, object]:
-    if not isinstance(raw, str):
-        return {}
-    try:
-        parsed = json.loads(raw or "{}")
-    except json.JSONDecodeError:
-        return {"raw": raw}
-    return parsed if isinstance(parsed, dict) else {"raw": parsed}
-
-
-def _patch_path(workdir: Path, raw: Any) -> object:
-    """apply_patch 路径 → 规范化的工作区相对路径（与 editor 实际写入的一致）；
-    不安全的路径原样保留（editor 会拒绝它，事件里保留模型给的原文便于排查）。"""
-    if not isinstance(raw, str) or not raw:
-        return raw
-    try:
-        return to_workspace_relpath(workdir, raw)
-    except ScopeError:
-        return raw
-
-
-def _tool_call(item: ToolCallItem, workdir: Path) -> events.ToolCall:
-    raw = item.raw_item
-    kind = _get(raw, "type")
-    call_id = item.call_id or ""
-    if kind == "function_call":
-        return events.ToolCall(call_id, str(_get(raw, "name")), _parse_args(_get(raw, "arguments")))
-    if kind == "apply_patch_call":
-        operation = _get(raw, "operation")
-        args: dict[str, object] = {
-            key: _get(operation, key)
-            for key in ("type", "path", "move_to", "diff")
-            if _get(operation, key)
-        }
-        for key in ("path", "move_to"):
-            if key in args:
-                args[key] = _patch_path(workdir, args[key])
-        return events.ToolCall(call_id, "apply_patch", args)
-    if kind == "shell_call":
-        commands = _get(_get(raw, "action"), "commands") or []
-        return events.ToolCall(call_id, "shell", {"commands": [str(c) for c in commands]})
-    if kind == "web_search_call":
-        action = _get(raw, "action")
-        query = _get(action, "query")
-        return events.ToolCall(call_id, "web_search", {"query": query} if query else {})
-    return events.ToolCall(call_id, item.tool_name or str(kind or "unknown"), {})
-
-
-def _tool_result(item: ToolCallOutputItem, turn: _Turn) -> events.ToolResult:
-    call_id = item.call_id or ""
-    business = turn.results.pop(call_id, None)
-    if business is not None:
-        return events.ToolResult(
-            call_id=call_id,
-            text=business.text,
-            images=list(business.images),
-            is_error=business.is_error,
-        )
-    failed = _get(item.raw_item, "status") == "failed" or call_id in turn.failed_calls
-    output = item.output
-    return events.ToolResult(
-        call_id=call_id, text="" if output is None else str(output), is_error=failed
-    )
-
-
-def _convert(event: Any, turn: _Turn) -> list[events.AgentEvent]:
-    if isinstance(event, RawResponsesStreamEvent):
-        data = event.data
-        if data.type == "response.output_text.delta":
-            return [events.TextDelta(text=data.delta)]
-        return []
-    if not isinstance(event, RunItemStreamEvent):
-        return []
-    item = event.item
-    if isinstance(item, MessageOutputItem):
-        text = ItemHelpers.text_message_output(item)
-        return [events.TextBlock(text=text)] if text else []
-    if isinstance(item, ToolCallItem):
-        call = _tool_call(item, turn.workdir)
-        if call.name == "web_search":
-            # Hosted tool: no separate output item; close the call so the UI does not hang.
-            status = _get(item.raw_item, "status") or "completed"
-            return [call, events.ToolResult(call_id=call.call_id, text=f"联网搜索：{status}")]
-        return [call]
-    if isinstance(item, ToolCallOutputItem):
-        return [_tool_result(item, turn)]
-    return []
 
 
 # ---- session history -----------------------------------------------------
@@ -733,7 +331,7 @@ class OpenAIRuntime:
                 )
                 watcher = asyncio.create_task(_cancel_on(ctx.cancel_token, result))
                 async for event in result.stream_events():
-                    for converted in turn.drain_usage() + _convert(event, turn):
+                    for converted in turn.drain_usage() + convert(event, turn):
                         yield converted
         except MaxTurnsExceeded:
             error = f"模型调用次数超过上限（{turn_limit}）"

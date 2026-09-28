@@ -18,15 +18,11 @@ from agents import (
     FunctionTool,
     Model,
     OpenAIResponsesModel,
-    RunContextWrapper,
-    ShellCallData,
-    ShellCommandRequest,
     ShellTool,
     WebSearchTool,
 )
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.testing import ModelCall, ModelStep, ScriptedModel, assistant_message, function_call
-from agents.tool import ShellActionRequest
 from agents.usage import Usage
 from openai.types.responses import (
     Response,
@@ -44,16 +40,14 @@ from pydantic import BaseModel
 from studio.agent import events
 from studio.agent.openai_runtime import (
     MAX_TURNS,
-    LocalShellExecutor,
     OpenAIRuntime,
-    build_function_tool,
     build_model,
     max_turns,
     native_shell_supported,
     openai_client,
     register_openai,
-    turn_cost,
 )
+from studio.agent.openai_tools import build_function_tool, turn_cost
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import Settings
@@ -702,72 +696,6 @@ class TestSession:
         assert _user_texts(models.calls[2]) == ["2", "3"]
 
 
-class TestShellExecutor:
-    def _request(self, commands: list[str], timeout_ms: int | None = None) -> ShellCommandRequest:
-        data = ShellCallData(
-            call_id="s1", action=ShellActionRequest(commands=commands, timeout_ms=timeout_ms)
-        )
-        return ShellCommandRequest(ctx_wrapper=RunContextWrapper(context=None), data=data)
-
-    async def test_uses_injected_environ_without_secrets(
-        self, workdir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("STUDIO_ONLY_IN_PROCESS_ENV", "leak")
-        environ = {"PATH": os.environ["PATH"], "FOO": "bar", "MY_TOKEN": "secret"}
-        executor = LocalShellExecutor(workdir, set(), environ=environ)
-
-        result = await executor(
-            self._request(['echo "$FOO|$MY_TOKEN|$STUDIO_ONLY_IN_PROCESS_ENV"'])
-        )
-
-        assert result.output[0].stdout.strip() == "bar||"
-
-    async def test_runs_in_workdir_and_captures_output(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        result = await LocalShellExecutor(workdir, failed)(self._request(["pwd", "echo err >&2"]))
-
-        first, second = result.output
-        assert first.stdout.strip() == str(workdir.resolve())
-        assert first.exit_code == 0
-        assert second.stderr.strip() == "err"
-        assert failed == set()
-
-    async def test_timeout_kills_command(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        executor = LocalShellExecutor(workdir, failed)
-
-        result = await asyncio.wait_for(executor(self._request(["sleep 5"], timeout_ms=200)), 3)
-
-        (output,) = result.output
-        assert output.status == "timeout"
-        assert failed == {"s1"}
-
-    async def test_nonzero_exit_marks_failed(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        result = await LocalShellExecutor(workdir, failed)(self._request(["exit 2"]))
-
-        assert result.output[0].exit_code == 2
-        assert failed == {"s1"}
-
-    async def test_output_is_truncated(self, workdir: Path) -> None:
-        executor = LocalShellExecutor(workdir, set(), max_output_chars=100)
-        result = await executor(self._request(["yes x | head -c 5000"]))
-
-        assert len(result.output[0].stdout) < 200
-        assert "截断" in result.output[0].stdout
-
-    async def test_secrets_are_not_inherited(
-        self, workdir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("SOME_API_KEY", "leak")
-        monkeypatch.setenv("HARMLESS_VALUE", "ok")
-        executor = LocalShellExecutor(workdir, set())
-
-        result = await executor(self._request(['echo "[$SOME_API_KEY][$HARMLESS_VALUE]"']))
-
-        assert result.output[0].stdout.strip() == "[][ok]"
-
-
 def test_register_openai(tmp_path: Path) -> None:
     factory = RuntimeFactory()
     register_openai(factory, Settings(data_dir=tmp_path / "data"))
@@ -793,42 +721,8 @@ async def _group_gone(pgid: int) -> bool:
 
 
 class TestShellProcessGroup:
-    def _request(self, commands: list[str], timeout_ms: int | None = None) -> ShellCommandRequest:
-        data = ShellCallData(
-            call_id="s1", action=ShellActionRequest(commands=commands, timeout_ms=timeout_ms)
-        )
-        return ShellCommandRequest(ctx_wrapper=RunContextWrapper(context=None), data=data)
-
-    @pytest.mark.parametrize(
-        "background",
-        [
-            "nohup sh -c 'sleep 0.5; touch marker' > /dev/null 2>&1 &",
-            "(sleep 0.5; touch marker) &",  # still holds the stdout pipe
-        ],
-    )
-    async def test_background_processes_die_with_the_command(
-        self, workdir: Path, background: str
-    ) -> None:
-        executor = LocalShellExecutor(workdir, set())
-
-        result = await asyncio.wait_for(executor(self._request([f"echo $$; {background}"])), 3)
-
-        pgid = int(result.output[0].stdout.split()[0])
-        assert await _group_gone(pgid)
-        await asyncio.sleep(0.8)
-        assert not (workdir / "marker").exists()
-
-    async def test_output_flood_is_capped_and_killed(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        executor = LocalShellExecutor(workdir, failed, max_output_chars=1000)
-
-        result = await asyncio.wait_for(executor(self._request(["yes"], timeout_ms=10_000)), 5)
-
-        (output,) = result.output
-        assert output.status == "completed"
-        assert len(output.stdout) < 1200
-        assert "终止" in output.stderr
-        assert failed == {"s1"}
+    """`LocalShellExecutor` 本身的行为测试在 `test_shell.py`；这里只留取消如何贯穿
+    整个 OpenAIRuntime（含 SDK Runner、事件流）的集成测试。"""
 
     async def test_cancel_while_shell_runs(self, workdir: Path, data_dir: Path) -> None:
         models = Models([_shell_step("s1", ["echo $$ > pgid; sleep 30"])])
@@ -896,7 +790,7 @@ class TestReviewFixes:
 
         spec = ToolSpec("open", "开放参数", Open, {"topic"}, handler)
         tool_ctx = ToolContext("p", "topic", workdir, _noop_record)
-        with caplog.at_level(logging.WARNING, logger="studio.agent.openai_runtime"):
+        with caplog.at_level(logging.WARNING, logger="studio.agent.openai_tools"):
             tool = build_function_tool(spec, tool_ctx, {})
 
         assert tool.strict_json_schema is False

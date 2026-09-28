@@ -30,7 +30,7 @@ ai-video-studio/
 | `search`（M4） | 搜索提供方接口，以及 Tavily 实现 | `config` |
 | `workspace` | 工作区布局（`layout`）、快照库与 diff/回滚（`snapshot`、`blobs`）、越界检查（`scope`）、上游只读副本（`upstream`）、受控文件读写与建/删工作区（`files`） | `db`、`config` |
 | `jobs`（M2） | SQLite 任务队列：领取、心跳、结果 | `db`、`config` |
-| `agent` | 事件（`events`）、`ToolSpec`（`tools`）、运行时协议与注册表（`runtime`）、**阶段定义协议与注册表（`stage`）**、**阶段流转：定稿/重新打开/stale（`stage_flow`）**、会话总线（`bus`）、上下文前言（`preamble`）、TurnRunner（`runner`）、Claude/OpenAI/Fake 适配器、兜底文件工具与 `ApplyPatchEditor` | `workspace`、`db`、`config` |
+| `agent` | 事件（`events`）、`ToolSpec`（`tools`）、运行时协议与注册表（`runtime`）、**阶段定义协议与注册表（`stage`）**、**阶段流转：定稿/重新打开/stale（`stage_flow`）**、会话总线（`bus`）、上下文前言（`preamble`）、TurnRunner（`runner`）、Claude/OpenAI/Fake 适配器（`openai_runtime` 中 `LocalShellExecutor` 拆到 `shell`，业务工具桥接与 item→事件转换拆到 `openai_tools`）、兜底文件工具与 `ApplyPatchEditor` | `workspace`、`db`、`config` |
 | `stages.common` | 各阶段共用的业务工具（如 `suggest_upstream_change`，M2+）；M1 为空包 | `agent`、`workspace`、`db`、`config` |
 | `stages.<topic\|narrative\|animation>`（brainstorm 在 M4） | 各阶段的提示词、专属工具、产物 schema、校验器；M1 是占位定义（提示词 + 可写范围），实现 `agent.stage.StageDefinition` | `stages.common`、`agent`、`workspace`、`engines`、`search`、`jobs`、`db`、`config` |
 | `api` | HTTP 路由、SSE | 以上全部（除 `main`） |
