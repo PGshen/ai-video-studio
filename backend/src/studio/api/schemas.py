@@ -124,6 +124,25 @@ class TurnAccepted(BaseModel):
     turn_id: str
 
 
+class JobOut(BaseModel):
+    """`jobs` 表一行（`studio.jobs.JobValue` 的子集）：不包含 `payload`/
+    `heartbeat_at`——这两个字段是 worker 内部使用的实现细节（分别是"worker
+    怎么定位输入"和"worker 有没有卡死"），前端只需要状态、进度、错误和
+    结果（`result["output_path"]`，成片下载端点走另一个固定路径，不需要
+    前端自己拼）。
+    """
+
+    id: str
+    type: str
+    project_id: str
+    status: str
+    progress: float
+    error: str | None
+    result: dict[str, Any] | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ModelProfileOut(BaseModel):
     """不包含 `api_key_env`（字段名本身不是密钥，但简报要求"不返回 key，
     只返回 key 是否已配置"）：调用方只需要知道能不能用，不需要知道去哪个
