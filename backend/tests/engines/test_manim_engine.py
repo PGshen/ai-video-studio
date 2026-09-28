@@ -424,6 +424,14 @@ def _write_silent_wav(path: Path, duration_seconds: float = 0.1) -> None:
         wav_file.writeframes(b"\x00\x00" * n_frames)
 
 
+# T14（集成验证）关于"渲染一个极小 manim 镜头并抽取关键帧"的引用说明：
+# 这条集成用例已经被下面的 `test_render_produces_mp4_for_minimal_two_scene_script`
+# （全画质渲染极小两镜头脚本得到 mp4，本文件）和
+# `tests/engines/test_manim_preview.py::test_render_preview_returns_one_keyframe_per_beat`
+# （低清预览 + 按 beat 抽取关键帧，T2）分别覆盖，不在这里重复写第三份。
+# `tests/api/test_animation_flow.py`（T14）在完整链路（agent 一轮 → validate_scenes
+# → render_preview → 创建渲染任务 → worker 产出成片 → 成片定稿）里再次真实调用了
+# 这两条路径，验证的是"串起来"这件事，不是重新验证引擎本身的正确性。
 @pytest.mark.slow
 async def test_render_produces_mp4_for_minimal_two_scene_script(tmp_path):
     audio_path = tmp_path / "silence.wav"
