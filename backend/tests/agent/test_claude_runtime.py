@@ -25,14 +25,9 @@ from claude_agent_sdk.types import HookContext, PreToolUseHookInput
 from pydantic import BaseModel
 
 from studio.agent import events
-from studio.agent.claude_runtime import (
-    DEFAULT_BASE_URL,
-    LOGIN_BLANKED_ENV,
-    ClaudeRuntime,
-    build_env,
-    build_sdk_tool,
-    register_claude,
-)
+from studio.agent.claude_env import DEFAULT_BASE_URL, LOGIN_BLANKED_ENV, build_env
+from studio.agent.claude_messages import build_sdk_tool
+from studio.agent.claude_runtime import ClaudeRuntime, register_claude
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import Settings

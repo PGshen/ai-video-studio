@@ -137,7 +137,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 ### T8：Claude 路径拒读与选题阶段关联网（TD-1）（待开始）
 
 - **目标**：Bash 读不到仓库和其他项目工作区；在联网能力有域名策略之前，所有阶段都不开联网。
-- **涉及文件**：`backend/src/studio/agent/claude_runtime.py`（`SANDBOX` 改为按 `ctx.workdir` 生成的函数）、`backend/src/studio/stages/topic/__init__.py`、对应测试、`backend/tests/smoke/`、`docs/references/claude-agent-sdk.md`。
+- **涉及文件**：`backend/src/studio/agent/claude_runtime.py`（`SANDBOX` 改为按 `ctx.workdir` 生成的函数；先做一次纯搬移把它拆到 ≤ 400 行以满足 AC2，例如环境变量/成本账本/读写范围 hook 拆到独立模块——控制者补充，原计划漏列）、`backend/src/studio/stages/topic/__init__.py`、对应测试、`backend/tests/smoke/`、`docs/references/claude-agent-sdk.md`。
 - **接口与要点**：
   - `sandbox_settings(workdir: Path, repo_root: Path, data_dir: Path) -> SandboxSettings`：`filesystem.denyRead` 包含仓库根目录和 `data_dir`，`filesystem.allowRead`（若 CLI 支持）放回当前 `workdir`。**先实测** CLI 的 denyRead/allowRead 优先级：若 deny 父目录后无法 allow 子目录，改为逐项列出需要拒读的兄弟路径（仓库下除 `data/` 外的顶层项、`data/` 下除当前项目外的项目目录、`data/*.db`），结论写进 references。
   - `SandboxSettings` 是 TypedDict，`filesystem` 字段若不在类型里，按 references 记录的"合并进 `--settings`"方式传入，不用 `type: ignore`（红线）；若只能 ignore，停下来问。
@@ -195,6 +195,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T4：只改了 `test_stream.py`/`test_runner.py` 里两条绑定"完整事件类型列表"的断言；`test_runner.py` 里 `types[-2:] == ["error", "snapshot"]`（失败收尾）这类只看首尾两个元素的小断言本身已经是相对位置表达，没有改动必要，保留不动。
 - 2026-09-28 — T5/TD-18：OpenAI 运行时的 SDK `max_turns` 取 `max_turns(budget)`：`max_steps` 为 `None` 时仍是 `MAX_TURNS=200`，否则 `max_steps * 2 + 2`。理由：SDK 只有在上一轮模型调用产出工具调用时才会再调模型，runner 在第 `max_steps + 1` 个工具调用时就停止本轮，所以正常情况下最多需要 `max_steps + 2` 次模型调用，乘 2 足够宽松、只防失控；超限时报 `failed`，错误信息里的上限值随之变化。
 - 2026-09-28 — T5/TD-18：`Budget.max_steps` 字段保留（公共接口不变），语义改为"只供运行时推导 SDK 兜底"；Claude 运行时的 `_interrupt`/`_interrupt_on_cancel` 保留（取消 watcher 仍用），只删了 `_Turn.steps`/`budget_hit` 与 `_finish` 里的 `budget_hit` 分支。原运行时层的步数测试移到 runner 层（`test_runner.py::TestBudget::test_step_budget_stops_fake_runtime`，已有的 `test_step_budget_enforced_by_runner` 覆盖"运行时以 cancelled 结束、runner 记 budget_exceeded"）；运行时层改为"忽略 `Budget.max_steps`"与"工具调用后收到取消令牌即结束"两类测试。
+- 2026-09-28 — T8（拆分，纯搬移）：`claude_runtime.py` 746→385 行，拆成三个同包模块：`agent/claude_env.py`（121 行，`HOST_BLANKED_*`/`SECRET_NAME_RE`/`LOGIN_BLANKED_ENV`/`DEFAULT_BASE_URL`/`MissingApiKeyError`/`build_env`）、`agent/claude_scope.py`（150 行，`GUARDED_WRITE_TOOLS`/`READ_TOOLS`/`SANDBOX`/`write_denial_reason`/`read_denial_reason`/读写范围 hook，Bash sandbox 配置也放这里，因为它和 hook 一起构成"原生工具的读写边界"）、`agent/claude_messages.py`（156 行，`MCP_SERVER_NAME`/`MCP_PREFIX`/`build_sdk_tool`/`prompt_input`（原 `_prompt`）/`SdkTurn`（原 `_Turn`）/`convert_message`（原 `_convert`））。`CostLedger` 留在 `claude_runtime.py`：它只被 `_turn_cost` 使用，和控制者举例的"环境变量 + 成本账本合一个模块"相比，按职责分开更清楚，而且留下后运行时仍 ≤ 400 行。跨模块使用的私有名去掉下划线（`_read_scope_hook`→`read_scope_hook` 等），逻辑一行未改。测试只改 import：`build_env`/`DEFAULT_BASE_URL`/`LOGIN_BLANKED_ENV` 从 `claude_env`、`build_sdk_tool` 从 `claude_messages` 导入，不做 re-export。
 
 ## 意外与发现
 
