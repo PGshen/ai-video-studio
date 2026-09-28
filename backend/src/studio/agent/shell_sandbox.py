@@ -8,7 +8,12 @@
   （`/dev/stdout`、`/dev/stderr` 经它解析）；
 - **读**：`(deny file-read*)` 仓库根与 `data_dir`，再放回当前工作区——与 Claude 路径的
   `claude_scope.sandbox_settings`（denyRead/allowRead）同一策略；
-- **网络**：`(deny network*)`，包括本机回环。
+- **网络**：`(deny network*)`，包括本机回环；另外拒绝 mach-lookup 联系
+  `com.apple.coreservices.launchservicesd`、拒绝发送 Apple Event、拒绝 exec
+  `/usr/bin/open`/`/usr/bin/osascript`——否则 `(allow default)` 下 `lsappinfo
+  front`/`open <url>`/`osascript -e '...'` 能经 LaunchServices 或 Apple Event
+  间接指使沙箱外的进程（比如默认浏览器）联网，绕开上面的 `(deny network*)`
+  （review 发现，详见 ADR 0009「影响」节）。
 
 Seatbelt 同一操作后写的规则优先，所以"先拒父目录、后放回子目录"成立
 （2026-09-28 本机 Darwin 24.6 实测，见 docs/references/openai-agents-sdk.md）。
@@ -53,7 +58,18 @@ def _subpaths(paths: Sequence[Path]) -> str:
 def seatbelt_profile(workdir: Path, deny_read: Sequence[Path]) -> str:
     """生成本轮 Shell 的 Seatbelt 配置（SBPL）。`deny_read` 通常是 `[仓库根, data_dir]`。"""
     work = workdir.resolve()
-    rules = ["(version 1)", "(allow default)", "(deny network*)"]
+    rules = [
+        "(version 1)",
+        "(allow default)",
+        "(deny network*)",
+        # `(allow default)` 下 mach IPC 默认放行：`lsappinfo front`/`open`/
+        # `osascript` 能经 mach-lookup 联系 launchservicesd、把 URL 交给未被
+        # 沙箱管住的默认浏览器打开，或发送 Apple Event，绕开上面的
+        # `(deny network*)`（review 发现，ADR 0009 残余风险节）。
+        '(deny mach-lookup (global-name "com.apple.coreservices.launchservicesd"))',
+        "(deny appleevent-send)",
+        '(deny process-exec (literal "/usr/bin/open") (literal "/usr/bin/osascript"))',
+    ]
     if deny_read:
         rules.append(f"(deny file-read* {_subpaths([path.resolve() for path in deny_read])})")
     # Later rules win in Seatbelt: re-allow the workspace after denying its ancestors.

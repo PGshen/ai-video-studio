@@ -246,6 +246,28 @@ class TestSandboxedExecution:
         code, _, _ = await _sh(layout, "curl -sS -m 5 -o /dev/null http://1.1.1.1")
         assert code != 0
 
+    async def test_launchservices_mach_lookup_denied(self, layout: _Layout) -> None:
+        """`lsappinfo front` 靠 mach-lookup 联系 launchservicesd 才能拿到真实的
+        前台 app 信息；不堵这个洞的话 `(deny network*)` 挡不住经 LaunchServices
+        间接指使沙箱外进程联网（review 发现）。`lsappinfo` 本身即使拿不到回复
+        也以退出码 0 收场（拿到的是 `[ NULL ]`），所以这里断言输出内容，不
+        断言退出码——mach-lookup 被拒时读不到真实的 ASN 信息。"""
+        code, out, _ = await _sh(layout, "lsappinfo front")
+        assert code == 0
+        assert "ASN:" not in out
+
+    async def test_open_exec_denied(self, layout: _Layout) -> None:
+        """`/usr/bin/open` 能把 URL 交给未被沙箱管住的默认浏览器打开，等于绕开
+        `(deny network*)`（review 发现）。"""
+        code, _, _ = await _sh(layout, "open https://example.com")
+        assert code != 0
+
+    async def test_osascript_exec_denied(self, layout: _Layout) -> None:
+        """`osascript` 能发送 Apple Event，同样是绕开 `(deny network*)` 的旁路
+        （review 发现）。"""
+        code, _, _ = await _sh(layout, "osascript -e 'tell application \"Finder\" to activate'")
+        assert code != 0
+
     async def test_python3_runs(self, layout: _Layout) -> None:
         code, out, _ = await _sh(layout, "python3 -c 'print(1)'")
         assert code == 0 and out == "1\n"
