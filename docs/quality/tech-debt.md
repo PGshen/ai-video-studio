@@ -24,7 +24,7 @@
 |---|---|---|
 | — | 2026-09-28 | M1 最终审查中直接修复的延后项：rollback 的 `..` 清单键测试（T3）、`upstream_drift` 对不可读文件的处理（T6）、未知图片块缺 `mimeType` 与客户端构造异常（T9）、继承宿主环境变量泄漏（T9，T15 已修）、T13/T14 浏览器中未实测的运行中状态（已补验，见 `data/evidence/m1/m6-l4-running-state.md`） |
 | TD-1 | 2026-09-28 | M1x T8：Claude Bash sandbox 加 `filesystem.denyRead`（拒读仓库与 `data_dir`）+ `allowRead`（放回当前工作区）；选题阶段联网暂时关闭（域名白名单留给 M4，见 TD-29），见 `docs/references/claude-agent-sdk.md`、`data/evidence/m1x/` |
-| TD-2 | 2026-09-28 | M1x T1：`scripts/dev.sh` 改为从 `python -m studio.config` 读取 host/port |
+| TD-2 | 2026-09-28 | M1x T1：`scripts/dev.sh` 改为从 `python -m studio.config` 读取 host/port；最终复核发现 `frontend/vite.config.ts` 仍写死代理目标端口 8000，补上 `dev.sh` 导出 `STUDIO_BIND_PORT`、`vite.config.ts` 读它（缺省回退 8000），两者一起才算把 TD-2 覆盖完整 |
 | TD-3 | 2026-09-28 | M1x T1：`config.py` 暴露公开 `repo_root()`，测试不再引用私有常量 |
 | TD-4 | 2026-09-28 | M1x T1：`create_snapshot` 复用扫描时读到的内容，已存在的 blob 不再重复读文件 |
 | TD-5 | 2026-09-28 | M1x T1：`HIDDEN_TOP_DIRS` 下沉到 `workspace/layout.py`，`list_tree`/`read_text` 统一过滤；`guard` 还原后清理空目录 |

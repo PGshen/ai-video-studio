@@ -34,6 +34,15 @@ if [ -f "$ROOT_DIR/backend/pyproject.toml" ]; then
   # 绑定地址从 Settings 读取（`studio.config` 的 `__main__` 输出 "host port"），
   # 而不是在这里写死，否则改 STUDIO_HOST/STUDIO_PORT 不会真的生效（TD-2）。
   read -r STUDIO_BIND_HOST STUDIO_BIND_PORT < <(cd "$ROOT_DIR/backend" && "$UV" run python -m studio.config)
+  # process substitution 会掩盖 studio.config 失败：read 只是读不到内容而不
+  # 报错，uvicorn 随后才因为空 host/port 报出一堆无关的错误，这里先显式检查。
+  if [ -z "$STUDIO_BIND_HOST" ] || [ -z "$STUDIO_BIND_PORT" ]; then
+    echo "无法从 'python -m studio.config' 读取绑定地址，请检查上面是否有报错" >&2
+    exit 1
+  fi
+  # 导出给下面的前端进程：vite.config.ts 读它来生成 dev-server 代理目标
+  # （TD-2 未覆盖到的部分，复核发现）。
+  export STUDIO_BIND_PORT
   (
     cd "$ROOT_DIR/backend"
     exec "$UV" run uvicorn studio.main:app \
