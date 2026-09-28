@@ -196,6 +196,20 @@ class TestGuard:
         assert (workdir / "style" / "STYLE.md").read_bytes() == b"# style"
         assert "style/STYLE.md" in report.restored
 
+    def test_prunes_empty_dirs_left_by_removed_out_of_scope_file(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        """TD-5：越界新建的 `a/b/c.txt` 被还原（删除）后，`a/`、`a/b/` 这两个
+        因此变空的目录也要清掉，不能留在工作区里。"""
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        before: dict[str, str] = {}
+        _write(workdir / "a" / "b" / "c.txt", "escaped")
+        after = {"a/b/c.txt": "whatever-sha-not-checked"}
+
+        guard(workdir, before, after, scope, blobs, tool_writes={})
+
+        assert not (workdir / "a").exists()
+
     def test_restore_replaces_directory_created_at_file_path(
         self, blobs: BlobStore, workdir: Path
     ) -> None:

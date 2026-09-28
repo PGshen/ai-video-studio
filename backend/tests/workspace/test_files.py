@@ -82,6 +82,19 @@ class TestListTree:
     def test_missing_workdir_returns_empty(self, tmp_path: Path) -> None:
         assert list_tree(tmp_path / "does-not-exist") == []
 
+    def test_hides_cache_and_output_but_keeps_upstream(self, workdir: Path) -> None:
+        """TD-5：`.cache/`、`output/` 不是"工作区内容"，`list_tree` 默认就不该
+        列出它们（此前只有 api 层自己过滤，别的调用方——例如 fallback 工具给
+        agent 列文件——会看到它们）；`upstream/` 仍然要列出。"""
+        _write(workdir / "topic" / "brief.md", "hello")
+        _write(workdir / ".cache" / "tmp.txt", "cache")
+        _write(workdir / "output" / "final.mp4", "video")
+        _write(workdir / "upstream" / "topic" / "brief.md", "upstream copy")
+
+        result = list_tree(workdir)
+
+        assert result == ["topic/brief.md", "upstream/topic/brief.md"]
+
 
 class TestReadText:
     def test_reads_existing_file(self, workdir: Path) -> None:
@@ -92,6 +105,20 @@ class TestReadText:
     def test_rejects_unsafe_path(self, workdir: Path) -> None:
         with pytest.raises(ScopeError):
             read_text(workdir, "../outside.md")
+
+    def test_rejects_hidden_top_dirs(self, workdir: Path) -> None:
+        _write(workdir / ".cache" / "tmp.txt", "cache")
+        _write(workdir / "output" / "final.txt", "video")
+
+        with pytest.raises(ScopeError):
+            read_text(workdir, ".cache/tmp.txt")
+        with pytest.raises(ScopeError):
+            read_text(workdir, "output/final.txt")
+
+    def test_allows_reading_upstream(self, workdir: Path) -> None:
+        _write(workdir / "upstream" / "topic" / "brief.md", "upstream copy")
+
+        assert read_text(workdir, "upstream/topic/brief.md") == "upstream copy"
 
 
 class TestWriteText:

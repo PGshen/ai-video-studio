@@ -59,7 +59,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 
 ## 任务
 
-### T1：配置与 workspace 小修（TD-2、TD-3、TD-4、TD-5）（待开始）
+### T1：配置与 workspace 小修（TD-2、TD-3、TD-4、TD-5）（完成）
 
 - **目标**：端口配置真正生效；测试不再依赖私有常量；快照少读一遍文件；workspace 层统一过滤排除目录；guard 不留空目录。
 - **涉及文件**：`scripts/dev.sh`、`backend/src/studio/config.py`、`backend/tests/test_config.py`、`backend/src/studio/workspace/{snapshot,files,scope}.py`、`backend/src/studio/api/files.py`、对应测试。
@@ -168,16 +168,18 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 
 ## 进度
 
-- 无
+- 2026-09-28 — T1 — 完成（TD-2/TD-3/TD-4/TD-5 均已修复，测试先红后绿，`make check` 全绿；commit 在提交后补）。
 
 ## 下一步
 
-- 从 T1 开始（分支 `m1x-tech-debt`）。
+- 从 T2 开始。
 
 ## 决策记录
 
 - 2026-09-28 — 范围取「小修 + 结构拆分」，TD-6/9/19/21/22/23/24 不在本计划 — 负责人选择；M2 会大量改 runner 与运行时，拆分放在之前成本最低。
 - 2026-09-28 — TD-10 放在拆分（T6/T7）之前 — 拆分期间测试断言不动，才能证明是纯搬移。
+- 2026-09-28 — T1/TD-3：没有另外暴露 `backend_src_dir()`，测试改用 `repo_root() / "backend" / "src"` 构造越界路径 — controller 只裁定要暴露 `repo_root()`，`backend/src` 是 config 文档里写明的固定相对布局，测试用这个相对路径拼接足够，不需要再加一个公开访问点。
+- 2026-09-28 — T1/TD-5：把 `_prune_empty_dirs` 从 `snapshot.py` 搬到 `workspace/layout.py`（改名 `prune_empty_dirs`，去掉下划线），供 `snapshot.rollback` 和新加的 `scope.guard` 共用 — 两个模块本来就都依赖 `layout`，比互相 import 私有函数更干净；同时把 `EXCLUDED_TOP_DIRS - {"upstream"}` 提成 `layout.HIDDEN_TOP_DIRS`，`api/files.py` 和 `workspace/files.py` 都改用它，不再各自算一遍。
 
 ## 意外与发现
 

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from studio.workspace.blobs import BlobStore
-from studio.workspace.layout import EXCLUDED_TOP_DIRS
+from studio.workspace.layout import EXCLUDED_TOP_DIRS, prune_empty_dirs
 from studio.workspace.snapshot import Manifest
 
 
@@ -167,5 +167,9 @@ def guard(
         else:
             _restore_bytes(workdir, path, blobs.get(before_sha256))
         restored.append(path)
+
+    # 还原/删除越界文件后，父目录可能变空（例如越界新建的 `a/b/c.txt` 被删掉
+    # 后留下空的 `a/`、`a/b/`）；和 `snapshot.rollback` 一样清理掉（TD-5）。
+    prune_empty_dirs(workdir)
 
     return GuardReport(restored=sorted(set(restored)))
