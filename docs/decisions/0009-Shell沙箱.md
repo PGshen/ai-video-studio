@@ -6,7 +6,7 @@
 |---|---|
 | 状态 | 已采纳 |
 | 日期 | 2026-09-28 |
-| 相关 | [M1x 计划 T9](../plans/active/m1x-tech-debt.md)、[tech-debt TD-20/TD-14](../quality/tech-debt.md)、[openai-agents-sdk.md](../references/openai-agents-sdk.md)、[claude-agent-sdk.md](../references/claude-agent-sdk.md)（T8 的 denyRead/allowRead）、设计 §4.3 |
+| 相关 | [M1x 计划 T9](../plans/completed/m1x-tech-debt.md)、[tech-debt TD-20/TD-14](../quality/tech-debt.md)、[openai-agents-sdk.md](../references/openai-agents-sdk.md)、[claude-agent-sdk.md](../references/claude-agent-sdk.md)（T8 的 denyRead/allowRead）、设计 §4.3 |
 
 ## 背景
 

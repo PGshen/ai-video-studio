@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | M1 与 M2 之间（整理） |
 | 设计依据 | [架构设计 §4.3、§4.4](../../design/2026-09-26-architecture.md)；登记表 [tech-debt.md](../../quality/tech-debt.md) |
 | 分支 | `m1x-tech-debt` |
