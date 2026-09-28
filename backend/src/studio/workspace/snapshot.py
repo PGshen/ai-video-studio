@@ -27,6 +27,7 @@ from studio.workspace.layout import (
     EXCLUDED_TOP_DIRS,
     PathEscapesWorkdir,
     project_dir,
+    prune_empty_dirs,
     resolve_relpath,
 )
 
@@ -93,10 +94,21 @@ def scan(workdir: Path | str) -> Manifest:
     只收录普通文件：跳过符号链接（文件或目录）、跳过顶层的排除目录
     （`EXCLUDED_TOP_DIRS`）。目录不存在时返回空清单。
     """
+    manifest, _content_by_sha256 = _scan_with_content(workdir)
+    return manifest
+
+
+def _scan_with_content(workdir: Path | str) -> tuple[Manifest, dict[str, bytes]]:
+    """扫描工作区，同时缓存本次读到的文件内容（按 sha256 去重）。
+
+    `create_snapshot` 用这份缓存写入新 blob：算 sha256 已经要读一遍文件内容，
+    不缓存的话写 blob 时（`BlobStore.put`）还得整个重读一遍（TD-4）。
+    """
     workdir = Path(workdir)
     manifest: Manifest = {}
+    content: dict[str, bytes] = {}
     if not workdir.is_dir():
-        return manifest
+        return manifest, content
 
     for root, dirnames, filenames in os.walk(workdir, followlinks=False):
         root_path = Path(root)
@@ -108,9 +120,12 @@ def scan(workdir: Path | str) -> Manifest:
             if file_path.is_symlink() or not file_path.is_file():
                 continue
             rel_path = file_path.relative_to(workdir).as_posix()
-            manifest[rel_path] = _sha256_of(file_path.read_bytes())
+            data = file_path.read_bytes()
+            sha256 = _sha256_of(data)
+            manifest[rel_path] = sha256
+            content[sha256] = data
 
-    return manifest
+    return manifest, content
 
 
 def _sha256_of(data: bytes) -> str:
@@ -126,14 +141,15 @@ def create_snapshot(
 ) -> SnapshotRef:
     """扫描工作区并创建快照；清单与最近一份相同时返回已有快照，`created=False`。"""
     workdir = project_dir(_data_dir_of(blobs), project_id)
-    manifest = scan(workdir)
+    manifest, content_by_sha256 = _scan_with_content(workdir)
 
     latest = latest_snapshot(engine, project_id)
     if latest is not None and latest.manifest == manifest:
         return _to_ref(latest, created=False)
 
-    for rel_path in manifest:
-        blobs.put((workdir / rel_path).read_bytes())
+    for sha256 in set(manifest.values()):
+        if not blobs.exists(sha256):
+            blobs.put(content_by_sha256[sha256])
 
     value = insert_snapshot(
         engine, project_id=project_id, manifest=manifest, reason=reason, turn_id=turn_id
@@ -196,23 +212,6 @@ def _safe_dest(workdir: Path, rel_path: str) -> Path:
         raise ValueError(f"清单路径越出工作区：{rel_path}") from exc
 
 
-def _prune_empty_dirs(workdir: Path) -> None:
-    """删除回滚后产生的空目录，不动排除目录。"""
-    for dirpath, _dirnames, _filenames in os.walk(workdir, topdown=False):
-        path = Path(dirpath)
-        if path == workdir:
-            continue
-        rel_parts = path.relative_to(workdir).parts
-        if rel_parts and rel_parts[0] in EXCLUDED_TOP_DIRS:
-            continue
-        try:
-            next(path.iterdir())
-        except StopIteration:
-            path.rmdir()
-        except FileNotFoundError:
-            pass
-
-
 def rollback(
     engine: Engine,
     blobs: BlobStore,
@@ -248,6 +247,6 @@ def rollback(
         if rel_path not in target.manifest:
             _safe_dest(workdir, rel_path).unlink()
 
-    _prune_empty_dirs(workdir)
+    prune_empty_dirs(workdir)
 
     return create_snapshot(engine, blobs, project_id, reason="rollback")

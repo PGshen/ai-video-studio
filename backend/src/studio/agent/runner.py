@@ -13,6 +13,15 @@
 全局最多 `settings.max_concurrent_turns` 个运行中的 turn，其余按 FIFO 排队；
 另外**同一项目同时只运行一个 turn**——各阶段共用一个工作区，两个 turn 并行时
 一方的越界检查会把另一方的合法写入当成越界还原（评审关注点 4）。
+
+模块拆分（TD-15）：一轮的完整生命周期分散在四个文件里，`runner.py` 只保留
+`TurnRunner` 的公开接口、排队调度和总线/持久化的基础方法（`_persist` 等，其他
+模块通过持有的 `TurnRunner` 引用调用它们）：
+
+- `turn_state.py`：`_Job`/`_State`，四个模块共用。
+- `turn_events.py`：把运行时事件落库、推送，维护 `_State`（`handle`）。
+- `turn_finish.py`：一轮结束的收尾（`finish`/`finish_turn_row`）。
+- `recovery.py`：进程重启后恢复遗留 turn（`recover_on_startup`）。
 """
 
 from __future__ import annotations
@@ -20,42 +29,43 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import Engine
 
-from studio.agent import events, stage_flow
+from studio.agent import recovery, stage_flow, turn_events, turn_finish
 from studio.agent.bus import BusEvent, SessionBus
 from studio.agent.preamble import (
-    GUARD_RESTORED_NOTICE,
     build_preamble,
     compose_user_text,
     gather_preamble_inputs,
 )
-from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
-from studio.agent.stage import StageDefinition, StageRegistry
+from studio.agent.runtime import Budget, RuntimeFactory, TurnContext, UserInput
+from studio.agent.stage import StageRegistry
+from studio.agent.turn_events import TOOL_RESULT_MAX_CHARS
+from studio.agent.turn_state import _Job, _State
 from studio.config import Settings
 from studio.db.repo import turns as turns_repo
-from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
-from studio.db.repo.sessions import SessionValue, get_session
+from studio.db.repo.profiles import get_model_profile_by_id
+from studio.db.repo.sessions import get_session
 from studio.db.repo.snapshots import latest_snapshot
 from studio.workspace import (
     BlobStore,
-    Manifest,
     create_snapshot,
     files,
-    guard,
     materialize_upstream,
     project_dir,
     scan,
-    upstream_drift,
 )
 
-logger = logging.getLogger(__name__)
+__all__ = [
+    "TurnRunner",
+    "SessionBusyError",
+    "SessionNotFoundError",
+    "TOOL_RESULT_MAX_CHARS",
+]
 
-TOOL_RESULT_MAX_CHARS = 8000
-"""落库的工具结果文本/工具参数字符串的上限；超出部分截断（设计 §3.1 说明）。"""
+logger = logging.getLogger(__name__)
 
 
 class SessionBusyError(Exception):
@@ -64,68 +74,6 @@ class SessionBusyError(Exception):
 
 class SessionNotFoundError(LookupError):
     pass
-
-
-def _truncate(text: str) -> tuple[str, bool]:
-    if len(text) <= TOOL_RESULT_MAX_CHARS:
-        return text, False
-    return text[:TOOL_RESULT_MAX_CHARS] + "…（已截断）", True
-
-
-def _truncate_args(args: dict[str, object]) -> dict[str, object]:
-    return {k: _truncate(v)[0] if isinstance(v, str) else v for k, v in args.items()}
-
-
-@dataclass
-class _Job:
-    turn_id: str
-    session: SessionValue
-    project_id: str
-    stage: StageDefinition
-    profile: ModelProfileValue
-    user_input: UserInput
-    cancel_token: CancelToken = field(default_factory=CancelToken)
-    done: asyncio.Event = field(default_factory=asyncio.Event)
-    task: asyncio.Task[None] | None = None
-    shutdown: bool = False
-    """进程关闭时被停下：`cancelled` 记为 `interrupted`（可以"继续"），快照记 `partial`。"""
-
-
-@dataclass
-class _State:
-    """一轮运行中累积的状态，`_finish` 据此收尾。"""
-
-    before: Manifest | None = None
-    upstream_ids: dict[str, str | None] = field(default_factory=dict)
-    sources: dict[str, Manifest | None] | None = None
-    tool_writes: dict[str, str] = field(default_factory=dict)
-    pending_tool_paths: list[str] = field(default_factory=list)
-    calls: dict[str, events.ToolCall] = field(default_factory=dict)
-    steps: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cost_usd: float = 0.0
-    cost_advisory: bool = False
-    cost_unpriced: bool = False
-    """收到过 `Usage.priced == False`：模型配置缺单价，成本没有统计（turn 的
-    `cost_usd` 记为空，并发一次 `cost_unpriced` 提示）。"""
-    budget_exceeded: bool = False
-    end: events.TurnEnd | None = None
-    status: str | None = None
-    """异常路径强制的最终状态（`failed`/`cancelled`），优先于 `end.status`。"""
-    error: str | None = None
-
-    def final_status(self) -> tuple[str, str | None]:
-        # Budget wins over everything: once exceeded, the runner itself stopped the
-        # turn, so a forced task.cancel() or an error raised while stopping is a
-        # consequence, not the cause.
-        if self.budget_exceeded:
-            return "budget_exceeded", self.error
-        if self.status is not None:
-            return self.status, self.error
-        if self.end is not None:
-            return self.end.status, self.end.error
-        return "failed", "运行时没有产出 TurnEnd 就结束了"
 
 
 class TurnRunner:
@@ -186,7 +134,8 @@ class TurnRunner:
             return False
         if job in self._queue:
             self._queue.remove(job)
-            self._finish_turn_row(
+            turn_finish.finish_turn_row(
+                self,
                 job,
                 status="cancelled",
                 end_snapshot_id=None,
@@ -244,30 +193,8 @@ class TurnRunner:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     def recover_on_startup(self) -> None:
-        """设计 §4.4 第 8 步：上次进程遗留的 `running`/`queued` turn → `interrupted`。
-
-        `running` 的 turn 先做一份 `partial` 快照（产物永远不丢，§7），再改状态；
-        没有越界检查（本轮工具写入记录已随进程丢失）。`queued` 的 turn 从未
-        开始，排队信息只在内存里，同样标记为 `interrupted`，否则会话会一直"忙"。
-        """
-        for turn in turns_repo.list_unfinished_turns(self._engine):
-            try:
-                self._recover_turn(turn)
-            except Exception:
-                logger.exception("恢复 turn %s 失败，继续处理其他 turn", turn.id)
-
-    def _recover_turn(self, turn: turns_repo.TurnValue) -> None:
-        end_snapshot_id: str | None = None
-        session = get_session(self._engine, turn.session_id)
-        if turn.status == "running" and session is not None and session.project_id:
-            try:
-                snapshot = create_snapshot(
-                    self._engine, self._blobs, session.project_id, "partial", turn.id
-                )
-                end_snapshot_id = snapshot.id
-            except Exception:
-                logger.exception("turn %s 恢复时快照失败", turn.id)
-        turns_repo.interrupt_turn(self._engine, turn.id, end_snapshot_id=end_snapshot_id)
+        """设计 §4.4 第 8 步：上次进程遗留的 `running`/`queued` turn → `interrupted`。"""
+        recovery.recover_on_startup(self)
 
     # ---- scheduling -----------------------------------------------------
 
@@ -311,7 +238,7 @@ class TurnRunner:
             state.status, state.error = "failed", f"{type(exc).__name__}: {exc}"
         finally:
             try:
-                self._finish(job, state)
+                turn_finish.finish(self, job, state)
             finally:
                 self._release(job)
                 self._schedule()
@@ -376,7 +303,7 @@ class TurnRunner:
         stream = runtime.run_turn(ctx)
         try:
             async for event in stream:
-                self._handle(job, state, event)
+                turn_events.handle(self, job, state, event)
         finally:
             # Close the generator (and a real SDK subprocess behind it) before
             # guard/snapshot run, also when the runner itself raised mid-stream.
@@ -384,163 +311,10 @@ class TurnRunner:
             if aclose is not None:
                 await aclose()
 
-    def _handle(self, job: _Job, state: _State, event: events.AgentEvent) -> None:
-        if isinstance(event, events.TextDelta):
-            self._publish(job, "text_delta", {"text": event.text})
-        elif isinstance(event, events.TextBlock):
-            self._persist(job, "text", {"text": event.text})
-        elif isinstance(event, events.ToolCall):
-            state.steps += 1
-            state.calls[event.call_id] = event
-            self._persist(
-                job,
-                "tool_call",
-                {"call_id": event.call_id, "name": event.name, "args": _truncate_args(event.args)},
-            )
-            limit = job.profile.max_steps_per_turn
-            if limit is not None and state.steps > limit:
-                self._exceed_budget(job, state, "steps")
-        elif isinstance(event, events.ToolResult):
-            text, truncated = _truncate(event.text)
-            self._persist(
-                job,
-                "tool_result",
-                {
-                    "call_id": event.call_id,
-                    "text": text,
-                    "truncated": truncated,
-                    "is_error": event.is_error,
-                    # Image payloads are not persisted, only their types.
-                    "images": [{"media_type": image.media_type} for image in event.images],
-                },
-            )
-            self._after_tool_result(job, state, event)
-        elif isinstance(event, events.Usage):
-            state.input_tokens += event.input_tokens
-            state.output_tokens += event.output_tokens
-            state.cost_usd += event.cost_usd
-            # Subscription (login) auth: cost is informational, only steps are enforced.
-            if event.auth == "login":
-                state.cost_advisory = True
-            if not event.priced and not state.cost_unpriced:
-                state.cost_unpriced = True
-                self._persist(
-                    job, "notice", {"kind": "cost_unpriced", "message": "未配置单价，成本未统计"}
-                )
-            limit = job.profile.max_cost_per_turn
-            if limit is not None and not state.cost_advisory and state.cost_usd > limit:
-                self._exceed_budget(job, state, "cost")
-        elif isinstance(event, events.TurnEnd):
-            state.end = event
-
-    def _after_tool_result(self, job: _Job, state: _State, event: events.ToolResult) -> None:
-        call = state.calls.get(event.call_id)
-        recorded, state.pending_tool_paths = state.pending_tool_paths, []
-        if call is not None and call.name in events.FILE_TOOL_NAMES:
-            # `move_to` is the target of an apply_patch rename (OpenAIRuntime).
-            candidates = (call.args.get("path"), call.args.get("move_to"))
-            # An empty list means "unknown paths, refetch" (e.g. shell commands).
-            paths = [path for path in candidates if isinstance(path, str)]
-            self._publish(job, "workspace_changed", {"paths": paths + recorded})
-        elif recorded:
-            self._publish(job, "workspace_changed", {"paths": recorded})
-
-    def _exceed_budget(self, job: _Job, state: _State, kind: str) -> None:
-        if state.budget_exceeded:
-            return
-        state.budget_exceeded = True
-        self._persist(job, "notice", {"kind": "budget_exceeded", "budget": kind})
-        self._request_stop(job)
-
-    def _finish(self, job: _Job, state: _State) -> None:
-        """越界检查 → 快照 → 写 turn 状态 → 发布 `turn_status`。每一步单独兜底。"""
-        status, error = state.final_status()
-        if job.shutdown and status == "cancelled":
-            status = "interrupted"
-        workdir = project_dir(self._settings.data_dir, job.project_id)
-        try:
-            restored: list[str] = []
-            if state.before is not None:
-                report = guard(
-                    workdir,
-                    state.before,
-                    scan(workdir),
-                    job.stage.write_scope(),
-                    self._blobs,
-                    state.tool_writes,
-                )
-                restored = report.restored
-            if state.sources is not None:
-                # Agent changes to the read-only copy are dropped and reported (R5).
-                restored += upstream_drift(workdir, state.sources)
-                materialize_upstream(workdir, self._blobs, state.sources)
-            if restored:
-                self._persist(job, "notice", {"kind": GUARD_RESTORED_NOTICE, "paths": restored})
-                self._publish(job, "workspace_changed", {"paths": restored})
-        except Exception as exc:
-            logger.exception("turn %s 越界检查失败", job.turn_id)
-            status, error = "failed", error or f"越界检查失败：{exc}"
-
-        if status == "failed":
-            self._safe_persist(job, "error", {"message": error or "未知错误"})
-
-        end_snapshot_id: str | None = None
-        try:
-            reason = "partial" if status in ("failed", "interrupted") else "turn"
-            snapshot = create_snapshot(
-                self._engine, self._blobs, job.project_id, reason, job.turn_id
-            )
-            end_snapshot_id = snapshot.id
-            self._persist(
-                job,
-                "snapshot",
-                {
-                    "snapshot_id": snapshot.id,
-                    "reason": snapshot.reason,
-                    "created": snapshot.created,
-                },
-            )
-        except Exception as exc:
-            logger.exception("turn %s 结束快照失败", job.turn_id)
-            status, error = "failed", error or f"结束快照失败：{exc}"
-
-        usage: dict[str, Any] = {
-            "input_tokens": state.input_tokens,
-            "output_tokens": state.output_tokens,
-            "steps": state.steps,
-        }
-        self._finish_turn_row(
-            job,
-            status=status,
-            end_snapshot_id=end_snapshot_id,
-            usage=usage,
-            cost_usd=None if state.cost_unpriced else state.cost_usd,
-            error=error,
-            resume_ref=state.end.resume_ref if state.end is not None else None,
-        )
-        if status == "done":
-            try:
-                stage_flow.after_turn_done(
-                    self._engine, job.project_id, job.stage.name, state.upstream_ids
-                )
-            except Exception:
-                logger.exception("turn %s 更新阶段状态失败", job.turn_id)
-        self._publish_status(job, status, error)
-
     # ---- persistence & bus ------------------------------------------------
-
-    def _finish_turn_row(self, job: _Job, **fields: Any) -> None:
-        """写 turn 最终状态，失败时重试一次（例如 SQLite 繁忙）；再失败只记日志。
-
-        否则内存里的并发名额已释放，数据库却一直是 `running`，会话在重启前
-        都会返回"忙"。
-        """
-        for attempt in (1, 2):
-            try:
-                turns_repo.finish_turn(self._engine, job.turn_id, **fields)
-                return
-            except Exception:
-                logger.exception("turn %s 写入最终状态失败（第 %d 次）", job.turn_id, attempt)
+    #
+    # 供本模块和 turn_events/turn_finish/recovery 共用：它们持有 TurnRunner 引用，
+    # 通过这些方法落库、推送到总线，自己只决定"发生了什么、要不要发"。
 
     def _persist(self, job: _Job, type: str, payload: dict[str, Any]) -> None:
         payload = {"turn_id": job.turn_id, **payload}

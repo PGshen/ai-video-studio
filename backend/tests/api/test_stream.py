@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections import Counter
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -38,6 +39,7 @@ import pytest
 import sse_starlette.sse as sse_starlette_sse
 from sqlalchemy import Engine
 
+from event_asserts import assert_in_order, type_counts
 from studio.agent import events
 from studio.agent.bus import BusEvent, SessionBus
 from studio.api.sessions import WIRE_EVENT_TYPES, _stream_events
@@ -588,16 +590,48 @@ class TestFakeTurnFullEventFlow:
         await api_env.app.state.turn_runner.wait(turn_id)
 
         names = [f["event"] for f in frames]
-        assert names == [
-            "turn_status",  # queued
-            "turn_status",  # running
-            "text",
-            "tool_call",
-            "tool_result",
-            "workspace_changed",
-            "snapshot",
-            "turn_status",  # done
+
+        # TD-10：只断言真正的不变量，不绑定完整的事件顺序——runner 按 T6/T7
+        # 拆分模块时，两个没有因果关系的事件谁先发布是实现细节，不应该让这
+        # 条测试跟着同步改。
+        #
+        # 1) 这一轮恰好产出这些类型的事件、各多少次（默认 fake 脚本：说一句
+        #    话、调一次工具，turn_status 有排队/运行/结束三条）。
+        assert type_counts(names) == Counter(
+            {
+                "turn_status": 3,
+                "text": 1,
+                "tool_call": 1,
+                "tool_result": 1,
+                "workspace_changed": 1,
+                "snapshot": 1,
+            }
+        )
+        # 2) turn 生命周期本身的顺序：排队 → 运行 → 结束，这条不能松动。
+        turn_statuses = [
+            json.loads(f["data"])["status"] for f in frames if f["event"] == "turn_status"
         ]
+        assert turn_statuses == ["queued", "running", "done"]
+        # 3) turn_start 最先、turn_end 最后。
+        assert names[0] == "turn_status" and turn_statuses[0] == "queued"
+        assert names[-1] == "turn_status" and turn_statuses[-1] == "done"
+        # 4) 因果链：text → tool_call → tool_result（说话在先，然后才是那
+        #    次工具调用及其结果）。
+        assert_in_order(names, "text", "tool_call", "tool_result")
+        # 4.5) turn_status 变成 running 必须在第一条 text 之前（轮已经真正
+        #    开始运行，模型才可能开始说话）——原来逐条比对完整事件列表时这条
+        #    顺序是隐含成立的，TD-10 改成只断言相对顺序后漏掉了，这里补回来。
+        status_labels = [
+            f"turn_status:{json.loads(f['data'])['status']}"
+            if f["event"] == "turn_status"
+            else f["event"]
+            for f in frames
+        ]
+        assert_in_order(status_labels, "turn_status:running", "text")
+        # 5) workspace_changed 必须在触发它的 tool_result 之后。
+        assert names.index("workspace_changed") > names.index("tool_result")
+        # 6) 快照事件必须在 turn_end（最后一条 turn_status）之前。
+        assert names.index("snapshot") < len(names) - 1
 
         transient_types = {"text_delta", "workspace_changed", "turn_status"}
         persisted_seqs: list[int] = []

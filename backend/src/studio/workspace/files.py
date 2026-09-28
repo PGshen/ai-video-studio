@@ -12,12 +12,23 @@ import os
 import shutil
 from pathlib import Path, PurePosixPath
 
-from studio.workspace.layout import PathEscapesWorkdir, project_dir, resolve_relpath
+from studio.workspace.layout import (
+    HIDDEN_TOP_DIRS,
+    PathEscapesWorkdir,
+    project_dir,
+    resolve_relpath,
+)
 from studio.workspace.scope import WriteScope, is_writable
 
 
 class ScopeError(Exception):
     """路径不安全（绝对路径、`..`、越出工作区、经过符号链接），或不在可写范围内。"""
+
+
+def _is_hidden_top_dir(relpath: str) -> bool:
+    """`relpath` 的顶层目录是否在 `HIDDEN_TOP_DIRS` 里（`.cache/`、`output/`）。"""
+    top = PurePosixPath(relpath).parts[0]
+    return top in HIDDEN_TOP_DIRS
 
 
 def normalize_relpath(relpath: str) -> str:
@@ -63,7 +74,9 @@ def safe_path(workdir: Path | str, relpath: str) -> Path:
 def list_tree(workdir: Path | str) -> list[str]:
     """列出工作区内所有普通文件的相对路径（POSIX 风格，按字典序排序）。
 
-    跳过符号链接（文件或目录）；工作区不存在时返回空列表。
+    跳过符号链接（文件或目录）、跳过 `HIDDEN_TOP_DIRS`（`.cache/`、`output/`，
+    TD-5：这两个目录不是"工作区内容"，调用方不应该看到）；`upstream/` 仍然
+    列出。工作区不存在时返回空列表。
     """
     workdir = Path(workdir)
     if not workdir.is_dir():
@@ -72,6 +85,8 @@ def list_tree(workdir: Path | str) -> list[str]:
     paths: list[str] = []
     for root, dirnames, filenames in os.walk(workdir, followlinks=False):
         root_path = Path(root)
+        if root_path == workdir:
+            dirnames[:] = [name for name in dirnames if name not in HIDDEN_TOP_DIRS]
         dirnames[:] = [name for name in dirnames if not (root_path / name).is_symlink()]
 
         for filename in filenames:
@@ -93,8 +108,14 @@ def read_bytes(workdir: Path | str, relpath: str) -> bytes:
 
 
 def read_text(workdir: Path | str, relpath: str) -> str:
-    """按相对路径读取文本内容（UTF-8）；路径不安全时抛出 `ScopeError`。"""
+    """按相对路径读取文本内容（UTF-8）。
+
+    路径不安全，或落在 `HIDDEN_TOP_DIRS`（`.cache/`、`output/`）之下时抛出
+    `ScopeError`（TD-5）；`upstream/` 不受影响，仍然可读。
+    """
     path = safe_path(workdir, relpath)
+    if _is_hidden_top_dir(relpath):
+        raise ScopeError(f"路径不可读：{relpath}")
     return path.read_text(encoding="utf-8")
 
 

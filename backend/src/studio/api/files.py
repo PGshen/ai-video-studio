@@ -35,12 +35,9 @@ from studio.api.schemas import FileEntry, FileTreeOut, FileWriteRequest, FileWri
 from studio.config import Settings
 from studio.db.repo.projects import get_project
 from studio.workspace import ScopeError, files, is_writable, project_dir
-from studio.workspace.layout import EXCLUDED_TOP_DIRS
+from studio.workspace.layout import HIDDEN_TOP_DIRS
 
 router = APIRouter(prefix="/api", tags=["files"])
-
-# `upstream/` 仍然要在树里出现（标记只读），只隐藏 `.cache/`、`output/`。
-_HIDDEN_TOP_DIRS = EXCLUDED_TOP_DIRS - {"upstream"}
 
 
 def _require_project(engine: Engine, project_id: str) -> None:
@@ -50,7 +47,7 @@ def _require_project(engine: Engine, project_id: str) -> None:
 
 def _is_hidden(relpath: str) -> bool:
     top = relpath.split("/", 1)[0]
-    return top in _HIDDEN_TOP_DIRS
+    return top in HIDDEN_TOP_DIRS
 
 
 @router.get("/projects/{project_id}/files", response_model=FileTreeOut)
@@ -61,10 +58,11 @@ def list_files_endpoint(
 ) -> FileTreeOut:
     _require_project(engine, project_id)
     workdir = project_dir(settings.data_dir, project_id)
+    # `files.list_tree` 本身已经不列出 `HIDDEN_TOP_DIRS`（TD-5），这里只需要
+    # 按前缀标记 `upstream/` 只读。
     entries = [
         FileEntry(path=path, readonly=path.startswith("upstream/"))
         for path in files.list_tree(workdir)
-        if not _is_hidden(path)
     ]
     return FileTreeOut(files=entries)
 

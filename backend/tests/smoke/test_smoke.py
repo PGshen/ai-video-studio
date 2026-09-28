@@ -12,8 +12,10 @@ writes its observations to `data/evidence/m1/smoke/` (git-ignored).
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,7 @@ from studio.agent.stage_flow import finalize
 from studio.db.repo.sessions import get_session
 
 from .support import (
+    M1X_EVIDENCE_DIR,
     REPO_ROOT,
     SmokeHarness,
     TurnOutcome,
@@ -199,6 +202,184 @@ async def test_claude_login(harness: SmokeHarness) -> None:
             probe.unlink(missing_ok=True)
         with contextlib.suppress(OSError):  # kept only if something else is inside
             outside_repo.rmdir()
+
+
+# ---- Claude, local login: cancel mid-turn, then another turn (M1x T3, TD-11) --------
+
+SHORT_PROMPT = "这是自动化测试。只回复两个字：好的。不要调用任何工具。"
+SLOW_PROMPT = (
+    "这是自动化测试。用 Bash 工具原样执行下面这条命令一次，然后报告输出：\n"
+    "sleep 30 && echo slow-done"
+)
+
+
+def _ledger_entry(h: SmokeHarness, sdk_ref: str) -> dict[str, Any] | None:
+    path = h.data_dir / "claude" / "studio-cost-ledger" / f"{sdk_ref}.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+async def _cancel_scenario(h: SmokeHarness, out: dict[str, Any]) -> None:
+    """Settled turn → turn cancelled at its first tool call → settled turn.
+
+    The ledger holds the SDK's cumulative `total_cost_usd` of the latest result, so
+    every turn's `cost_usd` must equal the difference of consecutive ledger totals.
+    """
+    profile = h.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+    session_id = h.session(profile, "claude")
+
+    before = await h.turn(session_id, SHORT_PROMPT)
+    out["turn_before"] = outcome_summary(before)
+    assert before.turn.status == "done", before.turn.error
+    session = get_session(h.engine, session_id)
+    assert session is not None and session.sdk_ref
+    sdk_ref = session.sdk_ref
+    out["ledger_before"] = _ledger_entry(h, sdk_ref)
+
+    cancelled = await h.turn_cancelled_at_tool_call(session_id, SLOW_PROMPT)
+    out["turn_cancelled"] = outcome_summary(cancelled)
+    out["ledger_after_cancel"] = _ledger_entry(h, sdk_ref)
+    session = get_session(h.engine, session_id)
+    out["sdk_ref_after_cancel"] = session.sdk_ref if session is not None else None
+    assert "Bash" in cancelled.tool_names, cancelled.text  # it was cancelled mid-tool
+    assert cancelled.turn.status == "cancelled", cancelled.turn.error
+
+    after = await h.turn(session_id, SHORT_PROMPT)
+    out["turn_after"] = outcome_summary(after)
+    out["ledger_after"] = _ledger_entry(h, sdk_ref)
+    assert after.turn.status == "done", after.turn.error
+
+
+def _check_costs(out: dict[str, Any]) -> None:
+    total_before = out["ledger_before"]["total_cost_usd"]
+    total_cancel = out["ledger_after_cancel"]["total_cost_usd"]
+    total_after = out["ledger_after"]["total_cost_usd"]
+    cost_cancelled = out["turn_cancelled"]["cost_usd"] or 0.0
+    cost_after = out["turn_after"]["cost_usd"]
+    out["check"] = {
+        "cancelled_turn_cost": cost_cancelled,
+        "cancelled_turn_expected": total_cancel - total_before,
+        "next_turn_cost": cost_after,
+        "next_turn_expected": total_after - total_cancel,
+        "sum_of_turns": out["turn_before"]["cost_usd"] + cost_cancelled + cost_after,
+        "sdk_cumulative": total_after,
+    }
+    check = out["check"]
+    assert check["cancelled_turn_cost"] == pytest.approx(check["cancelled_turn_expected"])
+    assert check["next_turn_cost"] == pytest.approx(check["next_turn_expected"])
+    # Nothing counted twice, nothing lost: the turns add up to the SDK's cumulative total.
+    assert check["sum_of_turns"] == pytest.approx(check["sdk_cumulative"])
+
+
+async def test_claude_login_cancel_then_turn(tmp_path: Path) -> None:
+    if os.environ.get("STUDIO_SMOKE_SKIP_LOGIN") == "1":
+        pytest.skip("STUDIO_SMOKE_SKIP_LOGIN=1，跳过本机登录用例")
+    if _claude_cli() is None:
+        pytest.skip("未找到 claude CLI（本机未安装/未登录 Claude Code），跳过本机登录用例")
+
+    evidence: dict[str, Any] = {}
+    # A: normal stop (runner grace 10 s) — the interrupted CLI still sends a result.
+    graceful = build_harness(tmp_path / "graceful")
+    # B: forced stop (grace 0) — the task is cancelled before any result arrives.
+    forced = build_harness(tmp_path / "forced", cancel_grace_seconds=0.0)
+    try:
+        evidence["graceful"] = {}
+        await _cancel_scenario(graceful, evidence["graceful"])
+        _check_costs(evidence["graceful"])
+        assert evidence["graceful"]["ledger_after_cancel"]["unsettled"] is False
+
+        evidence["forced"] = {}
+        await _cancel_scenario(forced, evidence["forced"])
+        # No result for the forced turn: it reports no cost, the ledger is marked
+        # unsettled, and its spend shows up in the next turn's difference.
+        assert evidence["forced"]["turn_cancelled"]["cost_usd"] in (None, 0.0)
+        assert evidence["forced"]["ledger_after_cancel"]["unsettled"] is True
+        _check_costs(evidence["forced"])
+        assert evidence["forced"]["ledger_after"]["unsettled"] is False
+    finally:
+        record_evidence("claude-login-cancel", evidence, M1X_EVIDENCE_DIR)
+        graceful.engine.dispose()
+        forced.engine.dispose()
+
+
+# ---- Claude, local login: Bash read-deny sandbox (M1x T8, TD-1) --------------------
+
+SANDBOX_MARKER = "t8-inside-ok"
+
+
+def _probe_script(targets: dict[str, Path | str]) -> str:
+    """Shell script that reports, per target, whether `cat` could read it (contents
+    never printed), then checks that ordinary tools still run under the sandbox."""
+    lines = [
+        f'if cat "{path}" >/dev/null 2>&1; then echo "READABLE {name}"; '
+        f'else echo "DENIED {name}"; fi'
+        for name, path in targets.items()
+    ]
+    # stderr only (stdout discarded): shows the sandbox's error message, never contents.
+    lines += [f'cat "{path}" 2>&1 >/dev/null' for path in targets.values()]
+    lines += [
+        "cat topic/x.md",
+        "ls >/dev/null && echo ls-ok",
+        "ls /usr/bin >/dev/null && echo usr-bin-ok",
+        "python3 -c 'print(\"py-ok\")'",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+async def test_claude_login_sandbox_read() -> None:
+    """Real layout: data dir inside the repo. Bash reads the current workspace, but not
+    the repo (`backend/.env`), other projects or the data dir's own files."""
+    if os.environ.get("STUDIO_SMOKE_SKIP_LOGIN") == "1":
+        pytest.skip("STUDIO_SMOKE_SKIP_LOGIN=1，跳过本机登录用例")
+    if _claude_cli() is None:
+        pytest.skip("未找到 claude CLI（本机未安装/未登录 Claude Code），跳过本机登录用例")
+    env_file = REPO_ROOT / "backend" / ".env"
+    assert os.access(env_file, os.R_OK), "前置条件：backend/.env 存在且本进程可读"
+
+    base = REPO_ROOT / "data" / "smoke-tmp" / uuid.uuid4().hex
+    h = build_harness(base)
+    evidence: dict[str, Any] = {"data_dir": str(h.data_dir), "workdir": str(h.workdir)}
+    try:
+        other = h.data_dir / "projects" / "other-project" / "topic" / "y.md"
+        other.parent.mkdir(parents=True)
+        other.write_text("other project\n", encoding="utf-8")
+        canary = h.data_dir / "canary.db"
+        canary.write_text("data dir file\n", encoding="utf-8")
+        inside = h.workdir / "topic" / "x.md"
+        inside.parent.mkdir(parents=True, exist_ok=True)
+        inside.write_text(SANDBOX_MARKER + "\n", encoding="utf-8")
+        targets: dict[str, Path | str] = {
+            "workspace": "topic/x.md",
+            "workspace-abs": inside,
+            "backend-env": env_file,
+            "repo-file": REPO_ROOT / "AGENTS.md",
+            "other-project": other,
+            "data-dir-file": canary,
+        }
+        (h.workdir / "topic" / "probe.sh").write_text(_probe_script(targets), encoding="utf-8")
+
+        profile = h.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+        session_id = h.session(profile, "claude")
+        outcome = await h.turn(
+            session_id,
+            "这是自动化测试。用 Bash 工具原样执行 `sh topic/probe.sh` 一次（不要改写、不要重试），"
+            "然后原样报告输出。",
+        )
+        evidence["turn"] = outcome_summary(outcome)
+        output = "\n".join(str(r["text"]) for r in outcome.tool_results("Bash"))
+        evidence["bash_output"] = output
+        assert outcome.turn.status == "done", outcome.turn.error
+        for name in ("workspace", "workspace-abs"):
+            assert f"READABLE {name}" in output, output
+        for name in ("backend-env", "repo-file", "other-project", "data-dir-file"):
+            assert f"DENIED {name}" in output, output
+        for marker in (SANDBOX_MARKER, "ls-ok", "usr-bin-ok", "py-ok"):
+            assert marker in output, output
+    finally:
+        record_evidence("claude-login-sandbox", evidence, M1X_EVIDENCE_DIR)
+        h.engine.dispose()
+        shutil.rmtree(base, ignore_errors=True)
+        with contextlib.suppress(OSError):  # kept only if another run is using it
+            base.parent.rmdir()
 
 
 # ---- OpenAI Responses API --------------------------------------------------------

@@ -45,6 +45,7 @@ from studio.workspace.scope import WriteScope
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1" / "smoke"
+M1X_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1x" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}
@@ -217,13 +218,35 @@ class SmokeHarness:
     async def turn(self, session_id: str, text: str) -> TurnOutcome:
         turn_id = await self.runner.start_turn(session_id, UserInput(text=text))
         await asyncio.wait_for(self.runner.wait(turn_id), timeout=TURN_TIMEOUT_SECONDS)
+        return self._outcome(session_id, turn_id)
+
+    async def turn_cancelled_at_tool_call(self, session_id: str, text: str) -> TurnOutcome:
+        """Start a turn and cancel it (like the UI's stop button) as soon as its
+        first tool call is persisted."""
+        turn_id = await self.runner.start_turn(session_id, UserInput(text=text))
+        finished = asyncio.ensure_future(self.runner.wait(turn_id))
+
+        async def first_tool_call() -> None:
+            while not finished.done() and not any(
+                e.turn_id == turn_id and e.type == "tool_call"
+                for e in list_events(self.engine, session_id)
+            ):
+                await asyncio.sleep(0.2)
+
+        await asyncio.wait_for(first_tool_call(), timeout=TURN_TIMEOUT_SECONDS)
+        if not finished.done():  # otherwise the turn ended before any tool call
+            assert self.runner.cancel(turn_id)
+        await asyncio.wait_for(finished, timeout=TURN_TIMEOUT_SECONDS)
+        return self._outcome(session_id, turn_id)
+
+    def _outcome(self, session_id: str, turn_id: str) -> TurnOutcome:
         turn = get_turn(self.engine, turn_id)
         assert turn is not None
         events = [e for e in list_events(self.engine, session_id) if e.turn_id == turn_id]
         return TurnOutcome(turn, events)
 
 
-def build_harness(tmp_path: Path) -> SmokeHarness:
+def build_harness(tmp_path: Path, *, cancel_grace_seconds: float = 10.0) -> SmokeHarness:
     data_dir = tmp_path / "data"
     engine = make_engine(tmp_path / "studio.db")
     migrate(engine)
@@ -240,7 +263,15 @@ def build_harness(tmp_path: Path) -> SmokeHarness:
     register_claude(factory, settings)
     register_openai(factory, settings)
     blobs = BlobStore(data_dir / "blobs")
-    runner = TurnRunner(engine, blobs, registry, factory, SessionBus(), settings)
+    runner = TurnRunner(
+        engine,
+        blobs,
+        registry,
+        factory,
+        SessionBus(),
+        settings,
+        cancel_grace_seconds=cancel_grace_seconds,
+    )
 
     project = create_project(engine, title="冒烟测试")
     for stage, status in (("topic", "active"), ("narrative", "locked"), ("animation", "locked")):
@@ -257,12 +288,12 @@ def build_harness(tmp_path: Path) -> SmokeHarness:
 _SECRET_RE = re.compile(r"(sk-[A-Za-z0-9_-]{8,})")
 
 
-def record_evidence(case: str, payload: dict[str, Any]) -> Path:
-    """Write one case's observations to `data/evidence/m1/smoke/` (git-ignored).
-    Anything that looks like an API key is masked."""
-    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+def record_evidence(case: str, payload: dict[str, Any], directory: Path = EVIDENCE_DIR) -> Path:
+    """Write one case's observations to `directory` (default `data/evidence/m1/smoke/`,
+    git-ignored). Anything that looks like an API key is masked."""
+    directory.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = EVIDENCE_DIR / f"{stamp}-{case}.json"
+    path = directory / f"{stamp}-{case}.json"
     text = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
     path.write_text(_SECRET_RE.sub("sk-***", text), encoding="utf-8")
     return path

@@ -121,6 +121,32 @@ def _find_symlinks(workdir: Path) -> list[Path]:
     return symlinks
 
 
+def _prune_empty_ancestors(workdir: Path, restored: list[str]) -> None:
+    """只清理这一轮真的被还原/删除的路径留下的空祖先目录，不扫整棵树。
+
+    与全量的 `layout.prune_empty_dirs` 不同：不会碰到跟本轮还原无关、agent
+    这一轮刚 `mkdir -p` 出来但还没写文件的空目录（review 发现）。
+    """
+    seen_dirs: set[Path] = set()
+    for relpath in restored:
+        parent = (workdir / relpath).parent
+        while parent != workdir and parent not in seen_dirs:
+            seen_dirs.add(parent)
+            rel_parts = parent.relative_to(workdir).parts
+            if rel_parts and rel_parts[0] in EXCLUDED_TOP_DIRS:
+                break
+            try:
+                next(parent.iterdir())
+                break  # 非空，停止往上清
+            except FileNotFoundError:
+                parent = parent.parent
+                continue
+            except StopIteration:
+                pass
+            parent.rmdir()
+            parent = parent.parent
+
+
 def guard(
     workdir: Path | str,
     before: Manifest,
@@ -167,5 +193,11 @@ def guard(
         else:
             _restore_bytes(workdir, path, blobs.get(before_sha256))
         restored.append(path)
+
+    # 还原/删除越界文件后，父目录可能变空（例如越界新建的 `a/b/c.txt` 被删掉
+    # 后留下空的 `a/`、`a/b/`）；和 `snapshot.rollback` 一样清理掉（TD-5）。
+    # 只清理这一轮实际还原路径的祖先目录，不扫整棵工作区树，避免碰到跟本轮
+    # 还原无关的空目录（review 发现）。
+    _prune_empty_ancestors(workdir, restored)
 
     return GuardReport(restored=sorted(set(restored)))

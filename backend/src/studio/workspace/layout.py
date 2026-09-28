@@ -7,9 +7,15 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 EXCLUDED_TOP_DIRS = {".cache", "output", "upstream"}
+
+HIDDEN_TOP_DIRS = EXCLUDED_TOP_DIRS - {"upstream"}
+"""对 agent/前端只读接口隐藏的顶层目录：`upstream/` 仍然可见（只读展示上游
+产物），`.cache/`、`output/` 不是"工作区内容"，不应该被 `list_tree`/`read_text`
+或 `/api/projects/{id}/files` 列出或读到（TD-5）。"""
 
 
 def project_dir(data_dir: Path | str, project_id: str) -> Path:
@@ -33,3 +39,24 @@ def resolve_relpath(workdir: Path | str, relpath: str) -> Path:
     if dest != workdir_resolved and workdir_resolved not in dest.parents:
         raise PathEscapesWorkdir(relpath)
     return workdir / relpath
+
+
+def prune_empty_dirs(workdir: Path) -> None:
+    """删除工作区里因为文件被移走/还原而产生的空目录，不动排除目录。
+
+    供 `snapshot.rollback` 和 `scope.guard` 共用：两者都会删除或改写文件，
+    删空的目录如果不清理会一直留在工作区里（TD-5）。
+    """
+    for dirpath, _dirnames, _filenames in os.walk(workdir, topdown=False):
+        path = Path(dirpath)
+        if path == workdir:
+            continue
+        rel_parts = path.relative_to(workdir).parts
+        if rel_parts and rel_parts[0] in EXCLUDED_TOP_DIRS:
+            continue
+        try:
+            next(path.iterdir())
+        except StopIteration:
+            path.rmdir()
+        except FileNotFoundError:
+            pass

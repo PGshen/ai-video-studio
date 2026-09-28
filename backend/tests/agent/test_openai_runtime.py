@@ -8,6 +8,7 @@ import asyncio
 import dataclasses
 import logging
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -18,15 +19,11 @@ from agents import (
     FunctionTool,
     Model,
     OpenAIResponsesModel,
-    RunContextWrapper,
-    ShellCallData,
-    ShellCommandRequest,
     ShellTool,
     WebSearchTool,
 )
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.testing import ModelCall, ModelStep, ScriptedModel, assistant_message, function_call
-from agents.tool import ShellActionRequest
 from agents.usage import Usage
 from openai.types.responses import (
     Response,
@@ -43,15 +40,15 @@ from pydantic import BaseModel
 
 from studio.agent import events
 from studio.agent.openai_runtime import (
-    LocalShellExecutor,
+    MAX_TURNS,
     OpenAIRuntime,
-    build_function_tool,
     build_model,
+    max_turns,
     native_shell_supported,
     openai_client,
     register_openai,
-    turn_cost,
 )
+from studio.agent.openai_tools import build_function_tool, turn_cost
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import Settings
@@ -139,10 +136,34 @@ def data_dir(tmp_path: Path) -> Path:
     return tmp_path / "data"
 
 
-def _runtime(data_dir: Path, models: Models, *, history_turns: int = 20) -> OpenAIRuntime:
+def _runtime(
+    data_dir: Path,
+    models: Models,
+    *,
+    history_turns: int = 20,
+    repo_root: Path | None = None,
+    sandbox: bool = True,
+) -> OpenAIRuntime:
+    # Tool-surface tests inject the sandbox check so they run on every platform; tests that
+    # actually execute shell commands are marked `darwin_only`.
     return OpenAIRuntime(
-        data_dir, model_factory=models, environ=_ENVIRON, history_turns=history_turns
+        data_dir,
+        model_factory=models,
+        environ=_ENVIRON,
+        history_turns=history_turns,
+        repo_root=repo_root,
+        sandbox_available=lambda: sandbox,
     )
+
+
+def _yes() -> bool:
+    return True
+
+
+darwin_only = pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="Shell 经 sandbox-exec 执行，只存在于 macOS（计划 M1x T9 写明的 skipif 理由）",
+)
 
 
 async def _run(runtime: OpenAIRuntime, ctx: TurnContext) -> list[events.AgentEvent]:
@@ -404,15 +425,19 @@ class TestNativeTools:
             assert settings.response_include is None
 
     def test_native_shell_supported(self) -> None:
-        assert native_shell_supported(_OPENAI)
+        assert native_shell_supported(_OPENAI, sandbox_available=_yes)
         for url in ("https://api.openai.com/v1", "https://API.openai.com/v1/"):
-            assert native_shell_supported(dataclasses.replace(_OPENAI, base_url=url))
+            assert native_shell_supported(
+                dataclasses.replace(_OPENAI, base_url=url), sandbox_available=_yes
+            )
         for url in (
             "https://openrouter.ai/api/v1",
             "https://api.openai.com.evil.example/v1",
             "http://127.0.0.1:4000/v1",
         ):
-            assert not native_shell_supported(dataclasses.replace(_OPENAI, base_url=url))
+            assert not native_shell_supported(
+                dataclasses.replace(_OPENAI, base_url=url), sandbox_available=_yes
+            )
 
     async def test_web_search_only_when_allowed(self, workdir: Path, data_dir: Path) -> None:
         models = Models([[assistant_message("ok")]])
@@ -446,6 +471,40 @@ class TestNativeTools:
         assert rejected.is_error and "style/STYLE.md" in rejected.text
         assert "apply_patch" in events.FILE_TOOL_NAMES
 
+    async def test_no_sandbox_drops_shell_adds_read_tools(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """Fail closed (TD-20): without sandbox-exec (non-macOS) there is no native shell."""
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models, sandbox=False), _ctx(workdir))
+
+        tools = models.calls[0].tools
+        assert not any(isinstance(tool, ShellTool) for tool in tools)
+        names = {tool.name for tool in tools if isinstance(tool, FunctionTool)}
+        assert names == {"list_files", "read_file"}
+
+    @darwin_only
+    async def test_shell_sandbox_denies_repo_and_data_dir(
+        self, tmp_path: Path, workdir: Path, data_dir: Path
+    ) -> None:
+        """The runtime passes [repo_root, data_dir] as the shell's deny-read list (TD-20)."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "secret.env").write_text("repo-secret")
+        other = data_dir / "projects" / "other"
+        other.mkdir(parents=True)
+        (other / "s.md").write_text("other-secret")
+        commands = [f"cat {repo / 'secret.env'}", "cat ../other/s.md", "echo ok > mine.md"]
+        models = Models([_shell_step("s1", commands), [assistant_message("好")]])
+        out = await _run(_runtime(data_dir, models, repo_root=repo), _ctx(workdir))
+
+        (result,) = _of(out, events.ToolResult)
+        assert result.is_error
+        assert "repo-secret" not in result.text and "other-secret" not in result.text
+        assert result.text.count("Operation not permitted") == 2
+        assert (workdir / "mine.md").read_text() == "ok\n"
+
+    @darwin_only
     async def test_shell_runs_in_workdir(self, workdir: Path, data_dir: Path) -> None:
         models = Models([_shell_step("s1", ["pwd"]), [assistant_message("好")]])
         out = await _run(_runtime(data_dir, models), _ctx(workdir))
@@ -457,6 +516,7 @@ class TestNativeTools:
         assert str(workdir.resolve()) in result.text
         assert not result.is_error
 
+    @darwin_only
     async def test_failing_shell_command_is_error_result(
         self, workdir: Path, data_dir: Path
     ) -> None:
@@ -639,6 +699,31 @@ class TestCancel:
         assert _end(out).status == "cancelled"
 
 
+class TestMaxTurns:
+    """TD-18: the runner enforces the step budget; the SDK's `max_turns` is only a
+    loose backstop derived from it (plan decision: `max_steps * 2 + 2`)."""
+
+    def test_unlimited_steps_use_default_cap(self) -> None:
+        assert max_turns(Budget()) == MAX_TURNS
+
+    def test_derived_from_step_budget(self) -> None:
+        assert max_turns(Budget(max_steps=5)) == 12
+
+    async def test_backstop_applies_to_the_run(self, workdir: Path, data_dir: Path) -> None:
+        models = Models(
+            [[function_call("echo", {"text": str(i)}, call_id=f"c{i}")] for i in range(3)]
+            + [[assistant_message("完成")]]
+        )
+        out = await _run(
+            _runtime(data_dir, models),
+            _ctx(workdir, tools=[_echo_spec()], budget=Budget(max_steps=0)),
+        )
+
+        end = _end(out)
+        assert end.status == "failed"
+        assert end.error is not None and "（2）" in end.error
+
+
 def _user_texts(call: ModelCall) -> list[str]:
     return [
         item["content"]
@@ -675,72 +760,6 @@ class TestSession:
         assert _user_texts(models.calls[2]) == ["2", "3"]
 
 
-class TestShellExecutor:
-    def _request(self, commands: list[str], timeout_ms: int | None = None) -> ShellCommandRequest:
-        data = ShellCallData(
-            call_id="s1", action=ShellActionRequest(commands=commands, timeout_ms=timeout_ms)
-        )
-        return ShellCommandRequest(ctx_wrapper=RunContextWrapper(context=None), data=data)
-
-    async def test_uses_injected_environ_without_secrets(
-        self, workdir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("STUDIO_ONLY_IN_PROCESS_ENV", "leak")
-        environ = {"PATH": os.environ["PATH"], "FOO": "bar", "MY_TOKEN": "secret"}
-        executor = LocalShellExecutor(workdir, set(), environ=environ)
-
-        result = await executor(
-            self._request(['echo "$FOO|$MY_TOKEN|$STUDIO_ONLY_IN_PROCESS_ENV"'])
-        )
-
-        assert result.output[0].stdout.strip() == "bar||"
-
-    async def test_runs_in_workdir_and_captures_output(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        result = await LocalShellExecutor(workdir, failed)(self._request(["pwd", "echo err >&2"]))
-
-        first, second = result.output
-        assert first.stdout.strip() == str(workdir.resolve())
-        assert first.exit_code == 0
-        assert second.stderr.strip() == "err"
-        assert failed == set()
-
-    async def test_timeout_kills_command(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        executor = LocalShellExecutor(workdir, failed)
-
-        result = await asyncio.wait_for(executor(self._request(["sleep 5"], timeout_ms=200)), 3)
-
-        (output,) = result.output
-        assert output.status == "timeout"
-        assert failed == {"s1"}
-
-    async def test_nonzero_exit_marks_failed(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        result = await LocalShellExecutor(workdir, failed)(self._request(["exit 2"]))
-
-        assert result.output[0].exit_code == 2
-        assert failed == {"s1"}
-
-    async def test_output_is_truncated(self, workdir: Path) -> None:
-        executor = LocalShellExecutor(workdir, set(), max_output_chars=100)
-        result = await executor(self._request(["yes x | head -c 5000"]))
-
-        assert len(result.output[0].stdout) < 200
-        assert "截断" in result.output[0].stdout
-
-    async def test_secrets_are_not_inherited(
-        self, workdir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("SOME_API_KEY", "leak")
-        monkeypatch.setenv("HARMLESS_VALUE", "ok")
-        executor = LocalShellExecutor(workdir, set())
-
-        result = await executor(self._request(['echo "[$SOME_API_KEY][$HARMLESS_VALUE]"']))
-
-        assert result.output[0].stdout.strip() == "[][ok]"
-
-
 def test_register_openai(tmp_path: Path) -> None:
     factory = RuntimeFactory()
     register_openai(factory, Settings(data_dir=tmp_path / "data"))
@@ -766,43 +785,10 @@ async def _group_gone(pgid: int) -> bool:
 
 
 class TestShellProcessGroup:
-    def _request(self, commands: list[str], timeout_ms: int | None = None) -> ShellCommandRequest:
-        data = ShellCallData(
-            call_id="s1", action=ShellActionRequest(commands=commands, timeout_ms=timeout_ms)
-        )
-        return ShellCommandRequest(ctx_wrapper=RunContextWrapper(context=None), data=data)
+    """`LocalShellExecutor` 本身的行为测试在 `test_shell.py`；这里只留取消如何贯穿
+    整个 OpenAIRuntime（含 SDK Runner、事件流）的集成测试。"""
 
-    @pytest.mark.parametrize(
-        "background",
-        [
-            "nohup sh -c 'sleep 0.5; touch marker' > /dev/null 2>&1 &",
-            "(sleep 0.5; touch marker) &",  # still holds the stdout pipe
-        ],
-    )
-    async def test_background_processes_die_with_the_command(
-        self, workdir: Path, background: str
-    ) -> None:
-        executor = LocalShellExecutor(workdir, set())
-
-        result = await asyncio.wait_for(executor(self._request([f"echo $$; {background}"])), 3)
-
-        pgid = int(result.output[0].stdout.split()[0])
-        assert await _group_gone(pgid)
-        await asyncio.sleep(0.8)
-        assert not (workdir / "marker").exists()
-
-    async def test_output_flood_is_capped_and_killed(self, workdir: Path) -> None:
-        failed: set[str] = set()
-        executor = LocalShellExecutor(workdir, failed, max_output_chars=1000)
-
-        result = await asyncio.wait_for(executor(self._request(["yes"], timeout_ms=10_000)), 5)
-
-        (output,) = result.output
-        assert output.status == "completed"
-        assert len(output.stdout) < 1200
-        assert "终止" in output.stderr
-        assert failed == {"s1"}
-
+    @darwin_only
     async def test_cancel_while_shell_runs(self, workdir: Path, data_dir: Path) -> None:
         models = Models([_shell_step("s1", ["echo $$ > pgid; sleep 30"])])
         token = CancelToken()
@@ -869,7 +855,7 @@ class TestReviewFixes:
 
         spec = ToolSpec("open", "开放参数", Open, {"topic"}, handler)
         tool_ctx = ToolContext("p", "topic", workdir, _noop_record)
-        with caplog.at_level(logging.WARNING, logger="studio.agent.openai_runtime"):
+        with caplog.at_level(logging.WARNING, logger="studio.agent.openai_tools"):
             tool = build_function_tool(spec, tool_ctx, {})
 
         assert tool.strict_json_schema is False

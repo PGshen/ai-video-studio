@@ -125,6 +125,37 @@ class TestCreateSnapshot:
         assert second.id == first.id
         assert second.reason == first.reason
 
+    def test_reads_each_file_at_most_once(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        engine: Engine,
+        blobs: BlobStore,
+        project_id: str,
+        workdir: Path,
+    ) -> None:
+        """TD-4：`scan` 为算 sha256 读一遍文件，旧实现 `create_snapshot` 写 blob
+        时又整个重读一遍——对已经在 blob 库里的内容（本例的 `a.md`/`b.md`）
+        完全是浪费。改完之后不管 blob 是否已存在，每个文件在一轮里只读一次。
+        """
+        _write(workdir / "a.md", "same content")
+        _write(workdir / "b.md", "other content")
+        create_snapshot(engine, blobs, project_id, reason="user_edit")
+
+        _write(workdir / "c.md", "new content")
+
+        read_calls: list[Path] = []
+        original_read_bytes = Path.read_bytes
+
+        def counting_read_bytes(self: Path) -> bytes:
+            read_calls.append(self)
+            return original_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", counting_read_bytes)
+
+        create_snapshot(engine, blobs, project_id, reason="turn")
+
+        assert len(read_calls) == 3
+
 
 class TestDiff:
     def test_added_removed_modified(

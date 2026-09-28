@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 
 def test_settings_default_data_dir_is_repo_root_data() -> None:
-    from studio.config import _REPO_ROOT, Settings
+    from studio.config import Settings, repo_root
 
     settings = Settings()
 
-    assert settings.data_dir == (_REPO_ROOT / "data").resolve()
+    assert settings.data_dir == (repo_root() / "data").resolve()
     assert settings.host == "127.0.0.1"
     assert settings.port == 8000
     assert settings.max_concurrent_turns == 2
@@ -31,10 +34,11 @@ def test_settings_data_dir_overridable_via_env(
 
 
 def test_settings_rejects_data_dir_inside_backend_src() -> None:
-    from studio.config import _BACKEND_SRC_DIR, Settings, WorkspaceInsideSourceError
+    from studio.config import Settings, WorkspaceInsideSourceError, repo_root
 
+    backend_src_dir = repo_root() / "backend" / "src"
     with pytest.raises(WorkspaceInsideSourceError):
-        Settings(data_dir=_BACKEND_SRC_DIR / "data")
+        Settings(data_dir=backend_src_dir / "data")
 
 
 def test_get_settings_returns_cached_singleton() -> None:
@@ -95,3 +99,22 @@ def test_openai_price_settings_empty_string_means_unset(monkeypatch: pytest.Monk
 
     assert settings.openai_price_input is None
     assert settings.openai_price_output is None
+
+
+def test_main_prints_host_and_port(tmp_path: Path) -> None:
+    """TD-2：`dev.sh` 靠 `python -m studio.config` 的 stdout 拿绑定地址，
+    改端口后 uvicorn 必须真的换端口，而不是脚本里写死的 8000。"""
+    env = dict(os.environ)
+    env["STUDIO_PORT"] = "9123"
+    env["STUDIO_HOST"] = "0.0.0.0"
+    env["STUDIO_DATA_DIR"] = str(tmp_path / "data")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "studio.config"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    assert result.stdout.strip() == "0.0.0.0 9123"

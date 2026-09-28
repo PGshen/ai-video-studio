@@ -11,10 +11,10 @@
 
 | 模块 | 评级 | 已知缺口 | 更新日期 |
 |---|---|---|---|
-| config / db | A | 12 张表迁移、仓储均有测试；`test_config` 引用私有常量（TD-3） | 2026-09-28 |
-| workspace（快照库） | B | 快照/回滚/guard/upstream 覆盖主要路径与符号链接、权限边界；快照重复读文件（TD-4）、排除目录过滤与空目录（TD-5） | 2026-09-28 |
+| config / db | A | 12 张表迁移、仓储均有测试；`repo_root()` 已公开，测试不再引用私有常量 | 2026-09-28 |
+| workspace（快照库） | A | 快照/回滚/guard/upstream 覆盖主要路径与符号链接、权限边界；快照不再重复读文件，排除目录统一在 workspace 层过滤，guard 还原后清理空目录 | 2026-09-28 |
 | jobs | — | M2 | 2026-09-28 |
-| agent（运行时、TurnRunner） | B | 三个运行时均有 mock SDK 测试，TurnRunner 覆盖各结束方式；runner/openai_runtime 过大（TD-15/16）、成本账本与取消边界（TD-11/12）、OpenAI Shell 无沙箱（TD-20）、Claude 联网外发剩余风险（TD-1）；真实 key 冒烟只跑了登录模式 | 2026-09-28 |
+| agent（运行时、TurnRunner） | B | 三个运行时均有 mock SDK 测试，TurnRunner 覆盖各结束方式；`runner.py`/`openai_runtime.py`/`claude_runtime.py` 已拆分到 400 行以内（原 TD-15/16 及新增拆分）；`ToolContext` 统一构造、步数预算只在 runner 计数（原 TD-17/18）；Claude Bash 沙箱拒读仓库与 data_dir，OpenAI Shell 经 sandbox-exec 沙箱化（原 TD-1/20，残余风险见 TD-27/28）；成本账本取消边界收窄（原 TD-11/12，残余边界见 TD-25/26）；真实 key 冒烟只跑了登录模式（Claude）与本机 sandbox-exec 实测（OpenAI，未过模型） | 2026-09-28 |
 | stages.brainstorm | — | M4 | 2026-09-28 |
 | stages.topic | C | M1 只有占位定义（提示词 + 可写范围）与结构测试 | 2026-09-28 |
 | stages.narrative | C | 同上 | 2026-09-28 |

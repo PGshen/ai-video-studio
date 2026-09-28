@@ -196,6 +196,37 @@ class TestGuard:
         assert (workdir / "style" / "STYLE.md").read_bytes() == b"# style"
         assert "style/STYLE.md" in report.restored
 
+    def test_prunes_empty_dirs_left_by_removed_out_of_scope_file(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        """TD-5：越界新建的 `a/b/c.txt` 被还原（删除）后，`a/`、`a/b/` 这两个
+        因此变空的目录也要清掉，不能留在工作区里。"""
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        before: dict[str, str] = {}
+        _write(workdir / "a" / "b" / "c.txt", "escaped")
+        after = {"a/b/c.txt": "whatever-sha-not-checked"}
+
+        guard(workdir, before, after, scope, blobs, tool_writes={})
+
+        assert not (workdir / "a").exists()
+
+    def test_unrelated_preexisting_empty_dir_is_left_alone_when_nothing_restored_there(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        """`guard` 只应该清理它自己制造的空目录（还原/删除越界文件后留下的），
+        不能把工作区里其他原因产生的空目录（比如 agent 刚 `mkdir -p` 出来、
+        这一轮还没来得及写文件）也顺手删掉——那不是它的还原结果。"""
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        (workdir / "animation" / "assets").mkdir(parents=True)
+        before: dict[str, str] = {}
+        _write(workdir / "a" / "b" / "escaped.txt", "escaped")
+        after = {"a/b/escaped.txt": "whatever-sha-not-checked"}
+
+        guard(workdir, before, after, scope, blobs, tool_writes={})
+
+        assert not (workdir / "a").exists()
+        assert (workdir / "animation" / "assets").is_dir()
+
     def test_restore_replaces_directory_created_at_file_path(
         self, blobs: BlobStore, workdir: Path
     ) -> None:

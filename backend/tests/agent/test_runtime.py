@@ -6,11 +6,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import pytest
 
 from studio.agent import events
-from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext
+from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
+from studio.agent.tools import ToolContext
+from studio.db.repo.profiles import ModelProfileValue
+from studio.workspace.scope import WriteScope
 
 
 class _StubRuntime:
@@ -60,3 +64,42 @@ class TestRuntimeFactory:
         factory.register("fake", _StubRuntime)
 
         assert factory.has("fake") is True
+
+
+def _record(relpath: str, sha256: str) -> None:
+    return None
+
+
+def test_tool_context_matches_turn_context(tmp_path: Path) -> None:
+    profile = ModelProfileValue(
+        id="p1",
+        name="p",
+        provider="fake",
+        model="m",
+        runtime="fake",
+        base_url=None,
+        api_key_env=None,
+        supports_vision=False,
+        price_input=None,
+        price_output=None,
+        max_cost_per_turn=None,
+        max_steps_per_turn=None,
+    )
+    ctx = TurnContext(
+        system_prompt="s",
+        user_input=UserInput(text="hi"),
+        tools=[],
+        workdir=tmp_path,
+        model_profile=profile,
+        resume_ref=None,
+        cancel_token=CancelToken(),
+        budget=Budget(),
+        write_scope=WriteScope(writable=["topic/**"], tool_managed=[]),
+        project_id="proj-1",
+        stage="topic",
+        record_tool_write=_record,
+    )
+
+    assert ctx.tool_context() == ToolContext(
+        project_id="proj-1", stage="topic", workdir=tmp_path, record_tool_write=_record
+    )
