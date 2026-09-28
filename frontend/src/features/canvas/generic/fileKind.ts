@@ -5,9 +5,13 @@
  * 会把图片/视频这类文件搞乱，浏览器 `fetch().text()` 对二进制内容也不一定
  * 安全解码）。这是一份白名单而不是黑名单：新出现的、没见过的扩展名默认
  * 当二进制，宁可少编辑一些文件，也不要把真正的二进制文件当文本读坏。
+ *
+ * `EditorLanguage` 类型本身定义在 `@/components/codeEditorLanguage`（T12
+ * 决策记录 D36），这里重新导出，保持这个模块原有的对外接口不变。
  */
+import type { EditorLanguage } from '@/components/codeEditorLanguage'
 
-export type EditorLanguage = 'markdown' | 'json' | 'python' | 'text'
+export type { EditorLanguage }
 
 const LANGUAGE_BY_EXT: Record<string, EditorLanguage> = {
   md: 'markdown',
