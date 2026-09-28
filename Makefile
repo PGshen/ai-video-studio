@@ -73,4 +73,4 @@ smoke:
 	  [ -n "$${!v:-}" ] && args+=("$$v=$${!v}"); \
 	done; \
 	echo "make smoke: env -i + 白名单变量（$${#args[@]} 个）"; \
-	cd backend && env -i "$${args[@]}" $(UV) run pytest -m smoke -v -rs
+	cd backend && env -i "$${args[@]}" $(UV) run pytest -m smoke -v -rs $(SMOKE_ARGS)
