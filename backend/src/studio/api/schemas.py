@@ -31,6 +31,8 @@ class ProjectOut(BaseModel):
     idea_id: str | None
     current_stage: str
     settings: dict[str, Any]
+    completed_at: datetime | None
+    """"成片定稿"（T11）后设为完成时间；`None` 表示项目尚未完成。"""
 
 
 class ProjectDetailOut(ProjectOut):

@@ -52,6 +52,8 @@ class Project(Base):
     idea_id: Mapped[str | None] = mapped_column(String, nullable=True)
     current_stage: Mapped[str] = mapped_column(String, nullable=False, default="topic")
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """项目"成片定稿"后写入（T11）；`None` 表示尚未完成。"""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

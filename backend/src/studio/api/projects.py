@@ -59,6 +59,7 @@ def _project_out(value: ProjectValue) -> ProjectOut:
         idea_id=value.idea_id,
         current_stage=value.current_stage,
         settings=value.settings,
+        completed_at=value.completed_at,
     )
 
 

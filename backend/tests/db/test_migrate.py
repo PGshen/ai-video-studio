@@ -41,6 +41,11 @@ def test_migrate_creates_turn_events_session_seq_index(migrated_engine: Engine) 
     assert ("session_id", "seq") in columns_by_index
 
 
+def test_migrate_adds_projects_completed_at_column(migrated_engine: Engine) -> None:
+    columns = {col["name"] for col in inspect(migrated_engine).get_columns("projects")}
+    assert "completed_at" in columns
+
+
 def test_migrate_runs_on_fresh_db_file(db_path: Path) -> None:
     engine = make_engine(db_path)
     try:
