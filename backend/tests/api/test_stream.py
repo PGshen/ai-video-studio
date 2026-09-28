@@ -618,6 +618,16 @@ class TestFakeTurnFullEventFlow:
         # 4) 因果链：text → tool_call → tool_result（说话在先，然后才是那
         #    次工具调用及其结果）。
         assert_in_order(names, "text", "tool_call", "tool_result")
+        # 4.5) turn_status 变成 running 必须在第一条 text 之前（轮已经真正
+        #    开始运行，模型才可能开始说话）——原来逐条比对完整事件列表时这条
+        #    顺序是隐含成立的，TD-10 改成只断言相对顺序后漏掉了，这里补回来。
+        status_labels = [
+            f"turn_status:{json.loads(f['data'])['status']}"
+            if f["event"] == "turn_status"
+            else f["event"]
+            for f in frames
+        ]
+        assert_in_order(status_labels, "turn_status:running", "text")
         # 5) workspace_changed 必须在触发它的 tool_result 之后。
         assert names.index("workspace_changed") > names.index("tool_result")
         # 6) 快照事件必须在 turn_end（最后一条 turn_status）之前。
