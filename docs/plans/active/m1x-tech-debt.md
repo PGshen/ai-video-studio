@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | M1 与 M2 之间（整理） |
 | 设计依据 | [架构设计 §4.3、§4.4](../../design/2026-09-26-architecture.md)；登记表 [tech-debt.md](../../quality/tech-debt.md) |
 | 分支 | `m1x-tech-debt` |
@@ -50,12 +50,12 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 
 ## 验收标准
 
-- [ ] AC1：`make check` 为绿；登记表中范围内的 16 项移到「已处理」，不处理的项写明去向。（验证：`make check` 输出、tech-debt.md diff）
-- [ ] AC2：`agent/runner.py`、`agent/openai_runtime.py`、`agent/claude_runtime.py` 各自 ≤ 400 行；`ToolContext` 只在一处构造；步数预算只有 runner 一处口径。（验证：`wc -l`、`grep -rn "ToolContext(" backend/src`）
-- [ ] AC3：Claude 路径 Bash 读 `backend/.env` 被拒、读工作区文件成功；选题阶段不再提供 WebSearch/WebFetch。（验证：本机登录冒烟日志存入 `data/evidence/m1x/`）
-- [ ] AC4：OpenAI 路径 Shell 在 macOS 上经 `sandbox-exec` 执行：读仓库 `backend/.env` 失败、写工作区外失败、无外网，读写工作区成功；非 macOS 不提供 `ShellTool`。（验证：`tests/agent/test_shell_sandbox.py` 在本机真实执行的输出）
-- [ ] AC5：浏览器里用 Fake 跑一轮，时间线、画布刷新、快照与拆分前一致。（验证：L4 截图）
-- [ ] AC6：ADR 0009（Shell 沙箱策略）已写；references 两篇补充实测结论；QUALITY.md、ARCHITECTURE.md 更新。
+- [x] AC1：`make check` 为绿；登记表中范围内的 16 项移到「已处理」，不处理的项写明去向。（验证：`make check` 输出、tech-debt.md diff）
+- [x] AC2：`agent/runner.py`、`agent/openai_runtime.py`、`agent/claude_runtime.py` 各自 ≤ 400 行；`ToolContext` 只在一处构造；步数预算只有 runner 一处口径。（验证：`wc -l`、`grep -rn "ToolContext(" backend/src`）
+- [x] AC3：Claude 路径 Bash 读 `backend/.env` 被拒、读工作区文件成功；选题阶段不再提供 WebSearch/WebFetch。（验证：本机登录冒烟日志存入 `data/evidence/m1x/`）
+- [x] AC4：OpenAI 路径 Shell 在 macOS 上经 `sandbox-exec` 执行：读仓库 `backend/.env` 失败、写工作区外失败、无外网，读写工作区成功；非 macOS 不提供 `ShellTool`。（验证：`tests/agent/test_shell_sandbox.py` 在本机真实执行的输出）
+- [x] AC5：浏览器里用 Fake 跑一轮，时间线、画布刷新、快照与拆分前一致。（验证：L4 截图）
+- [x] AC6：ADR 0009（Shell 沙箱策略）已写；references 两篇补充实测结论；QUALITY.md、ARCHITECTURE.md 更新。
 
 ## 任务
 
@@ -159,7 +159,7 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - **完成标准**：AC4 的证据；ADR 0009；`make check` 绿。
 - **验证命令**：`make check`
 
-### T10：收尾（待开始）
+### T10：收尾（完成）
 
 - **目标**：文档与质量评级同步，完成自验证与评审。
 - **涉及文件**：`docs/quality/{tech-debt,QUALITY}.md`、`docs/ARCHITECTURE.md`、`docs/references/*`、本计划。
@@ -177,10 +177,11 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 - 2026-09-28 — T7 — 完成（TD-15：`runner.py` 622→340 行，纯搬移，不改逻辑；新建 `agent/turn_state.py`（70 行，`_Job`/`_State` 共享结构）、`agent/turn_events.py`（124 行，`handle`/`_after_tool_result`/`_exceed_budget`/截断三件套/`TOOL_RESULT_MAX_CHARS`）、`agent/turn_finish.py`（121 行，`finish`/`finish_turn_row`）、`agent/recovery.py`（83 行，`recover_on_startup`/`_recover_turn`/`_guard_recovered_turn`）。设计选择：不用协作类，改成"自由函数 + 显式传入 `runner: TurnRunner`"（如 `turn_events.handle(runner, job, state, event)`），`_persist`/`_publish`/`_publish_status`/`_safe_persist`/`_request_stop` 仍是 `TurnRunner` 的方法（总线/持久化/调度是 `TurnRunner` 的核心职责，四个新模块通过持有的 `runner` 引用调用），新模块用 `TYPE_CHECKING` 引入 `TurnRunner` 类型避免运行时循环 import。`TurnRunner`/`SessionBusyError`/`SessionNotFoundError`/`TOOL_RESULT_MAX_CHARS` 仍可从 `studio.agent.runner` 导入（`__all__` 显式声明，`TOOL_RESULT_MAX_CHARS` re-export 自 `turn_events`）。import-linter 无需新增契约（四个新模块都在 `studio.agent` 包内，受既有的"agent 不 import stages/main"等契约覆盖）。测试只改了两处 import/monkeypatch 目标（见「决策记录」），断言一行未改；`make check` 全绿（后端 569 passed / 5 deselected，前端 128 passed）。ARCHITECTURE.md §2 agent 行更新拆分说明。
 - 2026-09-28 — T8 — 完成（先纯搬移拆分：`claude_runtime.py` 746→385 行，拆出 `claude_env.py`/`claude_scope.py`/`claude_messages.py`；再做 TD-1：`claude_scope.sandbox_settings(workdir, repo_root, data_dir)` 每轮生成 sandbox，`filesystem.denyRead=[仓库根, data_dir]`、`allowRead=[当前工作区]`，`register_claude` 从 `repo_root()`/`Settings.data_dir` 传入；选题阶段 `allow_web=False`（M4 带域名白名单再开）。实测 CLI `allowRead` 优先于 `denyRead`，不需要逐项列兄弟路径。单测先红后绿（`data/evidence/m1x/t8-red.log`、`t8-green.log`）；`make check` 全绿（后端 574 passed / 6 deselected，前端 128 passed）；`make smoke SMOKE_ARGS="-k claude_login"` run2 三项全过（run1 中 T3 的取消用例因模型拒绝执行 `sleep 30` 失败，与本任务无关），新用例 `test_claude_login_sandbox_read` 两次都过：读工作区成功，读 `backend/.env`/仓库文件/其他项目/数据目录文件均 `Operation not permitted`，`ls`/`python3` 正常。references 已补实测结论并改写剩余风险；runtime 最终 393 行）。
 - 2026-09-28 — T9 — 完成（TD-20：新建 `agent/shell_sandbox.py`（`seatbelt_profile`/`sandbox_available`/`sandbox_tmpdir`），`LocalShellExecutor` 每条命令经 `/usr/bin/sandbox-exec -p <profile> /bin/sh -c` 执行（`create_subprocess_exec`，进程组语义不变），拒读仓库根与 `data_dir`、放回当前工作区，只写工作区/`.cache/tmp`/`/dev/null`/`/dev/tty`/`/dev/fd`，禁网，`TMPDIR` 指向 `<workdir>/.cache/tmp`；`native_shell_supported` 在非 macOS 或无 `sandbox-exec` 时失败关闭。本机真实执行：写/读工作区、`upstream/`、`ls`、`python3`、`$TMPDIR` 正常；`backend/.env`（绝对与 `../` 相对路径）、其他项目、`studio.db`、符号链接越界读均被拒；写 `~/`、`/tmp`、其他项目失败；`curl` 失败。先红后绿（`data/evidence/m1x/t9-red.log` 51 failed、`t9-green.log` 80 passed），`make check` 全绿（后端 597 passed / 6 deselected，前端 128 passed）。ADR 0009；references 已更新。未跑真实 OpenAI 模型冒烟（不在预授权内））。
+- 2026-09-28 — T10 — 完成（`docs/quality/tech-debt.md`：TD-1/2/3/4/5/7/8/10/11/12/13/15/16/17/18/20 移到「已处理」并注明 commit/方式；TD-6/9/14/19/21/22/23/24 保留并补充去向（TD-14 改写为仅剩 setsid 残余）；新增 TD-25~TD-29 登记本次审查发现的残余边界（成本账本孤儿账目、resume 回退未清理、主目录可读、repo 工具链不可读、选题联网留给 M4）。`docs/quality/QUALITY.md`：config/db 升到 A，workspace 升到 A，agent 行更新拆分与沙箱现状。`docs/decisions/0009-Shell沙箱.md`、`docs/references/openai-agents-sdk.md` 补充主目录残余风险与 setuid 限制两条（T9 审查发现）。浏览器 L4 走查：`preview_start` 起 api+frontend，Fake 运行时新建项目、发消息、`write_file` 完成、画布刷新出 `topic/fake-note.md`、快照时间线出现新条目、可回滚——与拆分前行为一致，证据见 `data/evidence/m1x/ac5-l4-browser-walkthrough.md`（附带记录一条与本计划无关的既有前端渲染竞态，未处理）。`make smoke SMOKE_ARGS="-k claude_login"` 全量三项（`test_claude_login`/`test_claude_login_cancel_then_turn`/`test_claude_login_sandbox_read`）全过，526.83s。最终 `make check` 全绿）。
 
 ## 下一步
 
-- 从 T10 开始。
+- T1–T10 均已完成，`make check`/`make smoke -k claude_login` 均为绿，AC1–AC6 均已满足（见「验证记录」）。等待独立评审者审查整个分支（`superpowers:requesting-code-review` 的最终评审），评审通过后请负责人验收；验收后按 SOP §8 rebase 到最新 main、`make check` 全绿、`--no-ff` 合并，计划移到 `docs/plans/completed/`。
 
 ## 决策记录
 
@@ -230,6 +231,12 @@ T3、T8 需要真实 Claude 调用，按 SOP §6 第 7 条例外，用本机登�
 ## 验证记录
 
 - T3（TD-12）：`uv run pytest tests/agent/test_claude_runtime.py -k "CancelBeforeSdk"` — connect 前取消不创建客户端、connect 中取消不发 query、connect 挂起时取消 1s 内结束、0 预算（API/登录）不创建客户端；先红（`data/evidence/m1x/t3-red.log`，9 项失败）后绿（`data/evidence/m1x/t3-green.log`）。通过。
+- AC1：T10 最终 `make check`（分支全量）全绿：后端 ruff/format/pyright/import-linter/pytest（603 项收集，含 6 项按 `-k` 排除的真实模型用例）、前端 eslint/typecheck/vitest（128 项）、文档检查全部通过；`docs/quality/tech-debt.md` diff 见 commit（TD-1/2/3/4/5/7/8/10/11/12/13/15/16/17/18/20 → 已处理，TD-6/9/14/19/21/22/23/24 保留并补去向，新增 TD-25~TD-29）。
+- AC2：`wc -l backend/src/studio/agent/{runner,openai_runtime,claude_runtime}.py` = 340 / 362 / 393（均 ≤ 400）；`grep -rn "ToolContext(" backend/src` 只命中 `agent/runtime.py`（`tool_context()` 方法定义处）；`grep -rn "budget_hit\|turn\.steps" backend/src` 无命中，步数只在 `agent/turn_events.py::handle` 一处计数。
+- AC3：`make smoke SMOKE_ARGS="-k claude_login"`（T10 全量重跑，`data/evidence/m1x/`）：`test_claude_login` PASSED、`test_claude_login_cancel_then_turn` PASSED、`test_claude_login_sandbox_read` PASSED（526.83s，3 passed / 600 deselected）；`test_claude_login_sandbox_read` 断言读当前工作区成功、读 `backend/.env`/仓库文件/其他项目/`studio.db` 均 `Operation not permitted`；`stages/topic/__init__.py::allow_web == False`（`test_placeholders.py` 固定）。
+- AC4：`uv run pytest tests/agent/test_shell_sandbox.py tests/agent/test_shell.py -v`（本机 macOS 15.6.1 / Darwin 24.6，真实 `sandbox-exec` 执行，不经模型）：写/读工作区与 `upstream/` 成功，读仓库 `backend/.env`（绝对与相对路径）/其他项目/`studio.db`/越界符号链接均失败，写 `~/`、`/tmp`、其他项目失败，`curl` 联网失败；`native_shell_supported` 在非 macOS 或缺 `sandbox-exec` 时返回 `False`（跨平台纯函数测试覆盖）。80 passed（`data/evidence/m1x/t9-green.log`）。
+- AC5：浏览器 L4 走查（`data/evidence/m1x/ac5-l4-browser-walkthrough.md`）：Fake 运行时新建项目、发消息、agent 文本回复 + `write_file` 工具调用（Completed）、画布刷新出 `topic/fake-note.md`（内容正确）、快照时间线新增「Agent 一轮」并可「回滚到此」——与设计 §4.4 描述及拆分前行为一致。
+- AC6：`docs/decisions/0009-Shell沙箱.md` 已写（背景/决定/备选方案/影响，含 2026-09-28 实测结论与残余风险）；`docs/references/{claude-agent-sdk,openai-agents-sdk}.md` 补充 denyRead/allowRead 优先级、sandbox-exec 实测结论；`docs/quality/QUALITY.md`（config/db、workspace 升到 A，agent 行更新）、`docs/ARCHITECTURE.md`（agent 行列出全部新模块）均已同步，`scripts/check_docs.py`（随 `make check-docs`）通过。
 - T3（TD-11）：`-k "CancelledTurnCost or LedgerKey or UsageDelta"` — 取消时拿到 result 记本轮差值；强制取消/出错无 result → 下一轮差值含残余且 `includes_carryover=True`，再下一轮恢复正常；账本键差异场景固定。通过。
 - T3 真实验证：`make smoke SMOKE_ARGS="-k claude_login"`（本机登录订阅账号），`test_claude_login_cancel_then_turn` 两个场景（正常停止、宽限 0 强制取消）中每轮 `cost_usd` 等于相邻两次 SDK 累计值之差，各轮之和等于最终累计值。run1/run3/run4 通过，run2 失败（见「意外与发现」）；日志 `data/evidence/m1x/smoke-t3-run{1,2,3,4}.log`，观察值 `data/evidence/m1x/smoke/*.json`。通过。
 - T3：`make check` 全绿。

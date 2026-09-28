@@ -42,3 +42,5 @@ OpenAI Agents SDK 的 `ShellTool` 在本地执行命令（`LocalShellExecutor`�
 - 位于仓库内的工具（`backend/.venv`、`frontend/node_modules`）在 Shell 里不可用：`uv run` 启动的后端 PATH 以 `backend/.venv/bin` 开头，沙箱内 `/bin/sh` 查找命令时跳过这个读不到的目录，落到下一个 PATH 项（本机 `~/miniconda3/bin/python3`），项目依赖（如 `pydantic`）因此不可用。M2 若需要，按需把具体路径加进放回列表。
 - macOS 的 `mktemp`（不带模板）不看 `TMPDIR`，用 `confstr(_CS_DARWIN_USER_TEMP_DIR)` 的 `/var/folders/...`，在沙箱里写入失败；`mktemp "$TMPDIR/x.XXXX"` 与 Python `tempfile` 正常。
 - 工作区内、但不在阶段可写范围的路径 Shell 仍能写，照旧由轮末 `guard` 还原。
+- 残余风险（T10 复核，2026-09-28）：Seatbelt 的 `(allow default)` 只针对仓库根与 `data_dir` 拒读，主目录下的 `~/.ssh`、`~/.config`、keychain 列表等仍可读；Shell 本身没有网络，但命令的 stdout 会作为工具结果回给模型，等于多了一条经模型通道外泄的路径（提示注入场景下 `cat ~/.ssh/id_ed25519` 之类命令会成功）。与 Claude 路径（TD-1 的 denyRead 同样只拒仓库根与 `data_dir`）风险等级一致，未在本次范围内处理，登记为 TD-27，需要时再追加 `~/.ssh`、`~/.aws` 等 denyRead。
+- setuid 二进制（如 `/bin/ps`）在 Seatbelt 沙箱里无法执行（`Operation not permitted`），因为 Seatbelt 阻止 exec setuid 程序；连同 `mktemp` 的限制一起，是 agent 在 Shell 里可能遇到的使用侧限制，已写入 `docs/references/openai-agents-sdk.md`。

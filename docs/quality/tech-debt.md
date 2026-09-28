@@ -4,33 +4,38 @@
 
 | # | 登记日期 | 位置 | 问题 | 影响 | 建议的处理方式 | 来源 |
 |---|---|---|---|---|---|---|
-| TD-1 | 2026-09-28 | `backend/src/studio/agent/claude_runtime.py`（`WEB_TOOLS`、`SANDBOX`） | Claude agent 开联网时 WebFetch/WebSearch 放行所有域名；SDK sandbox 只管 Bash 且默认不限制读，Bash 能读工作区外文件（如 `backend/.env`），再经 WebFetch 外发 | 提示注入场景下本机文件可能外泄（密钥类环境变量已置空、Read/Glob/Grep 已限制在工作区内，见 references/claude-agent-sdk.md） | sandbox `filesystem.denyRead` 拒读仓库与 `data/`；WebFetch 域名白名单或按阶段默认关闭联网 | M1 最终审查 I5 |
-| TD-2 | 2026-09-28 | `scripts/dev.sh`、`backend/src/studio/config.py` | `Settings.host`/`port` 没被 `dev.sh` 使用，uvicorn 的 host/port 在脚本里写死 | 改 `STUDIO_PORT` 不生效，容易误以为改了端口 | dev.sh 从 Settings 读取（或删掉这两个字段） | M1 T1 审查 |
-| TD-3 | 2026-09-28 | `backend/tests/test_config.py` | 测试直接引用私有常量 `_REPO_ROOT`/`_BACKEND_SRC_DIR` | 重构 config 时测试跟着破 | 暴露只读的公开函数或只断言行为 | M1 T1 审查 |
-| TD-4 | 2026-09-28 | `workspace/snapshot.py: create_snapshot` | 扫描时读一遍文件算 sha，写 blob 时再读一遍 | 大工作区快照多一倍 IO | scan 返回内容或按 sha 判断 blob 已存在就跳过读取 | M1 T3 审查 |
-| TD-5 | 2026-09-28 | `workspace/files.py: list_tree/read_text`、`workspace/scope.py: guard` | `list_tree`/`read_text` 不排除 `EXCLUDED_TOP_DIRS`（api 层自己过滤）；guard 还原后不清理空目录 | 别的调用方可能读到 `.cache/`、`output/`；越界新建的空目录残留 | 在 workspace 层统一过滤；guard 末尾复用 `_prune_empty_dirs` | M1 T4 审查 |
 | TD-6 | 2026-09-28 | `agent/preamble.py: _upstream_changes`、`agent/stage_flow.py` | stale 判断按整项目快照 id，上游产物目录没变也会标 stale / 出现空的上游变更提示 | 多余的 stale 与空提示 | 按上游产物目录的清单比较（M3 做按镜头 id 的摘要时一起改） | M1 T6 审查 |
-| TD-7 | 2026-09-28 | `agent/runner.py: recover_on_startup` | 重启恢复只做 `partial` 快照，不做越界检查（工具写入记录随进程丢失） | 进程崩溃那一轮的越界改动会留在工作区 | 恢复时至少按可写范围做一次无工具记录的 guard | M1 T6 审查 |
-| TD-8 | 2026-09-28 | `agent/runner.py: _after_tool_result/_truncate_args` | 文件工具的 `path` 与 recorded 路径可能重复推送；`_truncate_args` 只截断顶层字符串 | SSE 里路径重复；嵌套大参数不截断 | 去重；递归截断 | M1 T6 审查 |
 | TD-9 | 2026-09-28 | `agent/preamble.py: _user_edits` | 用户修改按路径合并窗口内所有 `user_edit` 快照，罕见情况下把其他阶段 agent 的改动算作用户修改 | 前言里的“用户修改”偶尔不准 | 只合并本会话窗口内、非 turn 产生的差异 | M1 T6 审查 |
-| TD-10 | 2026-09-28 | `backend/tests/api/test_stream.py`、`tests/agent/test_runner.py` | 完整一轮的测试断言精确事件顺序 | runner 调整事件顺序时测试要同步改 | 只断言相对顺序或按类型分组 | M1 T8 审查 |
-| TD-11 | 2026-09-28 | `agent/claude_runtime.py: CostLedger/_turn_cost` | transcript 无累计值时少算；读用 `resume_ref`、写用 `session_id`；强制取消后本轮花费会计入下一轮 | 登录模式/中断场景下成本统计偏差 | 统一用 SDK 会话 id；取消时尽量读取最后一条 result | M1 T9 审查 |
-| TD-12 | 2026-09-28 | `agent/claude_runtime.py: run_turn` | connect 期间已取消不会立即结束（等 runner 10s 宽限期）；`max_cost_per_turn=0` 时 CLI 不强制 | 取消响应慢；0 预算不生效 | connect 前后检查取消令牌；0 预算直接拒绝 | M1 T9 审查 |
-| TD-13 | 2026-09-28 | `agent/runner.py: _after_tool_result` | runner 从 `args["path"]` 取改动路径，Claude 原生写工具参数是 `file_path` | Claude 写文件时 `workspace_changed` 路径为空（前端整体刷新，功能不受影响） | 同时识别 `file_path`/`notebook_path` | M1 T9 审查 |
-| TD-14 | 2026-09-28 | `agent/openai_runtime.py: LocalShellExecutor` | drain 窗口内取消没有显式取消 reader 任务；`setsid` 逃逸出进程组的后台进程不会被杀 | 少量资源泄漏；恶意命令可留下后台进程 | 显式取消 reader；按会话 cgroup/沙箱限制 | M1 T10 审查 |
-| TD-15 | 2026-09-28 | `agent/runner.py`（566 行） | 超过约 400 行的建议上限 | 可读性、审查成本 | 把排队调度、事件处理、收尾拆成独立模块 | M1 T6 / 最终审查 |
-| TD-16 | 2026-09-28 | `agent/openai_runtime.py`（688 行） | 文件过大，`LocalShellExecutor` 与运行时混在一起 | 同上 | 把 Shell executor 拆到独立模块 | M1 T10 / 最终审查 |
-| TD-17 | 2026-09-28 | `agent/claude_runtime.py`、`agent/openai_runtime.py`、`agent/fake.py` | `ToolContext` 构造重复三处 | 新增字段容易漏改 | 在 `TurnContext` 上提供 `tool_context()` | M1 最终审查 |
-| TD-18 | 2026-09-28 | `agent/runner.py`、各运行时 | 步数预算在 runner 和运行时两处计算 | 两处计数口径可能不一致 | 以 runner 为准，运行时只做兜底 | M1 最终审查 |
-| TD-19 | 2026-09-28 | `agent/runner.py: recover_on_startup`、`api/sessions.py: continue` | 重启后排队中的 turn 被标 `interrupted`；[继续] 只发“继续”，原消息没有重发 | 排队中的消息在重启后丢失语义 | 对从未开始的 turn 提供“重新发送原消息” | M1 最终审查 |
-| TD-20 | 2026-09-28 | `agent/openai_runtime.py: LocalShellExecutor` | OpenAI/LiteLLM 路径的 Shell 没有沙箱：能读本机任意文件、写工作区内任意路径 | 提示注入场景下风险高于 Claude 路径 | 接入 sandbox-exec / 容器，或默认关闭 Shell | M1 T10 / 最终审查 |
-| TD-21 | 2026-09-28 | `agent/runner.py: _handle`（tool_result） | 工具结果里的图片只持久化 `media_type`，不存内容 | 回放/刷新后看不到图片，前端只能显示占位文字 | M2 落地 `render_preview` 时把图片存进 blob 库 | M1 T6 / T13 |
-| TD-22 | 2026-09-28 | `main.py` lifespan、uvicorn | uvicorn 收到 SIGTERM 后先等所有连接（含 SSE）关闭才执行 lifespan 关闭；`TurnRunner.shutdown` 在这之后才运行 | 实测：浏览器开着 SSE 时，优雅关闭期间运行中的 turn 先自然跑完，lifespan 的 interrupted 收尾很少真正触发；`kill -9`/崩溃仍由 `recover_on_startup` 兜底 | 关闭信号到达时主动结束 SSE 流，或设置 `--timeout-graceful-shutdown` | M1 最终审查 L3 实测 |
-| TD-23 | 2026-09-28 | `api/files.py`、`api/snapshots.py`、`api/projects.py` | 为消除 TOCTOU，这些端点改成 `async def`，其中的同步 SQLite/文件 IO（回滚大工作区时可能上百毫秒）在事件循环上执行 | 回滚期间 SSE 等其他请求短暂卡顿 | 需要时改成 TurnRunner 的项目级 `asyncio.Lock` + 线程里做 IO | M1 最终审查 I4 |
-| TD-24 | 2026-09-28 | `frontend/src/composables/useSessionStream.ts` | 时间线 `items` 无上限增长 | 超长会话内存与渲染变慢 | 分页或虚拟列表 | M1 T12 审查 |
+| TD-14 | 2026-09-28 | `agent/shell.py: LocalShellExecutor` | `setsid` 主动脱离进程组的后台进程不会被 `killpg` 杀掉（drain 窗口取消已在 M1x T6 修复：显式取消并等待 reader） | 恶意命令可留下后台进程，且 sandbox-exec 下仍可能在沙箱写权限范围内活动 | 按会话 cgroup 或容器限制 | M1 T10 审查；M1x T6 修复 reader 部分 |
+| TD-19 | 2026-09-28 | `agent/runner.py: recover_on_startup`、`api/sessions.py: continue` | 重启后排队中的 turn 被标 `interrupted`；[继续] 只发“继续”，原消息没有重发 | 排队中的消息在重启后丢失语义 | 对从未开始的 turn 提供“重新发送原消息” | M1 最终审查（M5 处理） |
+| TD-21 | 2026-09-28 | `agent/runner.py: _handle`（tool_result） | 工具结果里的图片只持久化 `media_type`，不存内容 | 回放/刷新后看不到图片，前端只能显示占位文字 | M2 落地 `render_preview` 时把图片存进 blob 库 | M1 T6 / T13（M2 处理） |
+| TD-22 | 2026-09-28 | `main.py` lifespan、uvicorn | uvicorn 收到 SIGTERM 后先等所有连接（含 SSE）关闭才执行 lifespan 关闭；`TurnRunner.shutdown` 在这之后才运行 | 实测：浏览器开着 SSE 时，优雅关闭期间运行中的 turn 先自然跑完，lifespan 的 interrupted 收尾很少真正触发；`kill -9`/崩溃仍由 `recover_on_startup` 兜底 | 关闭信号到达时主动结束 SSE 流，或设置 `--timeout-graceful-shutdown` | M1 最终审查 L3 实测（暂无实际症状，出现再处理） |
+| TD-23 | 2026-09-28 | `api/files.py`、`api/snapshots.py`、`api/projects.py` | 为消除 TOCTOU，这些端点改成 `async def`，其中的同步 SQLite/文件 IO（回滚大工作区时可能上百毫秒）在事件循环上执行 | 回滚期间 SSE 等其他请求短暂卡顿 | 需要时改成 TurnRunner 的项目级 `asyncio.Lock` + 线程里做 IO | M1 最终审查 I4（暂无实际症状，出现再处理） |
+| TD-24 | 2026-09-28 | `frontend/src/composables/useSessionStream.ts` | 时间线 `items` 无上限增长 | 超长会话内存与渲染变慢 | 分页或虚拟列表 | M1 T12 审查（暂无实际症状，出现再处理） |
+| TD-25 | 2026-09-28 | `agent/claude_runtime.py`（成本账本） | 会话首轮就被强制取消时，那一轮花费没有可归属的下一轮，直接丢失；`Usage.includes_carryover` 标注目前 runner/前端都不读，界面看不到“这笔花费含上一轮残余” | 极少数场景成本统计不完整，用户看不到含糊标注 | 首轮场景可考虑记一条“孤儿”账目供人工核对；runner 读取并透出 `includes_carryover` 给前端 | M1x T3 审查 |
+| TD-26 | 2026-09-28 | `agent/claude_runtime.py: CostLedger` | resume 时若 `resume_ref` 回退到更早的会话 id（例如回滚后再次 resume 同一个已 `unsettled` 的旧会话），旧账目不会被清理，可能被重复标记 carryover；`total_cost_usd == 0` 的失败结果不会被标记 `unsettled`，其花费会被下一轮无声吸收 | 罕见场景下成本统计偏差 | resume 命中 fallback 账目时一并清理／标记；`_turn_cost` 对累计值为 0 的结果也标 unsettled | M1x T3 审查 |
+| TD-27 | 2026-09-28 | `backend/src/studio/agent/shell_sandbox.py`、`docs/decisions/0009-Shell沙箱.md` | OpenAI 路径的 sandbox-exec 只拒读仓库与 `data/`，`~/.ssh`、`~/.config`、keychain 列表等主目录路径仍可读；Shell 没有联网但 stdout 会作为工具结果回给模型，等于多了一条经模型通道外泄的路径；setuid 二进制（如 `/bin/ps`）在沙箱里无法执行 | 提示注入场景下主目录敏感文件可能经工具结果外泄；agent 用到 `ps` 等命令会意外失败 | 按需追加 `~/.ssh`、`~/.aws` 等 denyRead；ADR/参考文档补充 setuid 限制的说明 | M1x T9 审查 |
+| TD-28 | 2026-09-28 | `backend/src/studio/agent/claude_scope.py: sandbox_settings` | Bash 读不到仓库 `backend/.venv`、`frontend/node_modules`；M2 加 worker/渲染阶段如果需要 agent 在 Bash 里跑这些目录下的工具，需要把它们加入 `allowRead` | 目前无症状；M2 引入渲染/TTS 等重工具链时可能触发 | M2 需要时按目录加入 allowRead，而不是整体放开 denyRead | M1x T8 审查 |
+| TD-29 | 2026-09-28 | `stages/topic/__init__.py: allow_web` | 选题阶段联网（WebSearch/WebFetch）在 M1x 暂时关闭，等域名白名单机制落地再开 | 选题阶段目前不能联网搜索 | M4 选题阶段落地时，结合域名白名单重新开启 `allow_web` | M1 最终审查 I5 → M1x T8（M4 处理） |
 
 ## 已处理
 
 | # | 处理日期 | 说明 |
 |---|---|---|
 | — | 2026-09-28 | M1 最终审查中直接修复的延后项：rollback 的 `..` 清单键测试（T3）、`upstream_drift` 对不可读文件的处理（T6）、未知图片块缺 `mimeType` 与客户端构造异常（T9）、继承宿主环境变量泄漏（T9，T15 已修）、T13/T14 浏览器中未实测的运行中状态（已补验，见 `data/evidence/m1/m6-l4-running-state.md`） |
+| TD-1 | 2026-09-28 | M1x T8：Claude Bash sandbox 加 `filesystem.denyRead`（拒读仓库与 `data_dir`）+ `allowRead`（放回当前工作区）；选题阶段联网暂时关闭（域名白名单留给 M4，见 TD-29），见 `docs/references/claude-agent-sdk.md`、`data/evidence/m1x/` |
+| TD-2 | 2026-09-28 | M1x T1：`scripts/dev.sh` 改为从 `python -m studio.config` 读取 host/port |
+| TD-3 | 2026-09-28 | M1x T1：`config.py` 暴露公开 `repo_root()`，测试不再引用私有常量 |
+| TD-4 | 2026-09-28 | M1x T1：`create_snapshot` 复用扫描时读到的内容，已存在的 blob 不再重复读文件 |
+| TD-5 | 2026-09-28 | M1x T1：`HIDDEN_TOP_DIRS` 下沉到 `workspace/layout.py`，`list_tree`/`read_text` 统一过滤；`guard` 还原后清理空目录 |
+| TD-7 | 2026-09-28 | M1x T2：`recover_on_startup` 对 `running` 的 turn 按阶段 `write_scope` 做一次越界还原（`_guard_recovered_turn`），再做 partial 快照 |
+| TD-8 | 2026-09-28 | M1x T2：`_after_tool_result` 识别 `path`/`file_path`/`notebook_path`/`move_to` 并去重；`_truncate_value` 递归截断嵌套参数 |
+| TD-10 | 2026-09-28 | M1x T4：完整一轮的测试改为断言相对顺序与类型计数（`backend/tests/event_asserts.py`），为 T7 的纯搬移铺路 |
+| TD-11 | 2026-09-28 | M1x T3：成本账本统一用 SDK 会话 id 记账，取消而未拿到 result 时标记 `unsettled`，下一轮以 `includes_carryover` 标注差值；残余边界见 TD-25、TD-26 |
+| TD-12 | 2026-09-28 | M1x T3：`run_turn` 在 connect 前后检查取消令牌，`max_cost_per_turn == 0` 直接拒绝不连 SDK |
+| TD-13 | 2026-09-28 | 随 TD-8 一并修复（`_after_tool_result` 识别 `file_path`/`notebook_path`） |
+| TD-15 | 2026-09-28 | M1x T7：`agent/runner.py` 拆分为 `runner.py`/`turn_state.py`/`turn_events.py`/`turn_finish.py`/`recovery.py`，622→340 行 |
+| TD-16 | 2026-09-28 | M1x T6：`agent/openai_runtime.py` 拆分出 `agent/shell.py`、`agent/openai_tools.py`，764→362 行 |
+| TD-17 | 2026-09-28 | M1x T5：新增 `TurnContext.tool_context()`，三个运行时统一通过它构造 `ToolContext` |
+| TD-18 | 2026-09-28 | M1x T5：步数预算只由 runner 计数（`_handle(ToolCall)` → `_exceed_budget`），运行时不再各自计步 |
+| TD-20 | 2026-09-28 | M1x T9：OpenAI 路径 `LocalShellExecutor` 经 macOS `sandbox-exec` 执行（拒读仓库与 `data_dir`、只写工作区、禁网）；非 macOS 或无 `sandbox-exec` 时不提供 Shell，见 ADR `docs/decisions/0009-Shell沙箱.md`、`data/evidence/m1x/` |
