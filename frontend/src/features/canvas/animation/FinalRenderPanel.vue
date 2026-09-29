@@ -4,15 +4,16 @@
  * 播放器（`output/final.mp4`）、成片定稿按钮（`POST .../finalize-render`）。
  * 挂在 `AnimationCanvas.vue` 镜头列表/编辑器下方。
  *
- * 本组件自己持有"当前正在跟踪的任务 id"（`currentJobId`）——后端没有"查这
- * 个项目最近一次渲染任务"的端点（`api/jobs.py` 只有按 id 查询），只能从
- * "刚创建的那次响应"或者本次会话里点过的那次拿到 id；刷新整个页面后本组
- * 件不会自动恢复"上一个任务还在跑"的进度条（需要再点一次"渲染成片"），
- * 这是当前后端能力的限制，记入计划决策记录，不是本任务遗漏。
+ * 本组件自己持有"当前正在跟踪的任务 id"（`currentJobId`），但挂载时会先用
+ * `useLatestJobQuery`（TD-34：`GET .../jobs/latest`）问一次"这个项目最近
+ * 一次 `final_render` 任务是什么"，拿到就直接采用——刷新页面后不用重新点
+ * 一次"渲染成片"才能看到上一次的进度/成片。只在 `currentJobId` 还是
+ * `null` 时采用这个结果，不覆盖用户在本次挂载期间刚点出来的新任务（这个
+ * watcher 只应该跑一次生效，见下面的 `stop()`）。
  * `useJobQuery` 的轮询间隔由 `composables/queries.ts::jobRefetchIntervalMs`
  * 决定：`queued`/`running` 时 1 秒一次，`done`/`failed` 后自动停止。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { finalVideoUrl } from '@/api/endpoints'
 import { ApiError } from '@/api/http'
@@ -20,9 +21,12 @@ import {
   useCreateRenderJobMutation,
   useFinalizeRenderMutation,
   useJobQuery,
+  useLatestJobQuery,
   useProjectQuery,
 } from '@/composables/queries'
 import { canFinalize, isRenderButtonDisabled, jobStatusLabel } from './renderJobState'
+
+const RENDER_JOB_TYPE = 'final_render'
 
 const props = defineProps<{
   projectId: string
@@ -31,6 +35,13 @@ const props = defineProps<{
 }>()
 
 const currentJobId = ref<string | null>(null)
+
+const { data: latestJob } = useLatestJobQuery(() => props.projectId, RENDER_JOB_TYPE)
+const stopAdoptingLatestJob = watch(latestJob, (value) => {
+  if (value === undefined) return // still loading
+  if (currentJobId.value === null && value !== null) currentJobId.value = value.id
+  stopAdoptingLatestJob()
+})
 
 const { data: job } = useJobQuery(() => props.projectId, currentJobId)
 const { data: project } = useProjectQuery(() => props.projectId)

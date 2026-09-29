@@ -32,6 +32,8 @@ export const queryKeys = {
   session: (sessionId: string) => ['sessions', sessionId] as const,
   modelProfiles: () => ['model-profiles'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
+  latestJob: (projectId: string, type: string) =>
+    ['projects', projectId, 'jobs', 'latest', type] as const,
   /** `turn_status` 到达时用这个前缀失效，不管当时的镜头集合是什么。 */
   sceneChecksAll: (projectId: string) => ['projects', projectId, 'animation', 'scene-checks'] as const,
   /**
@@ -267,6 +269,21 @@ export function useJobQuery(
     queryFn: () => api.getJob(toValue(projectId), toValue(jobId)!),
     enabled: computed(() => toValue(jobId) !== null),
     refetchInterval: (query) => jobRefetchIntervalMs(query.state.data?.status),
+  })
+}
+
+/**
+ * 项目最近一次某类型的任务（TD-34）：`FinalRenderPanel.vue` 挂载时用它
+ * 恢复 `currentJobId`，不用等用户重新点一次"渲染成片"。只在挂载时取一次
+ * ——一旦 `currentJobId` 有了真实值，后续进度轮询交给 `useJobQuery`。
+ */
+export function useLatestJobQuery(
+  projectId: MaybeRefOrGetter<string>,
+  type: MaybeRefOrGetter<string>,
+) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.latestJob(toValue(projectId), toValue(type))),
+    queryFn: () => api.getLatestJob(toValue(projectId), toValue(type)),
   })
 }
 

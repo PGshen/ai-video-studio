@@ -83,6 +83,52 @@ class TestGetJob:
         assert response.status_code == 404
 
 
+class TestGetLatestJob:
+    async def test_no_job_yet_returns_null(self, api_env: ApiEnv) -> None:
+        pid = await _animation_project(api_env)
+
+        response = await api_env.client.get(
+            f"/api/projects/{pid}/jobs/latest", params={"type": "final_render"}
+        )
+
+        assert response.status_code == 200
+        assert response.json() is None
+
+    async def test_returns_the_most_recently_created_job(self, api_env: ApiEnv) -> None:
+        pid = await _animation_project(api_env)
+        first = await api_env.client.post(f"/api/projects/{pid}/render")
+        # `create_render_job_endpoint` doesn't check for an existing queued
+        # job (TD-35), so a second POST is enough to get a distinct, newer row.
+        second = await api_env.client.post(f"/api/projects/{pid}/render")
+
+        response = await api_env.client.get(
+            f"/api/projects/{pid}/jobs/latest", params={"type": "final_render"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == second.json()["id"]
+        assert response.json()["id"] != first.json()["id"]
+
+    async def test_scoped_to_project(self, api_env: ApiEnv) -> None:
+        pid_a = await _animation_project(api_env)
+        pid_b = await _animation_project(api_env)
+        await api_env.client.post(f"/api/projects/{pid_a}/render")
+
+        response = await api_env.client.get(
+            f"/api/projects/{pid_b}/jobs/latest", params={"type": "final_render"}
+        )
+
+        assert response.status_code == 200
+        assert response.json() is None
+
+    async def test_unknown_project_is_404(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.get(
+            "/api/projects/does-not-exist/jobs/latest", params={"type": "final_render"}
+        )
+
+        assert response.status_code == 404
+
+
 class TestDownloadFinalVideo:
     async def test_downloads_rendered_video(self, api_env: ApiEnv) -> None:
         pid = await _animation_project(api_env)

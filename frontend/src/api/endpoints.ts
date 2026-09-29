@@ -156,6 +156,11 @@ export function getJob(projectId: string, jobId: string): Promise<JobOut> {
   )
 }
 
+/** 项目最近一次某类型的任务；没有任何任务时返回 `null`（TD-34）。 */
+export function getLatestJob(projectId: string, type: string): Promise<JobOut | null> {
+  return request(`/projects/${encodePathSegment(projectId)}/jobs/latest`, { query: { type } })
+}
+
 export function finalizeRender(projectId: string): Promise<StageOut> {
   return request(`/projects/${encodePathSegment(projectId)}/animation/finalize-render`, {
     method: 'POST',
