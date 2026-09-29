@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中（T1–T13 代码完成；AC10 待 key，待负责人验收） |
+| 状态 | 已完成 |
 | 里程碑 | M3 |
 | 设计依据 | [架构设计 §5.2、§5.4、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m3-narrative` |
@@ -46,7 +46,7 @@
 - [x] AC7：`agent.preamble._upstream_changes` 对"叙事→动画"边输出按镜头 id 的新增/删除/旁白变化/beat 变化摘要（不是文件级 diff）；"选题→叙事"边仍是文件级摘要（验证：`pytest backend/tests/agent/test_preamble.py`）
 - [x] AC8：前端叙事画布能显示镜头卡片（旁白/beats/校验标记）、按 beat 分段的音频播放条、原始 JSON 标签页；"配音是否最新/对齐覆盖率"状态能正确反映 `timing.json` 与当前 `narrative.json` 是否一致（验证：`make dev` 手动走查 + `pytest frontend`；截图见「验证记录」）
 - [x] AC9：`make check` 全绿
-- [ ] AC10：真实 Volcengine API key 下，`synthesize_tts` 完整跑一次合成 + 对齐，产出可播放音频与合理的对齐覆盖率（验证：`make smoke SMOKE_ARGS="-k volcengine_tts"`；需要真实付费 key，属于计划已预先说明的费用，符合 SOP §6 第 7 条的例外记录）
+- [x] AC10：真实 Volcengine API key 下，`synthesize_tts` 完整跑一次合成 + 对齐，产出可播放音频与合理的对齐覆盖率（验证：`make smoke SMOKE_ARGS="-k volcengine_tts"`；需要真实付费 key，属于计划已预先说明的费用，符合 SOP §6 第 7 条的例外记录）
 
 ## 任务
 
@@ -217,7 +217,7 @@
 - **完成标准**：`make check` 通过（文档检查项）。
 - **验证命令**：`make check`
 
-### T13：真实 Volcengine TTS 冒烟测试（代码完成，真实调用未验证：缺 key）
+### T13：真实 Volcengine TTS 冒烟测试（完成）
 
 - **目标**：`backend/tests/smoke/test_smoke.py` 新增 `test_volcengine_tts`（`@pytest.mark.smoke`），用真实 `VOLCENGINE_TTS_API_KEY` 直接调用 `VolcengineTTSEngine.synthesize`（不经 `TurnRunner`，因为这不是模型对话，是引擎层的直接调用），验证真实合成返回非空音频、`duration_seconds` 合理、`word_timestamps` 非空；再跑一次 `align_scene_beats` 验证真实时间戳下的对齐覆盖率处于合理区间（不要求 1.0，真实语音识别时间戳可能有缺口）。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`（新增用例）、`Makefile`（`smoke` 目标的 `env -i` 白名单加 `VOLCENGINE_TTS_API_KEY`，和现有的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`DEEPSEEK_API_KEY` 并列）、`docs/runbooks/verification.md`（冒烟测试用例表格加一行）。
@@ -245,13 +245,11 @@
 - 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）- 2026-09-29 — T11 工作台接入叙事画布 + L4 走查（发现并修复音频不可跳转）— `make check` 全绿（commit `43193a1`）
 - 2026-09-29 — T12 文档收尾（TD-36/TD-37；`references/volcengine-tts.md` 推迟到 T13 之后）— `make check` 全绿（commit `80b7c84`）
 - 2026-09-29 — T13 Volcengine TTS 冒烟用例 + Makefile 白名单 + runbook；QUALITY/ARCHITECTURE/legacy-assets 更新；验证记录 AC1–AC9 完成，AC10 因无 key 未验证 — `make check` 全绿（commit `c1ff5e4`）
+- 2026-09-29 — T13 真实冒烟：`make smoke SMOKE_ARGS="-k volcengine_tts"` 通过（覆盖率 1.0）；新增 `references/volcengine-tts.md`；AC10 完成；M3 收尾——负责人验收，计划归档并合并 main
 
 ## 下一步
 
-- 所有任务的代码都已完成并提交，剩下的只有需要负责人介入的事：
-  1. **AC10 未验证**：本机没有 `VOLCENGINE_TTS_API_KEY`。负责人在 `backend/.env` 里设置后，运行 `make smoke SMOKE_ARGS="-k volcengine_tts"`（没有 key 时显示 `SKIPPED`，已验证）。通过后：把结果写进「验证记录」的 AC10，新建 `docs/references/volcengine-tts.md`（只写真实调用观察到的行为：流式分片顺序、时间戳精度、极短文本的 mp3 时长解析；注明日期和来源），把 `docs/quality/QUALITY.md` 里 `engines.tts` 的"真实 API 行为没验证过"改掉。
-  2. 负责人验收（SOP §3 第 5 步）：AI 演示，人确认；之后按 SOP §7 收尾（计划移到 `plans/completed/`、rebase 到 main、`--no-ff` 合并）。
-- 开发库 `data/` 里留有一个 L4 走查用的演示项目（标题"叙事阶段 fixture 项目"，不进 git），验收后可以在 UI 里删除或直接忽略。
+- 无。M3 已完成并归档。后续进入 M4（选题打磨阶段）时新建计划。开发库 `data/` 里留有 L4 走查用的演示项目（标题"叙事阶段 fixture 项目"，不进 git），可在 UI 里删除。
 
 ## 决策记录
 
@@ -291,7 +289,7 @@
 
 <!-- 触发 SOP §6 升级条件时填写：问题、已尝试的办法、可选方案和推荐。解决后保留记录，并注明怎么解决的。 -->
 
-- 2026-09-29（T13 / AC10）：需要真实付费的 `VOLCENGINE_TTS_API_KEY`，计划已预先说明费用（本文件元信息「批准记录」），但本机 `backend/.env` 和环境变量里都没有这个 key。已尝试：确认 `.env` 与 `env` 中都没有；`make smoke SMOKE_ARGS="-k volcengine_tts"` 按设计 `SKIPPED`。**没有阻塞其余任务**：T1–T12 和 T13 的代码都已完成。可选方案：(a) 负责人提供 key 后重跑那一条冒烟（推荐，一次很短的合成，费用极小）；(b) 接受 AC10 记为"未验证"直接验收其余部分，把这条留到有 key 时补。推荐 (a)。
+- 2026-09-29（T13 / AC10）：**已解决（2026-09-29）**：负责人在 `backend/.env` 填入 key（第 28 行当时还带着注释符 `# `，去掉后生效），冒烟通过。原问题：需要真实付费的 `VOLCENGINE_TTS_API_KEY`，计划已预先说明费用（本文件元信息「批准记录」），但本机 `backend/.env` 和环境变量里都没有这个 key。已尝试：确认 `.env` 与 `env` 中都没有；`make smoke SMOKE_ARGS="-k volcengine_tts"` 按设计 `SKIPPED`。**没有阻塞其余任务**：T1–T12 和 T13 的代码都已完成。可选方案：(a) 负责人提供 key 后重跑那一条冒烟（推荐，一次很短的合成，费用极小）；(b) 接受 AC10 记为"未验证"直接验收其余部分，把这条留到有 key 时补。推荐 (a)。
 
 ## 验证记录
 
@@ -306,7 +304,7 @@
 - **AC7**：`pytest backend/tests/agent/test_preamble.py` → 10 passed（新增 6 个：新增/删除/旁白/beat 变化、无变化为空列表、解析失败为 `None`、渲染优先用摘要、真实 DB 上叙事→动画边有摘要而选题→叙事边仍是文件级）；另有 L4 补充见下。
 - **AC8**：`pnpm exec vitest run`（narrative 目录 20 个用例，全量 187 个）+ 下面的 L4 走查。
 - **AC9**：`make check` 全绿（后端 pytest 756 项通过（21 项冒烟/慢测按标记排除），ruff/pyright/import-linter，前端 lint/typecheck/vitest 187，文档检查）。
-- **AC10：未验证**——无 `VOLCENGINE_TTS_API_KEY`，见「阻塞」。`make smoke SMOKE_ARGS="-k volcengine_tts"` 在本机输出 `SKIPPED [1] ... 未设置 VOLCENGINE_TTS_API_KEY`，证明缺 key 时跳过的约定成立；真实合成与对齐覆盖率没有跑过。
+- **AC10**：`make smoke SMOKE_ARGS="-k volcengine_tts"` → `test_volcengine_tts PASSED`（1 passed）。真实合成 21357 字节 mp3、`duration_seconds=2.664`、10 个汉字各一条时间戳；`align_scene_beats` 两个 beat 均 `aligned`，`alignment_coverage=1.0`。证据 `data/evidence/m3-narrative/smoke/20260929T070656Z-volcengine-tts.json`（不进 git），观察到的行为（首字 0.255s 起、末字比总时长早 0.22s 结束）写进了 `docs/references/volcengine-tts.md`。此前缺 key 时该用例按约定 `SKIPPED`。
 - **T11 / AC8 L4 走查（2026-09-29，Claude 桌面版内置浏览器，1440x900）**：在开发数据目录用 `seed_narrative_project` 建了一个演示项目（标题"叙事阶段 fixture 项目"，`data/` 不进 git，可自行删除），叙事写入 4 个镜头（1 个 cue_text 不覆盖旁白且 transition 非法、1 个未配音、2 个配音）。截图是会话内截图，浏览器工具不能落盘，所以**没有**存到 `data/evidence/m3-narrative/`：
   - 镜头卡片列表：校验通过/`2 个问题` 红标、已配音/未配音标签正确；顶部提示条"暂不满足定稿条件：1 个镜头有校验问题；2 个镜头还没有配音（当前对齐覆盖率 100%）"。
   - 选中已配音镜头：`<audio>` 时长 0:06，两段 beat 刻度条；点第 2 段后 `currentTime≈4.45s`（beat 起点 3.82s + 0.6s）、第 2 段高亮（首次实测跳转失败，修复见「意外与发现」）。选中坏镜头：红色问题框列出"beat 1 的 transition 不合法：bogus / beats 的 cue_text 没有完整覆盖旁白"，配音区提示"还没有配音"。

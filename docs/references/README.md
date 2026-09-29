@@ -25,3 +25,4 @@ agent SDK 和前端组件库更新很快，AI 的训练知识可能已经过时�
 | [legacy-assets.md](legacy-assets.md) | 旧项目 `../ai-video` 中可迁移的资产 |
 | [manim.md](manim.md) | manim（Manim Community）渲染引擎 |
 | [ffmpeg.md](ffmpeg.md) | ffmpeg（本机 Homebrew 安装）：滤镜可用性、字幕叠加方案 |
+| [volcengine-tts.md](volcengine-tts.md) | Volcengine TTS：真实合成的时间戳粒度、开头/结尾静音、对齐结果 |
