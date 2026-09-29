@@ -16,7 +16,7 @@ import zlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 from sqlalchemy import Engine
@@ -38,6 +38,7 @@ from studio.db.repo.sessions import create_session
 from studio.db.repo.stages import create_stage
 from studio.db.repo.turns import TurnEventValue, TurnValue, get_turn, list_events
 from studio.stages.animation import STAGE as ANIMATION
+from studio.stages.brainstorm import STAGE as BRAINSTORM
 from studio.stages.narrative import STAGE as NARRATIVE
 from studio.stages.topic import STAGE as TOPIC
 from studio.workspace import BlobStore, create_snapshot, project_dir
@@ -47,11 +48,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1" / "smoke"
 M1X_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1x" / "smoke"
 M3_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m3-narrative" / "smoke"
+M4_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m4-topic" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}
 
-TURN_TIMEOUT_SECONDS = 300
+TURN_TIMEOUT_SECONDS = 600
 
 
 # ---- PNG ---------------------------------------------------------------------
@@ -167,6 +169,10 @@ class TurnOutcome:
             if e.type == "tool_result" and e.payload["call_id"] in ids
         ]
 
+    def used_tool(self, name: str) -> bool:
+        """是否调用过某个工具；Claude 侧业务工具带 `mcp__<server>__` 前缀，所以按后缀匹配。"""
+        return any(n == name or n.endswith(f"__{name}") for n in self.tool_names)
+
     def notices(self, kind: str) -> list[dict[str, Any]]:
         return [e.payload for e in self.events if e.type == "notice" and e.payload["kind"] == kind]
 
@@ -216,6 +222,16 @@ class SmokeHarness:
             runtime=runtime,
         ).id
 
+    def brainstorm_session(self, profile_id: str, runtime: str) -> str:
+        """没有项目的头脑风暴会话（M4）。"""
+        return create_session(
+            self.engine,
+            project_id=None,
+            stage="brainstorm",
+            model_profile_id=profile_id,
+            runtime=runtime,
+        ).id
+
     async def turn(self, session_id: str, text: str) -> TurnOutcome:
         turn_id = await self.runner.start_turn(session_id, UserInput(text=text))
         await asyncio.wait_for(self.runner.wait(turn_id), timeout=TURN_TIMEOUT_SECONDS)
@@ -247,19 +263,31 @@ class SmokeHarness:
         return TurnOutcome(turn, events)
 
 
-def build_harness(tmp_path: Path, *, cancel_grace_seconds: float = 10.0) -> SmokeHarness:
+def build_harness(
+    tmp_path: Path,
+    *,
+    cancel_grace_seconds: float = 10.0,
+    real_stages: bool = False,
+    web_mode: Literal["tools", "native"] = "tools",
+) -> SmokeHarness:
+    """`real_stages=True`（M4）：注册真实的 brainstorm/topic/narrative/animation 阶段（带联网
+    工具、`check_brief` 等），并按 `web_mode` 决定联网方式；默认仍是 M1 的精简阶段。"""
     data_dir = tmp_path / "data"
     engine = make_engine(tmp_path / "studio.db")
     migrate(engine)
     # Same Settings source as `make dev` (env / backend/.env), so the seed rows carry
     # the configured gateways (STUDIO_ANTHROPIC_BASE_URL, STUDIO_OPENAI_BASE_URL,
     # STUDIO_OPENAI_MODEL) and `profile()` copies them.
-    settings = Settings(data_dir=data_dir)
+    settings = Settings(data_dir=data_dir, web_mode=web_mode)
     seed_model_profiles(engine, enable_fake_runtime=False, settings=settings)
     registry = StageRegistry()
-    registry.register(SmokeStage(TOPIC))
-    registry.register(_NoWebStage(NARRATIVE))
-    registry.register(_NoWebStage(ANIMATION))
+    if real_stages:
+        for stage in (BRAINSTORM, TOPIC, NARRATIVE, ANIMATION):
+            registry.register(stage)
+    else:
+        registry.register(SmokeStage(TOPIC))
+        registry.register(_NoWebStage(NARRATIVE))
+        registry.register(_NoWebStage(ANIMATION))
     factory = RuntimeFactory()
     register_claude(factory, settings)
     register_openai(factory, settings)

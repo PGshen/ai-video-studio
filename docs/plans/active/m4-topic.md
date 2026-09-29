@@ -251,7 +251,7 @@
 - **完成标准**：上述七点通过，问题和修复记入「意外与发现」。
 - **验证命令**：`make dev` 手动走查
 
-### T13：真实冒烟——Tavily 与 Claude 登录下的选题流程（待开始）
+### T13：真实冒烟——Tavily 与 Claude 登录下的选题流程（完成）
 
 - **目标**：用真实服务确认联网工具和两个阶段的提示词在真模型下可用。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`（新增 `test_tavily_search`、`test_brainstorm_claude_login`、`test_topic_claude_login`，都带 `@pytest.mark.smoke`）、`backend/tests/smoke/support.py`（`M4_EVIDENCE_DIR`）、`Makefile`（`smoke` 目标的 `env -i` 白名单加 `TAVILY_API_KEY`）、`docs/runbooks/verification.md`（用例表加三行）、`docs/references/tavily.md`（补真实调用观察到的行为：响应延迟、结果字段、extract 对常见站点的表现，注明日期）。
@@ -289,10 +289,11 @@
 - 2026-09-29 — T10 头脑风暴抽屉（`SessionPanel`/`SessionPicker`/`SessionTimelineItem` 搬到 `components/session/` 并改用 `SessionScope`，`useSessionStream` 对无项目会话失效选题池查询，`BrainstormDrawer`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）
 - 2026-09-29 — T11 选题画布（`TopicCanvas`/`MarkdownFilePane`/`BriefCheckBar`，接入 `ProjectWorkbenchPage`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）；L4 走查在 T12
 - 2026-09-29 — T12 L4 走查（Fake + 本机 Claude 登录真实对话）— 发现并修复 3 个问题：保存简报后检查提示条不刷新（`invalidateAfterWrite`）、抽屉打开时卡片网格列数按视口而非容器（改 `auto-fill`）、`check_brief` 不接受「把握程度：中——说明」（放宽解析）；`make check` 全绿（commit 见 git log）
+- 2026-09-29 — T13 真实冒烟（`test_tavily_search`/`test_brainstorm_claude_login`/`test_topic_claude_login`/`test_topic_claude_login_native_web` 全部通过；`Makefile` 白名单加 `TAVILY_API_KEY`；`references/tavily.md`、ADR 0010、runbook 更新）— `make check` 全绿（commit 见 git log）
 
 ## 下一步
 
-- 做 T13：真实冒烟。先读 `backend/tests/smoke/test_smoke.py`、`support.py`、`Makefile` 的 `smoke` 目标，按 T13 正文新增 `test_tavily_search`、`test_brainstorm_claude_login`、`test_topic_claude_login`、`test_topic_claude_login_native_web`；`Makefile` 的 `env -i` 白名单加 `TAVILY_API_KEY`（`backend/.env` 里已有）；证据落 `data/evidence/m4-topic/smoke/`；补 `docs/references/tavily.md` 的真实行为、runbook 用例表；`native` 模式下 OpenAI 托管搜索经 OpenRouter 是否可用留作「未验证」（不产生 API 费用的 Claude 登录路径优先，OpenAI 路径若要验证需 `OPENAI_API_KEY`，见 SOP §6）。之后 T14 文档收尾。
+- 做 T14 文档收尾（SOP §7 收尾清单）：`docs/quality/QUALITY.md`（`stages.brainstorm`/`stages.topic`/`search`/`frontend`/`api`/`agent` 评级）、`docs/quality/tech-debt.md`（关闭 TD-29；登记：进程内搜索结果集合无上限、`native` 模式无 URL 来源保护且 OpenAI 托管搜索未验证、`api` 直接起 uvicorn 时裸环境变量 key 读不到的提示误导）、`docs/ARCHITECTURE.md`（`search`、`stages.brainstorm`、`stages.common` 联网工具、无项目会话、`allow_web` 新语义的说明核对一遍）、`docs/glossary.md`（想法卡片、选题简报、头脑风暴、无项目会话、联网模式）、`docs/runbooks/dev-setup.md`（`TAVILY_API_KEY`、`STUDIO_WEB_MODE`）；核对 `AGENTS.md`。然后在「验证记录」补全 AC1–AC9、AC11、AC12，请负责人验收。
 
 ## 决策记录
 
@@ -316,6 +317,7 @@
 - 2026-09-29（T10 执行中）：① 头脑风暴抽屉做成**停靠在页面右侧的非模态面板**（`lg:grid-cols-[1fr_28rem]`），不用遮罩式 `Sheet`：agent 建卡片时左边网格要能实时看到，模态遮罩会挡住页面、也阻止点击卡片。计划里写的「用现有 shadcn `Sheet`」因此没用。② `SessionScope` 放在 `composables/sessionScope.ts`（纯逻辑，`components/` 和 `features/` 都能 import），不放在 `components/session/` 里。③ 关闭抽屉会断开 SSE（组件卸载），agent 仍在服务端运行；重新打开时 `useSessionStream` 重载历史，卡片网格靠 TanStack 的窗口聚焦重取和终态事件兜底。④ 选题池失效用工具名匹配 `(^|__)(create|update)_idea$`（`composables/ideaEvents.ts`），兼容 Claude 侧 `mcp__studio__` 前缀；不新增 SSE 事件类型。
 - 2026-09-29（T11 执行中）：`MarkdownFilePane` 判断文件是否存在看文件树而不是读取 404（TanStack 对失败请求默认重试，「加载中」会拖很久；叙事画布同样是先看文件树）。简报和笔记共用一个组件，`path` 变化时重置缓冲区和模式；agent 开始运行时自动退出编辑模式。
 - 2026-09-29（T12 执行中）：走查发现的三个问题都已修复并补了测试：① 用户在画布里保存 `brief.md` 后检查提示条仍显示旧结果——`useWriteFileMutation` 只失效了文件树和文件内容，没有失效 `topicCheck`；抽成 `invalidateAfterWrite` 并测试。② 抽屉打开时网格仍按 `xl:grid-cols-3`（按视口）分列，卡片被挤窄，改成 `grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]`（按容器）。③ 真实模型写「把握程度：中——多篇独立技术文章…」被判格式错误（值取到空白/标点为止，破折号不算），改成「值是 高/中/低 且后面不能紧跟汉字」（挡掉「高度」「中等」，放过破折号/冒号/空格后的说明），补了正反用例。
+- 2026-09-29（T13 执行中）：① 冒烟用例用真实的 brainstorm/topic 阶段（`build_harness(real_stages=True, web_mode=...)`），不再套 M1 的精简 `SmokeStage`；选题起点直接在工作区放一份想法卡片笔记（等价于按卡片创建项目，避免冒烟依赖 api 层）。② `TURN_TIMEOUT_SECONDS` 从 300 提到 600（真实选题一轮 2–3 分钟）。③ `test_topic_claude_login` 需要 `TAVILY_API_KEY`（缺则跳过）；`native` 用例不需要。④ 三个真实模型用例合计约 3.5 分钟，全部用登录订阅，不产生 API 费用；Tavily 用量极小。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
@@ -325,6 +327,8 @@
 - 2026-09-29（起草时的发现，非执行中）：① `ideas` 表、`sessions.project_id` 可空、`StageDefinition.allow_web` 都是 M1 为 M4 预留的，但 `TurnRunner.start_turn` 对 `project_id is None` 直接 `ValueError("M1 只支持属于项目的会话")`，`ToolContext`/`TurnContext` 的 `project_id` 也是必填——无项目会话不是「加一个阶段」就能做，需要 T3 那样动运行时；② `recovery.py` 已经对 `session.project_id` 为空做了保护，说明这条路径当时想过；③ `tests/fixtures/narrative/brief.md` 的事实条目没有「出处」，过不了 T6 的 `check_brief`，M3 的计划里写明了「不需要真的通过」，T6 会更新它；④ 现有 `SessionPicker`/`SessionPanel` 在 `features/workbench`，而头脑风暴抽屉在 `features/ideas`，features 之间不能互相 import，所以 T10 要把它们搬到 `components/session/`。
 
 - 2026-09-29（T12）：① 真实模型（本机 Claude 登录，`tools` 模式）在选题阶段的完整行为符合预期：`Read` 卡片 → `web_search` ×多次 → `fetch_url`（搜索过的 URL 成功）→ 试图读一个没搜索过的 URL，**被「URL 来源」规则拒绝**（说明规则在真实模型下确实生效，模型随后改为先搜索）→ 写 `topic/notes/*.md` 和 `topic/brief.md` → `check_brief` 报格式错 → `Edit` 修正 → 通过；16 步，估算成本 $0.33（登录模式为参考值，不产生费用）。② `preview_start` 的 `api` 配置起的进程环境里没有 `backend/.env` 的裸环境变量（`TAVILY_API_KEY`）——`scripts/dev.sh`（`make dev`）会导出 `.env`，直接用 uvicorn 起 api 则不会；此时 `web_search` 返回「TAVILY_API_KEY 未设置，请在 backend/.env 中配置」，容易误导。这和 `VOLCENGINE_TTS_API_KEY` 是同一个既有约定（TD 里没有登记），本次走查用 `set -a; . backend/.env` 起 api 绕过。③ 头脑风暴 agent 写出的「反直觉点」很长（上百字），卡片里显示正常但偏挤；提示词里已要求「一句话」，可在后续调优（不属于本计划）。
+
+- 2026-09-29（T13）：`native` 联网模式用 Claude 登录验证通过（原生 `WebSearch`/`WebFetch` 被调用、自建工具被滤掉、简报通过检查）；OpenAI 托管搜索经 OpenRouter 未验证（需要 `OPENAI_API_KEY`，会产生 API 费用，SOP §6 第 7 条，没有事先说明，所以没跑），已写进 ADR 0010 的「影响」。
 
 ## 阻塞
 

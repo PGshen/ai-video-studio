@@ -20,6 +20,15 @@
 `extract` 固定 `format=markdown`、`extract_depth=basic`，每次一个 URL，正文在本地按
 `max_chars` 截断。只重试 429、5xx 和超时/网络错误；432/433 视为额度问题，不重试。
 
-## ⚠️ 待验证
+## ✅ 已验证：真实调用的表现
 
-真实调用的延迟、`extract` 对常见站点（维基百科、博客、新闻站）的表现——M4 T13 冒烟后补。
+日期：2026-09-29（M4 T13 冒烟 + T12 走查）。来源：实测，`make smoke SMOKE_ARGS="-k tavily"`
+（`backend/tests/smoke/test_smoke.py::test_tavily_search`），证据在 `data/evidence/m4-topic/smoke/`（不进 git）。
+
+| 观察 | 值 |
+|---|---|
+| `search`（`basic`、3 条） | 约 2.1 秒；每条有 `title`/`url`/`content`（摘要 500–1200 字）；技术博客类结果带 `published_date`（RFC 2822 格式，如 `Fri, 30 Jan 2026 00:00:00 GMT`），部分站点没有，字段缺省 |
+| `extract`（一个 URL、`markdown`） | 约 1.1 秒；一篇技术博客返回 10196 字正文，本地按 `max_chars=2000` 截断；成功时结果里 `raw_content` 是 Markdown，链接保留 |
+| 真实模型使用（T12/T13，Claude 登录） | 选题阶段一轮 9–16 步里 2–4 次搜索、2–3 次抓取，Tavily 免费额度消耗很小；模型偶尔尝试读没搜索过的 URL，被「URL 来源」规则拒绝后会改为先搜索 |
+
+`SearchHit.published` 只是把 `published_date` 原样当字符串保留，没有解析成日期（模型只是阅读它）。

@@ -25,11 +25,14 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
   - `test_openai_responses`：需要 `OPENAI_API_KEY`（`gpt`；设了 `STUDIO_OPENAI_BASE_URL` 时是对应网关的 key）。
   - `test_deepseek_litellm`：需要 `DEEPSEEK_API_KEY`（`deepseek`，LiteLLM 路径）；图片是否被看到只记录、不断言（R2）。
   - `test_volcengine_tts`（M3）：需要 `VOLCENGINE_TTS_API_KEY`（无 `STUDIO_` 前缀）。不经 `TurnRunner`，直接调 `VolcengineTTSEngine.synthesize` 合成一句很短的中文（真实付费，费用很小），断言音频非空、时长合理、逐字时间戳非空，再跑 `align_scene_beats` 检查覆盖率在 0–1 且 beat 起点单调。证据写到 `data/evidence/m3-narrative/smoke/`。命令：`make smoke SMOKE_ARGS="-k volcengine_tts"`。
+  - `test_tavily_search`（M4）：需要 `TAVILY_API_KEY`（无 `STUDIO_` 前缀）。直接调 `TavilyProvider` 搜索一次、抓取一个结果（Tavily 免费额度，用量极小），断言有结果、URL 合法、至少一个页面抓取成功；观察写到 `data/evidence/m4-topic/smoke/`。命令：`make smoke SMOKE_ARGS="-k tavily"`。
+  - `test_brainstorm_claude_login`（M4）：本机 Claude 登录，经 `TurnRunner` 跑一轮**无项目**的头脑风暴（真实的 brainstorm 阶段，`tools` 联网模式）：`list_ideas` → （有 `TAVILY_API_KEY` 时）`web_search` → `create_idea` ×2；断言 `ideas` 表里有卡片、`source_session_id` 正确、有反直觉点和评分，且 turn 没有快照。命令：`make smoke SMOKE_ARGS="-k brainstorm_claude_login"`。
+  - `test_topic_claude_login` / `test_topic_claude_login_native_web`（M4）：本机 Claude 登录，真实的 topic 阶段。前者 `tools` 模式（需要 `TAVILY_API_KEY`）断言用了自建 `web_search`、没有原生联网；后者 `STUDIO_WEB_MODE=native`，断言用了原生 `WebSearch`/`WebFetch`、没有自建联网工具。两者都要求写出 `topic/brief.md` 且 `check_brief` 没有错误（允许一次「根据 check_brief 继续」的追加轮）。命令：`make smoke SMOKE_ARGS="-k topic_claude_login"`（一次约 3–4 分钟）。
 - 冒烟前在 `backend/.env` 设置网关（负责人要求，F2）：`STUDIO_ANTHROPIC_BASE_URL=https://ccproxy.yukework.com`（`test_claude_api_key` 经网关）、`STUDIO_OPENAI_BASE_URL=https://openrouter.ai/api/v1` 与 `STUDIO_OPENAI_MODEL=openai/gpt-6-luna`（必须选支持 `apply_patch` 工具的型号，gpt-5 不支持，见 ADR 0008）（`test_openai_responses` 经 OpenRouter，`OPENAI_API_KEY` 填 OpenRouter key）。`make smoke` 的白名单会带上所有 `STUDIO_*`，`build_harness` 用同一个 `Settings` 调种子，用例的模型配置从种子行复制，所以会用上这些值；不设则直连官方 API。经 OpenRouter 时 `gpt` 没有 Shell，用 `apply_patch` 建文件。
 - 缺少某个 key 时，对应的用例会被跳过，并在输出中说明原因；结论记为"未验证"。
 - 会产生真实的费用：每个用例只跑最小的对话。预算写在测试里（`COST_LIMITS` 合计 ≤ 1 美元、每轮最多 8 步），由模型配置的 `max_cost_per_turn`/`max_steps_per_turn` 强制；登录用例只限步数。
 - 每个用例把观察结果写到 `data/evidence/m1/smoke/<时间>-<用例>.json`（形似 key 的字符串会被打码），建议同时 `make smoke 2>&1 | tee data/evidence/<计划 id>/smoke-runN.log`。
-- `make smoke` 自己用 `env -i` 只带白名单变量运行 pytest：`HOME`、`PATH`、`USER`、`LANG`、`TMPDIR`、`SHELL`，加上导出 `backend/.env` 之后有值的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`DEEPSEEK_API_KEY`/`VOLCENGINE_TTS_API_KEY` 和所有 `STUDIO_*`。在 Claude Code 里代为运行时不需要再手动加 `env -i` 前缀；宿主注入的 `CLAUDE_CODE_*`/`ANTHROPIC_BASE_URL` 等变量不会进入用例（ClaudeRuntime 的 `build_env` 另外还会把它们置空，`make dev` 同样受保护）。
+- `make smoke` 自己用 `env -i` 只带白名单变量运行 pytest：`HOME`、`PATH`、`USER`、`LANG`、`TMPDIR`、`SHELL`，加上导出 `backend/.env` 之后有值的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`DEEPSEEK_API_KEY`/`VOLCENGINE_TTS_API_KEY`/`TAVILY_API_KEY` 和所有 `STUDIO_*`。在 Claude Code 里代为运行时不需要再手动加 `env -i` 前缀；宿主注入的 `CLAUDE_CODE_*`/`ANTHROPIC_BASE_URL` 等变量不会进入用例（ClaudeRuntime 的 `build_env` 另外还会把它们置空，`make dev` 同样受保护）。
 - 登录用例的会话 transcript 会留在 `~/.claude/projects/` 下（目录名由临时工作区路径推出），可以手动清理。
 - **运行原则（负责人 2026-09-28）**：
   - 冒烟测试**不限制运行次数**，需要验证时就跑。
