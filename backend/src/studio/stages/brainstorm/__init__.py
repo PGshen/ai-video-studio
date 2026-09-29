@@ -10,10 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from studio.agent.tools import ToolSpec
+from studio.stages.brainstorm.tools import CREATE_IDEA_TOOL, LIST_IDEAS_TOOL, UPDATE_IDEA_TOOL
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _WRITE_SCOPE = WriteScope(writable=[], tool_managed=[])
+_TOOLS: list[ToolSpec] = [LIST_IDEAS_TOOL, CREATE_IDEA_TOOL, UPDATE_IDEA_TOOL]
 
 
 class BrainstormStage:
@@ -24,7 +26,7 @@ class BrainstormStage:
         return _PROMPT_PATH.read_text(encoding="utf-8")
 
     def tools(self) -> list[ToolSpec]:
-        return []
+        return list(_TOOLS)
 
     def write_scope(self) -> WriteScope:
         return _WRITE_SCOPE
