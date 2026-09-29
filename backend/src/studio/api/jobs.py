@@ -5,7 +5,9 @@
   的校验逻辑（决策记录 D4：避免和 agent 工具的校验产生两份实现，未校验直接
   渲染的后果由 worker 渲染失败时的错误信息兜底）。`payload` 目前不需要放
   任何内容——worker 只靠 `JobValue.project_id` 定位项目（决策记录 D21），
-  这个口子留给以后（比如记录创建任务时的快照 id）再用。
+  这个口子留给以后（比如记录创建任务时的快照 id）再用。已有一条
+  `queued`/`running` 的同类任务时不再新建，直接把那条返回（TD-35），状态码
+  跟着变成 200。
 - **查询任务**：薄薄一层转发 `studio.jobs.get_job`，供前端每秒轮询（design
   §7）；任务不属于该项目时视为不存在，不泄露别的项目的任务信息。
 - **查询最近一次任务**（TD-34）：`FinalRenderPanel.vue` 挂载时用它恢复
@@ -19,7 +21,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
 from sqlalchemy import Engine
 
@@ -56,14 +58,32 @@ def _job_out(value: JobValue) -> JobOut:
     )
 
 
+_UNFINISHED_JOB_STATUSES = ("queued", "running")
+
+
 @router.post("/projects/{project_id}/render", response_model=JobOut, status_code=201)
-def create_render_job_endpoint(project_id: str, engine: Engine = Depends(get_engine)) -> JobOut:
+def create_render_job_endpoint(
+    project_id: str, response: Response, engine: Engine = Depends(get_engine)
+) -> JobOut:
+    """TD-35：重复调用（双击、多个浏览器标签页）不会排进第二条任务——已有
+    一条 `queued`/`running` 的同类任务时直接返回它（状态码改成 200，因为
+    没有新建资源），不检查 `queued`/`running` 之外的状态就不会拦住"上一次
+    渲染已经结束、现在要开始新一轮"的正常请求。
+    """
     _require_project(engine, project_id)
     stage = get_stage(engine, project_id, _ANIMATION_STAGE)
     if stage is None:
         raise HTTPException(status_code=404, detail="项目没有动画阶段")
     if stage.status == "locked":
         raise HTTPException(status_code=409, detail="动画阶段尚未解锁，不能创建渲染任务")
+    existing = [
+        job
+        for job in list_jobs(engine, project_id, type=_RENDER_JOB_TYPE)
+        if job.status in _UNFINISHED_JOB_STATUSES
+    ]
+    if existing:
+        response.status_code = 200
+        return _job_out(existing[-1])
     job = create_job(engine, type=_RENDER_JOB_TYPE, project_id=project_id)
     return _job_out(job)
 

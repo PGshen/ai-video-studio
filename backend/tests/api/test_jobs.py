@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from fixtures.animation.seed import seed_animation_project
+from studio.jobs import complete
 
 from .conftest import ApiEnv, assert_detail
 
@@ -52,6 +53,27 @@ class TestCreateRenderJob:
         response = await api_env.client.post("/api/projects/does-not-exist/render")
 
         assert response.status_code == 404
+
+    async def test_repeated_call_returns_the_existing_queued_job(self, api_env: ApiEnv) -> None:
+        # TD-35: a duplicate POST (double click, two browser tabs) must not
+        # queue a second `final_render` job pointing at the same output file.
+        pid = await _animation_project(api_env)
+        first = await api_env.client.post(f"/api/projects/{pid}/render")
+
+        second = await api_env.client.post(f"/api/projects/{pid}/render")
+
+        assert second.status_code == 200
+        assert second.json()["id"] == first.json()["id"]
+
+    async def test_new_job_is_created_once_the_previous_one_is_done(self, api_env: ApiEnv) -> None:
+        pid = await _animation_project(api_env)
+        first = await api_env.client.post(f"/api/projects/{pid}/render")
+        complete(api_env.app.state.engine, first.json()["id"], result={})
+
+        second = await api_env.client.post(f"/api/projects/{pid}/render")
+
+        assert second.status_code == 201
+        assert second.json()["id"] != first.json()["id"]
 
 
 class TestGetJob:
@@ -97,8 +119,9 @@ class TestGetLatestJob:
     async def test_returns_the_most_recently_created_job(self, api_env: ApiEnv) -> None:
         pid = await _animation_project(api_env)
         first = await api_env.client.post(f"/api/projects/{pid}/render")
-        # `create_render_job_endpoint` doesn't check for an existing queued
-        # job (TD-35), so a second POST is enough to get a distinct, newer row.
+        # TD-35 dedupes a `queued`/`running` job on POST, so the first one
+        # must finish before a second, distinct row can exist to be "latest".
+        complete(api_env.app.state.engine, first.json()["id"], result={})
         second = await api_env.client.post(f"/api/projects/{pid}/render")
 
         response = await api_env.client.get(
