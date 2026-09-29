@@ -119,3 +119,39 @@ class TestInvokeTool:
         result = await invoke_tool(spec, ctx, {"text": "hi"})
 
         assert result == ToolResult(text="recorded")
+
+
+def test_require_project_returns_id(ctx: ToolContext) -> None:
+    assert ctx.require_project() == "proj-1"
+
+
+def test_require_project_raises_without_project(workdir: Path) -> None:
+    no_project = ToolContext(
+        project_id=None,
+        stage="brainstorm",
+        workdir=workdir,
+        record_tool_write=lambda *_: None,
+        session_id="s1",
+    )
+    with pytest.raises(RuntimeError, match="项目"):
+        no_project.require_project()
+
+
+async def test_invoke_tool_turns_missing_project_into_error_result(workdir: Path) -> None:
+    def needs_project(ctx: ToolContext, args: _EchoArgs) -> ToolResult:
+        ctx.require_project()
+        return ToolResult(text="unreachable")
+
+    spec = ToolSpec(
+        name="needs_project",
+        description="d",
+        input_model=_EchoArgs,
+        stages={"brainstorm"},
+        handler=needs_project,
+    )
+    no_project = ToolContext(
+        project_id=None, stage="brainstorm", workdir=workdir, record_tool_write=lambda *_: None
+    )
+    result = await invoke_tool(spec, no_project, {"text": "x"})
+    assert result.is_error
+    assert "项目" in result.text

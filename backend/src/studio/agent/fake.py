@@ -239,11 +239,12 @@ def default_fake_script(
     `delay_seconds > 0`（`STUDIO_FAKE_DELAY_SECONDS`）时在回显和写文件之间
     睡这么久（可被取消），用来在浏览器里观察"运行中"状态、做重启中断验证（M6）。
     """
-    target_dir = _first_writable_dir(write_scope)
     steps: list[FakeStep] = [say(f"收到：{user_text}")]
     if delay_seconds > 0:
         steps.append(sleep(delay_seconds))
-    steps.append(write(f"{target_dir}/fake-note.md", f"echo: {user_text}\n"))
+    if write_scope.writable:  # 无工作区的阶段（头脑风暴）没有可写路径，只回显
+        target_dir = _first_writable_dir(write_scope)
+        steps.append(write(f"{target_dir}/fake-note.md", f"echo: {user_text}\n"))
     return steps
 
 

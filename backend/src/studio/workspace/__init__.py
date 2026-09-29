@@ -14,11 +14,12 @@ from studio.workspace.files import (
     read_bytes,
     read_text,
     remove_workspace,
+    reset_scratch,
     safe_path,
     write_text,
     write_text_unscoped,
 )
-from studio.workspace.layout import EXCLUDED_TOP_DIRS, project_dir
+from studio.workspace.layout import EXCLUDED_TOP_DIRS, project_dir, scratch_dir
 from studio.workspace.scope import GuardReport, WriteScope, guard, is_writable
 from studio.workspace.snapshot import (
     Manifest,
@@ -55,8 +56,10 @@ __all__ = [
     "read_file_at",
     "read_text",
     "remove_workspace",
+    "reset_scratch",
     "rollback",
     "safe_path",
+    "scratch_dir",
     "scan",
     "upstream_drift",
     "write_text",

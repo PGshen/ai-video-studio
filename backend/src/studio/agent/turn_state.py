@@ -22,7 +22,8 @@ from studio.workspace import Manifest
 class _Job:
     turn_id: str
     session: SessionValue
-    project_id: str
+    project_id: str | None
+    """`None`：无项目会话（头脑风暴），走「无工作区」模式（`WORKSPACELESS_STAGES`）。"""
     stage: StageDefinition
     profile: ModelProfileValue
     user_input: UserInput
@@ -31,6 +32,12 @@ class _Job:
     task: asyncio.Task[None] | None = None
     shutdown: bool = False
     """进程关闭时被停下：`cancelled` 记为 `interrupted`（可以"继续"），快照记 `partial`。"""
+
+    @property
+    def busy_key(self) -> str:
+        """串行化的键：项目 turn 按项目串行（共用一个工作区）；无项目 turn 各会话独立，
+        不阻塞项目 turn，也不被项目 turn 阻塞。"""
+        return self.project_id if self.project_id is not None else f"session:{self.session.id}"
 
 
 @dataclass

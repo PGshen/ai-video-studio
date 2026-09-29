@@ -17,6 +17,7 @@ from studio.workspace.layout import (
     PathEscapesWorkdir,
     project_dir,
     resolve_relpath,
+    scratch_dir,
 )
 from studio.workspace.scope import WriteScope, is_writable
 
@@ -173,6 +174,14 @@ def init_workspace(data_dir: Path | str, project_id: str, initial_files: dict[st
     for relpath, content in initial_files.items():
         write_text_unscoped(workdir, relpath, content)
     return workdir
+
+
+def reset_scratch(data_dir: Path | str, session_id: str) -> Path:
+    """把无项目会话的 scratch 目录重置为空目录并返回它（每轮开始前调用）。"""
+    path = scratch_dir(data_dir, session_id)
+    shutil.rmtree(path, ignore_errors=True)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def remove_workspace(data_dir: Path | str, project_id: str) -> None:

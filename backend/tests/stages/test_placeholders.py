@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from studio.stages.animation import STAGE as animation_stage
+from studio.stages.brainstorm import STAGE as brainstorm_stage
 from studio.stages.narrative import STAGE as narrative_stage
 from studio.stages.topic import STAGE as topic_stage
 from studio.workspace.scope import is_writable
@@ -72,3 +73,16 @@ class TestAnimationStage:
         # 不再需要单独给阶段实例注入 Engine 才能出现在 tools() 里。
         names = {tool.name for tool in animation_stage.tools()}
         assert names == {"validate_scenes", "render_preview", "suggest_upstream_change"}
+
+
+class TestBrainstormStage:
+    def test_has_no_workspace(self) -> None:
+        scope = brainstorm_stage.write_scope()
+        assert scope.writable == [] and scope.tool_managed == []
+        assert brainstorm_stage.upstream_stages() == []
+        assert brainstorm_stage.artifact_dirs() == []
+
+    def test_prompt_and_summary(self, tmp_path: Path) -> None:
+        assert brainstorm_stage.name == "brainstorm"
+        assert brainstorm_stage.system_prompt().strip() != ""
+        assert isinstance(brainstorm_stage.status_summary(tmp_path), str)

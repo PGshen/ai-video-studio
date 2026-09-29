@@ -31,11 +31,59 @@ logger = logging.getLogger(__name__)
 
 
 def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
-    """越界检查 → 快照 → 写 turn 状态 → 发布 `turn_status`。每一步单独兜底。"""
+    """越界检查 → 快照 → 写 turn 状态 → 发布 `turn_status`。每一步单独兜底。
+
+    无项目会话（`job.project_id is None`，头脑风暴）没有工作区：跳过越界检查、快照和
+    阶段状态更新，其余（`error` 事件、用量、写 turn 状态、发布状态）不变。
+    """
     status, error = state.final_status()
     if job.shutdown and status == "cancelled":
         status = "interrupted"
-    workdir = project_dir(runner._settings.data_dir, job.project_id)
+    project_id = job.project_id
+    if project_id is not None:
+        status, error = _guard_workspace(runner, job, state, project_id, status, error)
+
+    if status == "failed":
+        runner._safe_persist(job, "error", {"message": error or "未知错误"})
+
+    end_snapshot_id: str | None = None
+    if project_id is not None:
+        status, error, end_snapshot_id = _snapshot_workspace(runner, job, project_id, status, error)
+
+    usage: dict[str, Any] = {
+        "input_tokens": state.input_tokens,
+        "output_tokens": state.output_tokens,
+        "steps": state.steps,
+    }
+    finish_turn_row(
+        runner,
+        job,
+        status=status,
+        end_snapshot_id=end_snapshot_id,
+        usage=usage,
+        cost_usd=None if state.cost_unpriced else state.cost_usd,
+        error=error,
+        resume_ref=state.end.resume_ref if state.end is not None else None,
+    )
+    if status == "done" and project_id is not None:
+        try:
+            stage_flow.after_turn_done(
+                runner._engine, project_id, job.stage.name, state.upstream_ids
+            )
+        except Exception:
+            logger.exception("turn %s 更新阶段状态失败", job.turn_id)
+    runner._publish_status(job, status, error)
+
+
+def _guard_workspace(
+    runner: TurnRunner,
+    job: _Job,
+    state: _State,
+    project_id: str,
+    status: str,
+    error: str | None,
+) -> tuple[str, str | None]:
+    workdir = project_dir(runner._settings.data_dir, project_id)
     try:
         restored: list[str] = []
         if state.before is not None:
@@ -57,18 +105,18 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
             runner._publish(job, "workspace_changed", {"paths": restored})
     except Exception as exc:
         logger.exception("turn %s 越界检查失败", job.turn_id)
-        status, error = "failed", error or f"越界检查失败：{exc}"
+        return "failed", error or f"越界检查失败：{exc}"
+    return status, error
 
-    if status == "failed":
-        runner._safe_persist(job, "error", {"message": error or "未知错误"})
 
-    end_snapshot_id: str | None = None
+def _snapshot_workspace(
+    runner: TurnRunner, job: _Job, project_id: str, status: str, error: str | None
+) -> tuple[str, str | None, str | None]:
+    snapshot_id: str | None = None
     try:
         reason = "partial" if status in ("failed", "interrupted") else "turn"
-        snapshot = create_snapshot(
-            runner._engine, runner._blobs, job.project_id, reason, job.turn_id
-        )
-        end_snapshot_id = snapshot.id
+        snapshot = create_snapshot(runner._engine, runner._blobs, project_id, reason, job.turn_id)
+        snapshot_id = snapshot.id
         runner._persist(
             job,
             "snapshot",
@@ -80,31 +128,8 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
         )
     except Exception as exc:
         logger.exception("turn %s 结束快照失败", job.turn_id)
-        status, error = "failed", error or f"结束快照失败：{exc}"
-
-    usage: dict[str, Any] = {
-        "input_tokens": state.input_tokens,
-        "output_tokens": state.output_tokens,
-        "steps": state.steps,
-    }
-    finish_turn_row(
-        runner,
-        job,
-        status=status,
-        end_snapshot_id=end_snapshot_id,
-        usage=usage,
-        cost_usd=None if state.cost_unpriced else state.cost_usd,
-        error=error,
-        resume_ref=state.end.resume_ref if state.end is not None else None,
-    )
-    if status == "done":
-        try:
-            stage_flow.after_turn_done(
-                runner._engine, job.project_id, job.stage.name, state.upstream_ids
-            )
-        except Exception:
-            logger.exception("turn %s 更新阶段状态失败", job.turn_id)
-    runner._publish_status(job, status, error)
+        return "failed", error or f"结束快照失败：{exc}", snapshot_id
+    return status, error, snapshot_id
 
 
 def finish_turn_row(runner: TurnRunner, job: _Job, **fields: Any) -> None:

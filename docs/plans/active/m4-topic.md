@@ -88,7 +88,7 @@
 - **完成标准**：上述测试通过；`api` 与 `db.repo` 的分层契约不受影响。
 - **验证命令**：`make check`
 
-### T3：无项目会话——TurnRunner 的「无工作区」模式与头脑风暴会话接口（待开始）
+### T3：无项目会话——TurnRunner 的「无工作区」模式与头脑风暴会话接口（完成）
 
 - **目标**：让 `project_id is None` 的会话能跑完整的一轮（D2）：没有快照、没有 `upstream/`、没有越界检查，只有事件、用量、状态；同时提供创建和列出头脑风暴会话的接口。这是本计划里改动面最大的一步，其余后端任务不依赖它以外的运行时改动，所以先做。
 - **涉及文件**：
@@ -279,10 +279,11 @@
 
 - 2026-09-29 — T1 `search` 模块（Tavily 提供方、工厂、import-linter 契约、references/tavily.md）— 31 个新测试通过，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T2 `ideas` 仓储与 `/api/ideas` — 47 个新测试通过，`make check` 全绿（commit 见 git log）
+- 2026-09-29 — T3 无项目会话（TurnRunner 无工作区模式、`ToolContext.require_project`、scratch 目录、`/api/brainstorm/sessions`、brainstorm 阶段骨架）— 新增 30 个测试，既有测试不改断言全部通过，`make check` 全绿（commit 见 git log）
 
 ## 下一步
 
-- 做 T3：无项目会话。先写 `backend/tests/agent/test_runner_brainstorm.py`、`backend/tests/api/test_brainstorm_sessions.py`（失败），再改 `agent/runner.py` 等（见 T3 涉及文件）。改动前先 `grep -rn "ctx.project_id" backend/src` 列全项目阶段工具。
+- 做 T4：`stages/brainstorm` 已有骨架（`__init__.py`、占位 `prompt.md`，`tools()` 为空，`allow_web=False`）。先写 `backend/tests/stages/test_brainstorm_tools.py`、`test_brainstorm_prompt.py`（失败），再新建 `stages/brainstorm/tools.py`（`list_ideas`/`create_idea`/`update_idea`，读 `ctx.engine` 和 `ctx.session_id`，仓储函数见 `db/repo/ideas.py`）并把 `prompt.md` 改写成完整版；`tools()` 接入三个工具。
 
 ## 决策记录
 
@@ -297,6 +298,7 @@
   - **D6 一张卡片只创建一个项目。** 创建项目后卡片置为 `picked` 并记录 `project_id`，不能再次创建、不能归档、不能改名；想再做一次同题材，让 agent 新建一张卡片。设计的 `ideas.status` 只有 `idea/picked/archived` 三态，没有「多个项目」的语义。
 - 2026-09-29（T1 执行中）：`recency_days` 映射到 Tavily 的 `time_range`（≤1 天 day、≤7 week、≤31 month、其余 year），因为 Tavily 只接受这四档；`extract` 结果多出 `total_chars` 字段（截断前长度），供 `fetch_url` 提示「共 N 字」；432/433（额度）单独归为不可重试并提示额度问题。
 - 2026-09-29（T2 执行中）：`mark_picked` 用 `UPDATE ... WHERE status='idea' RETURNING id` 做条件更新（pyright 不认 `Result.rowcount`）；`update_idea` 的「没传 vs 传 None」用 `UNSET` 哨兵区分；API 的 `PATCH` 用 `model_fields_set` 判断，`tags`/`scores` 传 `null` 视为清空。评分接受整数值浮点数（`4.0` → 4），因为模型的 JSON 偶尔会写成浮点。
+- 2026-09-29（T3 执行中）：① brainstorm 阶段骨架（`stages/brainstorm/`、注册进 `main`、进 `independence` 契约）提前到 T3，因为 API 和运行时测试需要一个真实注册的阶段；T4 只补工具和提示词。② 「哪些阶段无项目」用常量 `agent.stage.WORKSPACELESS_STAGES = {"brainstorm"}`，不给 `StageDefinition` 协议加字段——协议改动会波及所有阶段和测试桩。`start_turn` 双向校验：无项目会话必须是这些阶段，这些阶段的会话不能属于项目；项目阶段的会话创建接口对 `brainstorm` 返回 404。③ `TurnRunner` 新增 `is_session_busy(session_id)`（测试用，也可供 API 用）；调度键 `_Job.busy_key`（项目 id 或 `session:<id>`）。④ `turn_finish.finish` 拆成 `_guard_workspace`/`_snapshot_workspace` 两个私有函数，行为不变，无项目会话跳过两者和 `after_turn_done`。⑤ `default_fake_script` 在阶段没有可写路径时只回显，不再抛 `ValueError`（否则 `make dev` 的 fake 运行时跑不了头脑风暴）。⑥ brainstorm 的 `allow_web` 暂为 `False`，T5 加联网模式开关时和 topic 一起改为 `True`——否则 T3 骨架会在开关存在之前就打开 Claude 原生联网。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现

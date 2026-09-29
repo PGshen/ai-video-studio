@@ -14,6 +14,11 @@ from typing import Protocol, runtime_checkable
 from studio.agent.tools import ToolSpec
 from studio.workspace.scope import WriteScope
 
+WORKSPACELESS_STAGES = frozenset({"brainstorm"})
+"""不属于任何项目、没有工作区的阶段（设计 §3.1：头脑风暴会话 `project_id` 为空）。
+这些阶段的会话 `project_id is None`，TurnRunner 走「无工作区」模式：没有快照、没有
+`upstream/`、没有越界检查，cwd 是每轮重置的 scratch 目录。其余阶段必须有项目。"""
+
 
 @runtime_checkable
 class StageDefinition(Protocol):
