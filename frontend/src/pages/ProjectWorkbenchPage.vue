@@ -84,7 +84,10 @@ const canvasBusy = computed(() =>
             :project-id="projectId"
             :stage="stage"
           />
-          <SessionPanel :session-id="sessionId" />
+          <SessionPanel
+            :session-id="sessionId"
+            :project-id="projectId"
+          />
         </div>
 
         <Card class="flex min-h-0 flex-col">

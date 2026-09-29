@@ -31,7 +31,7 @@ import { computeTurnControls } from './turnControls'
 import { CONTINUE_TEXT, optimisticSend } from './optimisticSend'
 import SessionTimelineItem from './SessionTimelineItem.vue'
 
-const props = defineProps<{ sessionId: string | null }>()
+const props = defineProps<{ sessionId: string | null; projectId: string }>()
 
 const sessionIdRef = toRef(props, 'sessionId')
 const { items, turnStatus, addLocalUserMessage, removeLocalUserMessage } =
@@ -98,6 +98,7 @@ async function onContinue(): Promise<void> {
           v-for="(item, index) in items"
           :key="index"
           :item="item"
+          :project-id="props.projectId"
         />
       </ConversationContent>
     </Conversation>

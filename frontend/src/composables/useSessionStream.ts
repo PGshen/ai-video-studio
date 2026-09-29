@@ -85,12 +85,9 @@ export interface ToolCallItem {
   name: string
   args: Record<string, unknown>
   /**
-   * `images` 透传自 `ToolResultPayload.images`：M1 后端只持久化
-   * `media_type`（审查裁定，见计划「已知限制」），不存图片内容本身，所以
-   * 这里永远拿不到可渲染的图片数据、只能数出有几张——`SessionTimelineItem`
-   * 用它渲染一句"含 N 张图片（M1 未存图片内容，不可预览）"的文字占位，
-   * 不是真的缩略图。M2 落地 `render_preview` 关键帧时如果需要真缩略图，
-   * 要先在后端补图片内容的持久化。
+   * `images` 透传自 `ToolResultPayload.images`：每张图带 `sha256`（TD-21
+   * 修复后），`SessionTimelineItem` 据此拼 `blobUrl(projectId, sha256)`
+   * 渲染真缩略图，不再只是"含 N 张图片"的文字占位。
    */
   result?: { text: string; isError: boolean; truncated: boolean; images: ToolResultImage[] }
 }

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import TYPE_CHECKING
 
 from studio.agent import events
@@ -41,6 +42,11 @@ def _truncate_args(args: dict[str, object]) -> dict[str, object]:
     return {k: _truncate_value(v) for k, v in args.items()}
 
 
+def _persist_image(runner: TurnRunner, image: events.ImageData) -> dict[str, str]:
+    sha256 = runner._blobs.put(base64.b64decode(image.data_base64))
+    return {"media_type": image.media_type, "sha256": sha256}
+
+
 def handle(runner: TurnRunner, job: _Job, state: _State, event: events.AgentEvent) -> None:
     if isinstance(event, events.TextDelta):
         runner._publish(job, "text_delta", {"text": event.text})
@@ -67,8 +73,11 @@ def handle(runner: TurnRunner, job: _Job, state: _State, event: events.AgentEven
                 "text": text,
                 "truncated": truncated,
                 "is_error": event.is_error,
-                # Image payloads are not persisted, only their types.
-                "images": [{"media_type": image.media_type} for image in event.images],
+                # TD-21: image bytes go into the content-addressed blob
+                # store (same as workspace files); only the sha256 back
+                # reference is persisted here, served on demand by
+                # `GET /projects/{id}/blobs/{sha256}` (design §3.3).
+                "images": [_persist_image(runner, image) for image in event.images],
             },
         )
         _after_tool_result(runner, job, state, event)

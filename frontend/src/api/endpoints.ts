@@ -169,3 +169,13 @@ export function finalizeRender(projectId: string): Promise<StageOut> {
 export function finalVideoUrl(projectId: string): string {
   return `/api/projects/${encodePathSegment(projectId)}/output/final.mp4`
 }
+
+// ---- blobs（TD-21：工具结果里的图片，例如 render_preview 关键帧）--------
+
+/**
+ * 工具结果图片的地址（`GET /projects/{id}/blobs/{sha256}`）：直接给 `<img>`
+ * 当 `src` 用，同 `finalVideoUrl`/`sessionStreamUrl` 的做法。
+ */
+export function blobUrl(projectId: string, sha256: string): string {
+  return `/api/projects/${encodePathSegment(projectId)}/blobs/${encodePathSegment(sha256)}`
+}

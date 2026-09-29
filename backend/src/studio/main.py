@@ -24,6 +24,7 @@ from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
 from studio.api.animation import router as animation_router
+from studio.api.blobs import router as blobs_router
 from studio.api.files import router as files_router
 from studio.api.jobs import router as jobs_router
 from studio.api.profiles import router as profiles_router
@@ -98,6 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(profiles_router)
     app.include_router(jobs_router)
     app.include_router(animation_router)
+    app.include_router(blobs_router)
 
     return app
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections import Counter, deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
@@ -611,6 +612,62 @@ class TestGuard:
 
         assert turn.status == "done"
         assert seen_engines == [h.env.engine]
+
+
+class TestToolResultImages:
+    # TD-21: tool_result images used to persist only `media_type`; now the
+    # bytes go into the blob store and the event carries a `sha256` back
+    # reference so the frontend can fetch them.
+    async def test_image_bytes_are_persisted_to_the_blob_store(self, h: Harness) -> None:
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"fake-png-body"
+        image = events.ImageData(
+            media_type="image/png",
+            data_base64=base64.b64encode(png_bytes).decode("ascii"),
+        )
+
+        class NoArgs(BaseModel):
+            pass
+
+        def return_image(ctx: ToolContext, _args: NoArgs) -> ToolResult:
+            return ToolResult(text="ok", images=[image])
+
+        class TopicWithImageTool:
+            name = "topic"
+            allow_web = False
+
+            def __init__(self) -> None:
+                self._base = h.env.registry.get("topic")
+
+            def system_prompt(self) -> str:
+                return "p"
+
+            def tools(self) -> list[ToolSpec]:
+                return [ToolSpec("return_image", "d", NoArgs, {"topic"}, return_image)]
+
+            def write_scope(self) -> WriteScope:
+                return self._base.write_scope()
+
+            def upstream_stages(self) -> list[str]:
+                return []
+
+            def artifact_dirs(self) -> list[str]:
+                return ["topic"]
+
+            def status_summary(self, workdir: Path) -> str:
+                return ""
+
+        h.env.registry.register(TopicWithImageTool())
+        session_id = h.session(stage="topic")
+        received, pump = _collect(h.bus, session_id)
+
+        turn = await h.run(session_id, [fake.call_tool("return_image")])
+        await _drain(pump)
+
+        assert turn.status == "done"
+        tool_result = next(e for e in received if e.type == "tool_result")
+        [persisted_image] = tool_result.payload["images"]
+        assert persisted_image["media_type"] == "image/png"
+        assert h.env.blobs.get(persisted_image["sha256"]) == png_bytes
 
 
 class TestPreambleAcrossTurns:

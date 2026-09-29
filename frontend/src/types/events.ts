@@ -45,6 +45,8 @@ export interface ToolCallPayload {
 
 export interface ToolResultImage {
   media_type: string
+  /** `BlobStore` 的内容寻址 key（TD-21）：配 `blobUrl(projectId, sha256)` 取字节内容。 */
+  sha256: string
 }
 
 export interface ToolResultPayload {

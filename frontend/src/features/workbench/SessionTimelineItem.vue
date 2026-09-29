@@ -5,12 +5,13 @@
  * （可折叠，展示名字/参数/结果），notice/error/snapshot 用简单的提示条。
  */
 import { computed } from 'vue'
+import { blobUrl } from '@/api/endpoints'
 import { Message, MessageContent } from '@/components/ai-elements/message'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import type { TimelineItem } from '@/composables/useSessionStream'
 import { snapshotEventLabel } from './snapshotReason'
 
-const props = defineProps<{ item: TimelineItem }>()
+const props = defineProps<{ item: TimelineItem; projectId: string }>()
 
 const NOTICE_LABELS: Record<string, string> = {
   guard_restored: '越界写入已被还原',
@@ -23,17 +24,10 @@ const toolState = computed(() => {
   return props.item.result.isError ? ('output-error' as const) : ('output-available' as const)
 })
 
-/**
- * 工具结果里的图片没法预览（控制者裁定，见 T6：后端只持久化
- * `media_type`，不存图片内容本身），只能提示有几张、说明看不到——不是
- * 真的缩略图。M2 落地 `render_preview` 关键帧时如果要真缩略图，需要先在
- * 后端补图片内容的持久化（记入计划「已知限制」）。
- */
-const imageNotice = computed(() => {
-  if (props.item.kind !== 'tool_call') return null
-  const count = props.item.result?.images.length ?? 0
-  if (count === 0) return null
-  return `含 ${count} 张图片（M1 未存图片内容，不可预览）`
+/** 工具结果里的图片（TD-21 修复后）：每张图带 `sha256`，拼 blob 地址渲染真缩略图。 */
+const images = computed(() => {
+  if (props.item.kind !== 'tool_call') return []
+  return props.item.result?.images ?? []
 })
 </script>
 
@@ -66,12 +60,18 @@ const imageNotice = computed(() => {
         :output="item.result?.isError ? undefined : item.result?.text"
         :error-text="item.result?.isError ? item.result.text : undefined"
       />
-      <p
-        v-if="imageNotice"
-        class="text-muted-foreground px-4 pb-4 text-xs"
+      <div
+        v-if="images.length > 0"
+        class="flex flex-wrap gap-2 px-4 pb-4"
       >
-        {{ imageNotice }}
-      </p>
+        <img
+          v-for="(image, index) in images"
+          :key="image.sha256"
+          :src="blobUrl(projectId, image.sha256)"
+          :alt="`关键帧 ${index + 1}`"
+          class="h-24 w-auto rounded border object-contain"
+        >
+      </div>
     </ToolContent>
   </Tool>
 
