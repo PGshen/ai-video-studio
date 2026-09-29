@@ -73,6 +73,41 @@ describe('computeDubbing', () => {
   })
 })
 
+describe('computeDubbing 的过期判断（TD-36）', () => {
+  const dubbedWith = (narration: string, voice = 'zizi', speed = 1) => ({
+    ...timingEntry('s-a'),
+    narration,
+    voice,
+    speed,
+  })
+  const current = (narration: string, voice = 'zizi', speed = 1) => ({
+    narrations: { 's-a': narration },
+    voice,
+    speed,
+  })
+
+  it('旁白、音色、语速都没变时是已配音', () => {
+    const [d] = computeDubbing(['s-a'], raw(dubbedWith('甲乙')), current('甲乙'))
+    expect(d.state).toBe('dubbed')
+  })
+
+  it('配音之后旁白改了，判为已过期', () => {
+    const [d] = computeDubbing(['s-a'], raw(dubbedWith('甲乙')), current('甲乙丙'))
+    expect(d.state).toBe('stale')
+    expect(d.timing?.id).toBe('s-a')
+  })
+
+  it('音色或语速改了，判为已过期', () => {
+    expect(computeDubbing(['s-a'], raw(dubbedWith('甲乙')), current('甲乙', 'other'))[0].state).toBe('stale')
+    expect(computeDubbing(['s-a'], raw(dubbedWith('甲乙')), current('甲乙', 'zizi', 1.2))[0].state).toBe('stale')
+  })
+
+  it('旧条目没有记录配音输入时不判过期，也不传当前值时不判过期', () => {
+    expect(computeDubbing(['s-a'], raw(timingEntry('s-a')), current('随便'))[0].state).toBe('dubbed')
+    expect(computeDubbing(['s-a'], raw(dubbedWith('甲乙')))[0].state).toBe('dubbed')
+  })
+})
+
 describe('overallCoverage', () => {
   it('对已配音镜头取平均，一个都没有时为 null', () => {
     expect(overallCoverage(computeDubbing(['s-a'], null))).toBeNull()
@@ -89,6 +124,14 @@ describe('computeReadiness', () => {
       ready: true,
       reasons: [],
     })
+  })
+
+  it('有配音已过期的镜头时不能定稿', () => {
+    const stale = computeDubbing(['s-a', 's-b'], raw(timingEntry('s-a'), timingEntry('s-b')))
+    stale[1] = { ...stale[1], state: 'stale' }
+    const readiness = computeReadiness({ sceneCount: 2, issueSceneCount: 0, dubbing: stale })
+    expect(readiness.ready).toBe(false)
+    expect(readiness.reasons).toEqual(['1 个镜头的配音已过期（旁白、音色或语速在配音后改过），需要重新配音'])
   })
 
   it('没有镜头时不能定稿', () => {

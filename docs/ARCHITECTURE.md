@@ -61,7 +61,7 @@ ai-video-studio/
 | `features/workbench/` | 项目工作台外壳：阶段导航、会话选择、对话面板、快照时间线；纯逻辑抽成 `.ts`（`turnControls`、`stageStatus`、`snapshotSelection`、`snapshotReason`、`optimisticSend` 等）单测 |
 | `features/canvas/generic/` | M1 的通用文件画布：文件树 + CodeMirror 编辑器、只读/冲突状态 |
 | `features/canvas/animation/`（M2） | 动画阶段专属画布：镜头列表（`SceneList.vue`）、代码编辑器、关键帧提示（`KeyframeStrip.vue`）、成片面板（`FinalRenderPanel.vue`：渲染/进度/播放器/定稿） |
-| `features/canvas/narrative/`（M3） | 叙事阶段专属画布：镜头卡片（`SceneCardList.vue`）、按 beat 分段的配音播放条（`BeatTimeline.vue`，音频先 fetch 成 blob 以支持跳转，见 TD-37）、原始 JSON 标签页；校验标记/配音状态/定稿提示条的纯逻辑在 `narrativeDoc.ts`/`timingStatus.ts` |
+| `features/canvas/narrative/`（M3） | 叙事阶段专属画布：镜头卡片（`SceneCardList.vue`）、按 beat 分段的配音播放条（`BeatTimeline.vue`，音频直接用文件端点的 URL，端点支持 Range）、原始 JSON 标签页；校验标记/配音状态/定稿提示条的纯逻辑在 `narrativeDoc.ts`/`timingStatus.ts` |
 | `features/canvas/topic/`（M4） | 尚未实现 |
 | `features/settings/`（M5） | 模型配置、风格库、TTS 音色；M1 只有占位页 `pages/SettingsPage.vue` |
 | `components/ui/` | shadcn-vue 生成的组件（通过 CLI 添加，尽量不手改） |

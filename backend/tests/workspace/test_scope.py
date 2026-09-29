@@ -210,6 +210,20 @@ class TestGuard:
 
         assert not (workdir / "a").exists()
 
+    def test_prunes_shared_ancestor_of_sibling_out_of_scope_subtrees(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        """TD-31：两个兄弟子树都越界还原后，共同的上层祖先 `drafts/` 也要清掉
+        （第二条路径不能因为"祖先已经见过"而提前退出）。"""
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        _write(workdir / "drafts" / "v1" / "a.md", "escaped")
+        _write(workdir / "drafts" / "v2" / "b.md", "escaped")
+        after = {"drafts/v1/a.md": "sha-a", "drafts/v2/b.md": "sha-b"}
+
+        guard(workdir, {}, after, scope, blobs, tool_writes={})
+
+        assert not (workdir / "drafts").exists()
+
     def test_unrelated_preexisting_empty_dir_is_left_alone_when_nothing_restored_there(
         self, blobs: BlobStore, workdir: Path
     ) -> None:

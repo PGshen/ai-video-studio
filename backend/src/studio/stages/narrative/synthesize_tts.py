@@ -143,6 +143,10 @@ async def _handler(ctx: ToolContext, args: SynthesizeTtsArgs) -> ToolResult:
                 for item in result.word_timestamps
             ],
             "alignment_coverage": aligned["alignment_coverage"],
+            # 配音时的输入，前端拿它和当前旁白/音色/语速比较，判断配音是否过期（TD-36）。
+            "narration": scene.narration,
+            "voice": voice,
+            "speed": speed,
         }
         succeeded.append(
             f"{scene_id}（时长 {result.duration_seconds:.2f}s，"

@@ -34,10 +34,10 @@ trap cleanup EXIT INT TERM
 if [ -f "$ROOT_DIR/backend/pyproject.toml" ]; then
   # 绑定地址从 Settings 读取（`studio.config` 的 `__main__` 输出 "host port"），
   # 而不是在这里写死，否则改 STUDIO_HOST/STUDIO_PORT 不会真的生效（TD-2）。
-  read -r STUDIO_BIND_HOST STUDIO_BIND_PORT < <(cd "$ROOT_DIR/backend" && "$UV" run python -m studio.config)
-  # process substitution 会掩盖 studio.config 失败：read 只是读不到内容而不
-  # 报错，uvicorn 随后才因为空 host/port 报出一堆无关的错误，这里先显式检查。
-  if [ -z "$STUDIO_BIND_HOST" ] || [ -z "$STUDIO_BIND_PORT" ]; then
+  # process substitution 会掩盖 studio.config 失败：`read` 读不到内容时只是返回
+  # 非零，`set -e` 会让脚本直接终止、只留下 Python traceback，所以显式检查
+  # `read` 的结果并给出清晰的错误（TD-30）。
+  if ! read -r STUDIO_BIND_HOST STUDIO_BIND_PORT < <(cd "$ROOT_DIR/backend" && "$UV" run python -m studio.config); then
     echo "无法从 'python -m studio.config' 读取绑定地址，请检查上面是否有报错" >&2
     exit 1
   fi

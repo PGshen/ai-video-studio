@@ -42,6 +42,25 @@ def _downstream_of(
     return downstream
 
 
+def _artifacts_of(manifest: Manifest, definition: StageDefinition) -> Manifest:
+    """清单里属于该阶段产物目录的那部分（快照是整项目的，判断内容变化只看产物目录）。"""
+    prefixes = tuple(f"{directory.rstrip('/')}/" for directory in definition.artifact_dirs())
+    return {path: sha for path, sha in manifest.items() if path.startswith(prefixes)}
+
+
+def _upstream_artifacts_changed(
+    engine: Engine, upstream: StageDefinition, based_on_id: str | None, new: Manifest
+) -> bool:
+    """下游所基于的快照与新定稿快照，在上游产物目录下是否不同（TD-6）。
+
+    所基于的快照缺失（从未记录或已被清理）时保守地按"有变化"处理。
+    """
+    based_on = get_snapshot(engine, based_on_id) if based_on_id is not None else None
+    if based_on is None:
+        return True
+    return _artifacts_of(based_on.manifest, upstream) != _artifacts_of(new, upstream)
+
+
 def finalize(
     engine: Engine, blobs: BlobStore, registry: StageRegistry, project_id: str, stage: str
 ) -> StageValue:
@@ -70,7 +89,14 @@ def finalize(
                 engine, project_id, row.stage, status="active", based_on_snapshot_id=snapshot.id
             )
         elif row.based_on_snapshot_id != snapshot.id:
-            update_stage(engine, project_id, row.stage, status="stale")
+            changed = _upstream_artifacts_changed(
+                engine, registry.get(stage), row.based_on_snapshot_id, snapshot.manifest
+            )
+            if changed:
+                update_stage(engine, project_id, row.stage, status="stale")
+            elif row.status == "stale":
+                # 上游产物已经改回下游所基于的样子：下游没有过期内容了。
+                update_stage(engine, project_id, row.stage, status="active")
     return finalized
 
 

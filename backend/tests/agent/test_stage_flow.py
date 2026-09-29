@@ -70,6 +70,33 @@ class TestFinalize:
 
         assert _stage(env, "narrative").status == "active"
 
+    def test_change_outside_upstream_artifact_dirs_keeps_downstream_active(
+        self, env: StudioEnv
+    ) -> None:
+        """TD-6：定稿快照是整项目的，但只有上游产物目录（`topic/`）的变化才让下游 stale。"""
+        env.write("topic/brief.md", "v1")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+        reopen(env.engine, env.project_id, "topic")
+
+        env.write("style/STYLE.md", "changed outside topic/")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+
+        assert _stage(env, "narrative").status == "active"
+
+    def test_stale_downstream_returns_to_active_when_upstream_reverts(self, env: StudioEnv) -> None:
+        env.write("topic/brief.md", "v1")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+        reopen(env.engine, env.project_id, "topic")
+        env.write("topic/brief.md", "v2")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+        assert _stage(env, "narrative").status == "stale"
+
+        reopen(env.engine, env.project_id, "topic")
+        env.write("topic/brief.md", "v1")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+
+        assert _stage(env, "narrative").status == "active"
+
 
 class TestReopen:
     def test_only_finalized_stage_can_be_reopened(self, env: StudioEnv) -> None:

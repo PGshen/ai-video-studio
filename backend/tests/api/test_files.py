@@ -61,6 +61,25 @@ class TestReadFile:
         assert response.content == payload
         assert response.headers["content-type"] == "image/png"
 
+    async def test_supports_range_requests(self, api_env: ApiEnv) -> None:
+        """TD-37：`<audio>` 直接指向文件端点时，浏览器靠 Range 才能跳转。"""
+        pid = await _project(api_env)
+        workdir = api_env.workdir(pid)
+        (workdir / "narrative" / "audio").mkdir(parents=True, exist_ok=True)
+        payload = bytes(range(100))
+        (workdir / "narrative" / "audio" / "s-a.mp3").write_bytes(payload)
+        url = f"/api/projects/{pid}/files/narrative/audio/s-a.mp3"
+
+        full = await api_env.client.get(url)
+        part = await api_env.client.get(url, headers={"Range": "bytes=10-19"})
+
+        assert full.headers["accept-ranges"] == "bytes"
+        # 文件会被 agent 改写，浏览器不能靠启发式缓存直接用旧内容。
+        assert full.headers["cache-control"] == "no-cache"
+        assert part.status_code == 206
+        assert part.content == payload[10:20]
+        assert part.headers["content-range"] == "bytes 10-19/100"
+
     async def test_invalid_path_is_400(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)
 

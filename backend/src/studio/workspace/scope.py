@@ -127,11 +127,9 @@ def _prune_empty_ancestors(workdir: Path, restored: list[str]) -> None:
     与全量的 `layout.prune_empty_dirs` 不同：不会碰到跟本轮还原无关、agent
     这一轮刚 `mkdir -p` 出来但还没写文件的空目录（review 发现）。
     """
-    seen_dirs: set[Path] = set()
     for relpath in restored:
         parent = (workdir / relpath).parent
-        while parent != workdir and parent not in seen_dirs:
-            seen_dirs.add(parent)
+        while parent != workdir:
             rel_parts = parent.relative_to(workdir).parts
             if rel_parts and rel_parts[0] in EXCLUDED_TOP_DIRS:
                 break
