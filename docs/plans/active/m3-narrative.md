@@ -242,7 +242,8 @@
 - 2026-09-29 — T7 叙事阶段 tools 接入 + 完整提示词（顺带补 T6 返回文本的时长/覆盖率）— `make check` 全绿（commit `dde6697`）
 - 2026-09-29 — T8 叙事端到端 turn 测试（`test_narrative_flow.py`）— 1 个测试通过，`make check` 全绿（commit `695d592`）
 - 2026-09-29 — T9 `agent.preamble` 按镜头 id 的上游变更摘要 — 6 个新用例通过，`make check` 全绿（commit `18c904c`）
-- 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）
+- 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）- 2026-09-29 — T11 工作台接入叙事画布 + L4 走查（发现并修复音频不可跳转）— `make check` 全绿（commit `43193a1`）
+
 ## 下一步
 
 - 从 T12 开始：文档与配置收尾。`docs/quality/tech-debt.md` 补"配音过期检测"条目（`timing.json` 不存旁白/音色/语速哈希，前端只能判断是否配过音）和"文件端点不支持 HTTP Range"条目；`backend/.env.example` 确认已有 `VOLCENGINE_TTS_API_KEY` 说明（T1 应已写）；`docs/references/volcengine-tts.md` 要等 T13 冒烟后再填。
