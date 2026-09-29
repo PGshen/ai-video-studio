@@ -113,7 +113,7 @@
 - **完成标准**：`pytest` 里依赖这个 fixture 的用例（T5/T6/T9 的测试）都能拿到预期的项目状态。
 - **验证命令**：`make check`
 
-### T5：`stages.narrative`——`validate_narrative` 工具（待开始）
+### T5：`stages.narrative`——`validate_narrative` 工具（完成）
 
 - **目标**：narrative agent 能调用 `validate_narrative`，读取工作区 `narrative/narrative.json`，用 T3 的 schema 做结构校验，失败时报出具体镜头 id 和原因。
 - **涉及文件**：新建 `backend/src/studio/stages/narrative/validate_narrative.py`、`backend/src/studio/stages/narrative/__init__.py`（`tools()` 补上这个 `ToolSpec`）、`backend/tests/stages/test_narrative_validate.py`（新建）。
@@ -236,11 +236,12 @@
 - 2026-09-29 — T1 `engines.tts` 协议与 Volcengine 引擎迁移 — 14 个测试通过，`make check` 全绿（commit `20bf088`）
 - 2026-09-29 — T2 `beat_aligner`/`text_normalize` 迁移 — 6 个测试通过，`make check` 全绿（commit `6b24bf4`）
 - 2026-09-29 — T3 `stages.narrative.schema` — 6 个测试通过，`make check` 全绿（commit `cca221d`）
-- 2026-09-29 — T4 选题简报 fixture + `seed_narrative_project` + `conftest.py` 的 `narrative_project` fixture — 4 个测试通过，`make check` 全绿（commit 待记录）
+- 2026-09-29 — T4 选题简报 fixture + `seed_narrative_project` + `conftest.py` 的 `narrative_project` fixture — 4 个测试通过，`make check` 全绿（commit `2eea76e`）
+- 2026-09-29 — T5 `validate_narrative` 工具 — 5 个测试通过，`make check` 全绿（commit 待记录）
 
 ## 下一步
 
-- 从 T5 开始：新建 `backend/src/studio/stages/narrative/validate_narrative.py`（`ToolSpec`，读工作区 `narrative/narrative.json`，用 T3 的 `schema.validate_and_normalize`），`backend/src/studio/stages/narrative/__init__.py` 的 `tools()` 补上；用 T4 的 `narrative_project` fixture 写测试。
+- 从 T6 开始：新建 `backend/src/studio/stages/narrative/synthesize_tts.py`（`SynthesizeTtsArgs`、`handler` 按计划 T6 的 7 个步骤实现：校验 → 选镜头 → 读 project.settings → 逐镜头合成 → 对齐 → 写音频 → 更新 timing.json）。先确定测试替身怎么注入假 `TTSEngine`（计划里留了两种方案给实现时选，记入决策记录），再写 `backend/tests/stages/test_narrative_synthesize.py`。
 
 ## 决策记录
 
