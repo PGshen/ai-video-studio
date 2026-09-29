@@ -243,6 +243,7 @@
 - 2026-09-29 — T8 叙事端到端 turn 测试（`test_narrative_flow.py`）— 1 个测试通过，`make check` 全绿（commit `695d592`）
 - 2026-09-29 — T9 `agent.preamble` 按镜头 id 的上游变更摘要 — 6 个新用例通过，`make check` 全绿（commit `18c904c`）
 - 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）- 2026-09-29 — T11 工作台接入叙事画布 + L4 走查（发现并修复音频不可跳转）— `make check` 全绿（commit `43193a1`）
+- 2026-09-29 — T12 文档收尾（TD-36/TD-37；`references/volcengine-tts.md` 推迟到 T13 之后）— `make check` 全绿（commit `80b7c84`）
 
 ## 下一步
 
