@@ -240,6 +240,8 @@
 - 2026-09-29 — T5 `validate_narrative` 工具 — 5 个测试通过，`make check` 全绿（commit `58bec39`）
 - 2026-09-29 — T6 `synthesize_tts` 工具 — 6 个测试通过，`make check` 全绿（commit `b3714b6`）
 
+- 2026-09-29 — T7 叙事阶段 tools 接入 + 完整提示词（顺带补 T6 返回文本的时长/覆盖率）— `make check` 全绿（commit `dde6697`）
+
 ## 下一步
 
 - 从 T8 开始：新建 `backend/tests/api/test_narrative_flow.py`，用 `FakeRuntime` 跑叙事阶段完整一轮（写 `narrative.json` → `validate_narrative` → `synthesize_tts`，用 `monkeypatch` 替换 `synthesize_tts_module._ENGINE_FACTORY` 为假引擎）→ `stage_flow.finalize` → 动画阶段读 `upstream/narrative/`。先读 `backend/src/studio/agent/fake.py` 看现有剧本能力，不够用再改并记入决策记录。假 `TTSEngine` 可参考 `backend/tests/stages/test_narrative_synthesize.py` 里的 `FakeTTSEngine`。
