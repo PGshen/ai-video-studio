@@ -244,6 +244,7 @@
 - 2026-09-29 — T9 `agent.preamble` 按镜头 id 的上游变更摘要 — 6 个新用例通过，`make check` 全绿（commit `18c904c`）
 - 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）- 2026-09-29 — T11 工作台接入叙事画布 + L4 走查（发现并修复音频不可跳转）— `make check` 全绿（commit `43193a1`）
 - 2026-09-29 — T12 文档收尾（TD-36/TD-37；`references/volcengine-tts.md` 推迟到 T13 之后）— `make check` 全绿（commit `80b7c84`）
+- 2026-09-29 — T13 Volcengine TTS 冒烟用例 + Makefile 白名单 + runbook；QUALITY/ARCHITECTURE/legacy-assets 更新；验证记录 AC1–AC9 完成，AC10 因无 key 未验证 — `make check` 全绿（commit `c1ff5e4`）
 
 ## 下一步
 
