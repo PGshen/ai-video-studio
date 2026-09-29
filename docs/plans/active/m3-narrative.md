@@ -208,7 +208,7 @@
 - **完成标准**：L4 走查全部通过，截图存 `data/evidence/m3-narrative/`。
 - **验证命令**：`make dev` 手动走查
 
-### T12：文档与配置收尾（待开始）
+### T12：文档与配置收尾（完成，`references/volcengine-tts.md` 推迟到 T13 有真实数据之后）
 
 - **目标**：`.env.example`、`docs/references/`、`docs/quality/tech-debt.md`（T10 提到的"配音过期检测"缺口登记）按 SOP §10 的触发表更新。
 - **涉及文件**：`backend/.env.example`（若 T1 未顺手写完）、新建 `docs/references/volcengine-tts.md`（记录真实调用中观察到的行为——例如流式分片顺序、时间戳精度、mp3 时长解析在极短文本下的表现——冒烟测试跑完（T13）后再填，注明日期和来源）、`docs/quality/tech-debt.md`（补"配音过期检测"条目）。
@@ -246,7 +246,7 @@
 
 ## 下一步
 
-- 从 T12 开始：文档与配置收尾。`docs/quality/tech-debt.md` 补"配音过期检测"条目（`timing.json` 不存旁白/音色/语速哈希，前端只能判断是否配过音）和"文件端点不支持 HTTP Range"条目；`backend/.env.example` 确认已有 `VOLCENGINE_TTS_API_KEY` 说明（T1 应已写）；`docs/references/volcengine-tts.md` 要等 T13 冒烟后再填。
+- 从 T13 开始：`backend/tests/smoke/test_smoke.py` 加 `test_volcengine_tts`（缺 key `pytest.skip`），`Makefile` 的 `smoke` 白名单加 `VOLCENGINE_TTS_API_KEY`，`docs/runbooks/verification.md` 用例表加一行。落盘证据沿用其它用例的写法。之后 `docs/references/volcengine-tts.md` 只能基于真实调用结果写——没有 key 就不写（不要编造行为），在计划里标未验证。
 - T13 需要真实付费 Volcengine key（`VOLCENGINE_TTS_API_KEY`）：先看 `backend/.env` 里有没有；没有就按 SOP §6 在「阻塞」里写明并把 AC10 标"未验证"，不要停下来等。
 
 ## 决策记录
@@ -273,6 +273,7 @@
 - 2026-09-29（T10 执行中）：`timingStatus.ts` 只有 `missing`/`dubbed` 两态（计划 T10 正文已决定不做"过期"）；对齐覆盖率阈值先写死 `COVERAGE_THRESHOLD = 0.8`。定稿前提用 `computeReadiness` 在画布顶部做提示条，后端 `finalize` 不强制。
 - 2026-09-29（T10 执行中）：JSON 标签页可编辑，缓冲区/冲突处理是 `animation/conflictState.ts` 的简化内联版（写在 `NarrativeCanvas.vue` 里，不另起模块，也不 import 其他 feature），没有单元测试，靠 T11 的 L4 走查覆盖。
 - 2026-09-29（T11 执行中）：定稿按钮**不**根据叙事的校验/配音结果禁用——`StageNav` 在 `features/workbench`，画布在 `features/canvas/narrative`，features 之间不能互相 import，硬接要把状态提到页面层；而设计 §5.2 的定稿条件本来就是"由用户确认"，后端 `finalize` 也不强制。所以只保留画布顶部的状态提示条（`computeReadiness`，绿色=可以定稿，灰色=列出不满足的原因）。L4 里实测：坏镜头存在时提示条列原因，修好并配音后变绿。
+- 2026-09-29（T12 执行中）：`.env.example` 的 `VOLCENGINE_TTS_API_KEY` 说明 T1 已写，未再改；tech-debt 新增 TD-36（配音过期检测）和 TD-37（文件端点不支持 Range）。`docs/references/volcengine-tts.md` 按原计划留到 T13 冒烟之后，因为内容必须来自真实调用；本机 `backend/.env` 和环境里都没有 `VOLCENGINE_TTS_API_KEY`。
 
 ## 意外与发现
 

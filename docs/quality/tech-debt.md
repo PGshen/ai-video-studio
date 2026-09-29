@@ -18,6 +18,8 @@
 | TD-29 | 2026-09-28 | `stages/topic/__init__.py: allow_web` | 选题阶段联网（WebSearch/WebFetch）在 M1x 暂时关闭，等域名白名单机制落地再开 | 选题阶段目前不能联网搜索 | M4 选题阶段落地时，结合域名白名单重新开启 `allow_web` | M1 最终审查 I5 → M1x T8（M4 处理） |
 | TD-30 | 2026-09-28 | `scripts/dev.sh` | `python -m studio.config` 失败时，`read -r H P < <(...)` 在 `set -euo pipefail` 下直接终止脚本，加的 `-z` 检查是死代码，不会打印预期的清晰错误 | 启动失败时只看到 Python traceback，不够直观（行为与本计划改动前一致，不是新问题） | 改成 `if ! read -r H P < <(...); then echo ...; exit 1; fi` 这类显式检查 | M1x 最终评审复核发现，未修复 |
 | TD-31 | 2026-09-28 | `backend/src/studio/workspace/scope.py: _prune_empty_ancestors` | 一轮内如果有两个兄弟子树都被判定越界还原（例如 `drafts/v1/a.md`、`drafts/v2/b.md`），它们各自的父目录会被清理，但共同的更上层祖先目录（如 `drafts/`）可能因为“先处理过的路径已经见过这个祖先”而被跳过，残留一个空目录 | 无功能影响（快照本来就不记录空目录），文件浏览器里偶尔会看到一个多余的空目录 | `_prune_empty_ancestors` 去掉 `seen_dirs` 提前退出，改成每次都重新检查是否为空（或按路径深度从深到浅统一处理） | M1x 最终评审复核（finding 4 修复引入的次要回归），未修复 |
+| TD-36 | 2026-09-29 | `stages/narrative/synthesize_tts.py`、`frontend/src/features/canvas/narrative/timingStatus.ts` | `timing.json` 只存音频字节的哈希，不存旁白/音色/语速；前端和定稿检查都判断不了“配音之后旁白又改了”（设计 §5.2 要求音频哈希由旁白、音色、语速决定） | 旁白改了但没重新配音时，画布仍显示“已配音”，靠 agent 自己记得重配（提示词里写了）；定稿不会拦 | `synthesize_tts` 在 timing 条目里额外记 `narration_hash`（旁白+音色+语速），前端和定稿检查据此判“已过期”；出现真实需求或 M5 做设置页（音色/语速可改）时一起做 | M3 T10 决策、T11 L4 |
+| TD-37 | 2026-09-29 | `api/files.py::read_file_endpoint`、`frontend/src/features/canvas/narrative/BeatTimeline.vue` | 通用文件端点不支持 HTTP Range，`<audio>` 直接指向它时浏览器不能跳转；前端为此把音频整个 fetch 成 blob 再播 | 只对几十到几百 KB 的配音成立；以后要播大文件（长音频、视频）会整个读进内存 | 端点改用支持 Range 的响应（Starlette `FileResponse`，注意仍要走 `workspace.files` 的路径校验），前端改回直接 `src` | M3 T11 L4 |
 
 ## 已处理
 
