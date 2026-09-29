@@ -62,7 +62,7 @@ ai-video-studio/
 | `features/canvas/generic/` | M1 的通用文件画布：文件树 + CodeMirror 编辑器、只读/冲突状态 |
 | `features/canvas/animation/`（M2） | 动画阶段专属画布：镜头列表（`SceneList.vue`）、代码编辑器、关键帧提示（`KeyframeStrip.vue`）、成片面板（`FinalRenderPanel.vue`：渲染/进度/播放器/定稿） |
 | `features/canvas/narrative/`（M3） | 叙事阶段专属画布：镜头卡片（`SceneCardList.vue`）、按 beat 分段的配音播放条（`BeatTimeline.vue`，音频直接用文件端点的 URL，端点支持 Range）、原始 JSON 标签页；校验标记/配音状态/定稿提示条的纯逻辑在 `narrativeDoc.ts`/`timingStatus.ts` |
-| `features/canvas/topic/`（M4） | 尚未实现 |
+| `features/canvas/topic/`（M4） | 选题阶段专属画布：`BriefCheckBar`（`check_brief` 同一份检查结果的提示条，不禁用定稿按钮）、简报/笔记两个标签、`MarkdownFilePane`（一个 Markdown 文件的渲染视图 + 编辑模式 + 冲突处理，简报和笔记共用）；提示条状态和笔记列表的纯逻辑在 `briefStatus.ts` |
 | `features/settings/`（M5） | 模型配置、风格库、TTS 音色；M1 只有占位页 `pages/SettingsPage.vue` |
 | `components/session/`（M4 T10） | 会话面板（`SessionPanel`）、会话选择器（`SessionPicker`）、时间线条目（`SessionTimelineItem`）及其纯逻辑（`turnControls`、`optimisticSend`、`snapshotReason`）。项目工作台和头脑风暴抽屉共用，所以从 `features/workbench/` 搬到这里；靠 `composables/sessionScope.ts` 的 `SessionScope`（项目阶段 / 头脑风暴）区分查询和创建接口 |
 | `components/ui/` | shadcn-vue 生成的组件（通过 CLI 添加，尽量不手改） |

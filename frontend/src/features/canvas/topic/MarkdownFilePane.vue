@@ -1,0 +1,237 @@
+<script setup lang="ts">
+/**
+ * 一个 Markdown 文件的渲染视图 + 编辑模式（计划 M4 T11）：选题简报和调研笔记共用。
+ *
+ * 缓冲区/冲突处理是 `NarrativeCanvas.vue` 那套的内联版（features 之间不能互相 import）：
+ * 缓冲区干净时直接采用服务器的新内容（agent 写的），脏时进入冲突态让用户选择；`path` 变化时
+ * 重置。agent 运行时（`busy`）只读，不能切到编辑或保存。渲染视图显示的是缓冲区内容，
+ * 所以编辑后不保存也能看到渲染效果。
+ */
+import { computed, ref, watch } from 'vue'
+import { ApiError } from '@/api/http'
+import CodeEditor from '@/components/CodeEditor.vue'
+import MessageResponse from '@/components/ai-elements/message/MessageResponse.vue'
+import { Button } from '@/components/ui/button'
+import {
+  useFileContentQuery,
+  useFileTreeQuery,
+  useWriteFileMutation,
+} from '@/composables/queries'
+
+const props = defineProps<{
+  projectId: string
+  /** 工作区相对路径，例如 `topic/brief.md`。 */
+  path: string
+  stage: string
+  busy: boolean
+  /** 文件不存在时显示的提示。 */
+  emptyHint: string
+}>()
+
+interface Buffer {
+  content: string
+  saved: string
+  incoming: string | null
+}
+
+const mode = ref<'view' | 'edit'>('view')
+const buffer = ref<Buffer | null>(null)
+const saveError = ref<string | null>(null)
+
+// 文件是否存在看文件树，不靠读取 404（TanStack 会对失败的请求重试，"加载中"会拖很久）。
+const { data: fileTree } = useFileTreeQuery(() => props.projectId)
+const exists = computed(() => fileTree.value?.files.some((f) => f.path === props.path))
+const { data: fileContent, isError } = useFileContentQuery(
+  () => props.projectId,
+  () => (exists.value ? props.path : null),
+)
+
+watch(
+  () => [props.path, fileContent.value] as const,
+  ([path, content], previous) => {
+    if (previous === undefined || path !== previous[0]) {
+      buffer.value = null
+      saveError.value = null
+      mode.value = 'view'
+    }
+    if (content === undefined) return
+    const current = buffer.value
+    if (current === null || (current.content === current.saved && current.incoming === null)) {
+      buffer.value = { content, saved: content, incoming: null }
+    } else if (content !== current.saved) {
+      buffer.value = { ...current, incoming: content }
+    }
+  },
+  { immediate: true },
+)
+
+// agent 开始运行时退出编辑模式（编辑器本来也是只读的，回到渲染视图更清楚）。
+watch(
+  () => props.busy,
+  (busy) => {
+    if (busy) mode.value = 'view'
+  },
+)
+
+const dirty = computed(() => buffer.value !== null && buffer.value.content !== buffer.value.saved)
+const conflict = computed(() => buffer.value?.incoming != null)
+const missing = computed(() => fileTree.value !== undefined && !exists.value)
+
+// 文件被回滚/删除：清空缓冲区（不会在 agent 已经不再有的文件上保留编辑状态）。
+watch(exists, (now) => {
+  if (now === false) {
+    buffer.value = null
+    mode.value = 'view'
+  }
+})
+
+const writeMutation = useWriteFileMutation(() => props.projectId)
+
+function describeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 403) return '保存失败：不在当前阶段的可写范围内'
+    if (err.status === 409) return '保存失败：项目正在运行中的一轮，请稍后再试'
+    return typeof err.detail === 'string' ? err.detail : err.message
+  }
+  return err instanceof Error ? err.message : String(err)
+}
+
+function onEdit(content: string): void {
+  if (buffer.value) buffer.value = { ...buffer.value, content }
+}
+function onKeepMine(): void {
+  if (buffer.value?.incoming != null) {
+    buffer.value = { ...buffer.value, saved: buffer.value.incoming, incoming: null }
+  }
+}
+function onLoadLatest(): void {
+  if (buffer.value?.incoming != null) {
+    const latest = buffer.value.incoming
+    buffer.value = { content: latest, saved: latest, incoming: null }
+  }
+}
+async function onSave(): Promise<void> {
+  if (!buffer.value) return
+  saveError.value = null
+  const content = buffer.value.content
+  try {
+    await writeMutation.mutateAsync({ path: props.path, stage: props.stage, content })
+    buffer.value = { content, saved: content, incoming: null }
+  } catch (err) {
+    saveError.value = describeError(err)
+  }
+}
+</script>
+
+<template>
+  <div class="flex min-h-0 flex-1 flex-col gap-2">
+    <p
+      v-if="missing"
+      class="text-muted-foreground text-sm"
+    >
+      {{ emptyHint }}
+    </p>
+    <p
+      v-else-if="isError"
+      class="text-destructive text-sm"
+    >
+      读取 {{ path }} 失败。
+    </p>
+    <p
+      v-else-if="!buffer"
+      class="text-muted-foreground text-sm"
+    >
+      加载中…
+    </p>
+    <template v-else>
+      <div
+        v-if="conflict"
+        class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
+      >
+        <span>这个文件在你编辑期间被更新了（可能是 agent 写的）。</span>
+        <div class="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            @click="onKeepMine"
+          >
+            保留我的修改
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            @click="onLoadLatest"
+          >
+            载入最新
+          </Button>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex gap-1 text-sm">
+          <button
+            type="button"
+            class="rounded px-3 py-1"
+            :class="mode === 'view' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+            @click="mode = 'view'"
+          >
+            渲染
+          </button>
+          <button
+            type="button"
+            class="rounded px-3 py-1 disabled:opacity-50"
+            :class="mode === 'edit' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+            :disabled="busy"
+            @click="mode = 'edit'"
+          >
+            编辑
+          </button>
+        </div>
+        <span
+          v-if="busy"
+          class="text-muted-foreground text-xs"
+        >
+          只读：agent 正在运行
+        </span>
+      </div>
+
+      <div
+        v-if="mode === 'view'"
+        class="min-h-0 flex-1 overflow-y-auto pr-1 text-sm"
+        data-testid="markdown-view"
+      >
+        <MessageResponse :content="buffer.content" />
+      </div>
+      <template v-else>
+        <CodeEditor
+          :content="buffer.content"
+          language="markdown"
+          :readonly="busy"
+          @update:content="onEdit"
+        />
+        <div class="flex items-center justify-between">
+          <p
+            v-if="saveError"
+            class="text-destructive text-xs"
+          >
+            {{ saveError }}
+          </p>
+          <span
+            v-else-if="dirty"
+            class="text-muted-foreground text-xs"
+          >
+            有未保存的修改
+          </span>
+          <span v-else />
+          <Button
+            size="sm"
+            :disabled="!dirty || busy || writeMutation.isPending.value"
+            @click="onSave"
+          >
+            保存
+          </Button>
+        </div>
+      </template>
+    </template>
+  </div>
+</template>

@@ -34,6 +34,7 @@ import { projectScope } from '@/composables/sessionScope'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
 import NarrativeCanvas from '@/features/canvas/narrative/NarrativeCanvas.vue'
+import TopicCanvas from '@/features/canvas/topic/TopicCanvas.vue'
 
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
@@ -105,6 +106,11 @@ const canvasBusy = computed(() =>
             />
             <NarrativeCanvas
               v-else-if="stage === 'narrative'"
+              :project-id="projectId"
+              :busy="canvasBusy"
+            />
+            <TopicCanvas
+              v-else-if="stage === 'topic'"
               :project-id="projectId"
               :busy="canvasBusy"
             />

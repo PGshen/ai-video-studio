@@ -218,7 +218,7 @@
 - **完成标准**：`pnpm exec vitest run` 通过；`make check`。
 - **验证命令**：`make check`
 
-### T11：前端 `features/canvas/topic/`——选题画布，接入工作台（待开始）
+### T11：前端 `features/canvas/topic/`——选题画布，接入工作台（完成）
 
 - **目标**：`stage === 'topic'` 时显示专属画布（简报渲染视图/编辑模式、`check_brief` 状态、笔记列表），并完成对话面板的联网工具展示。
 - **涉及文件**：
@@ -287,10 +287,11 @@
 - 2026-09-29 — T8 后端端到端（头脑风暴 → 创建项目 → 选题两轮 → 定稿 → 叙事解锁）— 1 个端到端测试通过，`make check` 全绿（commit 见 git log）。后端 T1–T8 全部完成
 - 2026-09-29 — T9 前端选题池（`features/ideas/`：`IdeaCard`/`IdeaEditDialog`/`CreateProjectDialog`/`IdeaGrid`、`ideaView.ts` 纯逻辑、endpoints/queries/types；顺带完成 T11 的纯逻辑 `briefStatus.ts`、`getTopicCheck`/`useTopicCheckQuery`）— vitest 215 个通过，lint/typecheck 通过（commit 见 git log）
 - 2026-09-29 — T10 头脑风暴抽屉（`SessionPanel`/`SessionPicker`/`SessionTimelineItem` 搬到 `components/session/` 并改用 `SessionScope`，`useSessionStream` 对无项目会话失效选题池查询，`BrainstormDrawer`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）
+- 2026-09-29 — T11 选题画布（`TopicCanvas`/`MarkdownFilePane`/`BriefCheckBar`，接入 `ProjectWorkbenchPage`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）；L4 走查在 T12
 
 ## 下一步
 
-- 做 T11 剩余部分（纯逻辑 `briefStatus.ts` 和 `getTopicCheck`/`useTopicCheckQuery` 已在 T9 完成）：新建 `features/canvas/topic/`：`MarkdownFilePane.vue`（读一个文本文件，渲染/编辑切换，缓冲区+冲突处理仿 `NarrativeCanvas.vue`，路径由 props 给出，渲染用 `@/components/ai-elements/message/MessageResponse.vue`）、`BriefCheckBar.vue`（用 `computeBriefStatus`）、`TopicCanvas.vue`（简报/笔记两个标签，笔记列表用 `noteFiles`）；`pages/ProjectWorkbenchPage.vue` 加 `v-else-if="stage === 'topic'"` 分支；ARCHITECTURE §3 的 `features/canvas/topic/` 行更新。然后 T12 L4 走查。
+- 做 T12：L4 浏览器走查。`preview_start` 启动 `.claude/launch.json` 里的 `api`（已开 Fake 运行时）和 `frontend`；按 T12 的七个检查点走一遍（先用 Fake 运行时和手动 `curl` 造数据：`POST /api/ideas` 造卡片、`PUT /api/projects/{id}/files/topic/brief.md?stage=topic` 写简报；再用本机 Claude 登录做真实对话——那部分和 T13 合并）。发现的问题先补能复现的测试再修。截图存不了盘时如实写进「验证记录」。之后 T13（真实冒烟）、T14（文档收尾）。
 
 ## 决策记录
 
@@ -312,6 +313,7 @@
 - 2026-09-29（T7 执行中）：想法卡片 Markdown 由 `api/projects.py::_idea_card_markdown` 渲染（不放进 `stages/`，因为它是创建项目的一部分，不是某个阶段的逻辑）；路径常量 `IDEA_CARD_PATH = "topic/notes/idea-card.md"`。卡片的预检查（不存在 404、非 `idea` 状态 409）在动工作区之前做，并发竞争靠 `mark_picked` 的条件更新兜底，输的一方 409 且清理项目。
 - 2026-09-29（T9 执行中）：① 用原生 `<select>` 做评分下拉（比 shadcn `Select` 简单，表单里只是 1–5）。② 编辑已 `picked` 的卡片时请求体不带 `title`（后端对 picked 改名一律 409，即使标题没变）。③ `queryKeys.ideas(view)` 只有两种视图：`null`（后端默认，idea+picked）和 `'archived'`；前端不请求 `status=all`。④ 提前完成 T11 的纯逻辑 `briefStatus.ts`（与 T9 同批提交），T11 只剩组件。
 - 2026-09-29（T10 执行中）：① 头脑风暴抽屉做成**停靠在页面右侧的非模态面板**（`lg:grid-cols-[1fr_28rem]`），不用遮罩式 `Sheet`：agent 建卡片时左边网格要能实时看到，模态遮罩会挡住页面、也阻止点击卡片。计划里写的「用现有 shadcn `Sheet`」因此没用。② `SessionScope` 放在 `composables/sessionScope.ts`（纯逻辑，`components/` 和 `features/` 都能 import），不放在 `components/session/` 里。③ 关闭抽屉会断开 SSE（组件卸载），agent 仍在服务端运行；重新打开时 `useSessionStream` 重载历史，卡片网格靠 TanStack 的窗口聚焦重取和终态事件兜底。④ 选题池失效用工具名匹配 `(^|__)(create|update)_idea$`（`composables/ideaEvents.ts`），兼容 Claude 侧 `mcp__studio__` 前缀；不新增 SSE 事件类型。
+- 2026-09-29（T11 执行中）：`MarkdownFilePane` 判断文件是否存在看文件树而不是读取 404（TanStack 对失败请求默认重试，「加载中」会拖很久；叙事画布同样是先看文件树）。简报和笔记共用一个组件，`path` 变化时重置缓冲区和模式；agent 开始运行时自动退出编辑模式。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
