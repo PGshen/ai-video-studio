@@ -174,7 +174,7 @@
 - **完成标准**：AC8。
 - **验证命令**：`make check`
 
-### T8：后端端到端——选题池到叙事解锁（待开始）
+### T8：后端端到端——选题池到叙事解锁（完成）
 
 - **目标**：把 T2–T7 拼起来的契约测试，避免各自通过但拼不上（M3 T8 的同一思路）。
 - **涉及文件**：新建 `backend/tests/api/test_topic_flow.py`。
@@ -284,10 +284,11 @@
 - 2026-09-29 — T5 联网工具与 `STUDIO_WEB_MODE` 开关（`web_search`/`fetch_url`、URL 来源规则、runner 按模式过滤工具与 `allow_web`、ADR 0010）— 新增约 60 个测试，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T6 选题简报结构检查（`stages/topic/brief.py`）、`check_brief` 工具、`GET /topic/check`、完整提示词、fixture 简报补出处 — 新增约 50 个测试，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T7 `POST /api/projects` 支持 `idea_id`（卡片种进 `topic/notes/idea-card.md`、`mark_picked`、失败清理）— 新增 8 个测试，`make check` 全绿（commit 见 git log）
+- 2026-09-29 — T8 后端端到端（头脑风暴 → 创建项目 → 选题两轮 → 定稿 → 叙事解锁）— 1 个端到端测试通过，`make check` 全绿（commit 见 git log）。后端 T1–T8 全部完成
 
 ## 下一步
 
-- 做 T8：后端端到端契约测试 `backend/tests/api/test_topic_flow.py`（新建）。剧本见 T8 正文；参考 `test_narrative_flow.py` 的装配方式；用 `api_env` 的 `FakeRuntime`（`app.state.runtime_factory.register("fake", lambda: FakeRuntime([...]))`）和 `monkeypatch` 替换 `web_tools._PROVIDER_FACTORY`（并 `reset_session_urls()`）。
+- 做 T9：前端选题池页面。先读 `frontend/src/pages/IdeasPage.vue`（占位）、`features/projects/ProjectList.vue`（创建项目对话框的写法）、`api/endpoints.ts`、`composables/queries.ts`、`types/api.ts`；先写 `features/ideas/ideaView.spec.ts` 和 `api/endpoints.spec.ts` 的新用例（失败），再实现。后端接口已就绪：`GET/POST /api/ideas`、`GET/PATCH /api/ideas/{id}`、`POST /api/projects` 带 `idea_id`。
 
 ## 决策记录
 
