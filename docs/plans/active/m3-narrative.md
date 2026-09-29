@@ -199,7 +199,7 @@
 - **完成标准**：`pytest frontend`（vitest）通过；L4 浏览器走查见 T11。
 - **验证命令**：`make check`
 
-### T11：`ProjectWorkbenchPage.vue` 接入叙事画布 + L4 走查（待开始）
+### T11：`ProjectWorkbenchPage.vue` 接入叙事画布 + L4 走查（完成）
 
 - **目标**：`stage === 'narrative'` 时渲染 `NarrativeCanvas`（而不是通用文件画布），完整走一遍"手工选题简报 fixture → 打开项目 → 叙事阶段对话（Fake 或真实 Claude 订阅登录）→ 校验/配音 → 定稿 → 动画阶段能看到上游变更摘要"的路径。
 - **涉及文件**：`frontend/src/pages/ProjectWorkbenchPage.vue`（加一个 `v-else-if="stage === 'narrative'"` 分支，参照现有 `animation` 分支的写法）。
@@ -242,10 +242,11 @@
 - 2026-09-29 — T7 叙事阶段 tools 接入 + 完整提示词（顺带补 T6 返回文本的时长/覆盖率）— `make check` 全绿（commit `dde6697`）
 - 2026-09-29 — T8 叙事端到端 turn 测试（`test_narrative_flow.py`）— 1 个测试通过，`make check` 全绿（commit `695d592`）
 - 2026-09-29 — T9 `agent.preamble` 按镜头 id 的上游变更摘要 — 6 个新用例通过，`make check` 全绿（commit `18c904c`）
-- 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）\n
+- 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）
 ## 下一步
 
-- 从 T11 开始：`frontend/src/pages/ProjectWorkbenchPage.vue` 加 `v-else-if="stage === 'narrative'"` 分支渲染 `NarrativeCanvas`（`:project-id`、`:busy`），然后 L4 走查：`make dev`（或按 `docs/runbooks/verification.md`）起服务，用 `seed_narrative_project`（`backend/tests/fixtures/narrative/seed.py`）建一个选题已定稿的项目，用 Fake 或真实运行时跑叙事一轮，在内置浏览器截图存 `data/evidence/m3-narrative/`。T10 里"定稿前提"只是画布顶部的提示条（`computeReadiness`），T11 要决定是否把它接到 `StageNav` 的定稿按钮（跨 features 不能互相 import，倾向于只保留提示条并记入决策记录）。
+- 从 T12 开始：文档与配置收尾。`docs/quality/tech-debt.md` 补"配音过期检测"条目（`timing.json` 不存旁白/音色/语速哈希，前端只能判断是否配过音）和"文件端点不支持 HTTP Range"条目；`backend/.env.example` 确认已有 `VOLCENGINE_TTS_API_KEY` 说明（T1 应已写）；`docs/references/volcengine-tts.md` 要等 T13 冒烟后再填。
+- T13 需要真实付费 Volcengine key（`VOLCENGINE_TTS_API_KEY`）：先看 `backend/.env` 里有没有；没有就按 SOP §6 在「阻塞」里写明并把 AC10 标"未验证"，不要停下来等。
 
 ## 决策记录
 
@@ -270,11 +271,13 @@
 - 2026-09-29（T10 执行中）：音频播放直接复用通用的 `GET /projects/{id}/files/{path}`（按扩展名给 `audio/mpeg`），没有新增后端端点；新增前端 `workspaceFileUrl(projectId, path, version)`，`version` 用 `timing.json` 里的 `audio_hash` 做缓存标识，重新配音后浏览器不会播旧音频。
 - 2026-09-29（T10 执行中）：`timingStatus.ts` 只有 `missing`/`dubbed` 两态（计划 T10 正文已决定不做"过期"）；对齐覆盖率阈值先写死 `COVERAGE_THRESHOLD = 0.8`。定稿前提用 `computeReadiness` 在画布顶部做提示条，后端 `finalize` 不强制。
 - 2026-09-29（T10 执行中）：JSON 标签页可编辑，缓冲区/冲突处理是 `animation/conflictState.ts` 的简化内联版（写在 `NarrativeCanvas.vue` 里，不另起模块，也不 import 其他 feature），没有单元测试，靠 T11 的 L4 走查覆盖。
+- 2026-09-29（T11 执行中）：定稿按钮**不**根据叙事的校验/配音结果禁用——`StageNav` 在 `features/workbench`，画布在 `features/canvas/narrative`，features 之间不能互相 import，硬接要把状态提到页面层；而设计 §5.2 的定稿条件本来就是"由用户确认"，后端 `finalize` 也不强制。所以只保留画布顶部的状态提示条（`computeReadiness`，绿色=可以定稿，灰色=列出不满足的原因）。L4 里实测：坏镜头存在时提示条列原因，修好并配音后变绿。
 
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
+- 2026-09-29（T11）：`GET /projects/{id}/files/{path}` 不支持 HTTP Range（带 `Range` 头仍返回 200 全量、没有 `Accept-Ranges`），浏览器因此把 `<audio src=该URL>` 当成不可跳转，点 beat 分段设置 `currentTime` 被忽略（实测 0.55s，没有跳到 3.82s）。`BeatTimeline.vue` 改成先 `fetch` 成 blob 再用 `URL.createObjectURL`，跳转正常。没有给端点加 Range 支持（会改公共接口，且一个镜头配音只有几十到几百 KB）；若以后要播大文件再考虑，已登记 tech-debt（T12 一并写）。
 - 2026-09-29（T8）：`fixtures/animation/narrative.json`（M2）里 beats 的 `cue_text` 不带标点，拼起来不等于 `narration`，**过不了**新的 `validate_narrative`。`normalize_alignment_text` 只做全半角标点归一和去空白，不丢标点（T3 的计划文字"标点/空白归一化"容易被读成"忽略标点"）。M2 的测试只把它当动画输入读，不受影响，所以没改这份 fixture；T7 的提示词一开始也写错了（说"忽略标点"），已改为"连标点原样截取"。
 
 ## 阻塞
@@ -287,4 +290,11 @@
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 无
+- **T11 / AC8 L4 走查（2026-09-29，Claude 桌面版内置浏览器，1440x900）**：在开发数据目录用 `seed_narrative_project` 建了一个演示项目（标题"叙事阶段 fixture 项目"，`data/` 不进 git，可自行删除），叙事写入 4 个镜头（1 个 cue_text 不覆盖旁白且 transition 非法、1 个未配音、2 个配音）。截图是会话内截图，浏览器工具不能落盘，所以**没有**存到 `data/evidence/m3-narrative/`：
+  - 镜头卡片列表：校验通过/`2 个问题` 红标、已配音/未配音标签正确；顶部提示条"暂不满足定稿条件：1 个镜头有校验问题；2 个镜头还没有配音（当前对齐覆盖率 100%）"。
+  - 选中已配音镜头：`<audio>` 时长 0:06，两段 beat 刻度条；点第 2 段后 `currentTime≈4.45s`（beat 起点 3.82s + 0.6s）、第 2 段高亮（首次实测跳转失败，修复见「意外与发现」）。选中坏镜头：红色问题框列出"beat 1 的 transition 不合法：bogus / beats 的 cue_text 没有完整覆盖旁白"，配音区提示"还没有配音"。
+  - 原始 JSON 标签页：可见完整 JSON；编辑后"有未保存的修改"出现、保存按钮可点，保存后落盘（磁盘文件 mtime 更新、JSON 仍合法）、脏标记消失。
+  - 修好并配音后提示条变绿"可以定稿：3 个镜头全部校验通过并已配音，对齐覆盖率 100%"；点"定稿"→确认后导航变为"选题✓ — 叙事✓ — 动画"，动画阶段 active。
+  - 叙事重新打开、改 s-hook 旁白/s-explain beats/删 s-todo/加 s-new 并重新定稿后，导航显示"动画 ⚠上游已变更"（`stale`），叙事画布提示"1 个镜头还没有配音"（s-new）。
+  - 动画阶段前言（AC7 的 L4 补充）：在这个开发库上直接调用真实的 `_upstream_changes` + `build_preamble`，输出"上游新定稿"下四行：`新增镜头 s-new`、`删除镜头 s-todo`、`镜头 s-hook 旁白有改动`、`镜头 s-explain 的 beat 拆分有改动`；文件级 diff 仍照常计算。（动画 turn 前言在 UI 里看不到，所以没有 UI 截图。）
+  - 局限：s-hook 的旁白改了但画布仍显示"已配音"——即计划里已接受的"配音过期检测"缺口（tech-debt，T12）。
