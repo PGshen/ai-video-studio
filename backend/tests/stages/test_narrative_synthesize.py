@@ -154,6 +154,8 @@ async def test_synthesizes_all_scenes_and_writes_timing_json(
         {"word": "乙", "start_seconds": 0.5, "end_seconds": 1.0},
     ]
     assert hook["alignment_coverage"] == 1.0
+    # TD-36: 记下配音时用的旁白/音色/语速，前端据此判断"配音之后又改了"。
+    assert (hook["narration"], hook["voice"], hook["speed"]) == ("甲乙", "zizi", 1.0)
 
     audio_bytes = (narrative_project.workdir / "narrative" / "audio" / "s-hook.mp3").read_bytes()
     assert audio_bytes == b"AUDIO-\xe7\x94\xb2\xe4\xb9\x99"

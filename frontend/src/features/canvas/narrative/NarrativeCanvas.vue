@@ -20,7 +20,12 @@ import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import { ApiError } from '@/api/http'
 import { workspaceFileUrl } from '@/api/endpoints'
-import { useFileContentQuery, useFileTreeQuery, useWriteFileMutation } from '@/composables/queries'
+import {
+  useFileContentQuery,
+  useFileTreeQuery,
+  useProjectQuery,
+  useWriteFileMutation,
+} from '@/composables/queries'
 import BeatTimeline from './BeatTimeline.vue'
 import SceneCardList from './SceneCardList.vue'
 import {
@@ -35,6 +40,7 @@ import {
   computeDubbing,
   computeReadiness,
   overallCoverage,
+  type CurrentDubbingInputs,
   type SceneDubbing,
 } from './timingStatus'
 
@@ -92,13 +98,35 @@ const issueSceneCount = computed(
   () => Object.values(issuesById.value).filter((issues) => issues.length > 0).length,
 )
 
+// 与后端 `synthesize_tts` 的默认值一致（项目设置里没有 voice/speech_rate 时）。
+const DEFAULT_VOICE = 'zizi'
+const DEFAULT_SPEED = 1
+
+const { data: project } = useProjectQuery(() => props.projectId)
+// 项目还没加载出来时不判"配音已过期"，避免闪一下误报。
+const currentInputs = computed<CurrentDubbingInputs | undefined>(() => {
+  if (project.value === undefined) return undefined
+  const settings = project.value.settings
+  const voice = settings.voice
+  const speed = settings.speech_rate
+  return {
+    narrations: Object.fromEntries(scenes.value.map((s) => [s.id, s.narration])),
+    voice: typeof voice === 'string' ? voice : DEFAULT_VOICE,
+    speed: typeof speed === 'number' ? speed : DEFAULT_SPEED,
+  }
+})
+
 const timingParse = computed<{ dubbing: SceneDubbing[]; error: string | null }>(() => {
   if (timingExists.value && timingContent.value === undefined) {
     return { dubbing: computeDubbing(sceneIds.value, null), error: null }
   }
   try {
     return {
-      dubbing: computeDubbing(sceneIds.value, timingExists.value ? timingContent.value! : null),
+      dubbing: computeDubbing(
+        sceneIds.value,
+        timingExists.value ? timingContent.value! : null,
+        currentInputs.value,
+      ),
       error: null,
     }
   } catch (error) {

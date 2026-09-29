@@ -162,7 +162,9 @@ class TestNarrativeEndToEndFlow:
         )
         assert [s["id"] for s in timing["scenes"]] == ["s-hook", "s-explain"]
         for scene, fixture_scene in zip(timing["scenes"], fixture_timing["scenes"], strict=True):
-            assert set(scene) == set(fixture_scene)
+            # 动画阶段读取的字段与 M2 fixture 一致；多出来的只有 TD-36 的配音输入记录。
+            assert set(scene) - set(fixture_scene) == {"narration", "voice", "speed"}
+            assert set(fixture_scene) <= set(scene)
             assert set(scene["beats"][0]) == set(fixture_scene["beats"][0])
             assert set(scene["word_timestamps"][0]) == set(fixture_scene["word_timestamps"][0])
             assert (workdir / scene["audio_path"]).is_file()

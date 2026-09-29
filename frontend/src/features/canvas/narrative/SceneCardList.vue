@@ -1,11 +1,17 @@
 <script setup lang="ts">
 /**
  * 叙事镜头卡片列表（M3 T10）：纯展示。每张卡片显示镜头 id、旁白摘要、
- * beat 数，以及校验标记（有问题时标红）和配音状态（已配音/未配音）。
+ * beat 数，以及校验标记（有问题时标红）和配音状态（已配音/未配音/配音已过期）。
  * 状态计算在 `narrativeDoc.ts`/`timingStatus.ts`，这里只渲染。
  */
 import type { NarrativeScene } from './narrativeDoc'
-import type { SceneDubbing } from './timingStatus'
+import type { DubbingState, SceneDubbing } from './timingStatus'
+
+const DUBBING_LABELS: Record<DubbingState, string> = {
+  missing: '未配音',
+  dubbed: '已配音',
+  stale: '配音已过期',
+}
 
 defineProps<{
   scenes: NarrativeScene[]
@@ -49,7 +55,7 @@ const emit = defineEmits<{ (e: 'select', id: string): void }>()
                 class="rounded px-1.5 py-0.5 text-xs"
                 :class="dubbing[scene.id]?.state === 'dubbed' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'"
               >
-                {{ dubbing[scene.id]?.state === 'dubbed' ? '已配音' : '未配音' }}
+                {{ DUBBING_LABELS[dubbing[scene.id]?.state ?? 'missing'] }}
               </span>
             </span>
           </span>

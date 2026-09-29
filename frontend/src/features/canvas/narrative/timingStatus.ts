@@ -2,10 +2,9 @@
  * 叙事阶段的配音状态（M3 T10）：把 `narrative/timing.json` 的原始文本和当前
  * 镜头 id 列表对照，算出每个镜头"是否配过音"、对齐覆盖率，以及能不能定稿。
  *
- * 决策（计划 T10）：`timing.json` 不存 narration 的哈希/文本，前端无法判断
- * "配过音之后旁白又改了"，所以这里只有"未配音/已配音"两态；配音过期检测
- * 登记在 tech-debt 里，出现真实需求再做（`audio_hash` 目前只是音频字节的
- * 哈希，不是"旁白+音色+语速"的哈希，设计 §5.2 的完整版留待后续）。
+ * 配音是否过期（TD-36）：`synthesize_tts` 在每个条目里记下配音时的旁白、音色、
+ * 语速；当前值（叙事产物里的旁白、项目设置里的音色/语速）和它们不一致就是
+ * `stale`。没有记录这些字段的旧条目（TD-36 之前生成的）不判过期。
  *
  * `timing.json` 文件不存在时调用方传 `null`；存在但不是合法 JSON 时让
  * `SyntaxError` 原样抛出（同 `narrativeDoc.ts` 的约定）。
@@ -28,9 +27,21 @@ export interface SceneTiming {
   duration_seconds: number
   beats: BeatTiming[]
   alignment_coverage: number
+  /** 配音时的输入；旧条目没有这三个字段。 */
+  narration?: string
+  voice?: string
+  speed?: number
 }
 
-export type DubbingState = 'missing' | 'dubbed'
+/** `stale`：配音之后旁白、音色或语速改过，需要重新配音。 */
+export type DubbingState = 'missing' | 'dubbed' | 'stale'
+
+/** 判断配音是否过期用的"当前值"；不传则不判过期。 */
+export interface CurrentDubbingInputs {
+  narrations: Readonly<Record<string, string>>
+  voice: string
+  speed: number
+}
 
 export interface SceneDubbing {
   id: string
@@ -56,7 +67,12 @@ export function parseTimingDoc(raw: string): Record<string, SceneTiming> {
   if (!isRecord(parsed) || !Array.isArray(parsed.scenes)) return result
   for (const entry of parsed.scenes as unknown[]) {
     if (!isRecord(entry) || typeof entry.id !== 'string') continue
+    const recorded: Pick<SceneTiming, 'narration' | 'voice' | 'speed'> = {}
+    if (typeof entry.narration === 'string') recorded.narration = entry.narration
+    if (typeof entry.voice === 'string') recorded.voice = entry.voice
+    if (typeof entry.speed === 'number') recorded.speed = entry.speed
     result[entry.id] = {
+      ...recorded,
       id: entry.id,
       audio_path: str(entry.audio_path),
       audio_hash: str(entry.audio_hash),
@@ -73,15 +89,27 @@ export function parseTimingDoc(raw: string): Record<string, SceneTiming> {
   return result
 }
 
-/** 按叙事镜头顺序给出每个镜头的配音状态；`timingRaw` 为 `null` 表示文件还不存在。 */
+function isStale(timing: SceneTiming, id: string, current: CurrentDubbingInputs): boolean {
+  if (timing.narration !== undefined && timing.narration !== current.narrations[id]) return true
+  if (timing.voice !== undefined && timing.voice !== current.voice) return true
+  return timing.speed !== undefined && timing.speed !== current.speed
+}
+
+/**
+ * 按叙事镜头顺序给出每个镜头的配音状态；`timingRaw` 为 `null` 表示文件还不存在。
+ * 传入 `current` 时才判断"已过期"。
+ */
 export function computeDubbing(
   sceneIds: readonly string[],
   timingRaw: string | null,
+  current?: CurrentDubbingInputs,
 ): SceneDubbing[] {
   const timings = timingRaw === null ? {} : parseTimingDoc(timingRaw)
   return sceneIds.map((id) => {
     const timing = timings[id] ?? null
-    return { id, state: timing === null ? 'missing' : 'dubbed', timing }
+    if (timing === null) return { id, state: 'missing', timing }
+    const stale = current !== undefined && isStale(timing, id, current)
+    return { id, state: stale ? 'stale' : 'dubbed', timing }
   })
 }
 
@@ -101,7 +129,7 @@ export interface Readiness {
 
 /**
  * 叙事能否定稿（设计 §5.2 的定稿条件，前端提示用；后端 `finalize` 不强制）：
- * 有镜头、没有校验问题、每个镜头都配过音、平均对齐覆盖率不低于阈值。
+ * 有镜头、没有校验问题、每个镜头都配过音且配音没有过期、平均对齐覆盖率不低于阈值。
  */
 export function computeReadiness(params: {
   sceneCount: number
@@ -116,6 +144,10 @@ export function computeReadiness(params: {
   if (params.issueSceneCount > 0) reasons.push(`${params.issueSceneCount} 个镜头有校验问题`)
   const missing = params.dubbing.filter((d) => d.state === 'missing').length
   if (missing > 0) reasons.push(`${missing} 个镜头还没有配音`)
+  const stale = params.dubbing.filter((d) => d.state === 'stale').length
+  if (stale > 0) {
+    reasons.push(`${stale} 个镜头的配音已过期（旁白、音色或语速在配音后改过），需要重新配音`)
+  }
   const coverage = overallCoverage(params.dubbing)
   if (coverage !== null && coverage < COVERAGE_THRESHOLD) {
     reasons.push(
