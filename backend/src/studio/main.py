@@ -26,6 +26,7 @@ from studio.agent.stage import StageRegistry
 from studio.api.animation import router as animation_router
 from studio.api.blobs import router as blobs_router
 from studio.api.files import router as files_router
+from studio.api.ideas import router as ideas_router
 from studio.api.jobs import router as jobs_router
 from studio.api.profiles import router as profiles_router
 from studio.api.projects import router as projects_router
@@ -100,6 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(animation_router)
     app.include_router(blobs_router)
+    app.include_router(ideas_router)
 
     return app
 

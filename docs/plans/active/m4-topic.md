@@ -74,7 +74,7 @@
 - **完成标准**：`pytest backend/tests/search/` 通过；无真实网络请求；import-linter 新契约生效。
 - **验证命令**：`make check`
 
-### T2：`ideas` 仓储与 REST 接口（待开始）
+### T2：`ideas` 仓储与 REST 接口（完成）
 
 - **目标**：选题池卡片的持久化和 HTTP 接口，供头脑风暴工具（T4）、创建项目（T7）和前端（T9）共用。
 - **涉及文件**：新建 `backend/src/studio/db/repo/ideas.py`、`backend/src/studio/api/ideas.py`；改 `api/schemas.py`（`IdeaOut`/`IdeaCreate`/`IdeaUpdate`）、`main.py`（挂路由）；测试 `backend/tests/db/test_ideas_repo.py`、`backend/tests/api/test_ideas.py`。**不需要新迁移**：`ideas` 表在 0001 已建好。
@@ -278,10 +278,11 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-09-29 — T1 `search` 模块（Tavily 提供方、工厂、import-linter 契约、references/tavily.md）— 31 个新测试通过，`make check` 全绿（commit 见 git log）
+- 2026-09-29 — T2 `ideas` 仓储与 `/api/ideas` — 47 个新测试通过，`make check` 全绿（commit 见 git log）
 
 ## 下一步
 
-- 做 T2：先写 `backend/tests/db/test_ideas_repo.py`、`backend/tests/api/test_ideas.py`（失败），再实现 `db/repo/ideas.py`、`api/ideas.py`。之后 T3。
+- 做 T3：无项目会话。先写 `backend/tests/agent/test_runner_brainstorm.py`、`backend/tests/api/test_brainstorm_sessions.py`（失败），再改 `agent/runner.py` 等（见 T3 涉及文件）。改动前先 `grep -rn "ctx.project_id" backend/src` 列全项目阶段工具。
 
 ## 决策记录
 
@@ -295,6 +296,7 @@
   - **D5 风格仍是占位。** 设计 §5.0 说创建项目时「复制所选风格」；风格库是 M5，本计划继续复制占位 `STYLE.md`，不做风格选择器。
   - **D6 一张卡片只创建一个项目。** 创建项目后卡片置为 `picked` 并记录 `project_id`，不能再次创建、不能归档、不能改名；想再做一次同题材，让 agent 新建一张卡片。设计的 `ideas.status` 只有 `idea/picked/archived` 三态，没有「多个项目」的语义。
 - 2026-09-29（T1 执行中）：`recency_days` 映射到 Tavily 的 `time_range`（≤1 天 day、≤7 week、≤31 month、其余 year），因为 Tavily 只接受这四档；`extract` 结果多出 `total_chars` 字段（截断前长度），供 `fetch_url` 提示「共 N 字」；432/433（额度）单独归为不可重试并提示额度问题。
+- 2026-09-29（T2 执行中）：`mark_picked` 用 `UPDATE ... WHERE status='idea' RETURNING id` 做条件更新（pyright 不认 `Result.rowcount`）；`update_idea` 的「没传 vs 传 None」用 `UNSET` 哨兵区分；API 的 `PATCH` 用 `model_fields_set` 判断，`tags`/`scores` 传 `null` 视为清空。评分接受整数值浮点数（`4.0` → 4），因为模型的 JSON 偶尔会写成浮点。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现

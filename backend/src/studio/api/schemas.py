@@ -181,3 +181,36 @@ class SceneChecksOut(BaseModel):
 
 class SceneChecksResponse(BaseModel):
     scenes: dict[str, SceneChecksOut]
+
+
+class IdeaOut(BaseModel):
+    id: str
+    title: str
+    pitch: str | None
+    counterintuitive: str | None
+    tags: list[str]
+    scores: dict[str, int]
+    status: str
+    project_id: str | None
+    source_session_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class IdeaCreate(BaseModel):
+    title: str
+    pitch: str | None = None
+    counterintuitive: str | None = None
+    tags: list[str] | None = None
+    scores: dict[str, Any] | None = None
+
+
+class IdeaUpdate(BaseModel):
+    """PATCH：只处理请求里出现过的字段（`model_fields_set`），显式 `null` 表示清空文本。"""
+
+    title: str | None = None
+    pitch: str | None = None
+    counterintuitive: str | None = None
+    tags: list[str] | None = None
+    scores: dict[str, Any] | None = None
+    status: str | None = None
