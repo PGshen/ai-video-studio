@@ -2,7 +2,7 @@
 /**
  * 动画阶段画布（任务 T12）：镜头列表 + 代码编辑器 + 关键帧提示条。结构仿
  * `features/canvas/generic/FileCanvas.vue`（同一批 query/mutation、同一套
- * 缓冲区状态机——见 `conflictState.ts`/`missingFile.ts` 顶部注释，为什么是
+ * 缓冲区状态机——见 `composables/conflictState.ts`/`missingFile.ts` 顶部注释，为什么是
  * 复制一份而不是直接 import），但换成 `SceneList.vue` 而不是通用
  * `FileTree.vue`：镜头列表来自 `upstream/narrative/narrative.json`（决策
  * 记录 D37：前端直接读通用文件端点自己解析，不新增"列出镜头"端点，后端
@@ -39,7 +39,7 @@ import KeyframeStrip from './KeyframeStrip.vue'
 import FinalRenderPanel from './FinalRenderPanel.vue'
 import { NARRATIVE_JSON_PATH, parseNarrativeSceneIds } from './narrativeScenes'
 import { computeSceneStatuses } from './sceneStatus'
-import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from './conflictState'
+import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from '@/composables/conflictState'
 import { computeMissingFileAction } from './missingFile'
 
 const props = defineProps<{

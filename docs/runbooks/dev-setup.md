@@ -16,7 +16,7 @@
 
 Claude Code 沙箱中的 `PATH` 可能不包含 `~/.local/bin` 和 nvm 的 shims。Makefile 自己定位 `uv` 和 `pnpm`（`UV`/`PNPM` 变量，见 `Makefile` 开头），不依赖调用方的 `PATH`。在 Makefile 之外手动执行时，使用绝对路径，例如 `~/.local/bin/uv run pytest`（在 `backend/` 目录下）。
 
-`.claude/launch.json`（Claude 桌面版 `preview_start` 用）不写本机绝对路径：`runtimeExecutable` 直接是 `uv`、`pnpm`，要求启动 Claude 桌面版的环境 `PATH` 里能找到这两个命令（例如 `~/.local/bin` 与 nvm 的 `bin` 目录已加入登录 shell 的 `PATH`）；找不到时改用 `make dev`。数据目录不在 launch.json 里指定，用默认的 `<仓库或 worktree 根>/data/`（`config.py` 按源码位置推算）；它只开 Fake 运行时（`STUDIO_ENABLE_FAKE_RUNTIME=true`），不导出 `backend/.env`，真实模型的 key 读不到。
+`.claude/launch.json`（Claude 桌面版 `preview_start` 用）不写本机绝对路径：`runtimeExecutable` 直接是 `uv`、`pnpm`，要求启动 Claude 桌面版的环境 `PATH` 里能找到这两个命令（例如 `~/.local/bin` 与 nvm 的 `bin` 目录已加入登录 shell 的 `PATH`）；找不到时改用 `make dev`。数据目录不在 launch.json 里指定，用默认的 `<仓库或 worktree 根>/data/`（`config.py` 按源码位置推算）；它只开 Fake 运行时（`STUDIO_ENABLE_FAKE_RUNTIME=true`），不导出 `backend/.env`，真实模型的 key 和 `TAVILY_API_KEY` 读不到（此时选题/头脑风暴的 `web_search` 会返回「TAVILY_API_KEY 未设置」）；要用真实模型和联网，用 `make dev`，或者先 `set -a; . backend/.env; set +a` 再手动起 uvicorn。
 
 Fake 运行时可以用 `STUDIO_FAKE_DELAY_SECONDS=<秒>` 让默认脚本在回显和写文件之间停一会儿（可被取消），便于观察"运行中"状态、做重启中断验证；默认 0。
 
@@ -34,6 +34,12 @@ make setup
 
 - 后端配置从 `backend/.env` 读取（`STUDIO_` 前缀的环境变量），参考 `backend/.env.example`：数据目录、host/port、并发数、是否启用 Fake 运行时。模型 key（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）不是 `Settings` 字段，运行时按模型配置的 `api_key_env` 从**进程环境变量**读取；也写在 `backend/.env` 里——`scripts/dev.sh`（`make dev`）启动前会用 `set -a; . backend/.env; set +a` 把它整体导出到环境中（`make smoke` 在 T15 同样处理）。直接手动运行 `uvicorn` 时要自己导出，否则 key 读不到，对应模型的 turn 会以"环境变量未设置"失败。`backend/.env` 按 shell 语法解析（值里有空格或特殊字符要加引号）。
 - 数据目录（`data_dir`）默认为仓库根目录下的 `data/`，可以用 `STUDIO_DATA_DIR` 指向其他位置；解析后的路径不能落在 `backend/src` 之下（否则启动时报错），因为那会被 uvicorn `--reload` 监听到。
+
+## 联网搜索（选题阶段、头脑风暴）
+
+- 默认（`STUDIO_WEB_MODE=tools`）用自建的 `web_search`/`fetch_url`，后端是 Tavily：在 `backend/.env` 里填 `TAVILY_API_KEY`（裸环境变量，不带 `STUDIO_` 前缀，同 `VOLCENGINE_TTS_API_KEY`；`make dev`/`make smoke` 会导出）。免费额度够单人使用。没有 key 时这两个工具返回可读的错误，不会让一轮失败。
+- `STUDIO_WEB_MODE=native`：改用运行时原生联网（Claude `WebSearch`/`WebFetch`；OpenAI 托管搜索），不需要 Tavily key，但没有「URL 来源」限制，提示注入外泄的风险回到 M1x 关闭联网前的状态，见 `docs/decisions/0010-联网模式开关.md`。OpenAI 路径经 OpenRouter 时托管搜索是否可用未验证。
+- 两种模式互斥；narrative 和 animation 阶段在任何模式下都没有联网能力。
 
 ## 模型网关（可选）
 

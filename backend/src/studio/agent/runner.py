@@ -42,15 +42,17 @@ from studio.agent.preamble import (
 )
 from studio.agent.runtime import Budget, RuntimeFactory, TurnContext, UserInput
 from studio.agent.stage import StageRegistry
+from studio.agent.tools import ToolSpec
 from studio.agent.turn_events import TOOL_RESULT_MAX_CHARS
 from studio.agent.turn_state import _Job, _State
 from studio.config import Settings
 from studio.db.repo import turns as turns_repo
-from studio.db.repo.profiles import get_model_profile_by_id
+from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
 from studio.db.repo.sessions import get_session
 from studio.db.repo.snapshots import latest_snapshot
 from studio.workspace import (
     BlobStore,
+    WriteScope,
     create_snapshot,
     files,
     materialize_upstream,
@@ -66,6 +68,10 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def _native_web_supported(profile: ModelProfileValue) -> bool:
+    return not (profile.runtime == "openai" and profile.provider != "openai")
 
 
 class SessionBusyError(Exception):
@@ -107,9 +113,11 @@ class TurnRunner:
         session = get_session(self._engine, session_id)
         if session is None:
             raise SessionNotFoundError(session_id)
-        if session.project_id is None:
-            raise ValueError("M1 只支持属于项目的会话")
         stage = self._registry.get(session.stage)
+        if session.project_id is None and not stage.workspaceless:
+            raise ValueError(f"阶段 {session.stage} 的会话必须属于某个项目")
+        if session.project_id is not None and stage.workspaceless:
+            raise ValueError(f"头脑风暴会话不能属于项目：{session.id}")
         profile = get_model_profile_by_id(self._engine, session.model_profile_id)
         if profile is None:
             raise LookupError(f"模型配置不存在：{session.model_profile_id}")
@@ -204,11 +212,14 @@ class TurnRunner:
         for job in list(self._queue):
             if len(self._running) >= self._settings.max_concurrent_turns:
                 return
-            if self.is_project_busy(job.project_id):
+            if self._is_busy(job.busy_key):
                 continue
             self._queue.remove(job)
             self._running[job.turn_id] = job
             job.task = asyncio.get_running_loop().create_task(self._run(job))
+
+    def _is_busy(self, busy_key: str) -> bool:
+        return any(job.busy_key == busy_key for job in self._running.values())
 
     def _release(self, job: _Job) -> None:
         self._running.pop(job.turn_id, None)
@@ -223,6 +234,16 @@ class TurnRunner:
             asyncio.get_running_loop().call_later(
                 self._cancel_grace_seconds, lambda: task.done() or task.cancel()
             )
+
+    def _tools_and_web(self, job: _Job) -> tuple[list[ToolSpec], bool]:
+        """本轮的工具列表和 `allow_web`（决策 D1）。`STUDIO_WEB_MODE=tools`：阶段自带的自建
+        联网工具原样保留，运行时不开原生联网；`native`：滤掉自建联网工具，允许联网的阶段开原生联网。
+        `native` 但模型走不了原生联网（经 LiteLLM 的非官方 OpenAI 兼容模型，OpenAI 运行时只在官方
+        `provider == "openai"` 时加托管搜索）时回退到自建工具，否则这一轮完全没有联网能力。"""
+        tools = job.stage.tools()
+        if self._settings.web_mode == "native" and _native_web_supported(job.profile):
+            return [t for t in tools if not t.web], job.stage.allow_web
+        return tools, False
 
     # ---- one turn -------------------------------------------------------
 
@@ -244,22 +265,26 @@ class TurnRunner:
                 self._schedule()
 
     async def _execute(self, job: _Job, state: _State) -> None:
+        if job.project_id is None:
+            await self._execute_workspaceless(job, state)
+            return
+        project_id = job.project_id
         engine, blobs = self._engine, self._blobs
-        workdir = project_dir(self._settings.data_dir, job.project_id)
+        workdir = project_dir(self._settings.data_dir, project_id)
         workdir.mkdir(parents=True, exist_ok=True)
 
-        latest = latest_snapshot(engine, job.project_id)
+        latest = latest_snapshot(engine, project_id)
         current = scan(workdir)
         if latest is None or latest.manifest != current:
             reason = "user_edit" if latest is not None else "init"
-            start = create_snapshot(engine, blobs, job.project_id, reason, job.turn_id)
+            start = create_snapshot(engine, blobs, project_id, reason, job.turn_id)
             start_id, state.before = start.id, start.manifest
         else:
             start_id, state.before = latest.id, latest.manifest
         turns_repo.mark_turn_running(engine, job.turn_id, start_snapshot_id=start_id)
         self._publish_status(job, "running")
 
-        state.upstream_ids = stage_flow.upstream_snapshot_ids(engine, job.project_id, job.stage)
+        state.upstream_ids = stage_flow.upstream_snapshot_ids(engine, project_id, job.stage)
         state.sources = stage_flow.manifests_of(engine, state.upstream_ids)
         materialize_upstream(workdir, blobs, state.sources)
 
@@ -269,7 +294,7 @@ class TurnRunner:
                 engine,
                 blobs,
                 workdir=workdir,
-                project_id=job.project_id,
+                project_id=project_id,
                 stage=job.stage,
                 previous=previous,
                 start_snapshot_id=start_id,
@@ -281,25 +306,56 @@ class TurnRunner:
             state.tool_writes[relpath] = blobs.put(files.read_bytes(workdir, relpath))
             state.pending_tool_paths.append(relpath)
 
+        tools, allow_web = self._tools_and_web(job)
         ctx = TurnContext(
             system_prompt=job.stage.system_prompt(),
             user_input=UserInput(
                 text=compose_user_text(preamble, job.user_input.text),
                 images=job.user_input.images,
             ),
-            tools=job.stage.tools(),
+            tools=tools,
             workdir=workdir,
             model_profile=job.profile,
             resume_ref=job.session.sdk_ref,
             cancel_token=job.cancel_token,
             budget=Budget(job.profile.max_steps_per_turn, job.profile.max_cost_per_turn),
             write_scope=job.stage.write_scope(),
-            project_id=job.project_id,
+            project_id=project_id,
             stage=job.stage.name,
             record_tool_write=record_tool_write,
-            allow_web=job.stage.allow_web,
+            allow_web=allow_web,
             engine=engine,
+            session_id=job.session.id,
         )
+        await self._run_stream(job, state, ctx)
+
+    async def _execute_workspaceless(self, job: _Job, state: _State) -> None:
+        """无项目会话（头脑风暴，D2）：cwd 是每轮重置的空 scratch 目录，没有快照、
+        `upstream/`、前言和越界检查；可写范围为空，业务工具只写数据库。"""
+        workdir = files.reset_scratch(self._settings.data_dir, job.session.id)
+        turns_repo.mark_turn_running(self._engine, job.turn_id, start_snapshot_id=None)
+        self._publish_status(job, "running")
+        tools, allow_web = self._tools_and_web(job)
+        ctx = TurnContext(
+            system_prompt=job.stage.system_prompt(),
+            user_input=job.user_input,
+            tools=tools,
+            workdir=workdir,
+            model_profile=job.profile,
+            resume_ref=job.session.sdk_ref,
+            cancel_token=job.cancel_token,
+            budget=Budget(job.profile.max_steps_per_turn, job.profile.max_cost_per_turn),
+            write_scope=WriteScope(writable=[], tool_managed=[]),
+            project_id=None,
+            stage=job.stage.name,
+            record_tool_write=lambda _relpath, _sha256: None,
+            allow_web=allow_web,
+            engine=self._engine,
+            session_id=job.session.id,
+        )
+        await self._run_stream(job, state, ctx)
+
+    async def _run_stream(self, job: _Job, state: _State, ctx: TurnContext) -> None:
         runtime = self._factory.create(job.session.runtime)
         stream = runtime.run_turn(ctx)
         try:

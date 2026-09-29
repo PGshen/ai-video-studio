@@ -18,7 +18,7 @@ import shutil
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -30,6 +30,7 @@ from studio.engines.tts import TTSRequest, align_scene_beats, build_tts_engine
 from .support import (
     M1X_EVIDENCE_DIR,
     M3_EVIDENCE_DIR,
+    M4_EVIDENCE_DIR,
     REPO_ROOT,
     SmokeHarness,
     TurnOutcome,
@@ -465,3 +466,185 @@ async def test_volcengine_tts() -> None:
         assert starts == sorted(starts)
     finally:
         record_evidence("volcengine-tts", evidence, M3_EVIDENCE_DIR)
+
+
+# ---- M4：Tavily、头脑风暴、选题打磨（真实联网 + 真实模型）---------------------------------------
+
+_M4_STEPS = 40
+_IDEA_CARD = (
+    "# 哈希表查找明明是 O(1)，为什么数据库索引偏用 B+树\n\n"
+    "## 一句话卖点\n\n从「为什么不用哈希表」这个问题切入，讲清 B+树在磁盘上的优势。\n\n"
+    "## 反直觉点\n\n大家以为复杂度更低就一定更快，其实数据库索引要看磁盘 I/O 次数和范围查询。\n\n"
+    "## 标签\n\n数据库、B+树\n"
+)
+
+
+def _skip_unless_claude_login() -> None:
+    if os.environ.get("STUDIO_SMOKE_SKIP_LOGIN") == "1":
+        pytest.skip("STUDIO_SMOKE_SKIP_LOGIN=1，跳过本机登录用例")
+    if _claude_cli() is None:
+        pytest.skip("未找到 claude CLI（本机未安装/未登录 Claude Code），跳过本机登录用例")
+
+
+def _m4_project(h: SmokeHarness) -> None:
+    """选题阶段起点：项目工作区里放一份想法卡片笔记（等价于按卡片创建项目）。"""
+    note = h.workdir / "topic" / "notes" / "idea-card.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(_IDEA_CARD, encoding="utf-8")
+
+
+async def test_tavily_search() -> None:
+    _require_env("TAVILY_API_KEY")
+    import time
+
+    from studio.search import SearchError, build_search_provider
+
+    provider = build_search_provider()
+    evidence: dict[str, Any] = {}
+    try:
+        started = time.monotonic()
+        response = await provider.search("Python asyncio event loop", max_results=3)
+        evidence["search_seconds"] = round(time.monotonic() - started, 2)
+        evidence["hits"] = [
+            {
+                "title": h.title,
+                "url": h.url,
+                "published": h.published,
+                "snippet_chars": len(h.snippet),
+            }
+            for h in response.hits
+        ]
+        assert response.hits, "搜索没有返回结果"
+        assert all(h.url.startswith(("http://", "https://")) for h in response.hits)
+
+        # 抓取：真实站点偶尔会失败，只要求前几条里至少有一条成功。
+        pages: list[dict[str, Any]] = []
+        for hit in response.hits:
+            started = time.monotonic()
+            try:
+                page = await provider.extract(hit.url, max_chars=2000)
+            except SearchError as exc:  # 记录失败原因，不中断
+                pages.append({"url": hit.url, "error": f"{type(exc).__name__}: {exc}"})
+                continue
+            pages.append(
+                {
+                    "url": hit.url,
+                    "seconds": round(time.monotonic() - started, 2),
+                    "chars": len(page.text),
+                    "total_chars": page.total_chars,
+                    "truncated": page.truncated,
+                }
+            )
+            assert page.text.strip()
+            break
+        evidence["extract"] = pages
+        assert any("error" not in p for p in pages), pages
+    finally:
+        record_evidence("tavily-search", evidence, M4_EVIDENCE_DIR)
+
+
+async def test_brainstorm_claude_login(tmp_path: Path) -> None:
+    _skip_unless_claude_login()
+    from studio.db.repo.ideas import list_ideas
+
+    harness = build_harness(tmp_path, real_stages=True)
+    try:
+        profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
+        session_id = harness.brainstorm_session(profile, "claude")
+        has_search_key = bool(os.environ.get("TAVILY_API_KEY"))
+        search_hint = (
+            "创建前先用联网搜索核实一下常见说法（搜索一次即可）。" if has_search_key else ""
+        )
+        outcome = await harness.turn(
+            session_id,
+            "这是自动化测试。围绕「数据库索引」这个主题创建 2 张选题卡片，"
+            "创建前先用 list_ideas 查重。" + search_hint + "每张卡片都要有反直觉点和评分。",
+        )
+        ideas = list_ideas(harness.engine)
+        evidence = {
+            **outcome_summary(outcome),
+            "ideas": [
+                {"title": i.title, "counterintuitive": i.counterintuitive, "scores": i.scores}
+                for i in ideas
+            ],
+        }
+        record_evidence("brainstorm-claude-login", evidence, M4_EVIDENCE_DIR)
+
+        assert outcome.turn.status == "done", (outcome.turn.status, outcome.turn.error)
+        assert outcome.turn.start_snapshot_id is None and outcome.turn.end_snapshot_id is None
+        assert outcome.used_tool("list_ideas")
+        assert outcome.used_tool("create_idea")
+        assert ideas, "没有创建任何卡片"
+        assert all(i.source_session_id == session_id for i in ideas)
+        assert all(i.counterintuitive for i in ideas)
+        assert all(i.scores for i in ideas)
+        if has_search_key:
+            assert outcome.used_tool("web_search")
+    finally:
+        harness.engine.dispose()
+
+
+_TOPIC_PROMPT = (
+    "这是自动化测试。请先读 topic/notes/idea-card.md，然后用联网搜索核实其中的反直觉点，"
+    "写出选题简报 topic/brief.md（关键事实控制在 3–4 条即可，每条带真实出处和把握程度），"
+    "并用 check_brief 检查到没有错误。不要写其他文件。"
+)
+_TOPIC_RETRY_PROMPT = "根据 check_brief 的结果继续修改 topic/brief.md，直到没有错误。"
+
+
+async def _run_topic_case(
+    tmp_path: Path, *, web_mode: Literal["tools", "native"], case: str
+) -> Any:
+    from studio.stages.topic.brief import check_workspace
+
+    harness = build_harness(tmp_path, real_stages=True, web_mode=web_mode)
+    try:
+        _m4_project(harness)
+        profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
+        session_id = harness.session(profile, "claude", stage="topic")
+        first = await harness.turn(session_id, _TOPIC_PROMPT)
+        outcomes = [first]
+        check = check_workspace(harness.workdir)
+        if first.turn.status == "done" and not check.ok:
+            # 真实模型偶尔会写不齐：允许**一次**「根据 check_brief 继续」的追加轮。
+            outcomes.append(await harness.turn(session_id, _TOPIC_RETRY_PROMPT))
+            check = check_workspace(harness.workdir)
+        brief = harness.workdir / "topic" / "brief.md"
+        record_evidence(
+            case,
+            {
+                "web_mode": web_mode,
+                "turns": [outcome_summary(o) for o in outcomes],
+                "check": {"errors": check.errors, "warnings": check.warnings},
+                "brief_chars": len(brief.read_text(encoding="utf-8")) if brief.is_file() else 0,
+                "notes": sorted(p.name for p in (harness.workdir / "topic" / "notes").glob("*.md")),
+            },
+            M4_EVIDENCE_DIR,
+        )
+        for outcome in outcomes:
+            assert outcome.turn.status == "done", (outcome.turn.status, outcome.turn.error)
+        assert brief.is_file(), "没有写出 topic/brief.md"
+        assert check.ok, check.errors
+        return outcomes
+    finally:
+        harness.engine.dispose()
+
+
+async def test_topic_claude_login(tmp_path: Path) -> None:
+    _skip_unless_claude_login()
+    _require_env("TAVILY_API_KEY")
+    outcomes = await _run_topic_case(tmp_path, web_mode="tools", case="topic-claude-login")
+    used = [o.used_tool for o in outcomes]
+    assert any(u("web_search") for u in used), "tools 模式下没有调用自建的 web_search"
+    assert not any(u("WebSearch") or u("WebFetch") for u in used), "tools 模式下不该有原生联网"
+    assert any(u("check_brief") for u in used)
+
+
+async def test_topic_claude_login_native_web(tmp_path: Path) -> None:
+    _skip_unless_claude_login()
+    outcomes = await _run_topic_case(tmp_path, web_mode="native", case="topic-claude-login-native")
+    used = [o.used_tool for o in outcomes]
+    assert any(u("WebSearch") or u("WebFetch") for u in used), "native 模式下没有调用原生联网"
+    assert not any(u("web_search") or u("fetch_url") for u in used), (
+        "native 模式下不该有自建联网工具"
+    )

@@ -76,7 +76,8 @@ class TurnContext:
     cancel_token: CancelToken
     budget: Budget
     write_scope: WriteScope
-    project_id: str
+    project_id: str | None
+    """无项目会话（头脑风暴）为 `None`，此时 `workdir` 是每轮重置的 scratch 目录。"""
     stage: str
     record_tool_write: Callable[[str, str], None]
     allow_web: bool = False
@@ -85,6 +86,8 @@ class TurnContext:
     """
     engine: Engine | None = None
     """透传给 `ToolContext.engine`（TD-32），供需要写数据库的工具使用。"""
+    session_id: str | None = None
+    """透传给 `ToolContext.session_id`。"""
 
     def tool_context(self) -> ToolContext:
         """业务工具 handler 的上下文；三个运行时都从这里取，不各自构造（TD-17）。"""
@@ -94,6 +97,7 @@ class TurnContext:
             workdir=self.workdir,
             record_tool_write=self.record_tool_write,
             engine=self.engine,
+            session_id=self.session_id,
         )
 
 

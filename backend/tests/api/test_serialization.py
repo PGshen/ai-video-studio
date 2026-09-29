@@ -15,8 +15,10 @@ from typing import Any
 
 import pytest
 
+from brief_builder import make_brief
 from studio.agent.runner import TurnRunner
 from studio.db.repo.snapshots import list_snapshots
+from studio.workspace import files
 
 from .conftest import ApiEnv
 
@@ -57,6 +59,7 @@ class TestBusyCheckRunsOnEventLoopThread:
 
     async def test_finalize_and_reopen(self, api_env: ApiEnv, busy_checks: list[int]) -> None:
         pid = (await api_env.create_project())["id"]
+        files.write_text_unscoped(api_env.workdir(pid), "topic/brief.md", make_brief())
         finalize = await api_env.client.post(f"/api/projects/{pid}/stages/topic/finalize")
         reopen = await api_env.client.post(f"/api/projects/{pid}/stages/topic/reopen")
         assert finalize.status_code == 200

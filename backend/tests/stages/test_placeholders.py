@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from studio.stages.animation import STAGE as animation_stage
+from studio.stages.brainstorm import STAGE as brainstorm_stage
 from studio.stages.narrative import STAGE as narrative_stage
 from studio.stages.topic import STAGE as topic_stage
 from studio.workspace.scope import is_writable
@@ -22,12 +23,11 @@ class TestTopicStage:
         assert topic_stage.upstream_stages() == []
         assert topic_stage.artifact_dirs() == ["topic"]
 
-    def test_no_business_tools_in_m1(self) -> None:
-        assert topic_stage.tools() == []
-
-    def test_web_tools_disabled_until_domain_policy(self) -> None:
-        # TD-1: no stage gets web tools until M4 adds a domain allowlist.
-        assert topic_stage.allow_web is False
+    def test_web_is_allowed_and_tools_include_web_tools(self) -> None:
+        # ADR 0010: web use is a stage capability, the mode (STUDIO_WEB_MODE) picks the
+        # implementation; the runner filters the self-built tools out in native mode.
+        assert topic_stage.allow_web is True
+        assert {"web_search", "fetch_url"} <= {t.name for t in topic_stage.tools()}
 
     def test_system_prompt_is_non_empty(self) -> None:
         assert topic_stage.system_prompt().strip() != ""
@@ -72,3 +72,16 @@ class TestAnimationStage:
         # 不再需要单独给阶段实例注入 Engine 才能出现在 tools() 里。
         names = {tool.name for tool in animation_stage.tools()}
         assert names == {"validate_scenes", "render_preview", "suggest_upstream_change"}
+
+
+class TestBrainstormStage:
+    def test_has_no_workspace(self) -> None:
+        scope = brainstorm_stage.write_scope()
+        assert scope.writable == [] and scope.tool_managed == []
+        assert brainstorm_stage.upstream_stages() == []
+        assert brainstorm_stage.artifact_dirs() == []
+
+    def test_prompt_and_summary(self, tmp_path: Path) -> None:
+        assert brainstorm_stage.name == "brainstorm"
+        assert brainstorm_stage.system_prompt().strip() != ""
+        assert isinstance(brainstorm_stage.status_summary(tmp_path), str)

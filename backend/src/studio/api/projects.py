@@ -32,6 +32,12 @@ from studio.agent.stage_flow import StageFlowError, finalize, reopen
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
 from studio.api.schemas import ProjectCreate, ProjectDetailOut, ProjectOut, StageOut
 from studio.config import Settings
+from studio.db.repo.ideas import (
+    IdeaStateError,
+    IdeaValue,
+    get_idea,
+    mark_picked,
+)
 from studio.db.repo.projects import (
     ProjectValue,
     clear_project_completed,
@@ -42,7 +48,13 @@ from studio.db.repo.projects import (
 )
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
-from studio.workspace import BlobStore, create_snapshot, init_workspace, remove_workspace
+from studio.workspace import (
+    BlobStore,
+    create_snapshot,
+    init_workspace,
+    project_dir,
+    remove_workspace,
+)
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -74,11 +86,38 @@ def _stage_out(value: StageValue) -> StageOut:
     )
 
 
+_SCORE_LABELS = (
+    ("counterintuitive", "反直觉"),
+    ("provable", "可论证"),
+    ("visual", "可视化"),
+    ("novelty", "新鲜度"),
+)
+IDEA_CARD_PATH = "topic/notes/idea-card.md"
+
+
+def _idea_card_markdown(idea: IdeaValue) -> str:
+    """想法卡片的 Markdown 形式，放进新项目的 `topic/notes/`，选题阶段 agent 先读它。"""
+    lines = [f"# {idea.title}", "", "（来自选题池的想法卡片，是选题打磨的起点，不是结论。）", ""]
+    lines += ["## 一句话卖点", "", idea.pitch or "（未填写）", ""]
+    lines += ["## 反直觉点", "", idea.counterintuitive or "（未填写）", ""]
+    lines += ["## 标签", "", "、".join(idea.tags) if idea.tags else "（无）", ""]
+    scores = [
+        f"- {label}：{idea.scores[key]}/5" for key, label in _SCORE_LABELS if key in idea.scores
+    ]
+    lines += ["## 评分（1–5）", "", *(scores or ["（未评分）"]), ""]
+    return "\n".join(lines)
+
+
 def _init_workspace(
-    engine: Engine, blobs: BlobStore, settings: Settings, project_id: str, title: str
+    engine: Engine,
+    blobs: BlobStore,
+    settings: Settings,
+    project_id: str,
+    title: str,
+    extra_files: dict[str, str] | None = None,
 ) -> None:
     style = f"# {title}\n\n（风格占位，风格库在 M5 实现）\n"
-    init_workspace(settings.data_dir, project_id, {"style/STYLE.md": style})
+    init_workspace(settings.data_dir, project_id, {"style/STYLE.md": style, **(extra_files or {})})
     create_snapshot(engine, blobs, project_id, reason="init")
 
 
@@ -89,6 +128,17 @@ def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str)
     delete_project(engine, project_id)
 
 
+def _require_pickable_idea(engine: Engine, idea_id: str) -> IdeaValue:
+    idea = get_idea(engine, idea_id)
+    if idea is None:
+        raise HTTPException(status_code=404, detail=f"想法卡片不存在：{idea_id}")
+    if idea.status != "idea":
+        raise HTTPException(
+            status_code=409, detail=f"这张卡片的状态是 {idea.status}，不能用来创建项目"
+        )
+    return idea
+
+
 @router.post("/projects", response_model=ProjectOut, status_code=201)
 def create_project_endpoint(
     body: ProjectCreate,
@@ -96,12 +146,32 @@ def create_project_endpoint(
     blobs: BlobStore = Depends(get_blobs),
     settings: Settings = Depends(get_settings),
 ) -> ProjectOut:
+    idea = _require_pickable_idea(engine, body.idea_id) if body.idea_id is not None else None
     project_id = uuid4().hex
     try:
-        _init_workspace(engine, blobs, settings, project_id, body.title)
-        project = create_project(engine, id=project_id, title=body.title, settings=body.settings)
+        _init_workspace(
+            engine,
+            blobs,
+            settings,
+            project_id,
+            body.title,
+            {IDEA_CARD_PATH: _idea_card_markdown(idea)} if idea is not None else None,
+        )
+        project = create_project(
+            engine,
+            id=project_id,
+            title=body.title,
+            idea_id=body.idea_id,
+            settings=body.settings,
+        )
         for stage, status in _INITIAL_STAGES:
             create_stage(engine, project_id=project_id, stage=stage, status=status)
+        if idea is not None:
+            # 最后一步，条件更新：两个请求同时用一张卡片时，输的一方在这里失败。
+            mark_picked(engine, idea.id, project_id)
+    except IdeaStateError as exc:
+        _cleanup_failed_project(engine, settings, project_id)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         _cleanup_failed_project(engine, settings, project_id)
         raise HTTPException(status_code=500, detail=f"创建项目失败：{exc}") from exc
@@ -152,10 +222,14 @@ async def finalize_stage_endpoint(
     blobs: BlobStore = Depends(get_blobs),
     registry: StageRegistry = Depends(get_registry),
     turn_runner: TurnRunner = Depends(get_turn_runner),
+    settings: Settings = Depends(get_settings),
 ) -> StageOut:
     _require_project(engine, project_id)
-    _require_stage_definition(stage, registry)
+    definition = _require_stage_definition(stage, registry)
     _require_not_busy(turn_runner, project_id)
+    blockers = definition.finalize_blockers(project_dir(settings.data_dir, project_id))
+    if blockers:
+        raise HTTPException(status_code=409, detail="暂时不能定稿：" + "；".join(blockers))
     try:
         value = finalize(engine, blobs, registry, project_id, stage)
     except StageFlowError as exc:

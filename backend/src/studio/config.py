@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -69,6 +70,11 @@ class Settings(BaseSettings):
     openai_price_output: float | None = None
     """种子 `gpt` 的输出单价，美元 / 百万 token（`STUDIO_OPENAI_PRICE_OUTPUT`）；
     未设置时不变（默认 $10）。"""
+    web_mode: Literal["tools", "native"] = "tools"
+    """联网方式（`STUDIO_WEB_MODE`，决策 D1）。`tools`（默认）：头脑风暴/选题阶段用自建的
+    `web_search`/`fetch_url`（Tavily，带「URL 来源」限制）；`native`：用运行时原生的联网能力
+    （Claude WebSearch/WebFetch、OpenAI 托管 `WebSearchTool`），没有 URL 来源保护，不需要
+    Tavily key。两种模式互斥。"""
     manim_timeout_seconds: float = 600.0
     """manim 全画质渲染子进程的超时时间（`STUDIO_MANIM_TIMEOUT_SECONDS`）。"""
 
@@ -85,6 +91,14 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             value = value.strip()
             return value or None
+        return value
+
+    @field_validator("web_mode", mode="before")
+    @classmethod
+    def _blank_web_mode_is_default(cls, value: object) -> object:
+        # `.env` 里写了 `STUDIO_WEB_MODE=` 但没填值：当作没设置，用默认的 tools。
+        if isinstance(value, str) and not value.strip():
+            return "tools"
         return value
 
     @field_validator("data_dir")

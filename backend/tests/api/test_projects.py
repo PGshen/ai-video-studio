@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import pytest
+
+from brief_builder import make_brief
+from studio.db.repo.ideas import IdeaStateError
 from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.stages import list_stages
+from studio.workspace import files
 
 from .conftest import ApiEnv, assert_detail
 
@@ -86,8 +91,7 @@ class TestFinalizeAndReopen:
     async def test_finalize_unlocks_downstream_stage(self, api_env: ApiEnv) -> None:
         project = await api_env.create_project()
         pid = project["id"]
-        (api_env.workdir(pid) / "topic").mkdir(parents=True, exist_ok=True)
-        (api_env.workdir(pid) / "topic" / "brief.md").write_text("定稿简报", encoding="utf-8")
+        files.write_text_unscoped(api_env.workdir(pid), "topic/brief.md", make_brief())
 
         response = await api_env.client.post(f"/api/projects/{pid}/stages/topic/finalize")
 
@@ -101,6 +105,7 @@ class TestFinalizeAndReopen:
     async def test_reopen_finalized_stage(self, api_env: ApiEnv) -> None:
         project = await api_env.create_project()
         pid = project["id"]
+        files.write_text_unscoped(api_env.workdir(pid), "topic/brief.md", make_brief())
         await api_env.client.post(f"/api/projects/{pid}/stages/topic/finalize")
 
         response = await api_env.client.post(f"/api/projects/{pid}/stages/topic/reopen")
@@ -165,3 +170,121 @@ class TestCreateProjectFailureCleanup:
         # the `init` snapshot created by `_init_workspace` before the DB rows
         # is not left orphaned either (review finding: was previously leaked).
         assert list_snapshots(api_env.app.state.engine, fixed_id.hex) == []
+
+
+class TestCreateProjectFromIdea:
+    async def _idea(self, api_env: ApiEnv, **extra: object) -> dict:
+        response = await api_env.client.post(
+            "/api/ideas",
+            json={
+                "title": "排序为什么这么快",
+                "pitch": "十亿条记录一秒排完",
+                "counterintuitive": "大家以为排序慢，其实分治让它很快",
+                "tags": ["算法", "排序"],
+                "scores": {"counterintuitive": 5, "visual": 4},
+                **extra,
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    async def test_creates_project_linked_to_idea_and_marks_it_picked(
+        self, api_env: ApiEnv
+    ) -> None:
+        idea = await self._idea(api_env)
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "排序视频", "idea_id": idea["id"]}
+        )
+        assert response.status_code == 201, response.text
+        project = response.json()
+        assert project["idea_id"] == idea["id"]
+
+        card = (await api_env.client.get(f"/api/ideas/{idea['id']}")).json()
+        assert card["status"] == "picked"
+        assert card["project_id"] == project["id"]
+
+    async def test_idea_card_is_seeded_into_workspace_and_init_snapshot(
+        self, api_env: ApiEnv
+    ) -> None:
+        idea = await self._idea(api_env)
+        project = (
+            await api_env.client.post(
+                "/api/projects", json={"title": "排序视频", "idea_id": idea["id"]}
+            )
+        ).json()
+
+        path = api_env.workdir(project["id"]) / "topic" / "notes" / "idea-card.md"
+        text = path.read_text(encoding="utf-8")
+        assert "排序为什么这么快" in text
+        assert "十亿条记录一秒排完" in text
+        assert "大家以为排序慢，其实分治让它很快" in text
+        assert "算法" in text
+        assert "反直觉" in text and "5" in text
+
+        snapshots = list_snapshots(api_env.app.state.engine, project["id"])
+        assert len(snapshots) == 1 and snapshots[0].reason == "init"
+        assert "topic/notes/idea-card.md" in snapshots[0].manifest
+        assert "style/STYLE.md" in snapshots[0].manifest
+
+    async def test_card_without_optional_fields_renders(self, api_env: ApiEnv) -> None:
+        idea = (await api_env.client.post("/api/ideas", json={"title": "只有标题"})).json()
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "idea_id": idea["id"]}
+        )
+        assert response.status_code == 201
+        text = (
+            api_env.workdir(response.json()["id"]) / "topic" / "notes" / "idea-card.md"
+        ).read_text(encoding="utf-8")
+        assert "只有标题" in text
+
+    async def test_unknown_idea_is_404_and_leaves_nothing(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "idea_id": "nope"}
+        )
+        assert response.status_code == 404
+        assert (await api_env.client.get("/api/projects")).json() == []
+        assert not (api_env.data_dir / "projects").exists() or not list(
+            (api_env.data_dir / "projects").iterdir()
+        )
+
+    async def test_picked_idea_cannot_be_used_twice(self, api_env: ApiEnv) -> None:
+        idea = await self._idea(api_env)
+        first = await api_env.client.post(
+            "/api/projects", json={"title": "P1", "idea_id": idea["id"]}
+        )
+        assert first.status_code == 201
+        second = await api_env.client.post(
+            "/api/projects", json={"title": "P2", "idea_id": idea["id"]}
+        )
+        assert second.status_code == 409
+        assert len((await api_env.client.get("/api/projects")).json()) == 1
+
+    async def test_archived_idea_is_409(self, api_env: ApiEnv) -> None:
+        idea = await self._idea(api_env)
+        await api_env.client.patch(f"/api/ideas/{idea['id']}", json={"status": "archived"})
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "idea_id": idea["id"]}
+        )
+        assert response.status_code == 409
+
+    async def test_losing_the_race_cleans_up_the_project(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        idea = await self._idea(api_env)
+
+        def lose(engine: object, idea_id: str, project_id: str) -> None:
+            raise IdeaStateError("已被别的项目选走")
+
+        monkeypatch.setattr("studio.api.projects.mark_picked", lose)
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "idea_id": idea["id"]}
+        )
+        assert response.status_code == 409
+        assert (await api_env.client.get("/api/projects")).json() == []
+        card = (await api_env.client.get(f"/api/ideas/{idea['id']}")).json()
+        assert card["status"] == "idea"
+
+    async def test_project_without_idea_still_works(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        assert project["idea_id"] is None
+        assert not (api_env.workdir(project["id"]) / "topic").exists()

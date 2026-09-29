@@ -11,7 +11,7 @@ import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/componen
 import type { TimelineItem } from '@/composables/useSessionStream'
 import { snapshotEventLabel } from './snapshotReason'
 
-const props = defineProps<{ item: TimelineItem; projectId: string }>()
+const props = defineProps<{ item: TimelineItem; projectId: string | null }>()
 
 const NOTICE_LABELS: Record<string, string> = {
   guard_restored: '越界写入已被还原',
@@ -61,7 +61,7 @@ const images = computed(() => {
         :error-text="item.result?.isError ? item.result.text : undefined"
       />
       <div
-        v-if="images.length > 0"
+        v-if="projectId !== null && images.length > 0"
         class="flex flex-wrap gap-2 px-4 pb-4"
       >
         <img

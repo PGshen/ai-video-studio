@@ -11,5 +11,11 @@ from studio.stages.common.suggest_upstream_change import (
     SUGGEST_UPSTREAM_CHANGE_TOOL,
     SuggestUpstreamChangeArgs,
 )
+from studio.stages.common.web_tools import FETCH_URL_TOOL, WEB_SEARCH_TOOL
 
-__all__ = ["SUGGEST_UPSTREAM_CHANGE_TOOL", "SuggestUpstreamChangeArgs"]
+__all__ = [
+    "FETCH_URL_TOOL",
+    "SUGGEST_UPSTREAM_CHANGE_TOOL",
+    "SuggestUpstreamChangeArgs",
+    "WEB_SEARCH_TOOL",
+]

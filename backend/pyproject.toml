@@ -128,6 +128,7 @@ allow_indirect_imports = true
 name = "各阶段之间互不 import（规则 3）：共用代码放进 stages.common"
 type = "independence"
 modules = [
+    "studio.stages.brainstorm",
     "studio.stages.topic",
     "studio.stages.narrative",
     "studio.stages.animation",
@@ -168,8 +169,8 @@ allow_indirect_imports = true
 name = "分层（ARCHITECTURE §2 依赖表）：main > api > stages > agent > workspace > db > config"
 type = "layers"
 # 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines（M2 T1）、
-# jobs（M2 T3）、worker（M2 T5）不在这条链上，各自已有独立的 forbidden 契约（见
-# 下）；search（M4）还不存在，等建立时按 R1 补进来。各阶段之间的独立性由上面的
+# jobs（M2 T3）、worker（M2 T5）、search（M4 T1）不在这条链上，各自已有独立的 forbidden
+# 契约（见下）。各阶段之间的独立性由上面的
 # independence 契约保证。
 layers = [
     "studio.main",
@@ -187,6 +188,21 @@ type = "forbidden"
 source_modules = ["studio.stages"]
 forbidden_modules = ["studio.db.models"]
 allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "search 是纯能力层（规则 4）：只依赖 config，不访问数据库，不知道项目和阶段的存在"
+type = "forbidden"
+source_modules = ["studio.search"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.engines",
+    "studio.jobs",
+]
 
 [[tool.importlinter.contracts]]
 name = "engines 是纯能力层（规则 4）：只依赖 config，不访问数据库，不知道项目和阶段的存在"

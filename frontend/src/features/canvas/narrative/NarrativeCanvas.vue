@@ -10,14 +10,22 @@
  * - 顶部状态条给出定稿前提（校验通过、全部配音、对齐覆盖率达标）的当前
  *   满足情况；这只是提示，后端 `finalize` 不强制这些条件（设计 §5.2 的
  *   定稿条件由用户确认）。
- * - JSON 标签页可编辑：缓冲区/冲突处理是 `animation/conflictState.ts` 那套
- *   逻辑的简化内联版（features 之间不能互相 import，那份状态机也不值得
- *   为了这一处再复制成独立模块）——缓冲区干净时直接采用服务器新内容，脏时
- *   进入冲突态让用户选择。agent 运行时（`busy`）画布只读。
+ * - JSON 标签页可编辑：缓冲区/冲突处理用共享的 `composables/conflictState.ts`——
+ *   缓冲区干净时直接采用服务器新内容，脏时进入冲突态让用户选择。agent 运行时
+ *   （`busy`）画布只读。
  */
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
+import {
+  edit,
+  initBuffer,
+  keepMine,
+  loadLatest,
+  saved,
+  serverUpdate,
+  type BufferState,
+} from '@/composables/conflictState'
 import { ApiError } from '@/api/http'
 import { workspaceFileUrl } from '@/api/endpoints'
 import {
@@ -170,41 +178,24 @@ watch(scenes, (list) => {
 
 // ---- JSON 标签页的编辑缓冲区 -----------------------------------------------
 
-interface Buffer {
-  content: string
-  saved: string
-  incoming: string | null
-}
-const buffer = ref<Buffer | null>(null)
-const dirty = computed(() => buffer.value !== null && buffer.value.content !== buffer.value.saved)
-const conflict = computed(() => buffer.value?.incoming != null)
+const buffer = ref<BufferState | null>(null)
 
 watch(narrativeContent, (content) => {
   if (content === undefined) return
-  const current = buffer.value
-  if (current === null || (current.content === current.saved && current.incoming === null)) {
-    buffer.value = { content, saved: content, incoming: null }
-  } else if (content !== current.saved) {
-    buffer.value = { ...current, incoming: content }
-  }
+  buffer.value = buffer.value === null ? initBuffer(content) : serverUpdate(buffer.value, content)
 })
 watch(narrativeExists, (exists) => {
   if (!exists) buffer.value = null
 })
 
 function onEdit(content: string): void {
-  if (buffer.value) buffer.value = { ...buffer.value, content }
+  if (buffer.value) buffer.value = edit(buffer.value, content)
 }
 function onKeepMine(): void {
-  if (buffer.value?.incoming != null) {
-    buffer.value = { ...buffer.value, saved: buffer.value.incoming, incoming: null }
-  }
+  if (buffer.value) buffer.value = keepMine(buffer.value)
 }
 function onLoadLatest(): void {
-  if (buffer.value?.incoming != null) {
-    const latest = buffer.value.incoming
-    buffer.value = { content: latest, saved: latest, incoming: null }
-  }
+  if (buffer.value) buffer.value = loadLatest(buffer.value)
 }
 
 const writeMutation = useWriteFileMutation(() => props.projectId)
@@ -225,7 +216,7 @@ async function onSave(): Promise<void> {
   const content = buffer.value.content
   try {
     await writeMutation.mutateAsync({ path: NARRATIVE_PATH, stage: 'narrative', content })
-    buffer.value = { content, saved: content, incoming: null }
+    buffer.value = saved(buffer.value, content)
   } catch (error) {
     saveError.value = describeError(error)
   }
@@ -403,7 +394,7 @@ async function onSave(): Promise<void> {
         </template>
         <template v-else>
           <div
-            v-if="conflict"
+            v-if="buffer.conflict"
             class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
           >
             <span>narrative.json 在你编辑期间被更新了（可能是 agent 写的）。</span>
@@ -444,7 +435,7 @@ async function onSave(): Promise<void> {
               {{ saveError }}
             </p>
             <span
-              v-else-if="dirty"
+              v-else-if="buffer.dirty"
               class="text-muted-foreground text-xs"
             >
               有未保存的修改
@@ -452,7 +443,7 @@ async function onSave(): Promise<void> {
             <span v-else />
             <Button
               size="sm"
-              :disabled="!dirty || busy || writeMutation.isPending.value"
+              :disabled="!buffer.dirty || busy || writeMutation.isPending.value"
               @click="onSave"
             >
               保存

@@ -63,7 +63,7 @@ dev:
 # 真实模型的冒烟测试（计划 T15）：先导出 backend/.env（同 scripts/dev.sh），再用 env -i
 # 只带白名单变量运行 pytest——在 Claude Code 等宿主里执行时，宿主注入的 CLAUDE_CODE_* /
 # ANTHROPIC_BASE_URL 等变量不会带进用例。缺 key 的用例自动跳过。默认 make check 不含它。
-SMOKE_KEYS := ANTHROPIC_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY VOLCENGINE_TTS_API_KEY
+SMOKE_KEYS := ANTHROPIC_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY VOLCENGINE_TTS_API_KEY TAVILY_API_KEY
 
 smoke:
 	@set -a; [ -f backend/.env ] && . backend/.env; set +a; \

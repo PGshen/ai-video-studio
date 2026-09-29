@@ -27,6 +27,7 @@ _TOOLS: list[ToolSpec] = [VALIDATE_SCENES_TOOL, RENDER_PREVIEW_TOOL, SUGGEST_UPS
 class AnimationStage:
     name = "animation"
     allow_web = False
+    workspaceless = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")
@@ -42,6 +43,9 @@ class AnimationStage:
 
     def artifact_dirs(self) -> list[str]:
         return ["animation/scenes"]
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        return []
 
     def status_summary(self, workdir: Path) -> str:
         count = sum(1 for path in files.list_tree(workdir) if path.startswith("animation/scenes/"))

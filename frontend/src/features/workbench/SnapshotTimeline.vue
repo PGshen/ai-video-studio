@@ -23,7 +23,7 @@ import {
   useSnapshotsQuery,
 } from '@/composables/queries'
 import { ApiError } from '@/api/http'
-import { snapshotReasonLabel } from './snapshotReason'
+import { snapshotReasonLabel } from '@/components/session/snapshotReason'
 import { canRollback, computeDiffParams, toggleSnapshotSelection } from './snapshotSelection'
 
 const props = defineProps<{

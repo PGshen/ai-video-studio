@@ -33,7 +33,8 @@ class ToolResult:
 class ToolContext:
     """传给工具 handler 的上下文。"""
 
-    project_id: str
+    project_id: str | None
+    """头脑风暴等无项目会话为 `None`；项目阶段的工具用 `require_project()` 取。"""
     stage: str
     workdir: Path
     record_tool_write: Callable[[str, str], None]
@@ -47,6 +48,16 @@ class ToolContext:
     表）用它；大多数工具（文件读写、manim 校验/渲染）不需要，默认 `None`。
     由 `TurnContext.tool_context()` 从 `TurnRunner` 持有的 `Engine` 传入
     （TD-32）。"""
+    session_id: str | None = None
+    """当前会话 id；头脑风暴工具用它记 `source_session_id`，联网工具用它按会话
+    记搜索结果（M4）。"""
+
+    def require_project(self) -> str:
+        """项目阶段的工具用：没有项目（无项目会话）时抛 `RuntimeError`，
+        `invoke_tool` 会把它转成 `is_error` 的工具结果。"""
+        if self.project_id is None:
+            raise RuntimeError("这个工具只能在项目阶段里使用。")
+        return self.project_id
 
 
 ToolHandler = Callable[[ToolContext, Any], "ToolResult | Awaitable[ToolResult]"]
@@ -65,6 +76,9 @@ class ToolSpec:
     input_model: type[BaseModel]
     stages: set[str]
     handler: ToolHandler
+    web: bool = False
+    """自建联网工具（`stages.common.web_tools`）。`STUDIO_WEB_MODE=native` 时 TurnRunner 把带这个
+    标志的工具滤掉，改用运行时的原生联网能力。"""
 
 
 async def invoke_tool(spec: ToolSpec, ctx: ToolContext, raw_args: dict[str, Any]) -> ToolResult:

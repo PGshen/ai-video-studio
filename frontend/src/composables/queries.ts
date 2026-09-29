@@ -9,8 +9,12 @@
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/vue-query'
 import * as api from '@/api/endpoints'
+import type { SessionScope } from '@/composables/sessionScope'
 import type {
   FileWriteResult,
+  IdeaCreate,
+  IdeaOut,
+  IdeaUpdate,
   JobOut,
   MessageCreate,
   ProjectCreate,
@@ -18,7 +22,15 @@ import type {
   SessionCreate,
 } from '@/types/api'
 
+/** 选题池列表的视图：`null` 是未归档（后端默认），`'archived'` 是已归档。 */
+export type IdeasView = 'archived' | null
+
 export const queryKeys = {
+  /** 所有选题池列表的公共前缀，卡片变化后整体失效。 */
+  ideasAll: () => ['ideas'] as const,
+  ideas: (view: IdeasView) => ['ideas', view ?? 'active'] as const,
+  topicCheck: (projectId: string) => ['projects', projectId, 'topic', 'check'] as const,
+  brainstormSessions: () => ['brainstorm', 'sessions'] as const,
   projects: () => ['projects'] as const,
   project: (projectId: string) => ['projects', projectId] as const,
   fileTree: (projectId: string) => ['projects', projectId, 'files'] as const,
@@ -30,6 +42,11 @@ export const queryKeys = {
   sessions: (projectId: string, stage: string) =>
     ['projects', projectId, 'stages', stage, 'sessions'] as const,
   session: (sessionId: string) => ['sessions', sessionId] as const,
+  /** 某个范围（项目阶段或头脑风暴）的会话列表。 */
+  sessionsFor: (scope: SessionScope) =>
+    scope.kind === 'brainstorm'
+      ? queryKeys.brainstormSessions()
+      : queryKeys.sessions(scope.projectId, scope.stage),
   modelProfiles: () => ['model-profiles'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   latestJob: (projectId: string, type: string) =>
@@ -72,6 +89,8 @@ export function useCreateProjectMutation() {
     mutationFn: (body: ProjectCreate) => api.createProject(body),
     onSuccess: (project: ProjectOut) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      // 从卡片创建项目后，卡片变成 `picked`。
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
       queryClient.setQueryData(queryKeys.project(project.id), project)
     },
   })
@@ -123,12 +142,25 @@ export function useWriteFileMutation(projectId: MaybeRefOrGetter<string>) {
   return useMutation({
     mutationFn: ({ path, stage, content }: { path: string; stage: string; content: string }) =>
       api.writeFileContent(toValue(projectId), path, stage, content),
-    onSuccess: (result: FileWriteResult) => {
-      const pid = toValue(projectId)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(pid) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fileContent(pid, result.path) })
-    },
+    onSuccess: (result: FileWriteResult) =>
+      invalidateAfterWrite(queryClient, toValue(projectId), result.path),
   })
+}
+
+/**
+ * 手动保存文件后要失效的查询：文件树、该文件内容，以及选题简报的检查结果（检查读的是工作区里的
+ * `topic/brief.md`，用户在画布里改完保存后提示条必须跟着刷新——M4 T12 走查发现）。
+ */
+export async function invalidateAfterWrite(
+  queryClient: QueryClient,
+  projectId: string,
+  path: string,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.fileContent(projectId, path) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
+  ])
 }
 
 // ---- snapshots ------------------------------------------------------------
@@ -167,27 +199,29 @@ export function useRollbackSnapshotMutation(projectId: MaybeRefOrGetter<string>)
 
 // ---- sessions -------------------------------------------------------------
 
-export function useSessionsQuery(
-  projectId: MaybeRefOrGetter<string>,
-  stage: MaybeRefOrGetter<string>,
-) {
+export function useSessionsQuery(scope: MaybeRefOrGetter<SessionScope>) {
   return useQuery({
-    queryKey: computed(() => queryKeys.sessions(toValue(projectId), toValue(stage))),
-    queryFn: () => api.listSessions(toValue(projectId), toValue(stage)),
+    queryKey: computed(() => queryKeys.sessionsFor(toValue(scope))),
+    queryFn: () => {
+      const value = toValue(scope)
+      return value.kind === 'brainstorm'
+        ? api.listBrainstormSessions()
+        : api.listSessions(value.projectId, value.stage)
+    },
   })
 }
 
-export function useCreateSessionMutation(
-  projectId: MaybeRefOrGetter<string>,
-  stage: MaybeRefOrGetter<string>,
-) {
+export function useCreateSessionMutation(scope: MaybeRefOrGetter<SessionScope>) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: SessionCreate) => api.createSession(toValue(projectId), toValue(stage), body),
+    mutationFn: (body: SessionCreate) => {
+      const value = toValue(scope)
+      return value.kind === 'brainstorm'
+        ? api.createBrainstormSession(body)
+        : api.createSession(value.projectId, value.stage, body)
+    },
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.sessions(toValue(projectId), toValue(stage)),
-      })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsFor(toValue(scope)) })
     },
   })
 }
@@ -312,6 +346,45 @@ export function useSceneChecksQuery(
   })
 }
 
+// ---- ideas / 选题池 ----------------------------------------------------
+
+export function useIdeasQuery(view: MaybeRefOrGetter<IdeasView>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.ideas(toValue(view))),
+    queryFn: () => api.listIdeas(toValue(view) ?? undefined),
+  })
+}
+
+export function useCreateIdeaMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: IdeaCreate) => api.createIdea(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
+    },
+  })
+}
+
+export function useUpdateIdeaMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: { id: string; body: IdeaUpdate }): Promise<IdeaOut> =>
+      api.updateIdea(args.id, args.body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
+    },
+  })
+}
+
+// ---- topic ---------------------------------------------------------------
+
+export function useTopicCheckQuery(projectId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.topicCheck(toValue(projectId))),
+    queryFn: () => api.getTopicCheck(toValue(projectId)),
+  })
+}
+
 // ---- shared helper for useSessionStream --------------------------------
 
 /**
@@ -329,5 +402,6 @@ export async function invalidateWorkspace(
     // 和所有 `fileContent(projectId, <path>)`（key 以它为前缀）。
     queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.snapshots(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
   ])
 }

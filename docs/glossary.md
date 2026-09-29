@@ -4,7 +4,12 @@
 
 | 术语 | 英文 | 含义 |
 |---|---|---|
-| 想法卡片 | idea | 选题池中的一条候选选题 |
+| 想法卡片 | idea | 选题池中的一条候选选题：标题、卖点、反直觉点、标签、四项评分（反直觉/可论证/可视化/新鲜度，1–5）；状态 `idea`/`picked`（已创建项目）/`archived` |
+| 头脑风暴 | brainstorm | 没有项目的对话，agent 联网搜索并往选题池写想法卡片；阶段名 `brainstorm` |
+| 选题简报 | brief | 选题打磨阶段的产物 `topic/brief.md`：七个固定章节，关键事实逐条带出处和把握程度（高/中/低），由 `check_brief` 检查结构 |
+| 无项目会话 | workspaceless session | `project_id` 为空的会话（头脑风暴）：没有工作区和快照，cwd 是每轮重建、一轮结束即删的 scratch 目录 |
+| 联网模式 | web mode | `STUDIO_WEB_MODE`：`tools`（默认，自建 `web_search`/`fetch_url`）或 `native`（运行时原生联网），互斥，见 ADR 0010 |
+| URL 来源规则 | URL provenance | `fetch_url` 只能抓本会话搜索结果里出现过的、或用户消息里给出的 URL，模型不能凭空构造 URL |
 | 选题池 | idea pool | 所有想法卡片的集合，头脑风暴的产出放在这里 |
 | 项目 | project | 从一张想法卡片创建，完整走完三个阶段，产出一个视频 |
 | 阶段 | stage | `topic`（选题打磨）、`narrative`（叙事）、`animation`（动画，含成片）；另有不属于项目的 `brainstorm` |
@@ -20,7 +25,7 @@
 | 模型配置 | model profile | 模型、接入方式、价格、预算上限，决定使用哪种运行时 |
 | 业务工具 | business tool / ToolSpec | 我们自己定义的工具，只定义一次，由适配层转成两种 SDK 的格式 |
 | 原生工具 | native tool | SDK 自带的工具，例如 Claude 的 Read/Edit/Bash、OpenAI 的 ApplyPatchTool |
-| 兜底工具集 | fallback tools | 模型用不了原生工具时，由我们提供的最小文件工具和搜索工具 |
+| 兜底工具集 | fallback tools | 模型用不了原生工具时，由我们提供的最小文件工具（联网工具是单独的 `web_search`/`fetch_url`，见联网模式） |
 | 快照 | snapshot | 某一时刻工作区的清单 `{路径: 内容哈希}`，内容存在 `data/blobs/` 中 |
 | 定稿 | finalize | 负责人确认某个阶段的产物，记录定稿快照，并开放下游阶段 |
 | 上游只读副本 | upstream copy | `upstream/<stage>/`，上游定稿版本的只读副本，每轮开始前刷新 |

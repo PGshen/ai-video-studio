@@ -23,6 +23,14 @@ def project_dir(data_dir: Path | str, project_id: str) -> Path:
     return Path(data_dir) / "projects" / project_id
 
 
+def scratch_dir(data_dir: Path | str, session_id: str) -> Path:
+    """无项目会话（头脑风暴）的 scratch 目录 `<data_dir>/scratch/<session_id>/`（不保证已存在）。
+
+    它只是原生文件工具/Shell 需要的一个 cwd：不快照、不参与任何项目，每轮开始前清空。
+    """
+    return Path(data_dir) / "scratch" / session_id
+
+
 class PathEscapesWorkdir(Exception):
     """相对路径解析后落在工作区之外。"""
 

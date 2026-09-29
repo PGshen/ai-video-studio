@@ -69,7 +69,7 @@ def _write_text(ctx: ToolContext, relpath: str, text: str) -> None:
 
 
 def _project_voice_and_speed(ctx: ToolContext) -> tuple[str, float]:
-    project = get_project(ctx.engine, ctx.project_id) if ctx.engine is not None else None
+    project = get_project(ctx.engine, ctx.require_project()) if ctx.engine is not None else None
     settings = project.settings if project is not None else {}
     return (
         settings.get("voice", _DEFAULT_VOICE),

@@ -97,7 +97,7 @@ _RESUMABLE_TURN_STATUSES = ("interrupted", "budget_exceeded")
 _CANCELLABLE_TURN_STATUSES = ("queued", "running")
 
 
-def _session_out(value: SessionValue) -> SessionOut:
+def session_out(value: SessionValue) -> SessionOut:
     return SessionOut(
         id=value.id,
         project_id=value.project_id,
@@ -134,9 +134,11 @@ def _require_project(engine: Engine, project_id: str) -> None:
 
 def _require_stage(stage: str, registry: StageRegistry) -> None:
     try:
-        registry.get(stage)
+        definition = registry.get(stage)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"未知阶段：{stage}") from exc
+    if definition.workspaceless:  # 头脑风暴会话不属于项目，走 /api/brainstorm/sessions
+        raise HTTPException(status_code=404, detail=f"未知阶段：{stage}")
 
 
 def _require_session(engine: Engine, session_id: str) -> SessionValue:
@@ -171,7 +173,7 @@ def create_session_endpoint(
         model_profile_id=profile.id,
         runtime=profile.runtime,
     )
-    return _session_out(session)
+    return session_out(session)
 
 
 @router.get("/projects/{project_id}/stages/{stage}/sessions", response_model=list[SessionOut])
@@ -179,14 +181,14 @@ def list_sessions_endpoint(
     project_id: str, stage: str, engine: Engine = Depends(get_engine)
 ) -> list[SessionOut]:
     _require_project(engine, project_id)
-    return [_session_out(s) for s in list_sessions(engine, project_id, stage)]
+    return [session_out(s) for s in list_sessions(engine, project_id, stage)]
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
 def get_session_endpoint(session_id: str, engine: Engine = Depends(get_engine)) -> SessionDetailOut:
     session = _require_session(engine, session_id)
     turns = [_turn_out(t) for t in turns_repo.list_turns(engine, session_id)]
-    return SessionDetailOut(**_session_out(session).model_dump(), turns=turns)
+    return SessionDetailOut(**session_out(session).model_dump(), turns=turns)
 
 
 @router.post("/sessions/{session_id}/messages", response_model=TurnAccepted, status_code=202)

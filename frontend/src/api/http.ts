@@ -33,7 +33,7 @@ async function parseErrorDetail(response: Response): Promise<unknown> {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   /** 数组值编码成同名重复参数（`?scene_id=a&scene_id=b`），匹配 FastAPI 的 `list[str]` query 参数。 */
   query?: Record<string, string | number | boolean | string[] | null | undefined>
   body?: unknown

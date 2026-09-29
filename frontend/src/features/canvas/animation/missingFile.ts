@@ -4,7 +4,7 @@
  * 完全一样——同样的道理，`animation/scenes/<id>.py` 也可能因为回滚/被
  * agent 删除而消失，用户如果正编辑着它，不能让编辑器悄悄用旧内容覆盖式
  * 保存把文件重新创建出来。跨阶段画布不能互相 import（见
- * `conflictState.ts` 顶部注释），复制一份。
+ * `composables/conflictState.ts` 顶部注释），复制一份。
  *
  * 注意：这个函数只处理"之前已经加载过真实内容、后来消失了"的情况；
  * "这个镜头从来没有写过代码"（`SceneStatus.exists === false` 但用户是

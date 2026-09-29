@@ -24,7 +24,7 @@ def _handler(ctx: ToolContext, args: SuggestUpstreamChangeArgs) -> ToolResult:
         return ToolResult(text="内部错误：当前上下文没有数据库连接。", is_error=True)
     create_suggestion(
         ctx.engine,
-        project_id=ctx.project_id,
+        project_id=ctx.require_project(),
         from_stage=ctx.stage,
         to_stage=args.to_stage,
         content=args.content,

@@ -25,16 +25,20 @@ from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
 from studio.api.animation import router as animation_router
 from studio.api.blobs import router as blobs_router
+from studio.api.brainstorm import router as brainstorm_router
 from studio.api.files import router as files_router
+from studio.api.ideas import router as ideas_router
 from studio.api.jobs import router as jobs_router
 from studio.api.profiles import router as profiles_router
 from studio.api.projects import router as projects_router
 from studio.api.sessions import router as sessions_router
 from studio.api.snapshots import router as snapshots_router
+from studio.api.topic import router as topic_router
 from studio.config import Settings, get_settings
 from studio.db.engine import make_engine, migrate
 from studio.db.repo.profiles import seed_model_profiles
 from studio.stages.animation import STAGE as ANIMATION_STAGE
+from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
 from studio.workspace import BlobStore
@@ -49,7 +53,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     seed_model_profiles(engine, enable_fake_runtime=settings.enable_fake_runtime, settings=settings)
 
     registry = StageRegistry()
-    for stage in (TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE):
+    for stage in (BRAINSTORM_STAGE, TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE):
         registry.register(stage)
 
     runtime_factory = RuntimeFactory()
@@ -100,6 +104,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(animation_router)
     app.include_router(blobs_router)
+    app.include_router(ideas_router)
+    app.include_router(brainstorm_router)
+    app.include_router(topic_router)
 
     return app
 
