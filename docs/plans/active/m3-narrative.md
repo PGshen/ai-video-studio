@@ -102,7 +102,7 @@
 - **完成标准**：`pytest backend/tests/stages/test_narrative_schema.py` 通过。
 - **验证命令**：`make check`
 
-### T4：手工选题简报 fixture 与开发种子脚本（待开始）
+### T4：手工选题简报 fixture 与开发种子脚本（完成）
 
 - **目标**：在没有 M4 selection/brainstorm agent 的情况下，能创建一个"选题已定稿"的项目，用于本计划其余任务（T5/T6/T9）的测试和 `make dev` 手动走查。参照 M2 决策记录 D6 的教训，本任务提前到消费它的任务之前完成。
 - **涉及文件**：新建 `backend/tests/fixtures/narrative/brief.md`、新建 `backend/tests/fixtures/narrative/seed.py`、`backend/tests/conftest.py` 或 `backend/tests/stages/conftest.py`（加一个 `narrative_project` fixture，参照 M2 T4 的 `animation_project` fixture 放置位置）。
@@ -235,11 +235,12 @@
 
 - 2026-09-29 — T1 `engines.tts` 协议与 Volcengine 引擎迁移 — 14 个测试通过，`make check` 全绿（commit `20bf088`）
 - 2026-09-29 — T2 `beat_aligner`/`text_normalize` 迁移 — 6 个测试通过，`make check` 全绿（commit `6b24bf4`）
-- 2026-09-29 — T3 `stages.narrative.schema` — 6 个测试通过，`make check` 全绿（commit 待记录）
+- 2026-09-29 — T3 `stages.narrative.schema` — 6 个测试通过，`make check` 全绿（commit `cca221d`）
+- 2026-09-29 — T4 选题简报 fixture + `seed_narrative_project` + `conftest.py` 的 `narrative_project` fixture — 4 个测试通过，`make check` 全绿（commit 待记录）
 
 ## 下一步
 
-- 从 T4 开始：新建 `backend/tests/fixtures/narrative/brief.md` + `backend/tests/fixtures/narrative/seed.py::seed_narrative_project`（建项目 → 写 `topic/brief.md` → `stage_flow.finalize(..., "topic")`），供 T5/T6/T8 测试使用。
+- 从 T5 开始：新建 `backend/src/studio/stages/narrative/validate_narrative.py`（`ToolSpec`，读工作区 `narrative/narrative.json`，用 T3 的 `schema.validate_and_normalize`），`backend/src/studio/stages/narrative/__init__.py` 的 `tools()` 补上；用 T4 的 `narrative_project` fixture 写测试。
 
 ## 决策记录
 
