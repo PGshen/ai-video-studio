@@ -13,6 +13,10 @@ describe('queryKeys', () => {
     expect(queryKeys.session('s1')).toEqual(['sessions', 's1'])
     expect(queryKeys.modelProfiles()).toEqual(['model-profiles'])
     expect(queryKeys.job('j1')).toEqual(['jobs', 'j1'])
+    expect(queryKeys.ideasAll()).toEqual(['ideas'])
+    expect(queryKeys.ideas('archived')).toEqual(['ideas', 'archived'])
+    expect(queryKeys.ideas(null)).toEqual(['ideas', 'active'])
+    expect(queryKeys.topicCheck('p1')).toEqual(['projects', 'p1', 'topic', 'check'])
   })
 })
 

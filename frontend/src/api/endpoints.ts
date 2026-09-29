@@ -8,6 +8,10 @@ import { encodeFilePath, encodePathSegment, request, requestText } from '@/api/h
 import type {
   FileTreeOut,
   FileWriteResult,
+  IdeaCreate,
+  IdeaOut,
+  IdeaStatus,
+  IdeaUpdate,
   JobOut,
   MessageCreate,
   ModelProfileOut,
@@ -21,6 +25,7 @@ import type {
   SnapshotDiffOut,
   SnapshotOut,
   StageOut,
+  TopicCheckOut,
   TurnAccepted,
 } from '@/types/api'
 
@@ -205,4 +210,26 @@ export function workspaceFileUrl(projectId: string, path: string, version?: stri
  */
 export function blobUrl(projectId: string, sha256: string): string {
   return `/api/projects/${encodePathSegment(projectId)}/blobs/${encodePathSegment(sha256)}`
+}
+
+// ---- ideas / 选题池（M4，对应 `api/ideas.py`）---------------------------
+
+/** 不带 `status` 时后端返回 idea + picked（不含归档）；`'all'` 含归档。 */
+export function listIdeas(status?: IdeaStatus | 'all'): Promise<IdeaOut[]> {
+  return request('/ideas', { query: { status } })
+}
+
+export function createIdea(body: IdeaCreate): Promise<IdeaOut> {
+  return request('/ideas', { method: 'POST', body })
+}
+
+export function updateIdea(ideaId: string, body: IdeaUpdate): Promise<IdeaOut> {
+  return request(`/ideas/${encodePathSegment(ideaId)}`, { method: 'PATCH', body })
+}
+
+// ---- topic（M4，对应 `api/topic.py`）-----------------------------------
+
+/** `topic/brief.md` 的结构检查结果（和 `check_brief` 工具同一份逻辑）。 */
+export function getTopicCheck(projectId: string): Promise<TopicCheckOut> {
+  return request(`/projects/${encodePathSegment(projectId)}/topic/check`)
 }

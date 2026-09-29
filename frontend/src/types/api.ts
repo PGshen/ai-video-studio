@@ -7,6 +7,8 @@
 export interface ProjectCreate {
   title: string
   settings?: Record<string, unknown> | null
+  /** 从选题池的想法卡片创建（卡片须为 `idea` 状态，成功后变为 `picked`）。 */
+  idea_id?: string | null
 }
 
 export interface StageOut {
@@ -167,4 +169,50 @@ export interface SceneChecksOut {
 
 export interface SceneChecksResponse {
   scenes: Record<string, SceneChecksOut>
+}
+
+// ---- 选题池（M4，对应 `api/ideas.py`）-----------------------------------
+
+export type IdeaStatus = 'idea' | 'picked' | 'archived'
+export type IdeaScoreKey = 'counterintuitive' | 'provable' | 'visual' | 'novelty'
+
+export interface IdeaOut {
+  id: string
+  title: string
+  pitch: string | null
+  counterintuitive: string | null
+  tags: string[]
+  scores: Partial<Record<IdeaScoreKey, number>>
+  status: IdeaStatus
+  /** `picked` 的卡片对应的项目。 */
+  project_id: string | null
+  source_session_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface IdeaCreate {
+  title: string
+  pitch?: string | null
+  counterintuitive?: string | null
+  tags?: string[] | null
+  scores?: Partial<Record<IdeaScoreKey, number>> | null
+}
+
+/** PATCH：只带要改的字段；`null` 清空文本字段。`status` 只能在 idea/archived 之间切换。 */
+export interface IdeaUpdate {
+  title?: string
+  pitch?: string | null
+  counterintuitive?: string | null
+  tags?: string[] | null
+  scores?: Partial<Record<IdeaScoreKey, number>> | null
+  status?: 'idea' | 'archived'
+}
+
+// ---- 选题简报检查（M4，对应 `api/topic.py`）------------------------------
+
+export interface TopicCheckOut {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
 }

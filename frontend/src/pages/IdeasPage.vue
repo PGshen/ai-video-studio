@@ -1,10 +1,15 @@
 <script setup lang="ts">
-// 选题池与头脑风暴是 M4 范围（见 docs/plans/active/m1-skeleton.md「不包含」），
-// M1 只放占位页保证路由可达。
+/**
+ * 选题池页面（计划 M4）：想法卡片网格。头脑风暴抽屉在 T10 接入。
+ */
+import IdeaGrid from '@/features/ideas/IdeaGrid.vue'
 </script>
 
 <template>
-  <div class="text-muted-foreground text-sm">
-    选题池将在 M4 实现。
+  <div class="flex flex-col gap-4">
+    <h1 class="text-lg font-semibold">
+      选题池
+    </h1>
+    <IdeaGrid />
   </div>
 </template>

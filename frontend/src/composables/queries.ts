@@ -11,6 +11,9 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import * as api from '@/api/endpoints'
 import type {
   FileWriteResult,
+  IdeaCreate,
+  IdeaOut,
+  IdeaUpdate,
   JobOut,
   MessageCreate,
   ProjectCreate,
@@ -18,7 +21,14 @@ import type {
   SessionCreate,
 } from '@/types/api'
 
+/** 选题池列表的视图：`null` 是未归档（后端默认），`'archived'` 是已归档。 */
+export type IdeasView = 'archived' | null
+
 export const queryKeys = {
+  /** 所有选题池列表的公共前缀，卡片变化后整体失效。 */
+  ideasAll: () => ['ideas'] as const,
+  ideas: (view: IdeasView) => ['ideas', view ?? 'active'] as const,
+  topicCheck: (projectId: string) => ['projects', projectId, 'topic', 'check'] as const,
   projects: () => ['projects'] as const,
   project: (projectId: string) => ['projects', projectId] as const,
   fileTree: (projectId: string) => ['projects', projectId, 'files'] as const,
@@ -72,6 +82,8 @@ export function useCreateProjectMutation() {
     mutationFn: (body: ProjectCreate) => api.createProject(body),
     onSuccess: (project: ProjectOut) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      // 从卡片创建项目后，卡片变成 `picked`。
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
       queryClient.setQueryData(queryKeys.project(project.id), project)
     },
   })
@@ -312,6 +324,45 @@ export function useSceneChecksQuery(
   })
 }
 
+// ---- ideas / 选题池 ----------------------------------------------------
+
+export function useIdeasQuery(view: MaybeRefOrGetter<IdeasView>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.ideas(toValue(view))),
+    queryFn: () => api.listIdeas(toValue(view) ?? undefined),
+  })
+}
+
+export function useCreateIdeaMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: IdeaCreate) => api.createIdea(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
+    },
+  })
+}
+
+export function useUpdateIdeaMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: { id: string; body: IdeaUpdate }): Promise<IdeaOut> =>
+      api.updateIdea(args.id, args.body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
+    },
+  })
+}
+
+// ---- topic ---------------------------------------------------------------
+
+export function useTopicCheckQuery(projectId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.topicCheck(toValue(projectId))),
+    queryFn: () => api.getTopicCheck(toValue(projectId)),
+  })
+}
+
 // ---- shared helper for useSessionStream --------------------------------
 
 /**
@@ -329,5 +380,6 @@ export async function invalidateWorkspace(
     // 和所有 `fileContent(projectId, <path>)`（key 以它为前缀）。
     queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.snapshots(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
   ])
 }

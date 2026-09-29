@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createIdea,
+  createProject,
   createRenderJob,
   createSession,
   finalizeRender,
@@ -8,7 +10,10 @@ import {
   getJob,
   getProject,
   getSession,
+  getTopicCheck,
+  listIdeas,
   sessionStreamUrl,
+  updateIdea,
   workspaceFileUrl,
   writeFileContent,
 } from '@/api/endpoints'
@@ -110,5 +115,53 @@ describe('endpoints：动态路径段会被正确编码', () => {
     expect(workspaceFileUrl('p', 'narrative/audio/s-a.mp3', 'sha256:ab')).toBe(
       '/api/projects/p/files/narrative/audio/s-a.mp3?v=sha256%3Aab',
     )
+  })
+
+  it('listIdeas 不带状态时不加查询串，带状态时走 status', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(new Response('[]', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listIdeas()
+    await listIdeas('archived')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/ideas')
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/ideas?status=archived')
+  })
+
+  it('createIdea POST 到 /ideas，updateIdea PATCH 并对 id 编码', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createIdea({ title: 'T' })
+    await updateIdea('i#1', { pitch: null })
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/ideas')
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' })
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/ideas/i%231')
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: 'PATCH' })
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1].body))).toEqual({ pitch: null })
+  })
+
+  it('createProject 可以带 idea_id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createProject({ title: 'P', idea_id: 'i1' })
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1].body))).toEqual({
+      title: 'P',
+      idea_id: 'i1',
+    })
+  })
+
+  it('getTopicCheck 对 projectId 编码', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getTopicCheck('p 1')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/p%201/topic/check')
   })
 })

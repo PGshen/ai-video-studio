@@ -188,7 +188,7 @@
 - **完成标准**：AC9。
 - **验证命令**：`make check`
 
-### T9：前端 `features/ideas/`——选题池页面（待开始）
+### T9：前端 `features/ideas/`——选题池页面（完成）
 
 - **目标**：`/ideas` 从占位页变成真正的选题池：卡片网格、筛选、编辑、归档、创建项目。抽屉里的头脑风暴对话在 T10 接入，本任务先留出布局位置。
 - **涉及文件**：
@@ -285,10 +285,11 @@
 - 2026-09-29 — T6 选题简报结构检查（`stages/topic/brief.py`）、`check_brief` 工具、`GET /topic/check`、完整提示词、fixture 简报补出处 — 新增约 50 个测试，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T7 `POST /api/projects` 支持 `idea_id`（卡片种进 `topic/notes/idea-card.md`、`mark_picked`、失败清理）— 新增 8 个测试，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T8 后端端到端（头脑风暴 → 创建项目 → 选题两轮 → 定稿 → 叙事解锁）— 1 个端到端测试通过，`make check` 全绿（commit 见 git log）。后端 T1–T8 全部完成
+- 2026-09-29 — T9 前端选题池（`features/ideas/`：`IdeaCard`/`IdeaEditDialog`/`CreateProjectDialog`/`IdeaGrid`、`ideaView.ts` 纯逻辑、endpoints/queries/types；顺带完成 T11 的纯逻辑 `briefStatus.ts`、`getTopicCheck`/`useTopicCheckQuery`）— vitest 215 个通过，lint/typecheck 通过（commit 见 git log）
 
 ## 下一步
 
-- 做 T9：前端选题池页面。先读 `frontend/src/pages/IdeasPage.vue`（占位）、`features/projects/ProjectList.vue`（创建项目对话框的写法）、`api/endpoints.ts`、`composables/queries.ts`、`types/api.ts`；先写 `features/ideas/ideaView.spec.ts` 和 `api/endpoints.spec.ts` 的新用例（失败），再实现。后端接口已就绪：`GET/POST /api/ideas`、`GET/PATCH /api/ideas/{id}`、`POST /api/projects` 带 `idea_id`。
+- 做 T10：头脑风暴抽屉。把 `features/workbench/{SessionPicker,SessionPanel,SessionTimelineItem}.vue` 及它们用到的纯逻辑文件（`turnControls`、`optimisticSend`、`sessionResetKey` 等，先读它们的 import 决定搬哪些）移到 `frontend/src/components/session/`，新增 `sessionScope.ts`（`{kind:'project',projectId,stage} | {kind:'brainstorm'}`）和 `sessionScope.spec.ts`（先写，失败）；`endpoints.ts` 加 `listBrainstormSessions`/`createBrainstormSession`（`/brainstorm/sessions`），`queries.ts` 的 `useSessionsQuery`/`useCreateSessionMutation` 接受 scope；`useSessionStream.ts` 对无项目会话在 `tool_result`（工具名以 `create_idea`/`update_idea` 结尾）和终态 `turn_status` 时失效 `queryKeys.ideasAll()`；新建 `features/ideas/BrainstormDrawer.vue`（`Sheet`）并接入 `IdeasPage.vue`；更新 ARCHITECTURE §3。搬移后 M1 的既有 vitest 不改断言。
 
 ## 决策记录
 
@@ -308,6 +309,7 @@
 - 2026-09-29（T5 执行中）：① `fetch_url` 传给 Tavily 的是模型给出的原始 URL（去首尾空白），规范化 URL 只用于「是否允许」的比较。② 用户消息里的 URL 用 RFC 3986 字符集的正则提取（先用「非空白」的写法会把中文逗号和后面的文字一起吞进 URL），再去掉末尾标点。③ 自建工具 `web_search` 的名字与 OpenAI 托管搜索转出的 `ToolCall.name == "web_search"` 重名，但两种模式互斥，不会同时出现，前端按名字渲染无冲突。④ `_tools_and_web` 放在 `TurnRunner`（不是各运行时）：模式是进程级配置，运行时只看 `ctx.allow_web` 和 `ctx.tools`，Claude/OpenAI 运行时的 `allow_web` 分支一行没改。⑤ 既有测试的两处必要调整：`test_runner.py::TestAllowWeb` 改为 `native` 模式下断言，`test_placeholders.py` 里 topic 的工具/`allow_web` 断言改成新语义。
 - 2026-09-29（T6 执行中）：① 测试共用的简报构造器放在 `backend/tests/brief_builder.py`（顶层模块，和 `event_asserts.py` 一样靠 tests 目录在 `sys.path` 上导入），因为 `tests/api` 和 `tests/stages` 之间不能用相对导入。② 事实条目解析：列表项后面非列表的非空行算续行（事实和「（出处…）」可以分两行写）；`出处` 的值取到 `把握程度` 之前或行尾，再去掉首尾的分隔符和括号，所以 URL 里带逗号、分号后面紧跟「把握程度」都能解析。③ 二级标题容忍编号前缀（`## 1. 核心问题`、`## 七、风险点`）和代码围栏内的 `##`。④ `fixtures/narrative/brief.md` 的事实补了「出处：算法导论第 2 章」，M3 的测试只检查它含「核心问题」，不受影响。⑤ `TopicStage.status_summary` 现在带 `check_workspace` 的错误/警告条数（前言里的「当前产物状态摘要」用）。⑥ 提示词写成与联网模式无关（只说「联网搜索和读取网页」），有测试断言不含 `web_search`/`WebSearch`。
 - 2026-09-29（T7 执行中）：想法卡片 Markdown 由 `api/projects.py::_idea_card_markdown` 渲染（不放进 `stages/`，因为它是创建项目的一部分，不是某个阶段的逻辑）；路径常量 `IDEA_CARD_PATH = "topic/notes/idea-card.md"`。卡片的预检查（不存在 404、非 `idea` 状态 409）在动工作区之前做，并发竞争靠 `mark_picked` 的条件更新兜底，输的一方 409 且清理项目。
+- 2026-09-29（T9 执行中）：① 用原生 `<select>` 做评分下拉（比 shadcn `Select` 简单，表单里只是 1–5）。② 编辑已 `picked` 的卡片时请求体不带 `title`（后端对 picked 改名一律 409，即使标题没变）。③ `queryKeys.ideas(view)` 只有两种视图：`null`（后端默认，idea+picked）和 `'archived'`；前端不请求 `status=all`。④ 提前完成 T11 的纯逻辑 `briefStatus.ts`（与 T9 同批提交），T11 只剩组件。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
