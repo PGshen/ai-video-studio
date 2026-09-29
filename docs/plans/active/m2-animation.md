@@ -248,23 +248,49 @@
 - 2026-09-29 — T12：前端——动画画布：镜头列表与预览 — 完成。新建 `features/canvas/animation/`：`AnimationCanvas.vue`（主组件，仿 `FileCanvas.vue` 的缓冲区状态机）、`SceneList.vue`（纯展示）、`KeyframeStrip.vue`（静态提示，见 D39）、`narrativeScenes.ts`+`sceneStatus.ts`（镜头列表数据）、`keyframeHint.ts`、`conflictState.ts`+`missingFile.ts`（从 `generic/` 复制，见 D36）；`CodeEditor.vue` 从 `features/canvas/generic/` 挪到 `components/CodeEditor.vue`（新建 `components/codeEditorLanguage.ts` 载 `EditorLanguage` 类型），`fileKind.ts`/`FileCanvas.vue` 同步改 import（决策记录 D36：实测 ESLint 的 `features/* 之间互不 import` 规则挡住跨阶段画布复用，这是规则自己建议的解法）。`ProjectWorkbenchPage.vue` 按 `stage === 'animation'` 分派到 `AnimationCanvas`，其它阶段仍用 `FileCanvas`。新增 23 个前端单测（`narrativeScenes`/`sceneStatus`/`keyframeHint`/`conflictState`/`missingFile` 各自的 `.spec.ts`），前端总计 151 passed。`make dev` 手动走查（用 M2 T4 的 `seed_animation_project` 绕过 M3 seed 出项目，真实调用 `validate_scenes`/`render_preview` 而不是伪造数据，见「验证记录」）发现并修复一个真实的响应式竞态 bug（D40：保存新镜头代码后编辑器被误判"文件消失"关闭）。`KeyframeStrip.vue` 不显示真实缩略图（决策记录 D39/TD-21 复核：图片内容从 M1 起就没有持久化，只有 `media_type`），只给指向对话面板"含 N 张图片"计数的静态提示；镜头状态只做"代码是否存在"，不做"已校验/已过期"（决策记录 D38，登记为 TD-33）。走查过程中发现并绕开一个环境问题：Browser pane 的 `preview_start` 按 `.claude/launch.json` 相对 `cwd` 解析到了主仓库而不是当前 worktree（详见「意外与发现」），改用 Bash 直接在 worktree 里起 `uvicorn`/`vite`，`navigate` 打开。`make check` 全绿（后端 674 passed / 19 deselected，前端 21 files / 151 passed，import-linter 21 kept，pyright 0 errors）。
 - 2026-09-29 — T13：前端——成片面板 — 完成。新建 `FinalRenderPanel.vue`（渲染成片按钮 + 进度条 + 播放器 + 成片定稿按钮），挂进 `AnimationCanvas.vue` 镜头列表/编辑器 grid 下方，只在镜头列表已知（`narrativeMaterialized && !narrativeParse.error`）时显示；新建纯逻辑模块 `renderJobState.ts`（`isJobInFlight`/`isRenderButtonDisabled`/`canFinalize`/`jobStatusLabel`）+ 配套 `.spec.ts`（决策记录见下）。前端此前完全没有 job/render/final 相关的类型和客户端函数，从这一层开始补齐：`types/api.ts` 加 `JobOut`，`ProjectOut` 补 `completed_at`（后端 T11 已经加了这个字段，前端类型这次才补上，此前一直没同步）；`api/endpoints.ts` 加 `createRenderJob`/`getJob`/`finalizeRender`/`finalVideoUrl`（后者只拼 URL 给 `<video src>` 用，不专门写 fetch 函数下载字节，同 `sessionStreamUrl` 的做法）；`composables/queries.ts` 加 `queryKeys.job`、`jobRefetchIntervalMs`（纯函数：`queued`/`running` 时返回 1000，否则 `false`，供 `useJobQuery` 的 `refetchInterval` 用，`done`/`failed` 后自动停止轮询）、`useCreateRenderJobMutation`/`useJobQuery`/`useFinalizeRenderMutation`。新增 14 个前端单测（`renderJobState.spec.ts` 5 条、`queries.spec.ts`/`endpoints.spec.ts` 各新增若干）。`make check` 全绿（后端 674 passed / 19 deselected 不变，前端 22 files / 165 passed，import-linter 21 kept，`vue-tsc`/pyright 0 errors，lint 0 警告）。L4 浏览器走查（真实起 api + worker + frontend 三个进程，绕开 T12 记录的 `preview_start` 坑，见「意外与发现」）：种子一个"叙事已定稿"项目 → 用 `fake` runtime 发一条消息物化 `upstream/narrative/`（镜头列表出现 `s-hook`/`s-explain`，均"待编写"）→ 逐个打开编辑器写入 `self.add(Dot())`/`self.add(Square())` 并保存（两次都一次成功，没有复现 T12 记录的 D40 竞态）→ 点击"渲染成片"：按钮立即变禁用、状态文案显示"排队中"→ 真实起的 worker 进程领取并渲染（`manim`/`ffmpeg` 子进程日志核实，`worker.log` 显示"镜头 s-explain 渲染完成""任务 ... 完成"）→ 面板 1 秒轮询自动追到 `done`：进度条填满、状态文案"已完成"、`<video>` 出现且 `GET .../output/final.mp4` 网络记录显示 206 Partial Content；点击播放后用 `javascript_tool` 读 `video` 元素属性确认真实播放到底（`currentTime === duration === 3.03`、`ended: true`），不是只看到一个空播放器 → 点击"成片定稿"：`POST .../animation/finalize-render` 网络记录 200，阶段导航从"动画"变"动画✓"，右上角按钮从"定稿"变"重新打开"，面板标题栏出现"项目已完成"，`curl GET /api/projects/{id}` 确认 `completed_at` 非空。完整复现了完成标准要求的四步链路（点击渲染成片→看到进度变化→完成后能播放→点击成片定稿后阶段状态变化）。
 - 2026-09-29 — T14：集成验证与风险验证 — 完成，**M2 计划全部任务（T1–T14）已完成**。新建 `backend/tests/api/test_animation_flow.py`（`@pytest.mark.slow`），用真实 `TurnRunner` + `FakeRuntime` 脚本（`write` 两个镜头代码 + `call_tool("validate_scenes")` + `call_tool("render_preview", {"scene_id": "s-explain"})`）跑一轮真实 turn，断言轮次事件流里两次工具调用的 `tool_result`（校验通过文本、2 张关键帧 + 偏差文本）→ `POST /render` 创建任务 → `worker.run_once` 产出 `output/final.mp4`/`final.json` → `GET /jobs/{id}` 确认 `done` → `GET /output/final.mp4` 确认可下载 → `POST /animation/finalize-render` 确认阶段变 `finalized`、`GET /projects/{id}` 确认 `completed_at` 非空——完整串起 T4/T7/T8/T5/T10/T11 的产物，一次跑通，没有踩到计划外的新坑（决策记录 D44）。`test_manim_engine.py` 按计划要求补了一句引用说明（指向 T2 的关键帧测试和本条端到端测试），不重复写第三份"渲染极小镜头"用例。复核设计 §9 风险表：R1–R5 明确是 M1 范围且已完成，T14 执行过程中没有发现任何新的风险假设不成立，不触发 SOP §6 升级条件。AC4、AC7 在本次打勾。`pytest backend/tests/api/test_animation_flow.py -m slow` → `1 passed`；`pytest backend/tests -m slow` → `14 passed`（含 T14 新增这条）；`make check` 全绿（后端 674 passed / 20 deselected，前端 22 files / 165 passed，import-linter 21 kept，pyright/vue-tsc 0 errors）。
+- 2026-09-29 — 代码评审（SOP §3 阶段 5） — 完成。独立 subagent 评审 `44e7dd3..4340e3a` 全部 14 个 commit，发现并修复一处 Important（`reopen` 动画阶段未清 `Project.completed_at`），一处 Minor 登记为 TD-35 暂不修（决策记录 D45）。`make check` 全绿（后端 675 passed / 20 deselected）。见本次提交。
 
 ## 下一步
 
-**M2 计划的全部任务（T1–T14）已经完成，全部验收标准（AC1–AC7）都已打勾。**
-`make check` 全绿（后端 674 passed / 20 deselected，前端 22 files / 165 passed，
-import-linter 21 kept，pyright/vue-tsc 0 errors），`pytest backend/tests -m slow`
-14 个慢测试全部通过（含 T14 新增的端到端集成测试）。
+**M2 计划的全部任务（T1–T14）已经完成，全部验收标准（AC1–AC7）都已打勾；SOP §3
+阶段 5（评审）也已完成并处理了发现。** `make check` 全绿（后端 675 passed /
+20 deselected，前端 22 files / 165 passed，import-linter 21 kept，pyright/vue-tsc
+0 errors），`pytest backend/tests -m slow` 14 个慢测试全部通过。
+
+**评审记录**（2026-09-29，独立 subagent，不是写这些代码的上下文；范围
+`44e7dd3..4340e3a` 全部 14 个 commit）：评审者自己跑了一遍 `make check` 和
+`pytest backend/tests -m slow`，数字和计划里记录的完全一致；确认决策记录
+D1–D44 里的每一条偏离计划原文的决定都有对应的技术理由，逐条核对了几个关键决定
+（D11 的 jobs.repo 转发、D25/D26 的 pyright/pytest conftest 解析分歧绕开方式、
+D36 的 CodeEditor.vue 搬家、D22/TD-32 的诚实搁置）没有发现"看似合理但实际不成立"
+的情况。发现两条问题：
+- **Important（已修复，决策记录 D45）**：动画阶段定稿后如果用户点"重新打开"
+  （`POST /stages/animation/reopen`，M1 就有的通用端点），`Project.completed_at`
+  不会被清空——工作区已经又能改、成片不再代表当前状态，但前端 `FinalRenderPanel.vue`
+  仍会显示"项目已完成"。修复：`db/repo/projects.py` 新增 `clear_project_completed`
+  （`mark_project_completed` 的反操作），`api/projects.py::reopen_stage_endpoint`
+  在 `stage == "animation"` 时调用它——`stage_flow.reopen()` 本身保持和阶段无关
+  的通用逻辑不变，"项目完成"是动画阶段特有的语义，对称地放在 api 层处理（和
+  `completed_at` 最初就是在 `api/animation.py`（animation 专属端点）里设置的，
+  不是在通用的 `finalize_stage_endpoint` 里，是同一个思路）。新增测试
+  `test_animation_finalize.py::test_reopening_animation_after_finalize_clears_completed_at`
+  （先红后绿）。
+- **Minor（评估后不修，登记为 TD-35，决策记录 D45）**：`POST /render` 不检查
+  项目是否已有一条 `queued`/`running` 的同类任务，理论上能重复排队；单 worker
+  顺序处理不会写坏文件，只是白渲染一次，投入产出比不划算，暂不修。
+
+「declined to judge」列表（多进程 job 队列并发正确性、TD-32/33/34、`run_once`
+快照-渲染顺序的极窄 TOCTOU 窗口、agent 生成代码经子进程执行是产品设计本身而
+非本计划引入的漏洞、`async def` 路由里同步 DB 调用阻塞事件循环）都是既有的、
+已登记或明确超出本计划范围的问题，评审判断不需要处理，本次会话复核后同意。
 
 本计划不需要新会话继续写代码。接下来按 SOP §3 走：
 
-1. **阶段 5：评审**——找一个新会话（或 subagent，不能是写这些代码的上下文）
-   对着这个分支（`m2-animation`）的全部改动做代码评审，对照本计划逐条检查；
-   评审发现逐条处理（修复，或者写明理由后不改）。
+1. ~~**阶段 5：评审**~~（已完成，见上）。
 2. **阶段 6：人验收**——AI 向负责人演示（`make dev` 走一遍 T12/T13 记录的浏览器
    操作序列，或直接看「验证记录」），负责人确认。**这一步需要负责人明确同意，
    不能由 AI 自己判断"验收通过"。**
-3. 验收通过后，按 **SOP §7 收尾清单**处理（这些都不是 T14 任务循环的一部分，
+3. 验收通过后，按 **SOP §7 收尾清单**处理（这些都不是任务循环的一部分，
    需要负责人先验收，本次会话不执行）：
    - [ ] 勾选 SOP §7 清单里"计划中所有任务都已勾选，「验证记录」完整"（本次
      已满足，见上）。
@@ -337,6 +363,7 @@ import-linter 21 kept，pyright/vue-tsc 0 errors），`pytest backend/tests -m s
 - 2026-09-29 — D42（T13）：`FinalRenderPanel.vue` 用组件内部的 `currentJobId`（一个 `ref`）跟踪"当前正在看的渲染任务"，不做"刷新页面后自动恢复上一次任务的进度"——`api/jobs.py` 只有按 `job_id` 精确查询的端点，没有"查这个项目最近一次 `final_render` 任务"的端点，前端确实拿不到这个信息（不是偷懒没做，是当前后端能力做不到）。加一条端点属于"计划之外的公共接口"，不在 T13"涉及文件"列表内，登记为技术债 TD-34，留给以后真的需要"刷新后恢复进度"这个体验时再做。当前会话内点过一次"渲染成片"之后，进度/播放器/定稿都能正常工作，不影响 T13 完成标准要求的那条链路。
 - 2026-09-29 — D43（T13）：L4 走查选择真实起 `python -m studio.worker` 进程（而不是像 T12 第 8 步那样手动构造/直接调用 `run_once`）来验证"渲染成片→完成→播放→定稿"整条链路——T4 的两镜头 fixture（`Dot()`/`Square()`，各 1.4s/1.6s 音频）渲染耗时只有几秒（worker 日志实测"镜头 s-explain 渲染完成（1.60s）"），真实排队等待的时间成本可以接受，比伪造 job 状态更能验证前端轮询（`jobRefetchIntervalMs`）和真实网络时序下的行为（例如 206 Partial Content 的 range 请求、真实的 `<video>` 加载/播放）。
 - 2026-09-29 — D44（T14）：端到端测试驱动"agent 在一轮里调用工具"这一步时，用真实的 `TurnRunner.start_turn`/`wait`（替换 `app.state.runtime_factory` 里 `fake` 的注册为一个带明确脚本的 `FakeRuntime([write(...), write(...), call_tool("validate_scenes"), call_tool("render_preview", {...})])`），不是像 T7/T8 的单测那样直接手工构造 `ToolContext` 调 `invoke_tool`——T14"下一步"原文本身就要求验证"在一轮真实 turn 里调用"这条路径（`materialize_upstream` 在 `TurnRunner` 里于轮次开始时执行，`validate_scenes`/`render_preview` 依赖的 `upstream/narrative/` 必须先物化），只有走真实 `TurnRunner` 才能覆盖到这一层，复用 `tests/api/conftest.py::ApiEnv.make_busy` 已经示范过的"替换 fake 注册"手法。断言工具调用结果时，`agent/turn_events.py` 落库的 `tool_result` payload 只有 `call_id`（不含工具名，见 `turn_events.py:60-73`），测试里先用同一轮 `tool_call` 事件的 `{call_id: name}` 建一份映射，再按名字取对应的 `tool_result`，不依赖事件在列表里的顺序位置（顺序本身不是这条测试要验证的不变量，`event_asserts.py` 的既有设计哲学——只断言真正的因果关系——同样适用于这里，虽然本任务没有直接复用那个模块的函数）。
+- 2026-09-29 — D45（代码评审）：独立评审（subagent，范围 `44e7dd3..4340e3a`）发现 `Project.completed_at` 在动画阶段被重新打开（`POST /stages/animation/reopen`，M1 就有的通用端点）后不会清空，导致成片已经不代表当前工作区、阶段状态已经变回 `active`，但前端仍显示"项目已完成"（Important，真实可达，T13 自己的走查记录里"重新打开"按钮确实会出现）。修复方式：`db/repo/projects.py` 新增 `clear_project_completed`（`mark_project_completed` 的反操作）；`api/projects.py::reopen_stage_endpoint` 只在 `stage == "animation"` 时调用它——刻意不改 `stage_flow.reopen()` 本身（那是和具体阶段无关的通用函数，"项目完成"是动画阶段特有的语义，`completed_at` 本来就是在 animation 专属的 `finalize_render_endpoint` 里设置的，不是在通用的 `finalize_stage_endpoint` 里，清空的地方对称地放在同一层）。新增测试见「验证记录」。评审同时指出一条 Minor（`POST /render` 不防重复排队），评估后判断修复成本大于收益（单 worker 顺序处理不会写坏文件，只白渲染一次），登记为 TD-35，不修。评审"declined to judge"列表里的其余条目（多进程队列并发、TD-32/33/34、`run_once` 的窄 TOCTOU 窗口、agent 代码经子进程执行属于产品设计本身、`async def` 路由同步 DB 调用）复核后同意不处理，理由已经是既有决策或明显超出本计划范围。
 
 ## 意外与发现
 
@@ -405,3 +432,4 @@ import-linter 21 kept，pyright/vue-tsc 0 errors），`pytest backend/tests -m s
   3. `POST /api/projects/{id}/render` → 201；直接调用 `worker.run_once(engine, blobs, data_dir=...)`（不起真实进程）→ `claimed is True`；`GET /api/projects/{id}/jobs/{job_id}` → `status == "done"`；确认 `output/final.mp4`（非空）、`output/final.json` 都已写入工作区；`GET /api/projects/{id}/output/final.mp4` → 200，`Content-Type: video/mp4`。
   4. `POST /api/projects/{id}/animation/finalize-render` → 200，`status == "finalized"`，`finalized_snapshot_id` 非空；`GET /api/projects/{id}` → `completed_at` 非空。
   `pytest backend/tests/api/test_animation_flow.py -m slow` → `1 passed`（默认不带 `-m slow` 时按 `slow` marker 约定正确 deselected，不会拖慢 `make check`）。`pytest backend/tests -m slow` → `14 passed`（T1/T2/T5/T7/T8 已有的慢测试 + 本条，互不干扰，回归无破坏）。`test_manim_engine.py` 补了一句引用说明（指向 T2 的关键帧测试和本条端到端测试），未重复实现。复核设计 §9 风险表：R1–R5 标注"M1 完成"，本任务执行过程中没有触发任何一条、也没有发现新的风险假设不成立，不需要走 SOP §6 升级流程。`make check` 全绿（后端 674 passed / 20 deselected——比 T13 的 19 多 1，正是新增的这条端到端测试被 deselect；前端 22 files / 165 passed 不变，import-linter 21 kept，pyright/vue-tsc 0 errors）。至此本计划全部验收标准（AC1–AC7）都已打勾。
+- 代码评审发现修复（2026-09-29，L2；决策记录 D45）：独立 subagent 评审时自己跑了一遍 `make check`（674 passed / 20 deselected）和 `pytest backend/tests -m slow`（14 passed），和上面 T14 记录的数字完全一致，确认评审基于的是真实结果而不是转述。评审发现的 Important 问题（`reopen` 动画阶段不清 `completed_at`）已修复：新增 `backend/tests/api/test_animation_finalize.py::TestFinalizeRender::test_reopening_animation_after_finalize_clears_completed_at`（先跑一次确认因 `clear_project_completed` 不存在而红，实现后绿），断言定稿后 `completed_at` 非空，调用 `POST /stages/animation/reopen` 后阶段回到 `active` 且 `completed_at` 变回 `None`。修复后完整跑一次 `make check`，全绿（后端 675 passed / 20 deselected——比修复前多 1，正是这条新测试；前端 22 files / 165 passed 不变，import-linter 21 kept，pyright/vue-tsc 0 errors）。Minor 问题（重复排队渲染任务）评估后登记为 TD-35，不修，理由见决策记录 D45 和 `docs/quality/tech-debt.md`。

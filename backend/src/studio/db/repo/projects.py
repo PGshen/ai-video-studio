@@ -93,3 +93,19 @@ def mark_project_completed(engine: Engine, project_id: str) -> ProjectValue:
         row.completed_at = datetime.now(UTC)
         session.flush()
         return _to_value(row)
+
+
+def clear_project_completed(engine: Engine, project_id: str) -> ProjectValue:
+    """把项目的"已完成"标记清掉：`completed_at` 设为 `None`。
+
+    `mark_project_completed` 的反操作——重新打开动画阶段（评审发现，见计划
+    决策记录）后，成片和当前工作区不再对得上，不能继续显示"项目已完成"。
+    项目不存在时抛出 `KeyError`（同 `mark_project_completed`，防御性检查）。
+    """
+    with session_scope(engine) as session:
+        row = session.get(Project, project_id)
+        if row is None:
+            raise KeyError(f"项目不存在：{project_id}")
+        row.completed_at = None
+        session.flush()
+        return _to_value(row)

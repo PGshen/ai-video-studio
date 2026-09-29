@@ -93,3 +93,24 @@ class TestFinalizeRender:
         )
 
         assert response.status_code == 404
+
+    async def test_reopening_animation_after_finalize_clears_completed_at(
+        self, api_env: ApiEnv
+    ) -> None:
+        """评审发现：定稿后重新打开动画阶段，`completed_at` 不清空会让前端继续
+        显示"项目已完成"，即使工作区已经又能改、成片已经不代表当前状态。"""
+        pid = await _animation_project(api_env)
+        engine = api_env.app.state.engine
+
+        rendered = latest_snapshot(engine, pid)
+        assert rendered is not None
+        _write_final_json(api_env, pid, snapshot_id=rendered.id)
+        await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
+        assert (await api_env.client.get(f"/api/projects/{pid}")).json()["completed_at"] is not None
+
+        response = await api_env.client.post(f"/api/projects/{pid}/stages/animation/reopen")
+
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "active"
+        project_response = await api_env.client.get(f"/api/projects/{pid}")
+        assert project_response.json()["completed_at"] is None
