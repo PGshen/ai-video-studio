@@ -155,7 +155,7 @@
 - **完成标准**：`pytest backend/tests/stages/` 全通过；`prompt.md` 人工审阅一遍，风格与 `animation/prompt.md` 一致。
 - **验证命令**：`make check`
 
-### T8：端到端 turn 测试——叙事 agent 全流程（待开始）
+### T8：端到端 turn 测试——叙事 agent 全流程（完成）
 
 - **目标**：用 `FakeRuntime` 跑一轮完整的叙事阶段对话（写 `narrative.json` → `validate_narrative` → `synthesize_tts` → 用户在前端点"定稿"，测试里直接调用 `stage_flow.finalize`），验证动画阶段能从 `upstream/narrative/` 读到一致 schema 的产物并跑通已有的 `validate_scenes`（M2）。这条测试是"叙事产物真的能喂给动画阶段"的契约保证，避免 T1–T7 各自测试通过但拼起来对不上。
 - **涉及文件**：新建 `backend/tests/api/test_narrative_flow.py`；可能需要给 `FakeRuntime` 的测试脚本机制加一个新的固定剧本（如果现有的 `FakeRuntime` 已经支持"按步骤调用给定工具"的通用剧本格式就不用改，只是新写一份剧本数据；先看 `backend/src/studio/agent/fake.py` 现有能力，不够用时才改，改动记入决策记录）。
@@ -244,7 +244,7 @@
 
 ## 下一步
 
-- 从 T8 开始：新建 `backend/tests/api/test_narrative_flow.py`，用 `FakeRuntime` 跑叙事阶段完整一轮（写 `narrative.json` → `validate_narrative` → `synthesize_tts`，用 `monkeypatch` 替换 `synthesize_tts_module._ENGINE_FACTORY` 为假引擎）→ `stage_flow.finalize` → 动画阶段读 `upstream/narrative/`。先读 `backend/src/studio/agent/fake.py` 看现有剧本能力，不够用再改并记入决策记录。假 `TTSEngine` 可参考 `backend/tests/stages/test_narrative_synthesize.py` 里的 `FakeTTSEngine`。
+- 从 T9 开始：`backend/src/studio/agent/preamble.py` 加 `UpstreamChange.scene_summary`、`_narrative_scene_summary`，`_upstream_changes` 仅对 `name == "narrative"` 调用，`build_preamble` 渲染时优先用 `scene_summary`；测试补进 `backend/tests/agent/test_preamble.py`。`agent` 层不 import `stages`，直接按 JSON 结构解析。
 
 ## 决策记录
 
@@ -264,12 +264,13 @@
 
 - 2026-09-29（T7 执行中）：提示词轻量断言单独放 `tests/stages/test_narrative_prompt.py`（与 `test_animation_prompt.py` 对称），工具集合断言放进 `test_placeholders.py` 的 `TestNarrativeStage`；`test_common.py` 里 `suggest_upstream_change` 的阶段范围断言同步改为 `{"animation","narrative"}`。
 - 2026-09-29（T7 执行中）：补 T6 遗漏——`synthesize_tts` 返回文本里每个成功镜头带时长和对齐覆盖率（计划 T6 第 8 步原本就要求，提示词也依赖它），加了断言。
+- 2026-09-29（T8 执行中）：`FakeRuntime` 现有的 `write`/`call_tool` 步骤已够用，没有改 `agent/fake.py`。测试里用的叙事文档没有直接复用 M2 的 `fixtures/animation/narrative.json`（原因见「意外与发现」），而是在测试内联一份镜头 id/beat 数相同、`cue_text` 带标点的文档。
 
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 无
+- 2026-09-29（T8）：`fixtures/animation/narrative.json`（M2）里 beats 的 `cue_text` 不带标点，拼起来不等于 `narration`，**过不了**新的 `validate_narrative`。`normalize_alignment_text` 只做全半角标点归一和去空白，不丢标点（T3 的计划文字"标点/空白归一化"容易被读成"忽略标点"）。M2 的测试只把它当动画输入读，不受影响，所以没改这份 fixture；T7 的提示词一开始也写错了（说"忽略标点"），已改为"连标点原样截取"。
 
 ## 阻塞
 
