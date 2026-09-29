@@ -71,7 +71,7 @@
 - **完成标准**：`pytest backend/tests/engines/test_tts_engine.py` 通过；无真实网络请求。
 - **验证命令**：`make check`
 
-### T2：`engines.tts.beat_aligner` 迁移（适配新 schema）（待开始）
+### T2：`engines.tts.beat_aligner` 迁移（适配新 schema）（完成）
 
 - **目标**：`align_scene_beats` 能对新 schema 的镜头（`narration`/`beats[].cue_text`/`word_timestamps`）做字符级对齐，输出每个 beat 的 `speech_start_seconds`/`speech_end_seconds`/`alignment_status` 和整体 `alignment_coverage`。
 - **涉及文件**：新建 `backend/src/studio/engines/tts/beat_aligner.py`（迁移 `../ai-video/backend/app/services/beat_aligner.py`）、新建 `backend/src/studio/engines/tts/text_normalize.py`（迁移 `../ai-video/backend/app/services/narrative_validator.py` 里的 `normalize_alignment_text` 及其标点映射表——只搬这一个函数，不搬整个旧 validator，供本模块和 T3 的 `stages.narrative.schema` 共用；`stages` 依赖 `engines` 是允许的方向，见 ARCHITECTURE §2 依赖表）、`backend/tests/engines/test_beat_aligner.py`（新建）。
@@ -233,11 +233,12 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 2026-09-29 — T1 `engines.tts` 协议与 Volcengine 引擎迁移 — 14 个测试通过，`make check` 全绿（commit 待记录）
+- 2026-09-29 — T1 `engines.tts` 协议与 Volcengine 引擎迁移 — 14 个测试通过，`make check` 全绿（commit `20bf088`）
+- 2026-09-29 — T2 `beat_aligner`/`text_normalize` 迁移 — 6 个测试通过，`make check` 全绿（commit 待记录）
 
 ## 下一步
 
-- 从 T2 开始：新建 `backend/src/studio/engines/tts/beat_aligner.py`（迁移 `../ai-video/backend/app/services/beat_aligner.py`，去掉 `fallback_weight`，改用固定权重 1.0）和 `backend/src/studio/engines/tts/text_normalize.py`（迁移 `normalize_alignment_text`），写 `backend/tests/engines/test_beat_aligner.py`。
+- 从 T3 开始：新建 `backend/src/studio/stages/narrative/schema.py`（pydantic `Beat`/`Scene`/`Narrative` + `validate_and_normalize`，用 T2 的 `text_normalize.normalize_alignment_text` 做 cue_text 覆盖 narration 的校验），写 `backend/tests/stages/test_narrative_schema.py`。
 
 ## 决策记录
 

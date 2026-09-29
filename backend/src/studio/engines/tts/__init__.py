@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from studio.engines.tts.base import TTSEngine, TTSRequest, TTSResult, WordTimestamp
+from studio.engines.tts.beat_aligner import align_scene_beats
 from studio.engines.tts.factory import build_tts_engine
+from studio.engines.tts.text_normalize import normalize_alignment_text
 from studio.engines.tts.volcengine import VolcengineTTSEngine
 
 __all__ = [
@@ -13,4 +15,6 @@ __all__ = [
     "WordTimestamp",
     "VolcengineTTSEngine",
     "build_tts_engine",
+    "align_scene_beats",
+    "normalize_alignment_text",
 ]
