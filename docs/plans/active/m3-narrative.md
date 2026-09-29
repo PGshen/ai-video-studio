@@ -241,6 +241,7 @@
 - 2026-09-29 — T6 `synthesize_tts` 工具 — 6 个测试通过，`make check` 全绿（commit `da256a1`）
 - 2026-09-29 — T7 叙事阶段 tools 接入 + 完整提示词（顺带补 T6 返回文本的时长/覆盖率）— `make check` 全绿（commit `dde6697`）
 - 2026-09-29 — T8 叙事端到端 turn 测试（`test_narrative_flow.py`）— 1 个测试通过，`make check` 全绿（commit `695d592`）
+- 2026-09-29 — T9 `agent.preamble` 按镜头 id 的上游变更摘要 — 6 个新用例通过，`make check` 全绿（commit `18c904c`）
 
 ## 下一步
 
