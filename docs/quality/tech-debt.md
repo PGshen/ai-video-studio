@@ -4,7 +4,7 @@
 
 | # | 登记日期 | 位置 | 问题 | 影响 | 建议的处理方式 | 来源 |
 |---|---|---|---|---|---|---|
-| TD-6 | 2026-09-28 | `agent/preamble.py: _upstream_changes`、`agent/stage_flow.py` | stale 判断按整项目快照 id，上游产物目录没变也会标 stale / 出现空的上游变更提示 | 多余的 stale 与空提示 | 按上游产物目录的清单比较（M3 做按镜头 id 的摘要时一起改） | M1 T6 审查 |
+| TD-6 | 2026-09-28 | `agent/preamble.py: _upstream_changes`、`agent/stage_flow.py` | stale 判断按整项目快照 id，上游产物目录没变也会标 stale / 出现空的上游变更提示 | 多余的 stale 与空提示 | 按上游产物目录的清单比较（M3 T9 已做叙事→动画的按镜头 id 摘要，但 stale 判断本身仍按整项目快照 id，这部分未改） | M1 T6 审查 |
 | TD-9 | 2026-09-28 | `agent/preamble.py: _user_edits` | 用户修改按路径合并窗口内所有 `user_edit` 快照，罕见情况下把其他阶段 agent 的改动算作用户修改 | 前言里的“用户修改”偶尔不准 | 只合并本会话窗口内、非 turn 产生的差异 | M1 T6 审查 |
 | TD-14 | 2026-09-28 | `agent/shell.py: LocalShellExecutor` | `setsid` 主动脱离进程组的后台进程不会被 `killpg` 杀掉（drain 窗口取消已在 M1x T6 修复：显式取消并等待 reader） | 恶意命令可留下后台进程，且 sandbox-exec 下仍可能在沙箱写权限范围内活动 | 按会话 cgroup 或容器限制 | M1 T10 审查；M1x T6 修复 reader 部分 |
 | TD-19 | 2026-09-28 | `agent/recovery.py: recover_on_startup`、`api/sessions.py: continue` | 重启后排队中的 turn 被标 `interrupted`；[继续] 只发“继续”，原消息没有重发 | 排队中的消息在重启后丢失语义 | 对从未开始的 turn 提供“重新发送原消息” | M1 最终审查（M5 处理） |

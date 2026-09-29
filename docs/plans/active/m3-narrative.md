@@ -167,7 +167,7 @@
 - **完成标准**：`pytest backend/tests/api/test_narrative_flow.py` 通过。
 - **验证命令**：`make check`
 
-### T9：`agent.preamble`——按镜头 id 的上游变更摘要（TD-6）（待开始）
+### T9：`agent.preamble`——按镜头 id 的上游变更摘要（TD-6）（完成）
 
 - **目标**：`_upstream_changes` 对"叙事→动画"这一条边，解析新旧两份 `narrative/narrative.json` 内容，给出按镜头 id 的新增/删除/旁白变化/beat 变化摘要；其余上下游边（目前只有"选题→叙事"）行为不变，仍是文件级 diff。
 - **涉及文件**：`backend/src/studio/agent/preamble.py`（改 `UpstreamChange` dataclass 加一个可选字段、改 `_upstream_changes`、改 `build_preamble` 的渲染分支）、`backend/tests/agent/test_preamble.py`（已存在，补新用例）。
@@ -238,14 +238,13 @@
 - 2026-09-29 — T3 `stages.narrative.schema` — 6 个测试通过，`make check` 全绿（commit `cca221d`）
 - 2026-09-29 — T4 选题简报 fixture + `seed_narrative_project` + `conftest.py` 的 `narrative_project` fixture — 4 个测试通过，`make check` 全绿（commit `2eea76e`）
 - 2026-09-29 — T5 `validate_narrative` 工具 — 5 个测试通过，`make check` 全绿（commit `58bec39`）
-- 2026-09-29 — T6 `synthesize_tts` 工具 — 6 个测试通过，`make check` 全绿（commit `b3714b6`）
-
+- 2026-09-29 — T6 `synthesize_tts` 工具 — 6 个测试通过，`make check` 全绿（commit `da256a1`）
 - 2026-09-29 — T7 叙事阶段 tools 接入 + 完整提示词（顺带补 T6 返回文本的时长/覆盖率）— `make check` 全绿（commit `dde6697`）
 - 2026-09-29 — T8 叙事端到端 turn 测试（`test_narrative_flow.py`）— 1 个测试通过，`make check` 全绿（commit `695d592`）
 
 ## 下一步
 
-- 从 T9 开始：`backend/src/studio/agent/preamble.py` 加 `UpstreamChange.scene_summary`、`_narrative_scene_summary`，`_upstream_changes` 仅对 `name == "narrative"` 调用，`build_preamble` 渲染时优先用 `scene_summary`；测试补进 `backend/tests/agent/test_preamble.py`。`agent` 层不 import `stages`，直接按 JSON 结构解析。
+- 从 T10 开始：前端 `features/canvas/narrative/`。先写纯逻辑 `narrativeDoc.ts`/`timingStatus.ts` 和各自的 vitest（参照 `features/canvas/animation/narrativeScenes.ts`），再写 `NarrativeCanvas.vue`/`SceneCardList.vue`/`BeatTimeline.vue`（参照 `AnimationCanvas.vue`/`SceneList.vue`，JSON 标签页复用 `components/CodeEditor.vue`）。音频播放先查 `api/files.py` 是否已有通用读工作区文件字节的端点，有就复用。组件走 T11 的 L4 浏览器走查，不做挂载测试。
 
 ## 决策记录
 
@@ -266,6 +265,7 @@
 - 2026-09-29（T7 执行中）：提示词轻量断言单独放 `tests/stages/test_narrative_prompt.py`（与 `test_animation_prompt.py` 对称），工具集合断言放进 `test_placeholders.py` 的 `TestNarrativeStage`；`test_common.py` 里 `suggest_upstream_change` 的阶段范围断言同步改为 `{"animation","narrative"}`。
 - 2026-09-29（T7 执行中）：补 T6 遗漏——`synthesize_tts` 返回文本里每个成功镜头带时长和对齐覆盖率（计划 T6 第 8 步原本就要求，提示词也依赖它），加了断言。
 - 2026-09-29（T8 执行中）：`FakeRuntime` 现有的 `write`/`call_tool` 步骤已够用，没有改 `agent/fake.py`。测试里用的叙事文档没有直接复用 M2 的 `fixtures/animation/narrative.json`（原因见「意外与发现」），而是在测试内联一份镜头 id/beat 数相同、`cue_text` 带标点的文档。
+- 2026-09-29（T9 执行中）：`_narrative_scene_summary` 的镜头摘要行带 `- ` 前缀，与 `_file_summary` 的格式一致；摘要为空列表（镜头没变、只有 `timing.json` 等文件变了）时渲染"镜头没有变化（只有配音时间轴等其它文件有变化）"，不退回文件级摘要。TD-6 只关掉了"按镜头 id 摘要"这一半，stale 判断按整项目快照 id 的问题仍在，已在 tech-debt 里改写说明。
 
 ## 意外与发现
 

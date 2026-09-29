@@ -11,7 +11,8 @@
   - 回滚通知：上一轮结束之后项目里出现的 `reason=rollback` 快照；回滚目标是
     它之前清单完全相同的最近一份快照（回滚会原样写回目标清单）；
   - 上游新定稿：本阶段 `based_on_snapshot_id` 与上游当前 `finalized_snapshot_id`
-    不同时，两份清单在上游产物目录下的文件级差异（M1 不做按镜头 id 的摘要）；
+    不同时，两份清单在上游产物目录下的文件级差异；叙事→动画这一条边额外按镜头
+    id 给出新增/删除/旁白变化/beat 变化摘要（设计 §5.4，TD-6），渲染时优先用它；
   - 用户手动修改：本会话上一轮结束（`turns.updated_at`）之后、到本轮开始快照
     为止，项目里每一份 `reason=user_edit` 快照（本轮开始时、其他阶段的 turn
     开始时、定稿时创建的）相对各自前一份快照的 diff，按路径合并（基准取最早
@@ -21,8 +22,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine
 
@@ -30,7 +33,7 @@ from studio.agent.stage import StageDefinition
 from studio.db.repo.snapshots import get_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
 from studio.db.repo.turns import TurnValue, list_turn_events
-from studio.workspace import BlobStore, WorkspaceDiff, diff, list_tree
+from studio.workspace import BlobStore, Manifest, WorkspaceDiff, diff, list_tree
 
 DIFF_MAX_CHARS_PER_FILE = 1500
 DIFF_MAX_CHARS_TOTAL = 6000
@@ -42,6 +45,9 @@ GUARD_RESTORED_NOTICE = "guard_restored"
 class UpstreamChange:
     stage: str
     diff: WorkspaceDiff
+    scene_summary: list[str] | None = None
+    """按镜头 id 的变更摘要（每项一行）；只有叙事→动画这条边会填，且解析失败
+    时为 `None`（渲染退回文件级摘要）。空列表表示镜头内容没有变化。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +118,12 @@ def build_preamble(inputs: PreambleInputs) -> str:
             lines.append(
                 f"上游阶段 {change.stage} 重新定稿了，只读副本 upstream/{change.stage}/ 已更新："
             )
-            lines += _file_summary(change.diff)
+            if change.scene_summary is None:
+                lines += _file_summary(change.diff)
+            elif change.scene_summary:
+                lines += change.scene_summary
+            else:
+                lines.append("- 镜头没有变化（只有配音时间轴等其它文件有变化）")
         sections.append(lines)
 
     if inputs.restored_paths:
@@ -194,6 +205,42 @@ def _rollback_notice(
     )
 
 
+_NARRATIVE_PATH = "narrative/narrative.json"
+
+
+def _read_scenes(manifest: Manifest, blobs: BlobStore) -> dict[str, dict[str, Any]]:
+    """按 id 索引 `narrative.json` 的镜头；缺文件、JSON 非法、缺 `id` 都会抛异常。"""
+    document = json.loads(blobs.get(manifest[_NARRATIVE_PATH]).decode("utf-8"))
+    scenes: dict[str, dict[str, Any]] = {}
+    for scene in document["scenes"]:
+        scenes[scene["id"]] = scene
+    return scenes
+
+
+def _narrative_scene_summary(
+    old_manifest: Manifest, new_manifest: Manifest, blobs: BlobStore
+) -> list[str] | None:
+    """叙事→动画边的按镜头 id 摘要；任何一步解析失败返回 `None`，调用方退回
+    文件级 diff（不能因为一份 JSON 坏了让整轮前言生成失败）。
+    """
+    try:
+        old = _read_scenes(old_manifest, blobs)
+        new = _read_scenes(new_manifest, blobs)
+    except (KeyError, TypeError, ValueError, OSError):
+        return None
+    lines = [f"- 新增镜头 {sid}" for sid in new if sid not in old]
+    lines += [f"- 删除镜头 {sid}" for sid in old if sid not in new]
+    for sid, scene in new.items():
+        before = old.get(sid)
+        if before is None:
+            continue
+        if before.get("narration") != scene.get("narration"):
+            lines.append(f"- 镜头 {sid} 旁白有改动")
+        elif before.get("beats") != scene.get("beats"):
+            lines.append(f"- 镜头 {sid} 的 beat 拆分有改动")
+    return lines
+
+
 def _upstream_changes(
     engine: Engine, blobs: BlobStore, project_id: str, stage: StageDefinition
 ) -> list[UpstreamChange]:
@@ -214,7 +261,10 @@ def _upstream_changes(
         prefix = f"{name}/"
         old = {p: h for p, h in based_on.manifest.items() if p.startswith(prefix)}
         new = {p: h for p, h in finalized.manifest.items() if p.startswith(prefix)}
-        changes.append(UpstreamChange(stage=name, diff=diff(old, new, blobs)))
+        scene_summary = _narrative_scene_summary(old, new, blobs) if name == "narrative" else None
+        changes.append(
+            UpstreamChange(stage=name, diff=diff(old, new, blobs), scene_summary=scene_summary)
+        )
     return changes
 
 
