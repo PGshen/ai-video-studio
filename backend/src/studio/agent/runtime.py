@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from sqlalchemy import Engine
+
 from studio.agent.events import AgentEvent, ImageData
 from studio.agent.tools import ToolContext, ToolSpec
 from studio.db.repo.profiles import ModelProfileValue
@@ -81,6 +83,8 @@ class TurnContext:
     """是否开放联网工具（Claude 的 WebSearch/WebFetch）；TurnRunner 从
     `StageDefinition.allow_web` 取值（T9 控制者裁定：topic 开、其余关）。
     """
+    engine: Engine | None = None
+    """透传给 `ToolContext.engine`（TD-32），供需要写数据库的工具使用。"""
 
     def tool_context(self) -> ToolContext:
         """业务工具 handler 的上下文；三个运行时都从这里取，不各自构造（TD-17）。"""
@@ -89,6 +93,7 @@ class TurnContext:
             stage=self.stage,
             workdir=self.workdir,
             record_tool_write=self.record_tool_write,
+            engine=self.engine,
         )
 
 

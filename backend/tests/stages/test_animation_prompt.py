@@ -27,6 +27,10 @@ def test_system_prompt_mentions_render_preview_tool() -> None:
     assert "render_preview" in ANIMATION_STAGE.system_prompt()
 
 
+def test_system_prompt_mentions_suggest_upstream_change_tool() -> None:
+    assert "suggest_upstream_change" in ANIMATION_STAGE.system_prompt()
+
+
 def test_system_prompt_mentions_scene_merge_convention() -> None:
     prompt = ANIMATION_STAGE.system_prompt()
     assert "Scene" in prompt

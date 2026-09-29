@@ -1,12 +1,8 @@
-"""`stages.common.suggest_upstream_change`（设计 §5.3/§5.4；计划 T6）。
+"""`stages.common.suggest_upstream_change`（设计 §5.3/§5.4；计划 T6；TD-32）。
 
-`build_suggest_upstream_change_tool(engine)` 是一个工厂函数而不是模块级
-`ToolSpec` 常量：`ToolSpec.handler` 要写 `suggestions` 表，需要一个
-`Engine`，但 `StageDefinition.tools()` 目前是零参数方法（`agent/stage.py`），
-调用链上（`TurnContext`/`ToolContext`）都没有线路能把 `Engine` 传到这一层
-——加这条线路要改 `agent.tools.ToolContext`/`agent.runtime.TurnContext` 等
-计划之外的公共接口，本任务不做（决策记录 D22）。这里直接测工厂函数本身
-和 `invoke_tool` 的集成，不经过 `AnimationStage.tools()`。
+`Engine` 通过 `ToolContext.engine`（TD-32）传入 handler，`suggest_upstream_change`
+因此和 `validate_scenes`/`render_preview` 一样是模块级 `ToolSpec` 常量
+（`SUGGEST_UPSTREAM_CHANGE_TOOL`），不再需要工厂函数或阶段实例化时单独注入。
 """
 
 from __future__ import annotations
@@ -18,26 +14,25 @@ from sqlalchemy import Engine
 
 from studio.agent.tools import ToolContext, invoke_tool
 from studio.db.repo.suggestions import list_suggestions
-from studio.stages.common import build_suggest_upstream_change_tool
+from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
 
 
 @pytest.fixture
-def ctx(workdir: Path) -> ToolContext:
+def ctx(workdir: Path, migrated_engine: Engine) -> ToolContext:
     return ToolContext(
         project_id="proj-1",
         stage="animation",
         workdir=workdir,
         record_tool_write=lambda relpath, sha256: None,
+        engine=migrated_engine,
     )
 
 
 async def test_calling_tool_creates_open_suggestion(
     migrated_engine: Engine, ctx: ToolContext
 ) -> None:
-    spec = build_suggest_upstream_change_tool(migrated_engine)
-
     result = await invoke_tool(
-        spec,
+        SUGGEST_UPSTREAM_CHANGE_TOOL,
         ctx,
         {"to_stage": "narrative", "content": "s-hook 的旁白和画面对不上，建议改一下这句台词。"},
     )
@@ -52,18 +47,31 @@ async def test_calling_tool_creates_open_suggestion(
     assert suggestion.content == "s-hook 的旁白和画面对不上，建议改一下这句台词。"
 
 
-async def test_tool_is_scoped_to_animation_stage(migrated_engine: Engine) -> None:
-    spec = build_suggest_upstream_change_tool(migrated_engine)
-
-    assert spec.stages == {"animation"}
+def test_tool_is_scoped_to_animation_stage() -> None:
+    assert SUGGEST_UPSTREAM_CHANGE_TOOL.stages == {"animation"}
 
 
 async def test_invalid_args_do_not_write_a_suggestion(
     migrated_engine: Engine, ctx: ToolContext
 ) -> None:
-    spec = build_suggest_upstream_change_tool(migrated_engine)
-
-    result = await invoke_tool(spec, ctx, {"content": "缺了 to_stage"})
+    result = await invoke_tool(SUGGEST_UPSTREAM_CHANGE_TOOL, ctx, {"content": "缺了 to_stage"})
 
     assert result.is_error is True
     assert list_suggestions(migrated_engine, "proj-1") == []
+
+
+async def test_missing_engine_in_context_is_a_tool_error(workdir: Path) -> None:
+    ctx_without_engine = ToolContext(
+        project_id="proj-1",
+        stage="animation",
+        workdir=workdir,
+        record_tool_write=lambda relpath, sha256: None,
+    )
+
+    result = await invoke_tool(
+        SUGGEST_UPSTREAM_CHANGE_TOOL,
+        ctx_without_engine,
+        {"to_stage": "narrative", "content": "x"},
+    )
+
+    assert result.is_error is True

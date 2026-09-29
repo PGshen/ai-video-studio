@@ -11,16 +11,16 @@ from pathlib import Path
 from studio.agent.tools import ToolSpec
 from studio.stages.animation.render_preview import RENDER_PREVIEW_TOOL
 from studio.stages.animation.validate_scenes import VALIDATE_SCENES_TOOL
+from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
 from studio.workspace import files
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _WRITE_SCOPE = WriteScope(writable=["animation/scenes/**"], tool_managed=[])
-_TOOLS: list[ToolSpec] = [VALIDATE_SCENES_TOOL, RENDER_PREVIEW_TOOL]
-"""`validate_scenes`（T7）、`render_preview`（T8）都不需要 `Engine`，模块
-加载时就能建好、直接放进 `tools()`。`suggest_upstream_change`（T6）需要
-`Engine` 才能构造 `ToolSpec`（工厂函数 `build_suggest_upstream_change_tool`），
-`AnimationStage.tools()` 拿不到 `Engine`，暂未接入（决策记录 D22/TD-32）。
+_TOOLS: list[ToolSpec] = [VALIDATE_SCENES_TOOL, RENDER_PREVIEW_TOOL, SUGGEST_UPSTREAM_CHANGE_TOOL]
+"""三个工具都是模块加载时就能建好的常量：`suggest_upstream_change` 需要的
+`Engine` 现在从 `ToolContext.engine`（TD-32）拿，不再需要在阶段实例化时
+单独注入，`AnimationStage` 因此仍然可以是模块级单例（决策记录 D22/TD-32）。
 """
 
 

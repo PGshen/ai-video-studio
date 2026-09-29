@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import Engine
 
 from studio.agent.events import ImageData
 
@@ -41,6 +42,11 @@ class ToolContext:
     TurnRunner（T6）用同一个会话累积的记录构造 `scope.guard` 需要的
     `tool_writes` 参数。
     """
+    engine: Engine | None = None
+    """需要写数据库的工具（例如 `suggest_upstream_change` 写 `suggestions`
+    表）用它；大多数工具（文件读写、manim 校验/渲染）不需要，默认 `None`。
+    由 `TurnContext.tool_context()` 从 `TurnRunner` 持有的 `Engine` 传入
+    （TD-32）。"""
 
 
 ToolHandler = Callable[[ToolContext, Any], "ToolResult | Awaitable[ToolResult]"]

@@ -14,11 +14,11 @@
 | config / db | A | 12 张表迁移、仓储均有测试；`repo_root()` 已公开，测试不再引用私有常量 | 2026-09-28 |
 | workspace（快照库） | A | 快照/回滚/guard/upstream 覆盖主要路径与符号链接、权限边界；快照不再重复读文件，排除目录统一在 workspace 层过滤，guard 还原后清理空目录 | 2026-09-28 |
 | jobs | B | `create_job`/`claim_next`/心跳/进度/完成/失败/`reap_stale_running` 均有测试；`claim_next` 只保证同进程内不重复领取，跨进程强一致性明确不做（设计选择，见 D2），未做多进程并发验证 | 2026-09-29 |
-| agent（运行时、TurnRunner） | B | 三个运行时均有 mock SDK 测试，TurnRunner 覆盖各结束方式；`runner.py`/`openai_runtime.py`/`claude_runtime.py` 已拆分到 400 行以内（原 TD-15/16 及新增拆分）；`ToolContext` 统一构造、步数预算只在 runner 计数（原 TD-17/18）；Claude Bash 沙箱拒读仓库与 data_dir，OpenAI Shell 经 sandbox-exec 沙箱化（原 TD-1/20，残余风险见 TD-27/28）；成本账本取消边界收窄（原 TD-11/12，残余边界见 TD-25/26）；真实 key 冒烟只跑了登录模式（Claude）与本机 sandbox-exec 实测（OpenAI，未过模型）；`ToolContext` 仍不携带 `Engine`，导致阶段工具若要写数据库拿不到连接（TD-32） | 2026-09-28 |
+| agent（运行时、TurnRunner） | B | 三个运行时均有 mock SDK 测试，TurnRunner 覆盖各结束方式；`runner.py`/`openai_runtime.py`/`claude_runtime.py` 已拆分到 400 行以内（原 TD-15/16 及新增拆分）；`ToolContext` 统一构造、步数预算只在 runner 计数（原 TD-17/18）；Claude Bash 沙箱拒读仓库与 data_dir，OpenAI Shell 经 sandbox-exec 沙箱化（原 TD-1/20，残余风险见 TD-27/28）；成本账本取消边界收窄（原 TD-11/12，残余边界见 TD-25/26）；真实 key 冒烟只跑了登录模式（Claude）与本机 sandbox-exec 实测（OpenAI，未过模型）；`ToolContext`/`TurnContext` 现在携带 `engine: Engine \| None`，`TurnRunner` 真实装配时透传（原 TD-32），有端到端测试覆盖 | 2026-09-29 |
 | stages.brainstorm | — | M4 | 2026-09-28 |
 | stages.topic | C | M1 只有占位定义（提示词 + 可写范围）与结构测试 | 2026-09-28 |
 | stages.narrative | C | 同上 | 2026-09-28 |
-| stages.animation | B | `validate_scenes`/`render_preview` 工具有完整单测（含 scene_id 定位、超时路径）+ 端到端 turn 测试；系统提示词从占位扩到完整版并有关键词断言；`suggest_upstream_change` 已实现但因 TD-32（`ToolContext` 拿不到 `Engine`）未接入 `tools()`，animation agent 实际对话中调不到 | 2026-09-29 |
+| stages.animation | B | `validate_scenes`/`render_preview`/`suggest_upstream_change` 三个工具都接进 `tools()`（TD-32 修复后）并有完整单测（含 scene_id 定位、超时路径、`suggestions` 表写入）+ 端到端 turn 测试；系统提示词从占位扩到完整版，含三个工具的使用时机和关键词断言 | 2026-09-29 |
 | engines.render | A | manim 静态校验、全画质渲染、预览渲染+关键帧抽取均有真实子进程测试（`@pytest.mark.slow`，不是 mock），traceback 定位到镜头号、120 秒超时路径都有覆盖；已知的 manim/ffmpeg 环境行为（音轨 1 秒静音下限、帧边界抽帧误差）记进 `references/manim.md`，代码里已按此设计 | 2026-09-29 |
 | engines.tts | — | M3 | 2026-09-29 |
 | search | — | M4 | 2026-09-28 |

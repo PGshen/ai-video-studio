@@ -62,3 +62,9 @@ class TestAnimationStage:
 
     def test_web_tools_not_allowed(self) -> None:
         assert animation_stage.allow_web is False
+
+    def test_tools_include_suggest_upstream_change(self) -> None:
+        # TD-32: `suggest_upstream_change` 现在跟其它业务工具一起是模块级常量，
+        # 不再需要单独给阶段实例注入 Engine 才能出现在 tools() 里。
+        names = {tool.name for tool in animation_stage.tools()}
+        assert names == {"validate_scenes", "render_preview", "suggest_upstream_change"}

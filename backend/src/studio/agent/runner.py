@@ -298,6 +298,7 @@ class TurnRunner:
             stage=job.stage.name,
             record_tool_write=record_tool_write,
             allow_web=job.stage.allow_web,
+            engine=engine,
         )
         runtime = self._factory.create(job.session.runtime)
         stream = runtime.run_turn(ctx)

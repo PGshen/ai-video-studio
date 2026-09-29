@@ -566,6 +566,52 @@ class TestGuard:
             for e in received
         )
 
+    async def test_tool_context_carries_the_runner_engine(self, h: Harness) -> None:
+        # TD-32: business tools that need to write to the DB (e.g.
+        # `suggest_upstream_change`) read it off `ToolContext.engine`, wired
+        # by `TurnRunner` from the same `Engine` it was constructed with.
+        seen_engines = []
+
+        class NoArgs(BaseModel):
+            pass
+
+        def record_engine(ctx: ToolContext, _args: NoArgs) -> ToolResult:
+            seen_engines.append(ctx.engine)
+            return ToolResult(text="ok")
+
+        class TopicWithTool:
+            name = "topic"
+            allow_web = False
+
+            def __init__(self) -> None:
+                self._base = h.env.registry.get("topic")
+
+            def system_prompt(self) -> str:
+                return "p"
+
+            def tools(self) -> list[ToolSpec]:
+                return [ToolSpec("record_engine", "d", NoArgs, {"topic"}, record_engine)]
+
+            def write_scope(self) -> WriteScope:
+                return self._base.write_scope()
+
+            def upstream_stages(self) -> list[str]:
+                return []
+
+            def artifact_dirs(self) -> list[str]:
+                return ["topic"]
+
+            def status_summary(self, workdir: Path) -> str:
+                return ""
+
+        h.env.registry.register(TopicWithTool())
+        session_id = h.session(stage="topic")
+
+        turn = await h.run(session_id, [fake.call_tool("record_engine")])
+
+        assert turn.status == "done"
+        assert seen_engines == [h.env.engine]
+
 
 class TestPreambleAcrossTurns:
     async def test_user_edit_snapshot_and_preamble_diff(self, h: Harness) -> None:

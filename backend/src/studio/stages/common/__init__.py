@@ -8,8 +8,8 @@
 from __future__ import annotations
 
 from studio.stages.common.suggest_upstream_change import (
+    SUGGEST_UPSTREAM_CHANGE_TOOL,
     SuggestUpstreamChangeArgs,
-    build_suggest_upstream_change_tool,
 )
 
-__all__ = ["SuggestUpstreamChangeArgs", "build_suggest_upstream_change_tool"]
+__all__ = ["SUGGEST_UPSTREAM_CHANGE_TOOL", "SuggestUpstreamChangeArgs"]
