@@ -13,20 +13,31 @@ export interface TurnControls {
   inputDisabled: boolean
   showStop: boolean
   showContinue: boolean
+  /** 从未开始运行的一轮（重启时还在排队）：按钮重发原消息，文案改为"重新发送"（TD-19）。 */
+  continueLabel: '继续' | '重新发送'
 }
 
 const BUSY_STATUSES = new Set(['queued', 'running'])
 const RESUMABLE_STATUSES = new Set(['interrupted', 'budget_exceeded'])
 
-const IDLE_CONTROLS: TurnControls = { inputDisabled: false, showStop: false, showContinue: false }
+const IDLE_CONTROLS: TurnControls = {
+  inputDisabled: false,
+  showStop: false,
+  showContinue: false,
+  continueLabel: '继续',
+}
 
-export function computeTurnControls(status: string | null): TurnControls {
+export function computeTurnControls(status: string | null, neverStarted = false): TurnControls {
   if (status === null) return IDLE_CONTROLS
   if (BUSY_STATUSES.has(status)) {
-    return { inputDisabled: true, showStop: true, showContinue: false }
+    return { ...IDLE_CONTROLS, inputDisabled: true, showStop: true }
   }
   if (RESUMABLE_STATUSES.has(status)) {
-    return { inputDisabled: false, showStop: false, showContinue: true }
+    return {
+      ...IDLE_CONTROLS,
+      showContinue: true,
+      continueLabel: status === 'interrupted' && neverStarted ? '重新发送' : '继续',
+    }
   }
   return IDLE_CONTROLS
 }

@@ -38,7 +38,9 @@ const sessionIdRef = toRef(props, 'sessionId')
 const { items, turnStatus, addLocalUserMessage, removeLocalUserMessage } =
   useSessionStream(sessionIdRef)
 
-const controls = computed(() => computeTurnControls(turnStatus.value?.status ?? null))
+const controls = computed(() =>
+  computeTurnControls(turnStatus.value?.status ?? null, turnStatus.value?.neverStarted ?? false),
+)
 
 const sendMutation = useSendMessageMutation(() => props.sessionId ?? '')
 const cancelMutation = useCancelSessionMutation(() => props.sessionId ?? '')
@@ -78,8 +80,11 @@ async function onStop(): Promise<void> {
 async function onContinue(): Promise<void> {
   sendError.value = null
   try {
-    // The backend sends the fixed text "继续" as this turn's user message.
-    await optimisticSend(optimisticMessages, CONTINUE_TEXT, () => continueMutation.mutateAsync())
+    // The backend sends the fixed text "继续" as this turn's user message, or re-sends the
+    // original message when the last turn never started (TD-19).
+    const state = turnStatus.value
+    const text = state?.neverStarted && state.userMessage ? state.userMessage : CONTINUE_TEXT
+    await optimisticSend(optimisticMessages, text, () => continueMutation.mutateAsync())
   } catch (error) {
     sendError.value = describeError(error)
   }
@@ -105,7 +110,13 @@ async function onContinue(): Promise<void> {
     </Conversation>
 
     <p
-      v-if="turnStatus?.error"
+      v-if="turnStatus?.error && turnStatus.neverStarted"
+      class="text-muted-foreground text-sm"
+    >
+      {{ turnStatus.error }}
+    </p>
+    <p
+      v-else-if="turnStatus?.error"
       class="text-destructive text-sm"
     >
       运行出错：{{ turnStatus.error }}
@@ -139,7 +150,7 @@ async function onContinue(): Promise<void> {
             size="sm"
             @click="onContinue"
           >
-            继续
+            {{ controls.continueLabel }}
           </Button>
           <PromptInputSubmit :disabled="!sessionId || controls.inputDisabled" />
         </div>

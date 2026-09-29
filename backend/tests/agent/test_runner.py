@@ -27,6 +27,7 @@ from studio.db.repo.sessions import create_session, get_session
 from studio.db.repo.snapshots import get_snapshot, latest_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
 from studio.db.repo.turns import (
+    NEVER_STARTED_ERROR,
     TurnValue,
     create_turn_if_session_idle,
     get_turn,
@@ -871,6 +872,9 @@ class TestRecovery:
         queued_after = get_turn(h.env.engine, queued.id)
         assert running_after is not None and queued_after is not None
         assert running_after.status == queued_after.status == "interrupted"
+        # TD-19: only the turn that never started is marked as such.
+        assert queued_after.error == NEVER_STARTED_ERROR
+        assert running_after.error is None
         partial = get_snapshot(h.env.engine, running_after.end_snapshot_id or "")
         assert partial is not None and partial.reason == "partial"
         assert "topic/brief.md" in partial.manifest
@@ -973,6 +977,9 @@ class TestShutdown:
         for turn_id in (first, second):
             turn = get_turn(env.engine, turn_id)
             assert turn is not None and turn.status == "interrupted", turn_id
+        first_turn, second_turn = get_turn(env.engine, first), get_turn(env.engine, second)
+        assert first_turn is not None and first_turn.error is None
+        assert second_turn is not None and second_turn.error == NEVER_STARTED_ERROR  # TD-19
         assert not h.scripts  # the queued turn never started a runtime
 
 

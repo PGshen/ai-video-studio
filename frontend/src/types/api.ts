@@ -103,6 +103,8 @@ export interface TurnOut {
   usage: Record<string, unknown> | null
   cost_usd: number | null
   error: string | null
+  /** `interrupted` 且从未真正开始运行（重启时还在排队）；[继续] 会重发 `user_message`（TD-19）。 */
+  never_started: boolean
   created_at: string
   updated_at: string
 }

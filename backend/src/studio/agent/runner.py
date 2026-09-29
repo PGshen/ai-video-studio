@@ -181,10 +181,15 @@ class TurnRunner:
         for job in list(self._queue):
             self._queue.remove(job)
             try:
-                turns_repo.interrupt_turn(self._engine, job.turn_id, end_snapshot_id=None)
+                turns_repo.interrupt_turn(
+                    self._engine,
+                    job.turn_id,
+                    end_snapshot_id=None,
+                    error=turns_repo.NEVER_STARTED_ERROR,
+                )
             except Exception:
                 logger.exception("turn %s 关闭时标记 interrupted 失败", job.turn_id)
-            self._publish_status(job, "interrupted")
+            self._publish_status(job, "interrupted", turns_repo.NEVER_STARTED_ERROR)
             self._release(job)
 
         tasks = []

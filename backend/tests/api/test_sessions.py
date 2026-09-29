@@ -10,6 +10,7 @@ from studio.db.models import ModelProfile
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import create_session
 from studio.db.repo.turns import (
+    NEVER_STARTED_ERROR,
     create_turn_if_session_idle,
     finish_turn,
     interrupt_turn,
@@ -341,6 +342,56 @@ class TestContinueSession:
         turns = {t["id"]: t for t in detail.json()["turns"]}
         assert turns[new_turn_id]["user_message"] == "继续"
         assert turns[new_turn_id]["status"] == "done"
+
+    async def test_never_started_turn_is_resent_with_original_message(
+        self, api_env: ApiEnv
+    ) -> None:
+        # TD-19: a queued turn interrupted by a restart never ran; continue re-sends
+        # the user's original message instead of a bare "继续".
+        pid = await _project(api_env)
+        engine = api_env.app.state.engine
+        session = create_session(
+            engine,
+            project_id=pid,
+            stage="topic",
+            model_profile_id=_fake_profile_id(api_env),
+            runtime="fake",
+        )
+        queued = create_turn_if_session_idle(engine, session.id, "帮我想三个选题")
+        assert queued is not None
+        interrupt_turn(engine, queued.id, end_snapshot_id=None, error=NEVER_STARTED_ERROR)
+
+        detail = await api_env.client.get(f"/api/sessions/{session.id}")
+        assert detail.json()["turns"][0]["never_started"] is True
+
+        response = await api_env.client.post(f"/api/sessions/{session.id}/continue")
+
+        assert response.status_code == 202, response.text
+        new_turn_id = response.json()["turn_id"]
+        await api_env.app.state.turn_runner.wait(new_turn_id)
+        detail = await api_env.client.get(f"/api/sessions/{session.id}")
+        turns = {t["id"]: t for t in detail.json()["turns"]}
+        assert turns[new_turn_id]["user_message"] == "帮我想三个选题"
+        assert turns[new_turn_id]["never_started"] is False
+
+    async def test_started_turn_is_not_flagged_never_started(self, api_env: ApiEnv) -> None:
+        pid = await _project(api_env)
+        engine = api_env.app.state.engine
+        session = create_session(
+            engine,
+            project_id=pid,
+            stage="topic",
+            model_profile_id=_fake_profile_id(api_env),
+            runtime="fake",
+        )
+        stuck = create_turn_if_session_idle(engine, session.id, "第一条")
+        assert stuck is not None
+        mark_turn_running(engine, stuck.id, start_snapshot_id=None)
+        interrupt_turn(engine, stuck.id, end_snapshot_id=None)
+
+        detail = await api_env.client.get(f"/api/sessions/{session.id}")
+
+        assert detail.json()["turns"][0]["never_started"] is False
 
     async def test_budget_exceeded_turn_can_be_continued(self, api_env: ApiEnv) -> None:
         pid = await _project(api_env)

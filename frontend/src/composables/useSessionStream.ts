@@ -128,6 +128,9 @@ export interface TurnStatusState {
   turnId: string
   status: string
   error: string | null
+  /** 重启时还在排队、从未开始运行（TD-19）：[继续] 重发 `userMessage`。只有从会话详情来的状态才准确。 */
+  neverStarted: boolean
+  userMessage: string | null
 }
 
 export interface UseSessionStreamResult {
@@ -210,6 +213,16 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     return status === 'queued' || status === 'running'
   }
 
+  function statusOf(turn: TurnOut): TurnStatusState {
+    return {
+      turnId: turn.id,
+      status: turn.status,
+      error: turn.error,
+      neverStarted: turn.never_started,
+      userMessage: turn.user_message,
+    }
+  }
+
   /** 重新拉取会话，用最近一个 turn 的状态覆盖 `turnStatus`（I3）。 */
   async function refreshTurnStatus(id: string, myGeneration: number): Promise<void> {
     const versionAtRequest = statusVersion
@@ -222,7 +235,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     if (myGeneration !== generation || versionAtRequest !== statusVersion) return
     for (const turn of detail.turns) knownTurns.set(turn.id, turn)
     const last = detail.turns.at(-1)
-    if (last) turnStatus.value = { turnId: last.id, status: last.status, error: last.error }
+    if (last) turnStatus.value = statusOf(last)
     if (projectId) void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
   }
 
@@ -368,7 +381,16 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       case 'turn_status': {
         const payload = event.payload as TurnStatusPayload
         statusVersion += 1
-        turnStatus.value = { turnId: payload.turn_id, status: payload.status, error: payload.error }
+        const known = knownTurns.get(payload.turn_id)
+        turnStatus.value = {
+          turnId: payload.turn_id,
+          status: payload.status,
+          error: payload.error,
+          neverStarted: false,
+          userMessage: known?.user_message ?? null,
+        }
+        // `never_started` is only computed by the backend's session detail (TD-19).
+        if (payload.status === 'interrupted') void refreshTurnStatus(id, myGeneration)
         // 项目详情（`ProjectDetailOut.busy`）失效：当前会话的 turn 一
         // 开始/结束，画布的只读判断（T14 审查修复：`combineBusy`）应该
         // 立刻反映，不等 `useProjectQuery` 的 3 秒轮询周期。只有
@@ -395,7 +417,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     }
     const last = detail.turns.at(-1)
     if (last) {
-      turnStatus.value = { turnId: last.id, status: last.status, error: last.error }
+      turnStatus.value = statusOf(last)
     }
   }
 

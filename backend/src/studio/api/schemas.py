@@ -110,6 +110,8 @@ class TurnOut(BaseModel):
     usage: dict[str, Any] | None
     cost_usd: float | None
     error: str | None
+    never_started: bool = False
+    """`interrupted` 且从未真正开始运行（重启时还在排队）；[继续] 重发 `user_message`（TD-19）。"""
     created_at: datetime
     updated_at: datetime
 
