@@ -242,7 +242,7 @@
 - 2026-09-29 — T7 叙事阶段 tools 接入 + 完整提示词（顺带补 T6 返回文本的时长/覆盖率）— `make check` 全绿（commit `dde6697`）
 - 2026-09-29 — T8 叙事端到端 turn 测试（`test_narrative_flow.py`）— 1 个测试通过，`make check` 全绿（commit `695d592`）
 - 2026-09-29 — T9 `agent.preamble` 按镜头 id 的上游变更摘要 — 6 个新用例通过，`make check` 全绿（commit `18c904c`）
-
+- 2026-09-29 — T10 前端叙事画布（`narrativeDoc.ts`/`timingStatus.ts`/`NarrativeCanvas.vue` 等）— 21 个新 vitest 通过，`make check` 全绿（commit `da2a243`）\n
 ## 下一步
 
 - 从 T11 开始：`frontend/src/pages/ProjectWorkbenchPage.vue` 加 `v-else-if="stage === 'narrative'"` 分支渲染 `NarrativeCanvas`（`:project-id`、`:busy`），然后 L4 走查：`make dev`（或按 `docs/runbooks/verification.md`）起服务，用 `seed_narrative_project`（`backend/tests/fixtures/narrative/seed.py`）建一个选题已定稿的项目，用 Fake 或真实运行时跑叙事一轮，在内置浏览器截图存 `data/evidence/m3-narrative/`。T10 里"定稿前提"只是画布顶部的提示条（`computeReadiness`），T11 要决定是否把它接到 `StageNav` 的定稿按钮（跨 features 不能互相 import，倾向于只保留提示条并记入决策记录）。
