@@ -93,8 +93,23 @@ def handle(runner: TurnRunner, job: _Job, state: _State, event: events.AgentEven
             runner._persist(
                 job, "notice", {"kind": "cost_unpriced", "message": "未配置单价，成本未统计"}
             )
+        if event.includes_carryover and not state.cost_carryover:
+            state.cost_carryover = True
+            runner._persist(
+                job,
+                "notice",
+                {"kind": "cost_carryover", "message": "本轮成本含上一轮被中断时的残余花费"},
+            )
+        # TD-25: the carryover amount cannot be separated from this turn's own cost, so a
+        # turn that includes it is not judged against the budget (better to miss than to
+        # end a turn that was within budget).
         limit = job.profile.max_cost_per_turn
-        if limit is not None and not state.cost_advisory and state.cost_usd > limit:
+        if (
+            limit is not None
+            and not state.cost_advisory
+            and not state.cost_carryover
+            and state.cost_usd > limit
+        ):
             _exceed_budget(runner, job, state, "cost")
     elif isinstance(event, events.TurnEnd):
         state.end = event

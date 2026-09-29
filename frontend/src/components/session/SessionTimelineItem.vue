@@ -16,6 +16,7 @@ const props = defineProps<{ item: TimelineItem; projectId: string | null }>()
 const NOTICE_LABELS: Record<string, string> = {
   guard_restored: '越界写入已被还原',
   cost_unpriced: '本轮成本未计价（模型配置缺单价）',
+  cost_carryover: '本轮成本含上一轮被中断时的残余花费，未参与成本预算判断',
 }
 
 const toolState = computed(() => {

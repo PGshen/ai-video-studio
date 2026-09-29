@@ -58,6 +58,8 @@ class _State:
     cost_unpriced: bool = False
     """收到过 `Usage.priced == False`：模型配置缺单价，成本没有统计（turn 的
     `cost_usd` 记为空，并发一次 `cost_unpriced` 提示）。"""
+    cost_carryover: bool = False
+    """收到过 `Usage.includes_carryover`：`cost_usd` 含上一轮被打断时的残余花费（TD-25）。"""
     budget_exceeded: bool = False
     end: events.TurnEnd | None = None
     status: str | None = None
