@@ -9,24 +9,25 @@ from __future__ import annotations
 from pathlib import Path
 
 from studio.agent.tools import ToolSpec
+from studio.stages.common import FETCH_URL_TOOL, WEB_SEARCH_TOOL
 from studio.workspace import files
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _WRITE_SCOPE = WriteScope(writable=["topic/**"], tool_managed=[])
+_TOOLS: list[ToolSpec] = [WEB_SEARCH_TOOL, FETCH_URL_TOOL]
 
 
 class TopicStage:
     name = "topic"
-    # TD-1: off until M4, which re-enables web tools together with a domain allowlist
-    # (WebFetch/WebSearch otherwise reach any domain and could exfiltrate workspace text).
-    allow_web = False
+    allow_web = True
+    """本阶段允许联网；具体用自建工具还是原生工具由 `STUDIO_WEB_MODE` 决定（ADR 0010）。"""
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")
 
     def tools(self) -> list[ToolSpec]:
-        return []
+        return list(_TOOLS)
 
     def write_scope(self) -> WriteScope:
         return _WRITE_SCOPE

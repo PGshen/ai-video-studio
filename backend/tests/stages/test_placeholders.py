@@ -23,12 +23,11 @@ class TestTopicStage:
         assert topic_stage.upstream_stages() == []
         assert topic_stage.artifact_dirs() == ["topic"]
 
-    def test_no_business_tools_in_m1(self) -> None:
-        assert topic_stage.tools() == []
-
-    def test_web_tools_disabled_until_domain_policy(self) -> None:
-        # TD-1: no stage gets web tools until M4 adds a domain allowlist.
-        assert topic_stage.allow_web is False
+    def test_web_is_allowed_and_tools_include_web_tools(self) -> None:
+        # ADR 0010: web use is a stage capability, the mode (STUDIO_WEB_MODE) picks the
+        # implementation; the runner filters the self-built tools out in native mode.
+        assert topic_stage.allow_web is True
+        assert {"web_search", "fetch_url"} <= {t.name for t in topic_stage.tools()}
 
     def test_system_prompt_is_non_empty(self) -> None:
         assert topic_stage.system_prompt().strip() != ""

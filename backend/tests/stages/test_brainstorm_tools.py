@@ -33,10 +33,16 @@ async def _call(spec: ToolSpec, ctx: ToolContext, **args: object) -> ToolResult:
     return await invoke_tool(spec, ctx, dict(args))
 
 
-def test_stage_exposes_exactly_the_three_tools() -> None:
-    assert {t.name for t in STAGE.tools()} == {"list_ideas", "create_idea", "update_idea"}
+def test_stage_exposes_idea_tools_and_web_tools() -> None:
+    assert {t.name for t in STAGE.tools()} == {
+        "list_ideas",
+        "create_idea",
+        "update_idea",
+        "web_search",
+        "fetch_url",
+    }
     for tool in STAGE.tools():
-        assert tool.stages == {"brainstorm"}
+        assert "brainstorm" in tool.stages
 
 
 class TestCreateIdea:

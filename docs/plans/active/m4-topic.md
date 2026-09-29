@@ -122,7 +122,7 @@
 - **完成标准**：`pytest backend/tests/stages/` 通过。
 - **验证命令**：`make check`
 
-### T5：联网工具 `web_search`/`fetch_url` 与联网模式开关（待开始）
+### T5：联网工具 `web_search`/`fetch_url` 与联网模式开关（完成）
 
 - **目标**：brainstorm 和 topic 有两种可切换的联网方式：`tools`（默认）用自建的 `web_search`/`fetch_url`，「URL 来源」规则挡住提示注入外泄；`native` 用各运行时的原生联网能力。由 `STUDIO_WEB_MODE` 控制，两种模式互斥（D1、D3）。
 - **涉及文件**：
@@ -281,10 +281,11 @@
 - 2026-09-29 — T2 `ideas` 仓储与 `/api/ideas` — 47 个新测试通过，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T3 无项目会话（TurnRunner 无工作区模式、`ToolContext.require_project`、scratch 目录、`/api/brainstorm/sessions`、brainstorm 阶段骨架）— 新增 30 个测试，既有测试不改断言全部通过，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T4 头脑风暴三个工具（`list_ideas`/`create_idea`/`update_idea`）与完整提示词 — 新增约 23 个测试，`make check` 全绿（commit 见 git log）
+- 2026-09-29 — T5 联网工具与 `STUDIO_WEB_MODE` 开关（`web_search`/`fetch_url`、URL 来源规则、runner 按模式过滤工具与 `allow_web`、ADR 0010）— 新增约 60 个测试，`make check` 全绿（commit 见 git log）
 
 ## 下一步
 
-- 做 T5：联网工具与联网模式开关。先写 `backend/tests/stages/test_web_tools.py`、`backend/tests/agent/test_web_mode.py`（失败）；`Settings.web_mode`（`STUDIO_WEB_MODE`）、`agent/tools.py::WEB_TOOL_NAMES`、`runner.py` 里 `allow_web = stage.allow_web and web_mode == "native"` 并在 native 模式滤掉自建工具，见 T5 涉及文件。brainstorm/topic 的 `allow_web` 在这一步改为 `True`（现在 brainstorm 是 `False`，topic 是 `False`），并把两个阶段的 `tools()` 加上 `WEB_SEARCH_TOOL`/`FETCH_URL_TOOL`。写 ADR 0010。
+- 做 T6：`stages/topic` 的 `brief.md` 结构与 `check_brief`。先写 `backend/tests/stages/test_topic_brief.py`、`test_topic_check_tool.py`、`test_topic_prompt.py`、`backend/tests/api/test_topic_check.py`（失败），再新建 `stages/topic/brief.py`、`check_brief.py`、`api/topic.py`；`topic` 的 `tools()` 现在是 `[web_search, fetch_url]`，要加上 `check_brief`；提示词要写成与联网模式无关（不写死 `web_search` 工具名）；同时更新 `tests/fixtures/narrative/brief.md` 使其通过 `check_brief`。
 
 ## 决策记录
 
@@ -301,6 +302,7 @@
 - 2026-09-29（T2 执行中）：`mark_picked` 用 `UPDATE ... WHERE status='idea' RETURNING id` 做条件更新（pyright 不认 `Result.rowcount`）；`update_idea` 的「没传 vs 传 None」用 `UNSET` 哨兵区分；API 的 `PATCH` 用 `model_fields_set` 判断，`tags`/`scores` 传 `null` 视为清空。评分接受整数值浮点数（`4.0` → 4），因为模型的 JSON 偶尔会写成浮点。
 - 2026-09-29（T3 执行中）：① brainstorm 阶段骨架（`stages/brainstorm/`、注册进 `main`、进 `independence` 契约）提前到 T3，因为 API 和运行时测试需要一个真实注册的阶段；T4 只补工具和提示词。② 「哪些阶段无项目」用常量 `agent.stage.WORKSPACELESS_STAGES = {"brainstorm"}`，不给 `StageDefinition` 协议加字段——协议改动会波及所有阶段和测试桩。`start_turn` 双向校验：无项目会话必须是这些阶段，这些阶段的会话不能属于项目；项目阶段的会话创建接口对 `brainstorm` 返回 404。③ `TurnRunner` 新增 `is_session_busy(session_id)`（测试用，也可供 API 用）；调度键 `_Job.busy_key`（项目 id 或 `session:<id>`）。④ `turn_finish.finish` 拆成 `_guard_workspace`/`_snapshot_workspace` 两个私有函数，行为不变，无项目会话跳过两者和 `after_turn_done`。⑤ `default_fake_script` 在阶段没有可写路径时只回显，不再抛 `ValueError`（否则 `make dev` 的 fake 运行时跑不了头脑风暴）。⑥ brainstorm 的 `allow_web` 暂为 `False`，T5 加联网模式开关时和 topic 一起改为 `True`——否则 T3 骨架会在开关存在之前就打开 Claude 原生联网。
 - 2026-09-29（T4 执行中）：`update_idea` 工具的 `scores` 按维度**合并**进已有评分（agent 说「补评分」时不冲掉其他维度），而 REST 的 `PATCH` 是整体替换（前端编辑对话框总是提交完整评分）；`list_ideas` 不填 `status` 时含归档卡片（查重需要）。工具在 `update_idea` 里显式先查卡片状态，给出「状态是 picked/archived，不能改」的明确文字，而不是透传仓储层的异常文本。
+- 2026-09-29（T5 执行中）：① `fetch_url` 传给 Tavily 的是模型给出的原始 URL（去首尾空白），规范化 URL 只用于「是否允许」的比较。② 用户消息里的 URL 用 RFC 3986 字符集的正则提取（先用「非空白」的写法会把中文逗号和后面的文字一起吞进 URL），再去掉末尾标点。③ 自建工具 `web_search` 的名字与 OpenAI 托管搜索转出的 `ToolCall.name == "web_search"` 重名，但两种模式互斥，不会同时出现，前端按名字渲染无冲突。④ `_tools_and_web` 放在 `TurnRunner`（不是各运行时）：模式是进程级配置，运行时只看 `ctx.allow_web` 和 `ctx.tools`，Claude/OpenAI 运行时的 `allow_web` 分支一行没改。⑤ 既有测试的两处必要调整：`test_runner.py::TestAllowWeb` 改为 `native` 模式下断言，`test_placeholders.py` 里 topic 的工具/`allow_web` 断言改成新语义。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现

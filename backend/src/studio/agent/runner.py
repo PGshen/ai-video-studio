@@ -42,6 +42,7 @@ from studio.agent.preamble import (
 )
 from studio.agent.runtime import Budget, RuntimeFactory, TurnContext, UserInput
 from studio.agent.stage import WORKSPACELESS_STAGES, StageRegistry
+from studio.agent.tools import WEB_TOOL_NAMES, ToolSpec
 from studio.agent.turn_events import TOOL_RESULT_MAX_CHARS
 from studio.agent.turn_state import _Job, _State
 from studio.config import Settings
@@ -235,6 +236,14 @@ class TurnRunner:
                 self._cancel_grace_seconds, lambda: task.done() or task.cancel()
             )
 
+    def _tools_and_web(self, job: _Job) -> tuple[list[ToolSpec], bool]:
+        """本轮的工具列表和 `allow_web`（决策 D1）。`STUDIO_WEB_MODE=tools`：阶段自带的自建
+        联网工具原样保留，运行时不开原生联网；`native`：滤掉自建联网工具，允许联网的阶段开原生联网。"""
+        tools = job.stage.tools()
+        if self._settings.web_mode == "native":
+            return [t for t in tools if t.name not in WEB_TOOL_NAMES], job.stage.allow_web
+        return tools, False
+
     # ---- one turn -------------------------------------------------------
 
     async def _run(self, job: _Job) -> None:
@@ -296,13 +305,14 @@ class TurnRunner:
             state.tool_writes[relpath] = blobs.put(files.read_bytes(workdir, relpath))
             state.pending_tool_paths.append(relpath)
 
+        tools, allow_web = self._tools_and_web(job)
         ctx = TurnContext(
             system_prompt=job.stage.system_prompt(),
             user_input=UserInput(
                 text=compose_user_text(preamble, job.user_input.text),
                 images=job.user_input.images,
             ),
-            tools=job.stage.tools(),
+            tools=tools,
             workdir=workdir,
             model_profile=job.profile,
             resume_ref=job.session.sdk_ref,
@@ -312,7 +322,7 @@ class TurnRunner:
             project_id=project_id,
             stage=job.stage.name,
             record_tool_write=record_tool_write,
-            allow_web=job.stage.allow_web,
+            allow_web=allow_web,
             engine=engine,
             session_id=job.session.id,
         )
@@ -324,10 +334,11 @@ class TurnRunner:
         workdir = files.reset_scratch(self._settings.data_dir, job.session.id)
         turns_repo.mark_turn_running(self._engine, job.turn_id, start_snapshot_id=None)
         self._publish_status(job, "running")
+        tools, allow_web = self._tools_and_web(job)
         ctx = TurnContext(
             system_prompt=job.stage.system_prompt(),
             user_input=job.user_input,
-            tools=job.stage.tools(),
+            tools=tools,
             workdir=workdir,
             model_profile=job.profile,
             resume_ref=job.session.sdk_ref,
@@ -337,7 +348,7 @@ class TurnRunner:
             project_id=None,
             stage=job.stage.name,
             record_tool_write=lambda _relpath, _sha256: None,
-            allow_web=job.stage.allow_web,
+            allow_web=allow_web,
             engine=self._engine,
             session_id=job.session.id,
         )

@@ -11,16 +11,24 @@ from pathlib import Path
 
 from studio.agent.tools import ToolSpec
 from studio.stages.brainstorm.tools import CREATE_IDEA_TOOL, LIST_IDEAS_TOOL, UPDATE_IDEA_TOOL
+from studio.stages.common import FETCH_URL_TOOL, WEB_SEARCH_TOOL
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _WRITE_SCOPE = WriteScope(writable=[], tool_managed=[])
-_TOOLS: list[ToolSpec] = [LIST_IDEAS_TOOL, CREATE_IDEA_TOOL, UPDATE_IDEA_TOOL]
+_TOOLS: list[ToolSpec] = [
+    WEB_SEARCH_TOOL,
+    FETCH_URL_TOOL,
+    LIST_IDEAS_TOOL,
+    CREATE_IDEA_TOOL,
+    UPDATE_IDEA_TOOL,
+]
 
 
 class BrainstormStage:
     name = "brainstorm"
-    allow_web = False  # T5 加联网模式开关时和 topic 一起改为 True
+    allow_web = True
+    """本阶段允许联网；具体用自建工具还是原生工具由 `STUDIO_WEB_MODE` 决定。"""
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")

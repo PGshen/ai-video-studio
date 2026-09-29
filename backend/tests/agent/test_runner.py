@@ -6,7 +6,7 @@ from collections import Counter, deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from pydantic import BaseModel
@@ -33,7 +33,6 @@ from studio.db.repo.turns import (
     list_events,
     mark_turn_running,
 )
-from studio.stages.topic import TopicStage
 from studio.workspace import WriteScope, files, rollback
 
 from .conftest import StudioEnv
@@ -86,7 +85,9 @@ class Harness:
         return self.contexts[-1].user_input.text
 
 
-def _make_harness(env: StudioEnv, *, max_concurrent_turns: int = 2) -> Harness:
+def _make_harness(
+    env: StudioEnv, *, max_concurrent_turns: int = 2, web_mode: Literal["tools", "native"] = "tools"
+) -> Harness:
     seed_model_profiles(env.engine, enable_fake_runtime=True)
     scripts: deque[Script] = deque()
     contexts: list[TurnContext] = []
@@ -100,7 +101,9 @@ def _make_harness(env: StudioEnv, *, max_concurrent_turns: int = 2) -> Harness:
     factory = RuntimeFactory()
     factory.register("fake", construct)
     bus = SessionBus()
-    settings = Settings(data_dir=env.data_dir, max_concurrent_turns=max_concurrent_turns)
+    settings = Settings(
+        data_dir=env.data_dir, max_concurrent_turns=max_concurrent_turns, web_mode=web_mode
+    )
     runner = TurnRunner(env.engine, env.blobs, env.registry, factory, bus, settings)
     return Harness(env, runner, bus, scripts, contexts)
 
@@ -417,11 +420,8 @@ class TestWorkspaceChangedPaths:
 
 
 class TestAllowWeb:
-    async def test_allow_web_follows_stage_definition(self, h: Harness) -> None:
-        class WebTopic(TopicStage):
-            allow_web = True
-
-        h.env.registry.register(WebTopic())
+    async def test_native_mode_allow_web_follows_stage_definition(self, env: StudioEnv) -> None:
+        h = _make_harness(env, web_mode="native")
         await h.run(h.session(stage="topic"), [fake.say("a")])
         await h.run(h.session(stage="narrative"), [fake.say("b")])
 
