@@ -47,8 +47,8 @@ async def test_calling_tool_creates_open_suggestion(
     assert suggestion.content == "s-hook 的旁白和画面对不上，建议改一下这句台词。"
 
 
-def test_tool_is_scoped_to_animation_stage() -> None:
-    assert SUGGEST_UPSTREAM_CHANGE_TOOL.stages == {"animation"}
+def test_tool_is_scoped_to_animation_and_narrative_stages() -> None:
+    assert SUGGEST_UPSTREAM_CHANGE_TOOL.stages == {"animation", "narrative"}
 
 
 async def test_invalid_args_do_not_write_a_suggestion(

@@ -144,7 +144,7 @@
 - **完成标准**：`pytest backend/tests/stages/test_narrative_synthesize.py` 通过。
 - **验证命令**：`make check`
 
-### T7：`stages.narrative`——阶段定义完善（tools 接入 + 完整提示词）（待开始）
+### T7：`stages.narrative`——阶段定义完善（tools 接入 + 完整提示词）（完成）
 
 - **目标**：`NarrativeStage.tools()` 返回 T5/T6 的两个工具加上 `suggest_upstream_change`；`prompt.md` 从占位扩展为完整版（叙事阶段的写作要求、beat 拆分原则、`transition` 语义说明、三个工具的使用时机），参照 `stages/animation/prompt.md` 的详实程度。
 - **涉及文件**：`backend/src/studio/stages/narrative/__init__.py`（改 `_TOOLS`，做法同 `stages/animation/__init__.py` 的模块级常量列表）、`backend/src/studio/stages/narrative/prompt.md`（改写）、`backend/tests/stages/test_narrative_prompt.py`（新建，或并入 T5/T6 的测试文件——按现有习惯，`test_animation_validate.py` 里没有单独测提示词内容，这里可以只做一个轻量的"提示词包含关键词"断言，避免专门起一个文件；决定权留给实现时）。
@@ -242,7 +242,7 @@
 
 ## 下一步
 
-- 从 T7 开始：`NarrativeStage.tools()` 接入 `validate_narrative`、`synthesize_tts`、`suggest_upstream_change`（后者的 `stages` 集合要加上 `"narrative"`），并把 `prompt.md` 从占位扩写为完整版（参照 `stages/animation/prompt.md`）。目前 `tools()` 仍返回 `[]`。
+- 从 T8 开始：新建 `backend/tests/api/test_narrative_flow.py`，用 `FakeRuntime` 跑叙事阶段完整一轮（写 `narrative.json` → `validate_narrative` → `synthesize_tts`，用 `monkeypatch` 替换 `synthesize_tts_module._ENGINE_FACTORY` 为假引擎）→ `stage_flow.finalize` → 动画阶段读 `upstream/narrative/`。先读 `backend/src/studio/agent/fake.py` 看现有剧本能力，不够用再改并记入决策记录。假 `TTSEngine` 可参考 `backend/tests/stages/test_narrative_synthesize.py` 里的 `FakeTTSEngine`。
 
 ## 决策记录
 
@@ -259,6 +259,9 @@
 
 - 2026-09-29（T6 执行中）：假引擎注入用模块级 `_ENGINE_FACTORY`（默认 `build_tts_engine`），测试 `monkeypatch.setattr` 替换——不改 `ToolContext`/`ToolSpec` 签名，改动最小。
 - 2026-09-29（T6 执行中）：`timing.json` 的镜头顺序按 `narrative.json` 中的顺序写出（不是按 id 字母序）；不在当前 narrative 里的旧条目原样追加在末尾；本次没有任何镜头成功时不写 `timing.json`，避免留下空文件。
+
+- 2026-09-29（T7 执行中）：提示词轻量断言单独放 `tests/stages/test_narrative_prompt.py`（与 `test_animation_prompt.py` 对称），工具集合断言放进 `test_placeholders.py` 的 `TestNarrativeStage`；`test_common.py` 里 `suggest_upstream_change` 的阶段范围断言同步改为 `{"animation","narrative"}`。
+- 2026-09-29（T7 执行中）：补 T6 遗漏——`synthesize_tts` 返回文本里每个成功镜头带时长和对齐覆盖率（计划 T6 第 8 步原本就要求，提示词也依赖它），加了断言。
 
 ## 意外与发现
 

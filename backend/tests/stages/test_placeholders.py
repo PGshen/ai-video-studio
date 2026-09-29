@@ -49,6 +49,10 @@ class TestNarrativeStage:
     def test_web_tools_not_allowed(self) -> None:
         assert narrative_stage.allow_web is False
 
+    def test_tools_are_validate_synthesize_and_suggest(self) -> None:
+        names = {tool.name for tool in narrative_stage.tools()}
+        assert names == {"validate_narrative", "synthesize_tts", "suggest_upstream_change"}
+
 
 class TestAnimationStage:
     def test_write_scope_matches_design(self) -> None:

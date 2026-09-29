@@ -144,7 +144,10 @@ async def _handler(ctx: ToolContext, args: SynthesizeTtsArgs) -> ToolResult:
             ],
             "alignment_coverage": aligned["alignment_coverage"],
         }
-        succeeded.append(scene_id)
+        succeeded.append(
+            f"{scene_id}（时长 {result.duration_seconds:.2f}s，"
+            f"对齐覆盖率 {aligned['alignment_coverage']:.0%}）"
+        )
 
     if succeeded:
         # Narrative order first; entries for scenes no longer in narrative.json are kept as-is.

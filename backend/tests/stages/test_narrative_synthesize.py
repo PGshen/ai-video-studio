@@ -136,6 +136,7 @@ async def test_synthesizes_all_scenes_and_writes_timing_json(
     result = await invoke_tool(SYNTHESIZE_TTS_TOOL, _ctx(narrative_project), {})
 
     assert result.is_error is False
+    assert "s-hook（时长 1.00s，对齐覆盖率 100%）" in result.text
     timing = _read_timing(narrative_project)
     scenes = {scene["id"]: scene for scene in timing["scenes"]}
     assert [scene["id"] for scene in timing["scenes"]] == ["s-hook", "s-explain"]
