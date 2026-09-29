@@ -80,7 +80,7 @@ def test_fact_with_source_but_no_confidence() -> None:
     assert not any("缺少出处" in e for e in result.errors)
 
 
-@pytest.mark.parametrize("value", ["很高", "high", "大概", ""])
+@pytest.mark.parametrize("value", ["很高", "high", "大概", "", "高度可信", "中等"])
 def test_fact_with_invalid_confidence(value: str) -> None:
     result = check(_brief(关键事实=f"- 某事实（出处：教科书；把握程度：{value}）"))
     assert any("把握程度" in e and "高/中/低" in e for e in result.errors)
@@ -99,6 +99,10 @@ def test_fact_with_empty_source_value() -> None:
         "* 某事实（出处：教科书，第 3 章；把握程度：高，可靠）",
         "1. 某事实（出处：论文 A；把握程度：低）",
         "- 某事实\n  （出处：https://example.com/a；把握程度：高）",  # continuation line
+        # L4（真实模型）：把握程度后用破折号接说明，不应被当成格式错误
+        "- 某事实（出处：教科书；把握程度：中——多篇独立文章互相印证）",
+        "- 某事实（出处：教科书；把握程度：高 - 官方文档明确说明）",
+        "- 某事实（出处：教科书；把握程度：低：只有一篇博客）",
     ],
 )
 def test_fact_format_variants_are_accepted(fact: str) -> None:

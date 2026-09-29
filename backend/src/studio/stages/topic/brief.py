@@ -38,7 +38,10 @@ _H2 = re.compile(r"^##\s+(.*?)\s*#*\s*$")
 _NUMBERING = re.compile(r"^\s*(?:[0-9]+|[一二三四五六七八九十]+)\s*[.、．)）]\s*")
 _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)、])\s+(.*)$")
 _SOURCE = re.compile(r"出处\s*[:：]\s*(.*?)\s*(?=把握程度|$)")
-_CONFIDENCE = re.compile(r"把握程度\s*[:：]\s*([^\s;；,，、。）)]*)")
+_CONFIDENCE = re.compile(r"把握程度\s*[:：]\s*(.*)")
+_CONFIDENCE_VALUE = re.compile(r"(高|中|低)(?![\u4e00-\u9fff])")
+# 值是 高/中/低，后面不能紧跟汉字（挡掉「高度」「中等」）；后面可以接破折号、冒号等说明。
+_CONFIDENCE_TOKEN = re.compile(r"[^\s;；,，、。）)]*")
 _SEPARATORS = " \t;；,，、。()（）"
 _EXCERPT_CHARS = 20
 
@@ -102,10 +105,15 @@ def _check_fact(index: int, item: str) -> tuple[list[str], bool]:
     low = False
     if confidence is None:
         errors.append(f"{label}缺少把握程度（格式：把握程度：高/中/低）")
-    elif confidence.group(1) not in CONFIDENCE_VALUES:
-        errors.append(f"{label}的把握程度必须是 高/中/低，收到「{confidence.group(1)}」")
     else:
-        low = confidence.group(1) == "低"
+        rest = confidence.group(1)
+        value = _CONFIDENCE_VALUE.match(rest)
+        if value is None:
+            received = _CONFIDENCE_TOKEN.match(rest)
+            shown = received.group() if received else ""
+            errors.append(f"{label}的把握程度必须是 高/中/低，收到「{shown}」")
+        else:
+            low = value.group(1) == "低"
     return errors, low
 
 

@@ -1,6 +1,11 @@
 import { QueryClient } from '@tanstack/vue-query'
 import { describe, expect, it, vi } from 'vitest'
-import { invalidateWorkspace, jobRefetchIntervalMs, queryKeys } from '@/composables/queries'
+import {
+  invalidateAfterWrite,
+  invalidateWorkspace,
+  jobRefetchIntervalMs,
+  queryKeys,
+} from '@/composables/queries'
 
 describe('queryKeys', () => {
   it('派生的 key 层级和实际的资源路径一致，方便前缀失效', () => {
@@ -36,6 +41,20 @@ describe('jobRefetchIntervalMs', () => {
     expect(jobRefetchIntervalMs('failed')).toBe(false)
     expect(jobRefetchIntervalMs(undefined)).toBe(false)
     expect(jobRefetchIntervalMs(null)).toBe(false)
+  })
+})
+
+describe('invalidateAfterWrite', () => {
+  it('手动保存文件后失效文件树、该文件内容和选题简报检查（L4 发现：保存后检查提示条不刷新）', async () => {
+    const queryClient = new QueryClient()
+    const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await invalidateAfterWrite(queryClient, 'p1', 'topic/brief.md')
+
+    const keys = spy.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(['projects', 'p1', 'files'])
+    expect(keys).toContainEqual(['projects', 'p1', 'files', 'topic/brief.md'])
+    expect(keys).toContainEqual(['projects', 'p1', 'topic', 'check'])
   })
 })
 

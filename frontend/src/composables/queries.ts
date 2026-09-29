@@ -142,12 +142,25 @@ export function useWriteFileMutation(projectId: MaybeRefOrGetter<string>) {
   return useMutation({
     mutationFn: ({ path, stage, content }: { path: string; stage: string; content: string }) =>
       api.writeFileContent(toValue(projectId), path, stage, content),
-    onSuccess: (result: FileWriteResult) => {
-      const pid = toValue(projectId)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(pid) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fileContent(pid, result.path) })
-    },
+    onSuccess: (result: FileWriteResult) =>
+      invalidateAfterWrite(queryClient, toValue(projectId), result.path),
   })
+}
+
+/**
+ * 手动保存文件后要失效的查询：文件树、该文件内容，以及选题简报的检查结果（检查读的是工作区里的
+ * `topic/brief.md`，用户在画布里改完保存后提示条必须跟着刷新——M4 T12 走查发现）。
+ */
+export async function invalidateAfterWrite(
+  queryClient: QueryClient,
+  projectId: string,
+  path: string,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.fileContent(projectId, path) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
+  ])
 }
 
 // ---- snapshots ------------------------------------------------------------

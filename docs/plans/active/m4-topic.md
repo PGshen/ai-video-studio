@@ -235,7 +235,7 @@
 - **完成标准**：`pnpm exec vitest run`、`make check` 通过。
 - **验证命令**：`make check`
 
-### T12：L4 端到端走查（待开始）
+### T12：L4 端到端走查（完成）
 
 - **目标**：按浏览器实际操作走一遍完整链路，并把发现的问题修掉。参照 M3 T11：Claude 桌面版内置浏览器由控制者截图。
 - **涉及文件**：视发现的问题而定；截图和记录写进「验证记录」（浏览器工具不能落盘时如实说明，M3 已有先例）。
@@ -288,10 +288,11 @@
 - 2026-09-29 — T9 前端选题池（`features/ideas/`：`IdeaCard`/`IdeaEditDialog`/`CreateProjectDialog`/`IdeaGrid`、`ideaView.ts` 纯逻辑、endpoints/queries/types；顺带完成 T11 的纯逻辑 `briefStatus.ts`、`getTopicCheck`/`useTopicCheckQuery`）— vitest 215 个通过，lint/typecheck 通过（commit 见 git log）
 - 2026-09-29 — T10 头脑风暴抽屉（`SessionPanel`/`SessionPicker`/`SessionTimelineItem` 搬到 `components/session/` 并改用 `SessionScope`，`useSessionStream` 对无项目会话失效选题池查询，`BrainstormDrawer`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）
 - 2026-09-29 — T11 选题画布（`TopicCanvas`/`MarkdownFilePane`/`BriefCheckBar`，接入 `ProjectWorkbenchPage`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）；L4 走查在 T12
+- 2026-09-29 — T12 L4 走查（Fake + 本机 Claude 登录真实对话）— 发现并修复 3 个问题：保存简报后检查提示条不刷新（`invalidateAfterWrite`）、抽屉打开时卡片网格列数按视口而非容器（改 `auto-fill`）、`check_brief` 不接受「把握程度：中——说明」（放宽解析）；`make check` 全绿（commit 见 git log）
 
 ## 下一步
 
-- 做 T12：L4 浏览器走查。`preview_start` 启动 `.claude/launch.json` 里的 `api`（已开 Fake 运行时）和 `frontend`；按 T12 的七个检查点走一遍（先用 Fake 运行时和手动 `curl` 造数据：`POST /api/ideas` 造卡片、`PUT /api/projects/{id}/files/topic/brief.md?stage=topic` 写简报；再用本机 Claude 登录做真实对话——那部分和 T13 合并）。发现的问题先补能复现的测试再修。截图存不了盘时如实写进「验证记录」。之后 T13（真实冒烟）、T14（文档收尾）。
+- 做 T13：真实冒烟。先读 `backend/tests/smoke/test_smoke.py`、`support.py`、`Makefile` 的 `smoke` 目标，按 T13 正文新增 `test_tavily_search`、`test_brainstorm_claude_login`、`test_topic_claude_login`、`test_topic_claude_login_native_web`；`Makefile` 的 `env -i` 白名单加 `TAVILY_API_KEY`（`backend/.env` 里已有）；证据落 `data/evidence/m4-topic/smoke/`；补 `docs/references/tavily.md` 的真实行为、runbook 用例表；`native` 模式下 OpenAI 托管搜索经 OpenRouter 是否可用留作「未验证」（不产生 API 费用的 Claude 登录路径优先，OpenAI 路径若要验证需 `OPENAI_API_KEY`，见 SOP §6）。之后 T14 文档收尾。
 
 ## 决策记录
 
@@ -314,6 +315,7 @@
 - 2026-09-29（T9 执行中）：① 用原生 `<select>` 做评分下拉（比 shadcn `Select` 简单，表单里只是 1–5）。② 编辑已 `picked` 的卡片时请求体不带 `title`（后端对 picked 改名一律 409，即使标题没变）。③ `queryKeys.ideas(view)` 只有两种视图：`null`（后端默认，idea+picked）和 `'archived'`；前端不请求 `status=all`。④ 提前完成 T11 的纯逻辑 `briefStatus.ts`（与 T9 同批提交），T11 只剩组件。
 - 2026-09-29（T10 执行中）：① 头脑风暴抽屉做成**停靠在页面右侧的非模态面板**（`lg:grid-cols-[1fr_28rem]`），不用遮罩式 `Sheet`：agent 建卡片时左边网格要能实时看到，模态遮罩会挡住页面、也阻止点击卡片。计划里写的「用现有 shadcn `Sheet`」因此没用。② `SessionScope` 放在 `composables/sessionScope.ts`（纯逻辑，`components/` 和 `features/` 都能 import），不放在 `components/session/` 里。③ 关闭抽屉会断开 SSE（组件卸载），agent 仍在服务端运行；重新打开时 `useSessionStream` 重载历史，卡片网格靠 TanStack 的窗口聚焦重取和终态事件兜底。④ 选题池失效用工具名匹配 `(^|__)(create|update)_idea$`（`composables/ideaEvents.ts`），兼容 Claude 侧 `mcp__studio__` 前缀；不新增 SSE 事件类型。
 - 2026-09-29（T11 执行中）：`MarkdownFilePane` 判断文件是否存在看文件树而不是读取 404（TanStack 对失败请求默认重试，「加载中」会拖很久；叙事画布同样是先看文件树）。简报和笔记共用一个组件，`path` 变化时重置缓冲区和模式；agent 开始运行时自动退出编辑模式。
+- 2026-09-29（T12 执行中）：走查发现的三个问题都已修复并补了测试：① 用户在画布里保存 `brief.md` 后检查提示条仍显示旧结果——`useWriteFileMutation` 只失效了文件树和文件内容，没有失效 `topicCheck`；抽成 `invalidateAfterWrite` 并测试。② 抽屉打开时网格仍按 `xl:grid-cols-3`（按视口）分列，卡片被挤窄，改成 `grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]`（按容器）。③ 真实模型写「把握程度：中——多篇独立技术文章…」被判格式错误（值取到空白/标点为止，破折号不算），改成「值是 高/中/低 且后面不能紧跟汉字」（挡掉「高度」「中等」，放过破折号/冒号/空格后的说明），补了正反用例。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
@@ -321,6 +323,8 @@
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
 - 2026-09-29（起草时的发现，非执行中）：① `ideas` 表、`sessions.project_id` 可空、`StageDefinition.allow_web` 都是 M1 为 M4 预留的，但 `TurnRunner.start_turn` 对 `project_id is None` 直接 `ValueError("M1 只支持属于项目的会话")`，`ToolContext`/`TurnContext` 的 `project_id` 也是必填——无项目会话不是「加一个阶段」就能做，需要 T3 那样动运行时；② `recovery.py` 已经对 `session.project_id` 为空做了保护，说明这条路径当时想过；③ `tests/fixtures/narrative/brief.md` 的事实条目没有「出处」，过不了 T6 的 `check_brief`，M3 的计划里写明了「不需要真的通过」，T6 会更新它；④ 现有 `SessionPicker`/`SessionPanel` 在 `features/workbench`，而头脑风暴抽屉在 `features/ideas`，features 之间不能互相 import，所以 T10 要把它们搬到 `components/session/`。
+
+- 2026-09-29（T12）：① 真实模型（本机 Claude 登录，`tools` 模式）在选题阶段的完整行为符合预期：`Read` 卡片 → `web_search` ×多次 → `fetch_url`（搜索过的 URL 成功）→ 试图读一个没搜索过的 URL，**被「URL 来源」规则拒绝**（说明规则在真实模型下确实生效，模型随后改为先搜索）→ 写 `topic/notes/*.md` 和 `topic/brief.md` → `check_brief` 报格式错 → `Edit` 修正 → 通过；16 步，估算成本 $0.33（登录模式为参考值，不产生费用）。② `preview_start` 的 `api` 配置起的进程环境里没有 `backend/.env` 的裸环境变量（`TAVILY_API_KEY`）——`scripts/dev.sh`（`make dev`）会导出 `.env`，直接用 uvicorn 起 api 则不会；此时 `web_search` 返回「TAVILY_API_KEY 未设置，请在 backend/.env 中配置」，容易误导。这和 `VOLCENGINE_TTS_API_KEY` 是同一个既有约定（TD 里没有登记），本次走查用 `set -a; . backend/.env` 起 api 绕过。③ 头脑风暴 agent 写出的「反直觉点」很长（上百字），卡片里显示正常但偏挤；提示词里已要求「一句话」，可在后续调优（不属于本计划）。
 
 ## 阻塞
 
@@ -332,4 +336,11 @@
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 无
+- **T12 / AC10 L4 走查（2026-09-29，Claude 桌面版内置浏览器，1440x900）**：浏览器工具不能把截图落盘，所以没有存到 `data/evidence/m4-topic/`，下面是走查时的观察：
+  - 选题池：3 张手工卡片（`POST /api/ideas`）渲染出标题/卖点/反直觉点/标签/四项评分条；「头脑风暴」打开右侧停靠面板；Fake 会话（无项目）发消息后消息流出现回显，后端 `turns` 为 `done`、无快照。
+  - 编辑对话框预填正确，设评分并保存后卡片刷新（后端 `scores` 已变）；归档后从「未归档」消失、在「已归档」出现并有「恢复」，恢复后回来。
+  - 「创建项目」对话框标题预填卡片标题；创建后跳转 `/projects/<id>/topic`，卡片变「已创建项目」并显示「打开项目」；`GET /api/projects/<id>` 的 `idea_id` 正确，笔记标签里有 `idea-card.md`，渲染出卡片内容。
+  - 选题画布：无简报时提示条红色「1 个错误」+ 空状态文案；写入缺章节的简报后提示条列出 6 个错误，渲染视图正确显示 Markdown；界面里编辑保存后提示条更新（首次走查发现不更新，修复后验证：错误清零，只剩「1 条低把握」警告，可以定稿）；定稿确认后导航变为「选题✓ — 叙事」，`GET /api/projects` 里叙事 `active`、动画 `locked`。
+  - 真实模型（本机 Claude 登录，`tools` 模式，Tavily 真实 key）：头脑风暴会话里 agent `list_ideas` → `web_search` ×2 → `create_idea` ×2，**两张卡片在会话运行期间实时出现在网格里（没有刷新页面）**，带四项评分；用其中一张创建项目后，选题会话 16 步完成 `check_brief` 通过，简报 7 章齐全、关键事实带官方文档 URL 出处；运行期间快照面板显示「agent 运行中，暂不能回滚」。
+  - 未走查：选题池空状态文案（只是一行文字）；运行期间简报「编辑」按钮的禁用状态（逻辑与叙事画布相同，靠代码评审）。
+  - 走查数据留在开发库 `data/`（不进 git）：若干张示例卡片和 2 个示例项目，可以在界面里归档卡片；项目没有删除入口。

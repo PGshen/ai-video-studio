@@ -178,7 +178,7 @@ async function setStatus(idea: IdeaOut, status: 'idea' | 'archived'): Promise<vo
     </p>
     <div
       v-else
-      class="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
+      class="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-3"
     >
       <IdeaCard
         v-for="idea in visible"
