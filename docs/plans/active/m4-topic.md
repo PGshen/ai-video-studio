@@ -56,7 +56,7 @@
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 <!-- 依赖顺序：T1 → T5；T2 → T4/T7/T9；T3 → T4；T5、T6 → T8；T8 → T12。前端 T9–T11 各自只依赖对应的后端任务，可以在后端任务完成后开始。 -->
 
-### T1：`search` 模块——提供方接口与 Tavily 实现（待开始）
+### T1：`search` 模块——提供方接口与 Tavily 实现（完成）
 
 - **目标**：`backend/src/studio/search/` 提供与具体供应商无关的 `SearchProvider` 协议和 Tavily 实现，作为纯能力层（只依赖 `config`，不访问数据库，不知道项目和阶段）。
 - **涉及文件**：
@@ -277,11 +277,11 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-09-29 — T1 `search` 模块（Tavily 提供方、工厂、import-linter 契约、references/tavily.md）— 31 个新测试通过，`make check` 全绿（commit 见 git log）
 
 ## 下一步
 
-- 计划已批准。在分支 `m4-topic` 上从 T1 开始，按 T1 → T2 → T3 的顺序做（三者之间没有依赖）。
+- 做 T2：先写 `backend/tests/db/test_ideas_repo.py`、`backend/tests/api/test_ideas.py`（失败），再实现 `db/repo/ideas.py`、`api/ideas.py`。之后 T3。
 
 ## 决策记录
 
@@ -294,7 +294,8 @@
   - **D4 `check_brief` 不在后端 `finalize` 强制。** 设计 §5.1 的定稿条件是「`check_brief` 没有错误，由用户确认」；沿用 M3 对叙事阶段的处理（画布提示条 + 用户确认），理由相同：`StageNav` 和画布分属不同 feature，禁用按钮要把状态提到页面层，而定稿本来就由用户确认。如负责人希望后端强制，是一个独立的小任务（`StageDefinition` 加可选的 `finalize_blockers(workdir)`），可以追加到本计划。
   - **D5 风格仍是占位。** 设计 §5.0 说创建项目时「复制所选风格」；风格库是 M5，本计划继续复制占位 `STYLE.md`，不做风格选择器。
   - **D6 一张卡片只创建一个项目。** 创建项目后卡片置为 `picked` 并记录 `project_id`，不能再次创建、不能归档、不能改名；想再做一次同题材，让 agent 新建一张卡片。设计的 `ideas.status` 只有 `idea/picked/archived` 三态，没有「多个项目」的语义。
-- 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 同时移除 `allow_web`，会碰到两个运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
+- 2026-09-29（T1 执行中）：`recency_days` 映射到 Tavily 的 `time_range`（≤1 天 day、≤7 week、≤31 month、其余 year），因为 Tavily 只接受这四档；`extract` 结果多出 `total_chars` 字段（截断前长度），供 `fetch_url` 提示「共 N 字」；432/433（额度）单独归为不可重试并提示额度问题。
+- 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
 
