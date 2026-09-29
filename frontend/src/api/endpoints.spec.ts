@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createBrainstormSession,
   createIdea,
   createProject,
   createRenderJob,
@@ -11,6 +12,7 @@ import {
   getProject,
   getSession,
   getTopicCheck,
+  listBrainstormSessions,
   listIdeas,
   sessionStreamUrl,
   updateIdea,
@@ -163,5 +165,19 @@ describe('endpoints：动态路径段会被正确编码', () => {
     await getTopicCheck('p 1')
 
     expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/p%201/topic/check')
+  })
+
+  it('头脑风暴会话走 /brainstorm/sessions（没有项目和阶段）', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listBrainstormSessions()
+    await createBrainstormSession({ model_profile_id: 'm1' })
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/brainstorm/sessions')
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/brainstorm/sessions')
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: 'POST' })
   })
 })

@@ -9,6 +9,7 @@
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/vue-query'
 import * as api from '@/api/endpoints'
+import type { SessionScope } from '@/composables/sessionScope'
 import type {
   FileWriteResult,
   IdeaCreate,
@@ -29,6 +30,7 @@ export const queryKeys = {
   ideasAll: () => ['ideas'] as const,
   ideas: (view: IdeasView) => ['ideas', view ?? 'active'] as const,
   topicCheck: (projectId: string) => ['projects', projectId, 'topic', 'check'] as const,
+  brainstormSessions: () => ['brainstorm', 'sessions'] as const,
   projects: () => ['projects'] as const,
   project: (projectId: string) => ['projects', projectId] as const,
   fileTree: (projectId: string) => ['projects', projectId, 'files'] as const,
@@ -40,6 +42,11 @@ export const queryKeys = {
   sessions: (projectId: string, stage: string) =>
     ['projects', projectId, 'stages', stage, 'sessions'] as const,
   session: (sessionId: string) => ['sessions', sessionId] as const,
+  /** 某个范围（项目阶段或头脑风暴）的会话列表。 */
+  sessionsFor: (scope: SessionScope) =>
+    scope.kind === 'brainstorm'
+      ? queryKeys.brainstormSessions()
+      : queryKeys.sessions(scope.projectId, scope.stage),
   modelProfiles: () => ['model-profiles'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   latestJob: (projectId: string, type: string) =>
@@ -179,27 +186,29 @@ export function useRollbackSnapshotMutation(projectId: MaybeRefOrGetter<string>)
 
 // ---- sessions -------------------------------------------------------------
 
-export function useSessionsQuery(
-  projectId: MaybeRefOrGetter<string>,
-  stage: MaybeRefOrGetter<string>,
-) {
+export function useSessionsQuery(scope: MaybeRefOrGetter<SessionScope>) {
   return useQuery({
-    queryKey: computed(() => queryKeys.sessions(toValue(projectId), toValue(stage))),
-    queryFn: () => api.listSessions(toValue(projectId), toValue(stage)),
+    queryKey: computed(() => queryKeys.sessionsFor(toValue(scope))),
+    queryFn: () => {
+      const value = toValue(scope)
+      return value.kind === 'brainstorm'
+        ? api.listBrainstormSessions()
+        : api.listSessions(value.projectId, value.stage)
+    },
   })
 }
 
-export function useCreateSessionMutation(
-  projectId: MaybeRefOrGetter<string>,
-  stage: MaybeRefOrGetter<string>,
-) {
+export function useCreateSessionMutation(scope: MaybeRefOrGetter<SessionScope>) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: SessionCreate) => api.createSession(toValue(projectId), toValue(stage), body),
+    mutationFn: (body: SessionCreate) => {
+      const value = toValue(scope)
+      return value.kind === 'brainstorm'
+        ? api.createBrainstormSession(body)
+        : api.createSession(value.projectId, value.stage, body)
+    },
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.sessions(toValue(projectId), toValue(stage)),
-      })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsFor(toValue(scope)) })
     },
   })
 }

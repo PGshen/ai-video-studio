@@ -2,7 +2,7 @@
  * 通用文件画布里 CodeEditor 是否只读（任务简报 T14，控制者裁定 2）：
  *
  * - agent 正在这个项目里跑一轮（后端按项目串行，`busy` 由页面根据当前
- *   会话的 turn 状态算出——见 `features/workbench/turnControls.ts` 的
+ *   会话的 turn 状态算出——见 `components/session/turnControls.ts` 的
  *   `isBusyStatus`——传进来，这里不关心状态字符串本身）；
  * - 或者文件在 `upstream/` 下（`FileEntry.readonly`）。
  *

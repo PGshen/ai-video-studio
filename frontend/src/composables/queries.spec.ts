@@ -14,6 +14,11 @@ describe('queryKeys', () => {
     expect(queryKeys.modelProfiles()).toEqual(['model-profiles'])
     expect(queryKeys.job('j1')).toEqual(['jobs', 'j1'])
     expect(queryKeys.ideasAll()).toEqual(['ideas'])
+    expect(queryKeys.brainstormSessions()).toEqual(['brainstorm', 'sessions'])
+    expect(queryKeys.sessionsFor({ kind: 'brainstorm' })).toEqual(['brainstorm', 'sessions'])
+    expect(queryKeys.sessionsFor({ kind: 'project', projectId: 'p1', stage: 'topic' })).toEqual(
+      queryKeys.sessions('p1', 'topic'),
+    )
     expect(queryKeys.ideas('archived')).toEqual(['ideas', 'archived'])
     expect(queryKeys.ideas(null)).toEqual(['ideas', 'active'])
     expect(queryKeys.topicCheck('p1')).toEqual(['projects', 'p1', 'topic', 'check'])

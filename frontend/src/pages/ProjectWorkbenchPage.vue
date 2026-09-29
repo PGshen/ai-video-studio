@@ -25,11 +25,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useProjectQuery } from '@/composables/queries'
 import { useSessionStream } from '@/composables/useSessionStream'
 import StageNav from '@/features/workbench/StageNav.vue'
-import SessionPanel from '@/features/workbench/SessionPanel.vue'
-import SessionPicker from '@/features/workbench/SessionPicker.vue'
+import SessionPanel from '@/components/session/SessionPanel.vue'
+import SessionPicker from '@/components/session/SessionPicker.vue'
 import SnapshotTimeline from '@/features/workbench/SnapshotTimeline.vue'
 import { sessionResetKey } from '@/features/workbench/sessionResetKey'
-import { combineBusy } from '@/features/workbench/turnControls'
+import { combineBusy } from '@/components/session/turnControls'
+import { projectScope } from '@/composables/sessionScope'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
 import NarrativeCanvas from '@/features/canvas/narrative/NarrativeCanvas.vue'
@@ -50,6 +51,8 @@ watch(
     sessionId.value = null
   },
 )
+
+const scope = computed(() => projectScope(projectId.value, stage.value))
 
 const { turnStatus: canvasTurnStatus } = useSessionStream(sessionId)
 const canvasBusy = computed(() =>
@@ -82,8 +85,7 @@ const canvasBusy = computed(() =>
         <div class="flex min-h-0 flex-col gap-2">
           <SessionPicker
             v-model:session-id="sessionId"
-            :project-id="projectId"
-            :stage="stage"
+            :scope="scope"
           />
           <SessionPanel
             :session-id="sessionId"

@@ -57,13 +57,14 @@ ai-video-studio/
 | `types/` | 与后端 schema 对应的 TS 类型 |
 | `composables/` | TanStack Query hooks 和会话流状态 |
 | `features/projects/` | 项目列表、新建项目（`ProjectList.vue`） |
-| `features/ideas/`（M4） | 选题池和头脑风暴；M1 只有占位页 `pages/IdeasPage.vue` |
+| `features/ideas/`（M4） | 选题池：卡片网格（`IdeaGrid`/`IdeaCard`）、新建/编辑对话框、按卡片创建项目、头脑风暴抽屉（`BrainstormDrawer`，停靠在页面右侧的非模态面板）；纯逻辑在 `ideaView.ts`；页面 `pages/IdeasPage.vue` 组合它们 |
 | `features/workbench/` | 项目工作台外壳：阶段导航、会话选择、对话面板、快照时间线；纯逻辑抽成 `.ts`（`turnControls`、`stageStatus`、`snapshotSelection`、`snapshotReason`、`optimisticSend` 等）单测 |
 | `features/canvas/generic/` | M1 的通用文件画布：文件树 + CodeMirror 编辑器、只读/冲突状态 |
 | `features/canvas/animation/`（M2） | 动画阶段专属画布：镜头列表（`SceneList.vue`）、代码编辑器、关键帧提示（`KeyframeStrip.vue`）、成片面板（`FinalRenderPanel.vue`：渲染/进度/播放器/定稿） |
 | `features/canvas/narrative/`（M3） | 叙事阶段专属画布：镜头卡片（`SceneCardList.vue`）、按 beat 分段的配音播放条（`BeatTimeline.vue`，音频直接用文件端点的 URL，端点支持 Range）、原始 JSON 标签页；校验标记/配音状态/定稿提示条的纯逻辑在 `narrativeDoc.ts`/`timingStatus.ts` |
 | `features/canvas/topic/`（M4） | 尚未实现 |
 | `features/settings/`（M5） | 模型配置、风格库、TTS 音色；M1 只有占位页 `pages/SettingsPage.vue` |
+| `components/session/`（M4 T10） | 会话面板（`SessionPanel`）、会话选择器（`SessionPicker`）、时间线条目（`SessionTimelineItem`）及其纯逻辑（`turnControls`、`optimisticSend`、`snapshotReason`）。项目工作台和头脑风暴抽屉共用，所以从 `features/workbench/` 搬到这里；靠 `composables/sessionScope.ts` 的 `SessionScope`（项目阶段 / 头脑风暴）区分查询和创建接口 |
 | `components/ui/` | shadcn-vue 生成的组件（通过 CLI 添加，尽量不手改） |
 | `components/ai-elements/` | @ai-elements 生成的组件（通过 CLI 添加，尽量不手改） |
 | `components/CodeEditor.vue`（+ `codeEditorLanguage.ts`） | 手写的 CodeMirror 封装，M1 起在 `features/canvas/generic/`，M2 T12 挪到这里（决策记录 D36）：`animation` 画布要复用它，而 `features/*` 之间不许互相 import |

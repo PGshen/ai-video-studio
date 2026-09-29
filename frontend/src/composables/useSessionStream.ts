@@ -49,6 +49,7 @@ import { onScopeDispose, ref, watch, type Ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { getSession, sessionStreamUrl } from '@/api/endpoints'
 import { openStream, type SseConnectionStatus } from '@/api/sse'
+import { isIdeaWriteTool } from '@/composables/ideaEvents'
 import { invalidateWorkspace, queryKeys } from '@/composables/queries'
 import type { TurnOut } from '@/types/api'
 import type {
@@ -321,6 +322,10 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
             truncated: payload.truncated,
             images: payload.images,
           }
+          // 头脑风暴 agent 建/改了卡片：选题池不用手动刷新（M4 T10）。
+          if (isIdeaWriteTool(call.name)) {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
+          }
         }
         break
       }
@@ -374,6 +379,9 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
         // the scene-checks read model can only change when a turn ends.
         if (projectId) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.sceneChecksAll(projectId) })
+        } else if (!isBusy(payload.status)) {
+          // 无项目会话（头脑风暴）一轮结束：卡片可能变了（M4 T10）。
+          void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
         }
         break
       }

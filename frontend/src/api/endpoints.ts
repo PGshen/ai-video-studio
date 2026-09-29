@@ -122,6 +122,15 @@ export function listSessions(projectId: string, stage: string): Promise<SessionO
   )
 }
 
+/** 头脑风暴会话（没有项目和阶段，对应 `api/brainstorm.py`）。 */
+export function listBrainstormSessions(): Promise<SessionOut[]> {
+  return request('/brainstorm/sessions')
+}
+
+export function createBrainstormSession(body: SessionCreate): Promise<SessionOut> {
+  return request('/brainstorm/sessions', { method: 'POST', body })
+}
+
 export function getSession(sessionId: string): Promise<SessionDetailOut> {
   return request(`/sessions/${encodePathSegment(sessionId)}`)
 }

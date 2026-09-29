@@ -31,7 +31,8 @@ import { computeTurnControls } from './turnControls'
 import { CONTINUE_TEXT, optimisticSend } from './optimisticSend'
 import SessionTimelineItem from './SessionTimelineItem.vue'
 
-const props = defineProps<{ sessionId: string | null; projectId: string }>()
+/** `projectId` 只用于工具结果图片的地址；头脑风暴会话没有项目，传 `null`。 */
+const props = defineProps<{ sessionId: string | null; projectId: string | null }>()
 
 const sessionIdRef = toRef(props, 'sessionId')
 const { items, turnStatus, addLocalUserMessage, removeLocalUserMessage } =

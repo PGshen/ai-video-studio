@@ -210,6 +210,57 @@ describe('useSessionStream', () => {
     void result
   })
 
+  it('无项目会话：create_idea/update_idea 的 tool_result 让选题池查询失效，不碰项目查询', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ project_id: null, stage: 'brainstorm', turns: [] }))
+    const { queryClient } = await setup('s1')
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    for (const [callId, name] of [['c1', 'mcp__studio__create_idea'], ['c2', 'list_ideas']] as const) {
+      onEvent(frame('tool_call', { turn_id: 't1', call_id: callId, name, args: {}, seq: 1 }))
+      onEvent(
+        frame('tool_result', {
+          turn_id: 't1', call_id: callId, text: 'ok', truncated: false, is_error: false, images: [], seq: 2,
+        }),
+      )
+      await flushAsync()
+      const keys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey)
+      if (name === 'list_ideas') expect(keys).toHaveLength(1) // only the create_idea one
+      else expect(keys).toEqual([['ideas']])
+    }
+  })
+
+  it('无项目会话：一轮结束（终态 turn_status）时让选题池查询失效；运行中不失效', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ project_id: null, stage: 'brainstorm', turns: [] }))
+    const { queryClient } = await setup('s1')
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    onEvent(frame('turn_status', { turn_id: 't1', status: 'running', error: null, seq: null }))
+    await flushAsync()
+    expect(invalidateSpy).not.toHaveBeenCalled()
+
+    onEvent(frame('turn_status', { turn_id: 't1', status: 'done', error: null, seq: null }))
+    await flushAsync()
+    expect(invalidateSpy.mock.calls.map((call) => call[0]?.queryKey)).toEqual([['ideas']])
+  })
+
+  it('项目会话：tool_result 不会失效选题池查询', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ project_id: 'p1', turns: [] }))
+    const { queryClient } = await setup('s1')
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    onEvent(frame('tool_call', { turn_id: 't1', call_id: 'c1', name: 'write_file', args: {}, seq: 1 }))
+    onEvent(
+      frame('tool_result', {
+        turn_id: 't1', call_id: 'c1', text: 'ok', truncated: false, is_error: false, images: [], seq: 2,
+      }),
+    )
+    await flushAsync()
+    expect(invalidateSpy.mock.calls.map((call) => call[0]?.queryKey)).not.toContainEqual(['ideas'])
+  })
+
   it('turn_status 更新当前 turn 状态', async () => {
     getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
     const { result } = await setup('s1')

@@ -15,23 +15,17 @@ import {
 } from '@/components/ui/select'
 import { useCreateSessionMutation, useModelProfilesQuery, useSessionsQuery } from '@/composables/queries'
 import { ApiError } from '@/api/http'
+import type { SessionScope } from '@/composables/sessionScope'
 
 const props = defineProps<{
-  projectId: string
-  stage: string
+  scope: SessionScope
 }>()
 
 const sessionId = defineModel<string | null>('sessionId', { default: null })
 
 const { data: profiles } = useModelProfilesQuery()
-const { data: sessions } = useSessionsQuery(
-  () => props.projectId,
-  () => props.stage,
-)
-const createSessionMutation = useCreateSessionMutation(
-  () => props.projectId,
-  () => props.stage,
-)
+const { data: sessions } = useSessionsQuery(() => props.scope)
+const createSessionMutation = useCreateSessionMutation(() => props.scope)
 
 const selectedProfileId = ref<string>('')
 watch(

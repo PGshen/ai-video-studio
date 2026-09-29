@@ -205,7 +205,7 @@
 - **完成标准**：`pnpm exec vitest run` 通过；`make check`（含 lint 分层规则）通过。
 - **验证命令**：`make check`
 
-### T10：头脑风暴抽屉——会话面板泛化与卡片实时刷新（待开始）
+### T10：头脑风暴抽屉——会话面板泛化与卡片实时刷新（完成）
 
 - **目标**：在选题池页右侧抽屉里和头脑风暴 agent 对话；agent 创建/修改卡片时卡片网格不用刷新就更新。
 - **涉及文件**：
@@ -286,10 +286,11 @@
 - 2026-09-29 — T7 `POST /api/projects` 支持 `idea_id`（卡片种进 `topic/notes/idea-card.md`、`mark_picked`、失败清理）— 新增 8 个测试，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T8 后端端到端（头脑风暴 → 创建项目 → 选题两轮 → 定稿 → 叙事解锁）— 1 个端到端测试通过，`make check` 全绿（commit 见 git log）。后端 T1–T8 全部完成
 - 2026-09-29 — T9 前端选题池（`features/ideas/`：`IdeaCard`/`IdeaEditDialog`/`CreateProjectDialog`/`IdeaGrid`、`ideaView.ts` 纯逻辑、endpoints/queries/types；顺带完成 T11 的纯逻辑 `briefStatus.ts`、`getTopicCheck`/`useTopicCheckQuery`）— vitest 215 个通过，lint/typecheck 通过（commit 见 git log）
+- 2026-09-29 — T10 头脑风暴抽屉（`SessionPanel`/`SessionPicker`/`SessionTimelineItem` 搬到 `components/session/` 并改用 `SessionScope`，`useSessionStream` 对无项目会话失效选题池查询，`BrainstormDrawer`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）
 
 ## 下一步
 
-- 做 T10：头脑风暴抽屉。把 `features/workbench/{SessionPicker,SessionPanel,SessionTimelineItem}.vue` 及它们用到的纯逻辑文件（`turnControls`、`optimisticSend`、`sessionResetKey` 等，先读它们的 import 决定搬哪些）移到 `frontend/src/components/session/`，新增 `sessionScope.ts`（`{kind:'project',projectId,stage} | {kind:'brainstorm'}`）和 `sessionScope.spec.ts`（先写，失败）；`endpoints.ts` 加 `listBrainstormSessions`/`createBrainstormSession`（`/brainstorm/sessions`），`queries.ts` 的 `useSessionsQuery`/`useCreateSessionMutation` 接受 scope；`useSessionStream.ts` 对无项目会话在 `tool_result`（工具名以 `create_idea`/`update_idea` 结尾）和终态 `turn_status` 时失效 `queryKeys.ideasAll()`；新建 `features/ideas/BrainstormDrawer.vue`（`Sheet`）并接入 `IdeasPage.vue`；更新 ARCHITECTURE §3。搬移后 M1 的既有 vitest 不改断言。
+- 做 T11 剩余部分（纯逻辑 `briefStatus.ts` 和 `getTopicCheck`/`useTopicCheckQuery` 已在 T9 完成）：新建 `features/canvas/topic/`：`MarkdownFilePane.vue`（读一个文本文件，渲染/编辑切换，缓冲区+冲突处理仿 `NarrativeCanvas.vue`，路径由 props 给出，渲染用 `@/components/ai-elements/message/MessageResponse.vue`）、`BriefCheckBar.vue`（用 `computeBriefStatus`）、`TopicCanvas.vue`（简报/笔记两个标签，笔记列表用 `noteFiles`）；`pages/ProjectWorkbenchPage.vue` 加 `v-else-if="stage === 'topic'"` 分支；ARCHITECTURE §3 的 `features/canvas/topic/` 行更新。然后 T12 L4 走查。
 
 ## 决策记录
 
@@ -310,6 +311,7 @@
 - 2026-09-29（T6 执行中）：① 测试共用的简报构造器放在 `backend/tests/brief_builder.py`（顶层模块，和 `event_asserts.py` 一样靠 tests 目录在 `sys.path` 上导入），因为 `tests/api` 和 `tests/stages` 之间不能用相对导入。② 事实条目解析：列表项后面非列表的非空行算续行（事实和「（出处…）」可以分两行写）；`出处` 的值取到 `把握程度` 之前或行尾，再去掉首尾的分隔符和括号，所以 URL 里带逗号、分号后面紧跟「把握程度」都能解析。③ 二级标题容忍编号前缀（`## 1. 核心问题`、`## 七、风险点`）和代码围栏内的 `##`。④ `fixtures/narrative/brief.md` 的事实补了「出处：算法导论第 2 章」，M3 的测试只检查它含「核心问题」，不受影响。⑤ `TopicStage.status_summary` 现在带 `check_workspace` 的错误/警告条数（前言里的「当前产物状态摘要」用）。⑥ 提示词写成与联网模式无关（只说「联网搜索和读取网页」），有测试断言不含 `web_search`/`WebSearch`。
 - 2026-09-29（T7 执行中）：想法卡片 Markdown 由 `api/projects.py::_idea_card_markdown` 渲染（不放进 `stages/`，因为它是创建项目的一部分，不是某个阶段的逻辑）；路径常量 `IDEA_CARD_PATH = "topic/notes/idea-card.md"`。卡片的预检查（不存在 404、非 `idea` 状态 409）在动工作区之前做，并发竞争靠 `mark_picked` 的条件更新兜底，输的一方 409 且清理项目。
 - 2026-09-29（T9 执行中）：① 用原生 `<select>` 做评分下拉（比 shadcn `Select` 简单，表单里只是 1–5）。② 编辑已 `picked` 的卡片时请求体不带 `title`（后端对 picked 改名一律 409，即使标题没变）。③ `queryKeys.ideas(view)` 只有两种视图：`null`（后端默认，idea+picked）和 `'archived'`；前端不请求 `status=all`。④ 提前完成 T11 的纯逻辑 `briefStatus.ts`（与 T9 同批提交），T11 只剩组件。
+- 2026-09-29（T10 执行中）：① 头脑风暴抽屉做成**停靠在页面右侧的非模态面板**（`lg:grid-cols-[1fr_28rem]`），不用遮罩式 `Sheet`：agent 建卡片时左边网格要能实时看到，模态遮罩会挡住页面、也阻止点击卡片。计划里写的「用现有 shadcn `Sheet`」因此没用。② `SessionScope` 放在 `composables/sessionScope.ts`（纯逻辑，`components/` 和 `features/` 都能 import），不放在 `components/session/` 里。③ 关闭抽屉会断开 SSE（组件卸载），agent 仍在服务端运行；重新打开时 `useSessionStream` 重载历史，卡片网格靠 TanStack 的窗口聚焦重取和终态事件兜底。④ 选题池失效用工具名匹配 `(^|__)(create|update)_idea$`（`composables/ideaEvents.ts`），兼容 Claude 侧 `mcp__studio__` 前缀；不新增 SSE 事件类型。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
