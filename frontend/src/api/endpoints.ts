@@ -186,6 +186,17 @@ export function finalVideoUrl(projectId: string): string {
   return `/api/projects/${encodePathSegment(projectId)}/output/final.mp4`
 }
 
+/**
+ * 工作区文件的原始字节地址（`GET /projects/{id}/files/{path}`）：直接给
+ * `<audio>` 当 `src` 用（叙事阶段的配音 `narrative/audio/<id>.mp3`）。
+ * `version` 作为缓存标识拼进查询串（后端忽略它）：同一路径的文件被重新
+ * 生成后（例如重新配音，`audio_hash` 变了），浏览器不会继续播缓存里的旧音频。
+ */
+export function workspaceFileUrl(projectId: string, path: string, version?: string): string {
+  const base = `/api/projects/${encodePathSegment(projectId)}/files/${encodeFilePath(path)}`
+  return version ? `${base}?v=${encodeURIComponent(version)}` : base
+}
+
 // ---- blobs（TD-21：工具结果里的图片，例如 render_preview 关键帧）--------
 
 /**

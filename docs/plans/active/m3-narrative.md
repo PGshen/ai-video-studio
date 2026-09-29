@@ -182,7 +182,7 @@
 - **完成标准**：`pytest backend/tests/agent/test_preamble.py` 通过。
 - **验证命令**：`make check`
 
-### T10：前端 `features/canvas/narrative/`——叙事画布（待开始）
+### T10：前端 `features/canvas/narrative/`——叙事画布（完成）
 
 - **目标**：叙事阶段的画布能显示镜头卡片列表（旁白、每个 beat 的 cue_text/visual_action/emphasis/transition、校验状态）、选中镜头的音频播放条（按 beat 起止时间分段标记）、原始 JSON 标签页（复用 `CodeEditor.vue`，只读或可编辑均可，参照动画画布"代码编辑器"任务的取舍）；"配音是否最新"用当前 `narrative.json` 的 `narration` 和 `timing.json` 是否覆盖该镜头做前端判断（不需要新后端接口）。
 - **涉及文件**：
@@ -245,7 +245,7 @@
 
 ## 下一步
 
-- 从 T10 开始：前端 `features/canvas/narrative/`。先写纯逻辑 `narrativeDoc.ts`/`timingStatus.ts` 和各自的 vitest（参照 `features/canvas/animation/narrativeScenes.ts`），再写 `NarrativeCanvas.vue`/`SceneCardList.vue`/`BeatTimeline.vue`（参照 `AnimationCanvas.vue`/`SceneList.vue`，JSON 标签页复用 `components/CodeEditor.vue`）。音频播放先查 `api/files.py` 是否已有通用读工作区文件字节的端点，有就复用。组件走 T11 的 L4 浏览器走查，不做挂载测试。
+- 从 T11 开始：`frontend/src/pages/ProjectWorkbenchPage.vue` 加 `v-else-if="stage === 'narrative'"` 分支渲染 `NarrativeCanvas`（`:project-id`、`:busy`），然后 L4 走查：`make dev`（或按 `docs/runbooks/verification.md`）起服务，用 `seed_narrative_project`（`backend/tests/fixtures/narrative/seed.py`）建一个选题已定稿的项目，用 Fake 或真实运行时跑叙事一轮，在内置浏览器截图存 `data/evidence/m3-narrative/`。T10 里"定稿前提"只是画布顶部的提示条（`computeReadiness`），T11 要决定是否把它接到 `StageNav` 的定稿按钮（跨 features 不能互相 import，倾向于只保留提示条并记入决策记录）。
 
 ## 决策记录
 
@@ -267,6 +267,9 @@
 - 2026-09-29（T7 执行中）：补 T6 遗漏——`synthesize_tts` 返回文本里每个成功镜头带时长和对齐覆盖率（计划 T6 第 8 步原本就要求，提示词也依赖它），加了断言。
 - 2026-09-29（T8 执行中）：`FakeRuntime` 现有的 `write`/`call_tool` 步骤已够用，没有改 `agent/fake.py`。测试里用的叙事文档没有直接复用 M2 的 `fixtures/animation/narrative.json`（原因见「意外与发现」），而是在测试内联一份镜头 id/beat 数相同、`cue_text` 带标点的文档。
 - 2026-09-29（T9 执行中）：`_narrative_scene_summary` 的镜头摘要行带 `- ` 前缀，与 `_file_summary` 的格式一致；摘要为空列表（镜头没变、只有 `timing.json` 等文件变了）时渲染"镜头没有变化（只有配音时间轴等其它文件有变化）"，不退回文件级摘要。TD-6 只关掉了"按镜头 id 摘要"这一半，stale 判断按整项目快照 id 的问题仍在，已在 tech-debt 里改写说明。
+- 2026-09-29（T10 执行中）：音频播放直接复用通用的 `GET /projects/{id}/files/{path}`（按扩展名给 `audio/mpeg`），没有新增后端端点；新增前端 `workspaceFileUrl(projectId, path, version)`，`version` 用 `timing.json` 里的 `audio_hash` 做缓存标识，重新配音后浏览器不会播旧音频。
+- 2026-09-29（T10 执行中）：`timingStatus.ts` 只有 `missing`/`dubbed` 两态（计划 T10 正文已决定不做"过期"）；对齐覆盖率阈值先写死 `COVERAGE_THRESHOLD = 0.8`。定稿前提用 `computeReadiness` 在画布顶部做提示条，后端 `finalize` 不强制。
+- 2026-09-29（T10 执行中）：JSON 标签页可编辑，缓冲区/冲突处理是 `animation/conflictState.ts` 的简化内联版（写在 `NarrativeCanvas.vue` 里，不另起模块，也不 import 其他 feature），没有单元测试，靠 T11 的 L4 走查覆盖。
 
 ## 意外与发现
 
