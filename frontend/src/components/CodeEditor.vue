@@ -1,7 +1,10 @@
 <script setup lang="ts">
 /**
- * CodeMirror 6 的小型封装（任务简报 T14，控制者裁定 2）：不用
- * `vue-codemirror`，只用「依赖清单」里允许的四个包——`codemirror`
+ * CodeMirror 6 的小型封装（任务简报 T14，控制者裁定 2；T12 从
+ * `features/canvas/generic/CodeEditor.vue` 挪到这里，决策记录 D36——
+ * `animation` 画布要复用它，但 ESLint 的 `features/* 之间互不 import`
+ * 规则不允许跨阶段画布互相 import，挪进 `components/` 后两边都能用）。
+ * 不用 `vue-codemirror`，只用「依赖清单」里允许的四个包——`codemirror`
  * （重新导出 `EditorView`/`basicSetup`）、`@codemirror/lang-{markdown,
  * json,python}`。`codemirror` 包**不**重新导出 `EditorState`/
  * `Compartment`，所以这里没法用 compartment 动态重新配置扩展；改用更简单
@@ -16,7 +19,7 @@ import { EditorView, basicSetup } from 'codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { json } from '@codemirror/lang-json'
 import { python } from '@codemirror/lang-python'
-import type { EditorLanguage } from './fileKind'
+import type { EditorLanguage } from './codeEditorLanguage'
 
 // `codemirror` 包不重新导出 `Extension` 类型（只导出 `EditorView`/
 // `basicSetup`/`minimalSetup`），直接 `import type ... from '@codemirror/

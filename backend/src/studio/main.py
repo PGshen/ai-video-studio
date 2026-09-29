@@ -23,7 +23,9 @@ from studio.agent.openai_runtime import register_openai
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
+from studio.api.animation import router as animation_router
 from studio.api.files import router as files_router
+from studio.api.jobs import router as jobs_router
 from studio.api.profiles import router as profiles_router
 from studio.api.projects import router as projects_router
 from studio.api.sessions import router as sessions_router
@@ -94,6 +96,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(files_router)
     app.include_router(snapshots_router)
     app.include_router(profiles_router)
+    app.include_router(jobs_router)
+    app.include_router(animation_router)
 
     return app
 

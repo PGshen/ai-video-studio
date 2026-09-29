@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import * as api from '@/api/endpoints'
 import type {
   FileWriteResult,
+  JobOut,
   MessageCreate,
   ProjectCreate,
   ProjectOut,
@@ -30,6 +31,7 @@ export const queryKeys = {
     ['projects', projectId, 'stages', stage, 'sessions'] as const,
   session: (sessionId: string) => ['sessions', sessionId] as const,
   modelProfiles: () => ['model-profiles'] as const,
+  job: (jobId: string) => ['jobs', jobId] as const,
 }
 
 // ---- projects ---------------------------------------------------------
@@ -221,6 +223,52 @@ export function useContinueSessionMutation(sessionId: MaybeRefOrGetter<string>) 
 
 export function useModelProfilesQuery() {
   return useQuery({ queryKey: queryKeys.modelProfiles(), queryFn: api.listModelProfiles })
+}
+
+// ---- jobs / 成片渲染（任务 T13）-------------------------------------------
+
+/**
+ * `useJobQuery` 的轮询间隔：`queued`/`running` 时 1 秒轮询一次（计划正文
+ * "1 秒起步"），`done`/`failed`（或还没查到任何数据）时停止——`refetchInterval`
+ * 传函数时，TanStack Query 每次决定要不要发下一次请求都会调用它，参数是
+ * 当前 query 对象，`query.state.data` 是上一次成功查询的结果。单独导出成
+ * 纯函数方便 `.spec.ts` 覆盖状态机（不用挂载组件也能测"什么状态该继续
+ * 轮询、什么状态该停"）。
+ */
+export function jobRefetchIntervalMs(status: string | null | undefined): number | false {
+  return status === 'queued' || status === 'running' ? 1000 : false
+}
+
+export function useCreateRenderJobMutation(projectId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.createRenderJob(toValue(projectId)),
+    onSuccess: (job: JobOut) => {
+      queryClient.setQueryData(queryKeys.job(job.id), job)
+    },
+  })
+}
+
+export function useJobQuery(
+  projectId: MaybeRefOrGetter<string>,
+  jobId: MaybeRefOrGetter<string | null>,
+) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.job(toValue(jobId) ?? '')),
+    queryFn: () => api.getJob(toValue(projectId), toValue(jobId)!),
+    enabled: computed(() => toValue(jobId) !== null),
+    refetchInterval: (query) => jobRefetchIntervalMs(query.state.data?.status),
+  })
+}
+
+export function useFinalizeRenderMutation(projectId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.finalizeRender(toValue(projectId)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(toValue(projectId)) })
+    },
+  })
 }
 
 // ---- shared helper for useSessionStream --------------------------------

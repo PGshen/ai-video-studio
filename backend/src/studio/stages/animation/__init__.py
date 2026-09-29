@@ -9,11 +9,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from studio.agent.tools import ToolSpec
+from studio.stages.animation.render_preview import RENDER_PREVIEW_TOOL
+from studio.stages.animation.validate_scenes import VALIDATE_SCENES_TOOL
 from studio.workspace import files
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _WRITE_SCOPE = WriteScope(writable=["animation/scenes/**"], tool_managed=[])
+_TOOLS: list[ToolSpec] = [VALIDATE_SCENES_TOOL, RENDER_PREVIEW_TOOL]
+"""`validate_scenes`（T7）、`render_preview`（T8）都不需要 `Engine`，模块
+加载时就能建好、直接放进 `tools()`。`suggest_upstream_change`（T6）需要
+`Engine` 才能构造 `ToolSpec`（工厂函数 `build_suggest_upstream_change_tool`），
+`AnimationStage.tools()` 拿不到 `Engine`，暂未接入（决策记录 D22/TD-32）。
+"""
 
 
 class AnimationStage:
@@ -24,7 +32,7 @@ class AnimationStage:
         return _PROMPT_PATH.read_text(encoding="utf-8")
 
     def tools(self) -> list[ToolSpec]:
-        return []
+        return list(_TOOLS)
 
     def write_scope(self) -> WriteScope:
         return _WRITE_SCOPE

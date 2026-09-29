@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Engine, select
@@ -20,6 +21,7 @@ class ProjectValue:
     idea_id: str | None
     current_stage: str
     settings: dict[str, Any]
+    completed_at: datetime | None
 
 
 def _to_value(row: Project) -> ProjectValue:
@@ -29,6 +31,7 @@ def _to_value(row: Project) -> ProjectValue:
         idea_id=row.idea_id,
         current_stage=row.current_stage,
         settings=row.settings,
+        completed_at=row.completed_at,
     )
 
 
@@ -75,3 +78,34 @@ def delete_project(engine: Engine, project_id: str) -> None:
         row = session.get(Project, project_id)
         if row is not None:
             session.delete(row)
+
+
+def mark_project_completed(engine: Engine, project_id: str) -> ProjectValue:
+    """把项目标记为已完成：`completed_at` 设为当前时间（UTC）。
+
+    项目不存在时抛出 `KeyError`（调用方——`api.animation`——在此之前已经用
+    `get_project` 确认过项目存在，这里的检查是防御性的，不是主要的错误路径）。
+    """
+    with session_scope(engine) as session:
+        row = session.get(Project, project_id)
+        if row is None:
+            raise KeyError(f"项目不存在：{project_id}")
+        row.completed_at = datetime.now(UTC)
+        session.flush()
+        return _to_value(row)
+
+
+def clear_project_completed(engine: Engine, project_id: str) -> ProjectValue:
+    """把项目的"已完成"标记清掉：`completed_at` 设为 `None`。
+
+    `mark_project_completed` 的反操作——重新打开动画阶段（评审发现，见计划
+    决策记录）后，成片和当前工作区不再对得上，不能继续显示"项目已完成"。
+    项目不存在时抛出 `KeyError`（同 `mark_project_completed`，防御性检查）。
+    """
+    with session_scope(engine) as session:
+        row = session.get(Project, project_id)
+        if row is None:
+            raise KeyError(f"项目不存在：{project_id}")
+        row.completed_at = None
+        session.flush()
+        return _to_value(row)

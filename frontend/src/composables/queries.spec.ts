@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/vue-query'
 import { describe, expect, it, vi } from 'vitest'
-import { invalidateWorkspace, queryKeys } from '@/composables/queries'
+import { invalidateWorkspace, jobRefetchIntervalMs, queryKeys } from '@/composables/queries'
 
 describe('queryKeys', () => {
   it('派生的 key 层级和实际的资源路径一致，方便前缀失效', () => {
@@ -12,6 +12,21 @@ describe('queryKeys', () => {
     expect(queryKeys.sessions('p1', 'topic')).toEqual(['projects', 'p1', 'stages', 'topic', 'sessions'])
     expect(queryKeys.session('s1')).toEqual(['sessions', 's1'])
     expect(queryKeys.modelProfiles()).toEqual(['model-profiles'])
+    expect(queryKeys.job('j1')).toEqual(['jobs', 'j1'])
+  })
+})
+
+describe('jobRefetchIntervalMs', () => {
+  it('queued/running 时 1 秒轮询一次', () => {
+    expect(jobRefetchIntervalMs('queued')).toBe(1000)
+    expect(jobRefetchIntervalMs('running')).toBe(1000)
+  })
+
+  it('done/failed 或还没有数据时停止轮询', () => {
+    expect(jobRefetchIntervalMs('done')).toBe(false)
+    expect(jobRefetchIntervalMs('failed')).toBe(false)
+    expect(jobRefetchIntervalMs(undefined)).toBe(false)
+    expect(jobRefetchIntervalMs(null)).toBe(false)
   })
 })
 

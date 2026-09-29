@@ -34,6 +34,7 @@ from studio.api.schemas import ProjectCreate, ProjectDetailOut, ProjectOut, Stag
 from studio.config import Settings
 from studio.db.repo.projects import (
     ProjectValue,
+    clear_project_completed,
     create_project,
     delete_project,
     get_project,
@@ -59,6 +60,7 @@ def _project_out(value: ProjectValue) -> ProjectOut:
         idea_id=value.idea_id,
         current_stage=value.current_stage,
         settings=value.settings,
+        completed_at=value.completed_at,
     )
 
 
@@ -176,4 +178,9 @@ async def reopen_stage_endpoint(
         value = reopen(engine, project_id, stage)
     except StageFlowError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if stage == "animation":
+        # `completed_at`（`api.animation.finalize_render_endpoint` 设置）代表
+        # "成片已经和工作区一致地定稿过"；重新打开动画阶段后工作区又能改，
+        # 成片不再代表当前状态，这条"已完成"的标记要跟着撤销（评审发现）。
+        clear_project_completed(engine, project_id)
     return _stage_out(value)

@@ -31,6 +31,8 @@ class ProjectOut(BaseModel):
     idea_id: str | None
     current_stage: str
     settings: dict[str, Any]
+    completed_at: datetime | None
+    """"成片定稿"（T11）后设为完成时间；`None` 表示项目尚未完成。"""
 
 
 class ProjectDetailOut(ProjectOut):
@@ -122,6 +124,25 @@ class TurnAccepted(BaseModel):
     """`POST .../messages`、`.../cancel`、`.../continue` 的响应：正在处理的 turn id。"""
 
     turn_id: str
+
+
+class JobOut(BaseModel):
+    """`jobs` 表一行（`studio.jobs.JobValue` 的子集）：不包含 `payload`/
+    `heartbeat_at`——这两个字段是 worker 内部使用的实现细节（分别是"worker
+    怎么定位输入"和"worker 有没有卡死"），前端只需要状态、进度、错误和
+    结果（`result["output_path"]`，成片下载端点走另一个固定路径，不需要
+    前端自己拼）。
+    """
+
+    id: str
+    type: str
+    project_id: str
+    status: str
+    progress: float
+    error: str | None
+    result: dict[str, Any] | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class ModelProfileOut(BaseModel):

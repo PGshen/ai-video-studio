@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createRenderJob,
   createSession,
+  finalizeRender,
+  finalVideoUrl,
   getFileContent,
+  getJob,
   getProject,
   getSession,
   sessionStreamUrl,
@@ -61,5 +65,40 @@ describe('endpoints：动态路径段会被正确编码', () => {
     await createSession('p 1', 'topic?', { model_profile_id: 'm1' })
 
     expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/p%201/stages/topic%3F/sessions')
+  })
+
+  it('createRenderJob 对 projectId 编码，POST 到 .../render', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createRenderJob('p 1')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/p%201/render')
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('getJob 对 projectId 和 jobId 都编码', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getJob('p 1', 'j#1')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/p%201/jobs/j%231')
+  })
+
+  it('finalizeRender 对 projectId 编码，POST 到 .../animation/finalize-render', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await finalizeRender('p 1')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      '/api/projects/p%201/animation/finalize-render',
+    )
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('finalVideoUrl 对 projectId 编码，不发请求', () => {
+    expect(finalVideoUrl('p 1')).toBe('/api/projects/p%201/output/final.mp4')
   })
 })
