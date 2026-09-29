@@ -11,10 +11,10 @@
 | 代码规则 | `../ai-video/backend/app/codegen_rules.py` | `backend/src/studio/stages/animation/` | — | M2 | 未开始 |
 | 镜头校验（沙箱写入、读取、校验） | `../ai-video/backend/app/services/strategies/agent_sandbox.py` | `stages/animation/` 中的 `validate_scenes` 工具 | `tests/test_agent_sandbox.py` | M2 | 未开始 |
 | 画幅定义 | `../ai-video/backend/app/video_format.py` | `backend/src/studio/engines/render/` | — | M2 | 未开始 |
-| TTS 引擎（火山引擎、音色映射） | `../ai-video/backend/app/engines/tts/` | `backend/src/studio/engines/tts/` | `tests/test_tts_engine.py`、`test_tts_duration.py` | M3 | 未开始 |
-| beat 对齐 | `../ai-video/backend/app/services/beat_aligner.py` | `backend/src/studio/engines/tts/` | `tests/test_beat_aligner.py` | M3 | 未开始 |
-| 叙事校验 | `../ai-video/backend/app/services/narrative_validator.py` | `stages/narrative/` 中的 `validate_narrative` 工具 | 在 `test_schemas_narrative.py` 等中查找 | M3 | 未开始 |
-| 叙事 schema（scene、beat） | `../ai-video/backend/app/schemas/narrative.py`、`beat.py` | `stages/narrative/` 的产物 schema（改为以稳定 id 标识镜头） | `tests/test_schemas_narrative.py` | M3 | 未开始 |
+| TTS 引擎（火山引擎、音色映射） | `../ai-video/backend/app/engines/tts/` | `backend/src/studio/engines/tts/` | `tests/test_tts_engine.py`、`test_tts_duration.py` | M3 | 已完成 |
+| beat 对齐 | `../ai-video/backend/app/services/beat_aligner.py` | `backend/src/studio/engines/tts/` | `tests/test_beat_aligner.py` | M3 | 已完成 |
+| 叙事校验 | `../ai-video/backend/app/services/narrative_validator.py` | `stages/narrative/` 中的 `validate_narrative` 工具 | 在 `test_schemas_narrative.py` 等中查找 | M3 | 已完成 |
+| 叙事 schema（scene、beat） | `../ai-video/backend/app/schemas/narrative.py`、`beat.py` | `stages/narrative/` 的产物 schema（改为以稳定 id 标识镜头） | `tests/test_schemas_narrative.py` | M3 | 已完成 |
 | 兜底文件工具 | `../ai-video/backend/app/services/strategies/openai_agent_runtime.py`（`OpenAICodegenWorkspace`） | `backend/src/studio/agent/fallback_tools.py` | `tests/test_openai_agent_runtime.py` → `backend/tests/agent/test_fallback_tools.py`（运行时部分改写进 `test_openai_runtime.py`） | M1 | 已完成（T10，2026-09-27）：按工作区相对路径读写、范围由 `WriteScope` 决定；保留大小上限与"精确匹配一次"；`validate` 留给 M2 |
 | Claude 运行时写法参考 | `../ai-video/backend/app/services/strategies/claude_agent_runtime.py` | `backend/src/studio/agent/`（只参考写法） | `tests/test_claude_agent_runtime.py` | M1 | 未开始 |
 | 风格组件内容 | 旧项目 dev DB 的 `prompt_components` 表（注意：dev DB 曾在 git 之外被改动过） | `style_presets` 的初始数据 | — | M5 | 未开始 |

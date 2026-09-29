@@ -9,6 +9,7 @@ import {
   getProject,
   getSession,
   sessionStreamUrl,
+  workspaceFileUrl,
   writeFileContent,
 } from '@/api/endpoints'
 
@@ -100,5 +101,14 @@ describe('endpoints：动态路径段会被正确编码', () => {
 
   it('finalVideoUrl 对 projectId 编码，不发请求', () => {
     expect(finalVideoUrl('p 1')).toBe('/api/projects/p%201/output/final.mp4')
+  })
+
+  it('workspaceFileUrl 对 projectId 和路径逐段编码，version 拼进查询串', () => {
+    expect(workspaceFileUrl('p 1', 'narrative/audio/s a.mp3')).toBe(
+      '/api/projects/p%201/files/narrative/audio/s%20a.mp3',
+    )
+    expect(workspaceFileUrl('p', 'narrative/audio/s-a.mp3', 'sha256:ab')).toBe(
+      '/api/projects/p/files/narrative/audio/s-a.mp3?v=sha256%3Aab',
+    )
   })
 })

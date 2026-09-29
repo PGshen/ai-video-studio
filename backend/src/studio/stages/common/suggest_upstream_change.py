@@ -3,7 +3,7 @@
 `Engine` 通过 `ToolContext.engine`（TD-32）传入 handler，不再需要工厂函数
 把它闭包进 `ToolSpec.handler`——和 `validate_scenes`/`render_preview` 一样，
 `SUGGEST_UPSTREAM_CHANGE_TOOL` 是模块加载时就能建好的常量，`AnimationStage.tools()`
-直接放进列表即可。
+和 `NarrativeStage.tools()` 直接放进列表即可。
 """
 
 from __future__ import annotations
@@ -37,6 +37,6 @@ SUGGEST_UPSTREAM_CHANGE_TOOL = ToolSpec(
     name="suggest_upstream_change",
     description="向上游阶段提出回退建议：记录一条待处理的建议，不直接修改上游产物。",
     input_model=SuggestUpstreamChangeArgs,
-    stages={"animation"},
+    stages={"animation", "narrative"},
     handler=_handler,
 )

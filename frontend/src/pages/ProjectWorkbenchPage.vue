@@ -2,9 +2,9 @@
 /**
  * 项目工作台外壳（任务简报 T13/T14，控制者裁定 1；M2 T12 加了按阶段分派
  * 画布组件）：阶段导航 + 左侧会话面板 + 右侧画布/快照时间线。`animation`
- * 阶段用专属的 `AnimationCanvas`（镜头列表 + 代码编辑器，见该目录），其它
- * 阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）——这是这个页面第一次
- * 出现"按阶段选组件"的分支，以后 `narrative` 落地专属画布时照这个模式加。
+ * 阶段用专属的 `AnimationCanvas`（镜头列表 + 代码编辑器，见该目录），
+ * `narrative` 阶段用 `NarrativeCanvas`（镜头卡片 + 配音播放条 + JSON，M3），
+ * 其它阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）。
  *
 
  * `busy`（画布/快照时间线是否只读）综合两个信号（T14 审查修复，见
@@ -32,6 +32,7 @@ import { sessionResetKey } from '@/features/workbench/sessionResetKey'
 import { combineBusy } from '@/features/workbench/turnControls'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
+import NarrativeCanvas from '@/features/canvas/narrative/NarrativeCanvas.vue'
 
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
@@ -97,6 +98,11 @@ const canvasBusy = computed(() =>
           <CardContent class="flex min-h-0 flex-1 flex-col gap-3">
             <AnimationCanvas
               v-if="stage === 'animation'"
+              :project-id="projectId"
+              :busy="canvasBusy"
+            />
+            <NarrativeCanvas
+              v-else-if="stage === 'narrative'"
               :project-id="projectId"
               :busy="canvasBusy"
             />

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Protocol
+
+from sqlalchemy import Engine
+
 from studio.agent.preamble import (
     DIFF_MAX_CHARS_PER_FILE,
     PreambleInputs,
@@ -8,7 +14,21 @@ from studio.agent.preamble import (
     build_preamble,
     compose_user_text,
 )
-from studio.workspace import ModifiedFile, WorkspaceDiff
+from studio.agent.preamble import _narrative_scene_summary as narrative_scene_summary
+from studio.agent.preamble import _upstream_changes as upstream_changes
+from studio.agent.stage import StageRegistry
+from studio.agent.stage_flow import finalize
+from studio.stages.animation import STAGE as ANIMATION_STAGE
+from studio.stages.narrative import STAGE as NARRATIVE_STAGE
+from studio.stages.topic import STAGE as TOPIC_STAGE
+from studio.workspace import BlobStore, ModifiedFile, WorkspaceDiff
+
+
+class NarrativeProjectEnv(Protocol):
+    project_id: str
+    workdir: Path
+    engine: Engine
+    blobs: BlobStore
 
 
 def _diff(
@@ -81,3 +101,140 @@ def test_compose_user_text() -> None:
     assert compose_user_text("", "你好") == "你好"
     composed = compose_user_text("前言", "你好")
     assert composed.startswith("前言") and composed.endswith("你好")
+
+
+# ---------------------------------------------------------------------------
+# 叙事→动画：按镜头 id 的上游变更摘要（M3 T9，TD-6）
+# ---------------------------------------------------------------------------
+
+
+def _scene(scene_id: str, narration: str, cues: list[str]) -> dict:
+    return {
+        "id": scene_id,
+        "narration": narration,
+        "visual_intent": "x",
+        "beats": [
+            {"cue_text": cue, "visual_action": "x", "emphasis": "x", "transition": "continue"}
+            for cue in cues
+        ],
+    }
+
+
+def _manifest(blobs: BlobStore, scenes: list[dict] | None) -> dict[str, str]:
+    if scenes is None:
+        return {"narrative/timing.json": blobs.put(b"{}")}
+    text = json.dumps({"scenes": scenes}, ensure_ascii=False).encode("utf-8")
+    return {"narrative/narrative.json": blobs.put(text)}
+
+
+def test_scene_summary_lists_added_removed_narration_and_beat_changes(tmp_path: Path) -> None:
+    blobs = BlobStore(tmp_path / "blobs")
+    old = _manifest(
+        blobs,
+        [
+            _scene("s-keep", "甲乙", ["甲", "乙"]),
+            _scene("s-gone", "丙丁", ["丙丁"]),
+            _scene("s-words", "戊己", ["戊己"]),
+            _scene("s-beats", "庚辛", ["庚辛"]),
+        ],
+    )
+    new = _manifest(
+        blobs,
+        [
+            _scene("s-keep", "甲乙", ["甲", "乙"]),
+            _scene("s-words", "戊己改", ["戊己改"]),
+            _scene("s-beats", "庚辛", ["庚", "辛"]),
+            _scene("s-new", "壬癸", ["壬癸"]),
+        ],
+    )
+
+    assert narrative_scene_summary(old, new, blobs) == [
+        "- 新增镜头 s-new",
+        "- 删除镜头 s-gone",
+        "- 镜头 s-words 旁白有改动",
+        "- 镜头 s-beats 的 beat 拆分有改动",
+    ]
+
+
+def test_scene_summary_is_empty_list_when_scenes_are_identical(tmp_path: Path) -> None:
+    blobs = BlobStore(tmp_path / "blobs")
+    manifest = _manifest(blobs, [_scene("s-a", "甲乙", ["甲乙"])])
+
+    assert narrative_scene_summary(manifest, manifest, blobs) == []
+
+
+def test_scene_summary_is_none_when_a_side_cannot_be_parsed(tmp_path: Path) -> None:
+    blobs = BlobStore(tmp_path / "blobs")
+    good = _manifest(blobs, [_scene("s-a", "甲乙", ["甲乙"])])
+    no_narrative = _manifest(blobs, None)
+    bad_json = {"narrative/narrative.json": blobs.put(b"{not json")}
+    no_id = {"narrative/narrative.json": blobs.put(b'{"scenes": [{"narration": "x"}]}')}
+
+    assert narrative_scene_summary(good, no_narrative, blobs) is None
+    assert narrative_scene_summary(no_narrative, good, blobs) is None
+    assert narrative_scene_summary(good, bad_json, blobs) is None
+    assert narrative_scene_summary(no_id, good, blobs) is None
+
+
+def test_build_preamble_prefers_scene_summary_over_file_summary() -> None:
+    change = UpstreamChange(
+        stage="narrative",
+        diff=_diff(modified=[_modified("narrative/narrative.json", None)]),
+        scene_summary=["- 新增镜头 s-new", "- 镜头 s-a 旁白有改动"],
+    )
+
+    text = build_preamble(PreambleInputs(upstream_changes=[change]))
+
+    assert "- 新增镜头 s-new" in text
+    assert "- 镜头 s-a 旁白有改动" in text
+    assert "narrative/narrative.json" not in text
+
+
+def test_build_preamble_explains_empty_scene_summary() -> None:
+    change = UpstreamChange(
+        stage="narrative",
+        diff=_diff(modified=[_modified("narrative/timing.json", None)]),
+        scene_summary=[],
+    )
+
+    text = build_preamble(PreambleInputs(upstream_changes=[change]))
+
+    assert "镜头没有变化" in text
+    assert "narrative/timing.json" not in text
+
+
+def test_gather_uses_scene_summary_only_for_narrative_edge(
+    narrative_project: NarrativeProjectEnv,
+) -> None:
+    env = narrative_project
+    registry = StageRegistry()
+    for stage in (TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE):
+        registry.register(stage)
+    narrative_path = env.workdir / "narrative" / "narrative.json"
+    narrative_path.parent.mkdir(parents=True, exist_ok=True)
+
+    narrative_path.write_text(
+        json.dumps({"scenes": [_scene("s-a", "甲乙", ["甲乙"])]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    finalize(env.engine, env.blobs, registry, env.project_id, "narrative")
+    narrative_path.write_text(
+        json.dumps(
+            {"scenes": [_scene("s-a", "甲乙", ["甲乙"]), _scene("s-b", "丙丁", ["丙丁"])]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    finalize(env.engine, env.blobs, registry, env.project_id, "narrative")
+
+    changes = upstream_changes(env.engine, env.blobs, env.project_id, ANIMATION_STAGE)
+    assert [c.scene_summary for c in changes] == [["- 新增镜头 s-b"]]
+    assert changes[0].diff.modified  # 文件级 diff 仍照常计算
+
+    # 选题→叙事这条边没有镜头概念，仍是文件级摘要。
+    brief = env.workdir / "topic" / "brief.md"
+    brief.write_text(brief.read_text(encoding="utf-8") + "\n新增一段\n", encoding="utf-8")
+    finalize(env.engine, env.blobs, registry, env.project_id, "topic")
+    topic_changes = upstream_changes(env.engine, env.blobs, env.project_id, NARRATIVE_STAGE)
+    assert [c.stage for c in topic_changes] == ["topic"]
+    assert topic_changes[0].scene_summary is None
