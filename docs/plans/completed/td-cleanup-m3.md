@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 里程碑 | M3 与 M4 之间（整理） |
 | 设计依据 | [架构设计 §5.2、§5.4](../../design/2026-09-26-architecture.md)；登记表 [tech-debt.md](../../quality/tech-debt.md) |
 | 分支 | `td-cleanup-m3` |
@@ -46,11 +46,11 @@ M4 之前处理掉两条会影响正确性的债（TD-36 配音过期判断、TD
 
 ## 验收标准
 
-- [ ] AC1 TD-30、TD-31 修复并有测试（dev.sh 用脚本级检查）
-- [ ] AC2 TD-6：产物目录外的变化不再让下游 stale，前言无空提示
-- [ ] AC3 TD-36：旁白/音色/语速改动后画布显示"已过期"，前后端哈希一致
-- [ ] AC4 TD-37：`<audio>` 直连文件端点可跳转
-- [ ] AC5 tech-debt.md 与 QUALITY.md 已更新，`make check` 为绿
+- [x] AC1 TD-30、TD-31 修复并有测试（dev.sh 用脚本级检查）
+- [x] AC2 TD-6：产物目录外的变化不再让下游 stale，前言无空提示
+- [x] AC3 TD-36：旁白/音色/语速改动后画布显示"已过期"，前后端哈希一致
+- [x] AC4 TD-37：`<audio>` 直连文件端点可跳转
+- [x] AC5 tech-debt.md 与 QUALITY.md 已更新，`make check` 为绿
 
 ## 验证命令
 
@@ -62,12 +62,12 @@ M4 之前处理掉两条会影响正确性的债（TD-36 配音过期判断、TD
 - [x] T1（TD-30、TD-31）
 - [x] T2（TD-6）
 - [x] T3（TD-36）
-- [ ] T4
-- [ ] T5
+- [x] T4（TD-37）
+- [x] T5（收尾）
 
 ## 下一步
 
-T4。
+无（计划已完成，剩余债见 tech-debt.md；TD-27 等未纳入本计划）。
 
 ## 决策记录
 
@@ -78,7 +78,9 @@ T4。
 
 ## 意外与发现
 
-（执行中补充）
+- TD-37 换成 `FileResponse` 后，响应带了 `ETag`/`Last-Modified` 但没有 `Cache-Control`，浏览器按启发式缓存，agent 或用户刚改完的 `timing.json` 在画布里还是旧的（L4 中 TD-36 的"配音已过期"迟迟不出现才发现）。端点加 `Cache-Control: no-cache` 并加测试；这是换 `FileResponse` 引入的回归，不是原有问题。
+- TD-6 的前言部分本来就不需要改：`build_preamble` 对文件级 diff 为空的上游变更已经过滤。
+- `test_narrative_flow.py` 原来断言真实 `timing.json` 的键与 M2 动画 fixture 完全一致，TD-36 新增三个键后改为"fixture 的键是子集，多出来的正好是 `narration`/`voice`/`speed`"。
 
 ## 阻塞
 
@@ -86,4 +88,9 @@ T4。
 
 ## 验证记录
 
-（收尾时补充）
+- `make check`（2026-09-29，分支 `td-cleanup-m3`）：全部通过；后端 760 passed / 21 deselected，前端 vitest 192 passed。
+- L4（浏览器，开发库里的 M3 演示项目）：
+  - TD-37：点击第 2 个 beat 后 `<audio>.currentTime` ≈ 4.55s（beat 起点 4.45s），`seekable` 覆盖全长，`src` 直接是文件端点 URL。
+  - TD-36：手动给演示项目 `timing.json` 的 `s-hook` 条目写入不同的 `narration` 后刷新，镜头卡片显示"配音已过期"，提示条为"1 个镜头还没有配音；1 个镜头的配音已过期（旁白、音色或语速在配音后改过），需要重新配音"；验证后已恢复演示数据。
+  - `Cache-Control`：改写文件后不刷新页面的 `fetch` 立即拿到新内容。
+- TD-30：`bash -n scripts/dev.sh` 通过；`set -euo pipefail` 下 `if ! read ... < <(false)` 会走到显式的错误分支。

@@ -26,6 +26,7 @@ from __future__ import annotations
 import mimetypes
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import FileResponse
 from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
@@ -94,8 +95,15 @@ def read_file_endpoint(
     if _is_hidden(path) or not abs_path.is_file():
         raise HTTPException(status_code=404, detail=f"文件不存在：{path}")
 
-    data = files.read_bytes(workdir, path)
-    return Response(content=data, media_type=_guess_content_type(path))
+    # `abs_path` 已经过 `safe_path` 校验（拒绝符号链接和越界）。用 `FileResponse`
+    # 是为了支持 HTTP Range：`<audio>` 直连这个端点时浏览器靠它跳转（TD-37）。
+    # `no-cache`：`FileResponse` 带 `Last-Modified`/`ETag`，不加的话浏览器会按启发式
+    # 缓存，agent 刚改完的文件画布拿到旧内容。带 ETag 重新校验很便宜。
+    return FileResponse(
+        abs_path,
+        media_type=_guess_content_type(path),
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.put("/projects/{project_id}/files/{path:path}", response_model=FileWriteResult)
