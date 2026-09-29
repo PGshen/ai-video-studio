@@ -1,7 +1,8 @@
-"""选题打磨阶段占位定义（设计 §4.3、§5.1）。
+"""选题打磨阶段（设计 §4.3、§5.1；计划 M4 T6）。
 
-M1 只提供占位提示词和 §4.3 的可写范围；产物 schema、`check_brief` 等业务
-工具、定稿条件在 M4 实现。
+产物 `topic/brief.md`（结构见 `brief.py`）与调研笔记 `topic/notes/`；工具：联网搜索/抓取
+（`stages.common.web_tools`）和 `check_brief`。定稿条件是 `check_brief` 没有错误，由用户确认
+（后端 `finalize` 不强制，见计划 D4）。
 """
 
 from __future__ import annotations
@@ -10,12 +11,14 @@ from pathlib import Path
 
 from studio.agent.tools import ToolSpec
 from studio.stages.common import FETCH_URL_TOOL, WEB_SEARCH_TOOL
+from studio.stages.topic.brief import check_workspace
+from studio.stages.topic.check_brief import CHECK_BRIEF_TOOL
 from studio.workspace import files
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _WRITE_SCOPE = WriteScope(writable=["topic/**"], tool_managed=[])
-_TOOLS: list[ToolSpec] = [WEB_SEARCH_TOOL, FETCH_URL_TOOL]
+_TOOLS: list[ToolSpec] = [WEB_SEARCH_TOOL, FETCH_URL_TOOL, CHECK_BRIEF_TOOL]
 
 
 class TopicStage:
@@ -40,7 +43,11 @@ class TopicStage:
 
     def status_summary(self, workdir: Path) -> str:
         count = sum(1 for path in files.list_tree(workdir) if path.startswith("topic/"))
-        return f"topic/ 下有 {count} 个文件"
+        result = check_workspace(workdir)
+        return (
+            f"topic/ 下有 {count} 个文件；brief.md 检查："
+            f"{len(result.errors)} 个错误、{len(result.warnings)} 条警告"
+        )
 
 
 STAGE = TopicStage()

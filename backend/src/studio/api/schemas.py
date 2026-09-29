@@ -183,6 +183,12 @@ class SceneChecksResponse(BaseModel):
     scenes: dict[str, SceneChecksOut]
 
 
+class TopicCheckOut(BaseModel):
+    ok: bool
+    errors: list[str]
+    warnings: list[str]
+
+
 class IdeaOut(BaseModel):
     id: str
     title: str

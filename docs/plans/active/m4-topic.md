@@ -143,7 +143,7 @@
 - **完成标准**：AC2、AC3。
 - **验证命令**：`make check`
 
-### T6：`stages/topic`——`brief.md` 结构、`check_brief`、完整提示词（待开始）
+### T6：`stages/topic`——`brief.md` 结构、`check_brief`、完整提示词（完成）
 
 - **目标**：选题简报有机器可检查的结构；agent 用 `check_brief` 自查，画布用同一份检查结果显示状态。
 - **涉及文件**：新建 `backend/src/studio/stages/topic/brief.py`（解析与检查，纯函数）、`stages/topic/check_brief.py`（工具）、`backend/src/studio/api/topic.py`（`GET /api/projects/{id}/topic/check`，读工作区 `topic/brief.md` 调用 `brief.check`）；改 `stages/topic/__init__.py`（`tools()`）、`stages/topic/prompt.md`（改写成完整版）、`main.py`（挂路由）；更新 `backend/tests/fixtures/narrative/brief.md` 使其通过 `check_brief`（先 `grep -rn "brief" backend/tests` 确认没有测试断言它的具体文字）；测试 `backend/tests/stages/test_topic_brief.py`、`test_topic_check_tool.py`、`test_topic_prompt.py`、`backend/tests/api/test_topic_check.py`。
@@ -282,10 +282,11 @@
 - 2026-09-29 — T3 无项目会话（TurnRunner 无工作区模式、`ToolContext.require_project`、scratch 目录、`/api/brainstorm/sessions`、brainstorm 阶段骨架）— 新增 30 个测试，既有测试不改断言全部通过，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T4 头脑风暴三个工具（`list_ideas`/`create_idea`/`update_idea`）与完整提示词 — 新增约 23 个测试，`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T5 联网工具与 `STUDIO_WEB_MODE` 开关（`web_search`/`fetch_url`、URL 来源规则、runner 按模式过滤工具与 `allow_web`、ADR 0010）— 新增约 60 个测试，`make check` 全绿（commit 见 git log）
+- 2026-09-29 — T6 选题简报结构检查（`stages/topic/brief.py`）、`check_brief` 工具、`GET /topic/check`、完整提示词、fixture 简报补出处 — 新增约 50 个测试，`make check` 全绿（commit 见 git log）
 
 ## 下一步
 
-- 做 T6：`stages/topic` 的 `brief.md` 结构与 `check_brief`。先写 `backend/tests/stages/test_topic_brief.py`、`test_topic_check_tool.py`、`test_topic_prompt.py`、`backend/tests/api/test_topic_check.py`（失败），再新建 `stages/topic/brief.py`、`check_brief.py`、`api/topic.py`；`topic` 的 `tools()` 现在是 `[web_search, fetch_url]`，要加上 `check_brief`；提示词要写成与联网模式无关（不写死 `web_search` 工具名）；同时更新 `tests/fixtures/narrative/brief.md` 使其通过 `check_brief`。
+- 做 T7：从想法卡片创建项目。先在 `backend/tests/api/test_projects.py` 补 `idea_id` 的用例（失败）：正常创建（卡片 `picked`、`project_id` 回填、`topic/notes/idea-card.md` 在 init 快照里）、卡片不存在 404 且无半成品、已 `picked`/`archived` 409、并发抢卡片输的一方清理项目并 409。再改 `api/projects.py`（`create_project_endpoint`、`_init_workspace`）、`api/schemas.py`（`ProjectCreate.idea_id`）。仓储 `db/repo/ideas.py::mark_picked` 已有（条件更新，见 T2）。
 
 ## 决策记录
 
@@ -303,6 +304,7 @@
 - 2026-09-29（T3 执行中）：① brainstorm 阶段骨架（`stages/brainstorm/`、注册进 `main`、进 `independence` 契约）提前到 T3，因为 API 和运行时测试需要一个真实注册的阶段；T4 只补工具和提示词。② 「哪些阶段无项目」用常量 `agent.stage.WORKSPACELESS_STAGES = {"brainstorm"}`，不给 `StageDefinition` 协议加字段——协议改动会波及所有阶段和测试桩。`start_turn` 双向校验：无项目会话必须是这些阶段，这些阶段的会话不能属于项目；项目阶段的会话创建接口对 `brainstorm` 返回 404。③ `TurnRunner` 新增 `is_session_busy(session_id)`（测试用，也可供 API 用）；调度键 `_Job.busy_key`（项目 id 或 `session:<id>`）。④ `turn_finish.finish` 拆成 `_guard_workspace`/`_snapshot_workspace` 两个私有函数，行为不变，无项目会话跳过两者和 `after_turn_done`。⑤ `default_fake_script` 在阶段没有可写路径时只回显，不再抛 `ValueError`（否则 `make dev` 的 fake 运行时跑不了头脑风暴）。⑥ brainstorm 的 `allow_web` 暂为 `False`，T5 加联网模式开关时和 topic 一起改为 `True`——否则 T3 骨架会在开关存在之前就打开 Claude 原生联网。
 - 2026-09-29（T4 执行中）：`update_idea` 工具的 `scores` 按维度**合并**进已有评分（agent 说「补评分」时不冲掉其他维度），而 REST 的 `PATCH` 是整体替换（前端编辑对话框总是提交完整评分）；`list_ideas` 不填 `status` 时含归档卡片（查重需要）。工具在 `update_idea` 里显式先查卡片状态，给出「状态是 picked/archived，不能改」的明确文字，而不是透传仓储层的异常文本。
 - 2026-09-29（T5 执行中）：① `fetch_url` 传给 Tavily 的是模型给出的原始 URL（去首尾空白），规范化 URL 只用于「是否允许」的比较。② 用户消息里的 URL 用 RFC 3986 字符集的正则提取（先用「非空白」的写法会把中文逗号和后面的文字一起吞进 URL），再去掉末尾标点。③ 自建工具 `web_search` 的名字与 OpenAI 托管搜索转出的 `ToolCall.name == "web_search"` 重名，但两种模式互斥，不会同时出现，前端按名字渲染无冲突。④ `_tools_and_web` 放在 `TurnRunner`（不是各运行时）：模式是进程级配置，运行时只看 `ctx.allow_web` 和 `ctx.tools`，Claude/OpenAI 运行时的 `allow_web` 分支一行没改。⑤ 既有测试的两处必要调整：`test_runner.py::TestAllowWeb` 改为 `native` 模式下断言，`test_placeholders.py` 里 topic 的工具/`allow_web` 断言改成新语义。
+- 2026-09-29（T6 执行中）：① 测试共用的简报构造器放在 `backend/tests/brief_builder.py`（顶层模块，和 `event_asserts.py` 一样靠 tests 目录在 `sys.path` 上导入），因为 `tests/api` 和 `tests/stages` 之间不能用相对导入。② 事实条目解析：列表项后面非列表的非空行算续行（事实和「（出处…）」可以分两行写）；`出处` 的值取到 `把握程度` 之前或行尾，再去掉首尾的分隔符和括号，所以 URL 里带逗号、分号后面紧跟「把握程度」都能解析。③ 二级标题容忍编号前缀（`## 1. 核心问题`、`## 七、风险点`）和代码围栏内的 `##`。④ `fixtures/narrative/brief.md` 的事实补了「出处：算法导论第 2 章」，M3 的测试只检查它含「核心问题」，不受影响。⑤ `TopicStage.status_summary` 现在带 `check_workspace` 的错误/警告条数（前言里的「当前产物状态摘要」用）。⑥ 提示词写成与联网模式无关（只说「联网搜索和读取网页」），有测试断言不含 `web_search`/`WebSearch`。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
