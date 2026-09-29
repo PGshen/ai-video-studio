@@ -3,7 +3,7 @@
 完整设计见 [design/2026-09-26-architecture.md](design/2026-09-26-architecture.md)。本文件只描述**代码结构**和**依赖方向**，内容必须和代码保持一致（SOP §10）。
 下面的分层规则写成了 import-linter 契约（`backend/pyproject.toml` 的 `[tool.importlinter]`），由 `make check` 强制检查。
 
-> 状态：M2 收尾时按实际代码更新（2026-09-29）。表中标注"（M3/M4/M5）"的模块还不存在，建立时按控制者裁定 R1 把对应契约补进 `pyproject.toml`。
+> 状态：M4 收尾时按实际代码更新（2026-09-29）。表中标注"（M5）"的模块还不存在，建立时按控制者裁定 R1 把对应契约补进 `pyproject.toml`。
 
 ## 1. 仓库顶层
 
@@ -27,12 +27,12 @@ ai-video-studio/
 | `db` | SQLite 连接（WAL）、ORM 模型、迁移 | `config` |
 | `engines.render` | manim 渲染：静态校验、全画质渲染（`manim/{script,process,engine}.py`）、预览与关键帧抽取（T2） | `config` |
 | `engines.tts` | Volcengine 语音合成（`base`/`voice_map`/`volcengine`/`factory`，M3 T1）；beat 对齐（T2） | `config` |
-| `search`（M4） | 搜索提供方接口，以及 Tavily 实现 | `config` |
+| `search` | 搜索提供方协议（`base`：`SearchProvider`/`SearchHit`/`ExtractedPage`/`SearchError`）与 Tavily 实现（`tavily`、`factory`；key 走裸环境变量 `TAVILY_API_KEY`，不进 `Settings`）；纯能力层，有独立的 import-linter 契约 | `config` |
 | `workspace` | 工作区布局（`layout`）、快照库与 diff/回滚（`snapshot`、`blobs`）、越界检查（`scope`）、上游只读副本（`upstream`）、受控文件读写与建/删工作区（`files`） | `db`、`config` |
 | `jobs` | SQLite 任务队列：`create_job`/`claim_next`/`heartbeat`/`update_progress`/`complete`/`fail`/`get_job`/`list_jobs`/`reap_stale_running`；`jobs.repo` 转发自 `db.repo.jobs`（`Job` 模型的直接读写按规则 5 留在 `db.repo`） | `db`、`config` |
-| `agent` | 事件（`events`）、`ToolSpec`（`tools`）、运行时协议与注册表（`runtime`）、**阶段定义协议与注册表（`stage`）**、**阶段流转：定稿/重新打开/stale（`stage_flow`）**、会话总线（`bus`）、上下文前言（`preamble`）、TurnRunner（`runner`：公开接口、排队调度、`_persist`/`_publish` 等总线基础方法；一轮生命周期的其余部分拆到同包内的 `turn_state`——`_Job`/`_State` 共享结构、`turn_events`——运行时事件落库与推送、`turn_finish`——收尾（越界检查/快照/写状态）、`recovery`——重启恢复，见 TD-15）、Claude/OpenAI/Fake 适配器（`claude_runtime` 中环境变量拆到 `claude_env`，读写范围 hook 与 Bash sandbox 配置拆到 `claude_scope`，SDK 消息转换与业务工具桥接拆到 `claude_messages`；`openai_runtime` 中 `LocalShellExecutor` 拆到 `shell`（经 macOS `sandbox-exec` 执行，Seatbelt 配置生成与平台判断在 `shell_sandbox`），业务工具桥接与 item→事件转换拆到 `openai_tools`）、兜底文件工具与 `ApplyPatchEditor` | `workspace`、`db`、`config` |
-| `stages.common` | 各阶段共用的业务工具：`suggest_upstream_change`（M2 T6 已实现，写 `suggestions` 表；因 `ToolContext` 拿不到 `Engine`，暂未接入 `AnimationStage.tools()`，见 TD-32） | `agent`、`workspace`、`db`、`config` |
-| `stages.<topic\|narrative\|animation>`（brainstorm 在 M4） | 各阶段的提示词、专属工具、产物 schema、校验器，实现 `agent.stage.StageDefinition`；`animation`（M2）已有完整提示词 + `validate_scenes`/`render_preview` 工具，`narrative`（M3）已有完整提示词 + `validate_narrative`/`synthesize_tts` 工具与产物 schema（`schema.py`），`topic` 仍是 M1 占位定义（提示词 + 可写范围） | `stages.common`、`agent`、`workspace`、`engines`、`search`、`jobs`、`db`、`config` |
+| `agent` | 事件（`events`）、`ToolSpec`（`tools`）、运行时协议与注册表（`runtime`）、**阶段定义协议与注册表（`stage`）**、**阶段流转：定稿/重新打开/stale（`stage_flow`）**、会话总线（`bus`）、上下文前言（`preamble`）、TurnRunner（`runner`：公开接口、排队调度、`_persist`/`_publish` 等总线基础方法；一轮生命周期的其余部分拆到同包内的 `turn_state`——`_Job`/`_State` 共享结构、`turn_events`——运行时事件落库与推送、`turn_finish`——收尾（越界检查/快照/写状态）、`recovery`——重启恢复，见 TD-15）、Claude/OpenAI/Fake 适配器（`claude_runtime` 中环境变量拆到 `claude_env`，读写范围 hook 与 Bash sandbox 配置拆到 `claude_scope`，SDK 消息转换与业务工具桥接拆到 `claude_messages`；`openai_runtime` 中 `LocalShellExecutor` 拆到 `shell`（经 macOS `sandbox-exec` 执行，Seatbelt 配置生成与平台判断在 `shell_sandbox`），业务工具桥接与 item→事件转换拆到 `openai_tools`）、兜底文件工具与 `ApplyPatchEditor`；**无项目会话**（M4：`stage.WORKSPACELESS_STAGES`，头脑风暴走无工作区模式，cwd 是每轮重置的 scratch 目录 `data/scratch/<session_id>/`，没有快照/`upstream/`/越界检查，`_Job.busy_key` 让它不阻塞项目 turn）；**联网模式**（`STUDIO_WEB_MODE`：`TurnRunner._tools_and_web` 决定 `allow_web` 和是否滤掉 `tools.WEB_TOOL_NAMES` 里的自建联网工具，见 ADR 0010） | `workspace`、`db`、`config` |
+| `stages.common` | 各阶段共用的业务工具：`suggest_upstream_change`（写 `suggestions` 表，narrative/animation 用）、`web_tools`（`web_search`/`fetch_url`，brainstorm/topic 用；带「URL 来源」限制，见 ADR 0010；`STUDIO_WEB_MODE=native` 时被 TurnRunner 滤掉） | `agent`、`workspace`、`db`、`search`、`config` |
+| `stages.<brainstorm\|topic\|narrative\|animation>` | 各阶段的提示词、专属工具、产物 schema、校验器，实现 `agent.stage.StageDefinition`；`animation`（M2）已有完整提示词 + `validate_scenes`/`render_preview` 工具，`narrative`（M3）已有完整提示词 + `validate_narrative`/`synthesize_tts` 工具与产物 schema（`schema.py`），`brainstorm`（M4）没有工作区，工具 `list_ideas`/`create_idea`/`update_idea` 读写 `ideas` 表，联网工具来自 `stages.common`；`topic`（M4）有完整提示词、`brief.py`（`topic/brief.md` 的结构与 `check`）、`check_brief` 工具和联网工具 | `stages.common`、`agent`、`workspace`、`engines`、`search`、`jobs`、`db`、`config` |
 | `api` | HTTP 路由、SSE | 以上全部（除 `main`） |
 | `main` | api 进程入口：组装应用，**注册各阶段**与各运行时，lifespan 关闭时收尾运行中的 turn | 以上全部 |
 | `worker` | worker 进程入口：成片任务循环（M2 T5） | `jobs`、`engines`、`workspace`、`db`、`config` |
@@ -52,7 +52,7 @@ ai-video-studio/
 
 | 目录 | 职责 |
 |---|---|
-| `pages/` | 路由页面（组合层）：`router.ts` 指向这里；可以 import 多个 `features/`，把它们拼成一个页面（`ProjectsPage`、`ProjectWorkbenchPage`、占位的 `IdeasPage`/`SettingsPage`） |
+| `pages/` | 路由页面（组合层）：`router.ts` 指向这里；可以 import 多个 `features/`，把它们拼成一个页面（`ProjectsPage`、`ProjectWorkbenchPage`、`IdeasPage`、占位的 `SettingsPage`） |
 | `api/` | 类型化的 HTTP 客户端和 SSE 客户端（支持 `after_seq` 续传） |
 | `types/` | 与后端 schema 对应的 TS 类型 |
 | `composables/` | TanStack Query hooks 和会话流状态 |

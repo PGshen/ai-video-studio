@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | M4 |
 | 设计依据 | [架构设计 §4.2、§4.3、§5.0、§5.1、§6.2、§6.3、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m4-topic` |
@@ -38,18 +38,18 @@
 
 ## 验收标准
 
-- [ ] AC1：`TavilyProvider.search`/`extract` 在 mock HTTP 下返回规范化结果；401/429/5xx/超时/畸形 JSON 各自给出明确的、不含 key 的错误；缺 `TAVILY_API_KEY` 时 `build_search_provider()` 抛 `RuntimeError`（验证：`pytest backend/tests/search/`）
-- [ ] AC2：`tools` 模式下 `web_search`/`fetch_url` 可用于 brainstorm 和 topic，不可用于 narrative/animation；`fetch_url` 拒绝不是来自本会话搜索结果或用户消息的 URL，拒绝非 http(s)、带账号密码的、指向 localhost/内网 IP 的 URL；超长网页被截断并注明；搜索/抓取失败作为 `is_error` 工具结果返回而不是让一轮失败（验证：`pytest backend/tests/stages/test_web_tools.py`）
-- [ ] AC3：联网模式开关生效：`tools`（默认）下三个运行时都不向模型暴露原生联网工具，只有自建工具；`native` 下 Claude 暴露 WebSearch/WebFetch、OpenAI（官方 API 路径）暴露 `WebSearchTool`，且自建的 `web_search`/`fetch_url` 不出现，narrative/animation 在任何模式下都没有联网能力；`STUDIO_WEB_MODE` 写了非法值时启动报错（验证：`pytest backend/tests/agent/test_web_mode.py backend/tests/test_config.py`）
-- [ ] AC4：`ideas` 仓储与 `/api/ideas*` 覆盖：新建、列表（按状态筛选）、编辑、归档/恢复；标题归一化后重复的卡片被拒；`scores` 只接受四个已知维度且值在 1–5；不存在的 id 返回 404（验证：`pytest backend/tests/db/test_ideas_repo.py backend/tests/api/test_ideas.py`）
-- [ ] AC5：`POST /api/brainstorm/sessions` 创建无项目的头脑风暴会话；用 `FakeRuntime` 跑一轮：turn 完成、事件落库、SSE 可回放、没有创建任何快照、scratch 目录被重置、重启恢复把遗留 turn 标为 `interrupted`；同一时刻多个头脑风暴会话和项目 turn 互不阻塞（验证：`pytest backend/tests/agent/test_runner_brainstorm.py backend/tests/api/test_brainstorm_sessions.py`）
-- [ ] AC6：头脑风暴 agent 的三个工具：`list_ideas` 返回卡片摘要，`create_idea` 写入 `source_session_id`、拒绝重复标题并说明与哪张卡片重复，`update_idea` 只能改自己允许改的字段；项目阶段调用这些工具报错（验证：`pytest backend/tests/stages/test_brainstorm_tools.py`）
-- [ ] AC7：`check_brief` 对合法简报通过；对缺章节、章节为空、关键事实为空、事实缺出处或把握程度给出点名的错误；低把握事实、章节顺序错乱只给警告；文件缺失/非 UTF-8 不抛异常（验证：`pytest backend/tests/stages/test_topic_brief.py`）
-- [ ] AC8：`POST /api/projects` 带 `idea_id` 时：项目 `idea_id` 已设置、卡片变为 `picked` 且记录 `project_id`、`topic/notes/idea-card.md` 在初始快照里；卡片不存在或已被选走返回 4xx 且不留半成品项目（验证：`pytest backend/tests/api/test_projects.py`）
-- [ ] AC9：端到端（`FakeRuntime`）：头脑风暴一轮创建卡片 → 从卡片创建项目 → topic 一轮写 `brief.md`、调用 `check_brief` → 定稿 → 叙事阶段变 `active` 且 `upstream/topic/brief.md` 可读（验证：`pytest backend/tests/api/test_topic_flow.py`）
-- [ ] AC10：前端选题池页面：卡片网格、状态筛选、编辑、归档、创建项目并跳转；头脑风暴抽屉里 agent 新建的卡片无需刷新即出现；选题画布显示渲染后的简报、`check_brief` 错误/警告、笔记列表，可切换编辑（验证：`pnpm exec vitest run` 的纯逻辑用例 + L4 走查，截图见「验证记录」）
-- [ ] AC11：`make check` 全绿
-- [ ] AC12：真实冒烟：`make smoke SMOKE_ARGS="-k tavily"`（真实 Tavily key）通过；本机 Claude 登录在 `tools` 模式下跑一轮真实的头脑风暴（联网搜索 → 创建卡片）和一轮选题打磨（搜索 → 抓取 → 写简报 → `check_brief`），并在 `native` 模式下再跑一轮选题打磨确认开关有效（验证：`make smoke SMOKE_ARGS="-k topic_claude_login"`，证据在 `data/evidence/m4-topic/`）
+- [x] AC1：`TavilyProvider.search`/`extract` 在 mock HTTP 下返回规范化结果；401/429/5xx/超时/畸形 JSON 各自给出明确的、不含 key 的错误；缺 `TAVILY_API_KEY` 时 `build_search_provider()` 抛 `RuntimeError`（验证：`pytest backend/tests/search/`）
+- [x] AC2：`tools` 模式下 `web_search`/`fetch_url` 可用于 brainstorm 和 topic，不可用于 narrative/animation；`fetch_url` 拒绝不是来自本会话搜索结果或用户消息的 URL，拒绝非 http(s)、带账号密码的、指向 localhost/内网 IP 的 URL；超长网页被截断并注明；搜索/抓取失败作为 `is_error` 工具结果返回而不是让一轮失败（验证：`pytest backend/tests/stages/test_web_tools.py`）
+- [x] AC3：联网模式开关生效：`tools`（默认）下三个运行时都不向模型暴露原生联网工具，只有自建工具；`native` 下 Claude 暴露 WebSearch/WebFetch、OpenAI（官方 API 路径）暴露 `WebSearchTool`，且自建的 `web_search`/`fetch_url` 不出现，narrative/animation 在任何模式下都没有联网能力；`STUDIO_WEB_MODE` 写了非法值时启动报错（验证：`pytest backend/tests/agent/test_web_mode.py backend/tests/test_config.py`）
+- [x] AC4：`ideas` 仓储与 `/api/ideas*` 覆盖：新建、列表（按状态筛选）、编辑、归档/恢复；标题归一化后重复的卡片被拒；`scores` 只接受四个已知维度且值在 1–5；不存在的 id 返回 404（验证：`pytest backend/tests/db/test_ideas_repo.py backend/tests/api/test_ideas.py`）
+- [x] AC5：`POST /api/brainstorm/sessions` 创建无项目的头脑风暴会话；用 `FakeRuntime` 跑一轮：turn 完成、事件落库、SSE 可回放、没有创建任何快照、scratch 目录被重置、重启恢复把遗留 turn 标为 `interrupted`；同一时刻多个头脑风暴会话和项目 turn 互不阻塞（验证：`pytest backend/tests/agent/test_runner_brainstorm.py backend/tests/api/test_brainstorm_sessions.py`）
+- [x] AC6：头脑风暴 agent 的三个工具：`list_ideas` 返回卡片摘要，`create_idea` 写入 `source_session_id`、拒绝重复标题并说明与哪张卡片重复，`update_idea` 只能改自己允许改的字段；项目阶段调用这些工具报错（验证：`pytest backend/tests/stages/test_brainstorm_tools.py`）
+- [x] AC7：`check_brief` 对合法简报通过；对缺章节、章节为空、关键事实为空、事实缺出处或把握程度给出点名的错误；低把握事实、章节顺序错乱只给警告；文件缺失/非 UTF-8 不抛异常（验证：`pytest backend/tests/stages/test_topic_brief.py`）
+- [x] AC8：`POST /api/projects` 带 `idea_id` 时：项目 `idea_id` 已设置、卡片变为 `picked` 且记录 `project_id`、`topic/notes/idea-card.md` 在初始快照里；卡片不存在或已被选走返回 4xx 且不留半成品项目（验证：`pytest backend/tests/api/test_projects.py`）
+- [x] AC9：端到端（`FakeRuntime`）：头脑风暴一轮创建卡片 → 从卡片创建项目 → topic 一轮写 `brief.md`、调用 `check_brief` → 定稿 → 叙事阶段变 `active` 且 `upstream/topic/brief.md` 可读（验证：`pytest backend/tests/api/test_topic_flow.py`）
+- [x] AC10：前端选题池页面：卡片网格、状态筛选、编辑、归档、创建项目并跳转；头脑风暴抽屉里 agent 新建的卡片无需刷新即出现；选题画布显示渲染后的简报、`check_brief` 错误/警告、笔记列表，可切换编辑（验证：`pnpm exec vitest run` 的纯逻辑用例 + L4 走查，截图见「验证记录」）
+- [x] AC11：`make check` 全绿
+- [x] AC12：真实冒烟：`make smoke SMOKE_ARGS="-k tavily"`（真实 Tavily key）通过；本机 Claude 登录在 `tools` 模式下跑一轮真实的头脑风暴（联网搜索 → 创建卡片）和一轮选题打磨（搜索 → 抓取 → 写简报 → `check_brief`），并在 `native` 模式下再跑一轮选题打磨确认开关有效（验证：`make smoke SMOKE_ARGS="-k topic_claude_login"`，证据在 `data/evidence/m4-topic/`）
 
 ## 任务
 
@@ -264,7 +264,7 @@
 - **完成标准**：本机设置 `TAVILY_API_KEY` 后三条用例通过；未设置时 Tavily 相关部分显示 `SKIPPED`。
 - **验证命令**：`make smoke SMOKE_ARGS="-k tavily"`、`make smoke SMOKE_ARGS="-k topic_claude_login"`、`make smoke SMOKE_ARGS="-k brainstorm_claude_login"`
 
-### T14：文档与收尾（待开始）
+### T14：文档与收尾（完成）
 
 - **目标**：按 SOP §7 收尾清单更新文档，让代码与文档一致。
 - **涉及文件**：`docs/ARCHITECTURE.md`（`search`、`stages.brainstorm`、`stages.common` 联网工具、无项目会话、前端 `features/ideas`、`features/canvas/topic`、`components/session`，`search` 已有契约的说明）、`docs/quality/QUALITY.md`（`stages.brainstorm`、`stages.topic`、`search`、`frontend`、`api`、`agent` 评级）、`docs/quality/tech-debt.md`（关闭 TD-29；登记本计划中确认要推迟的项，例如进程内搜索结果集合无上限、`SessionOut.is_active` 对头脑风暴会话的语义）、`docs/references/legacy-assets.md`（如果这个里程碑有迁移项则更新，否则不动）、`docs/glossary.md`（想法卡片、选题简报、头脑风暴、无项目会话）、`docs/runbooks/dev-setup.md`（`TAVILY_API_KEY`）、`AGENTS.md`（若命令有变化）。
@@ -290,10 +290,13 @@
 - 2026-09-29 — T11 选题画布（`TopicCanvas`/`MarkdownFilePane`/`BriefCheckBar`，接入 `ProjectWorkbenchPage`）— vitest 224 个通过，lint/typecheck 通过（commit 见 git log）；L4 走查在 T12
 - 2026-09-29 — T12 L4 走查（Fake + 本机 Claude 登录真实对话）— 发现并修复 3 个问题：保存简报后检查提示条不刷新（`invalidateAfterWrite`）、抽屉打开时卡片网格列数按视口而非容器（改 `auto-fill`）、`check_brief` 不接受「把握程度：中——说明」（放宽解析）；`make check` 全绿（commit 见 git log）
 - 2026-09-29 — T13 真实冒烟（`test_tavily_search`/`test_brainstorm_claude_login`/`test_topic_claude_login`/`test_topic_claude_login_native_web` 全部通过；`Makefile` 白名单加 `TAVILY_API_KEY`；`references/tavily.md`、ADR 0010、runbook 更新）— `make check` 全绿（commit 见 git log）
+- 2026-09-29 — T14 文档收尾（ARCHITECTURE/QUALITY/tech-debt/glossary/dev-setup；关闭 TD-29，登记 TD-38/39/40）；M4 全部任务完成，状态改为待验收 — `make check` 全绿（后端 991 个测试、前端 225 个）（commit 见 git log）
 
 ## 下一步
 
-- 做 T14 文档收尾（SOP §7 收尾清单）：`docs/quality/QUALITY.md`（`stages.brainstorm`/`stages.topic`/`search`/`frontend`/`api`/`agent` 评级）、`docs/quality/tech-debt.md`（关闭 TD-29；登记：进程内搜索结果集合无上限、`native` 模式无 URL 来源保护且 OpenAI 托管搜索未验证、`api` 直接起 uvicorn 时裸环境变量 key 读不到的提示误导）、`docs/ARCHITECTURE.md`（`search`、`stages.brainstorm`、`stages.common` 联网工具、无项目会话、`allow_web` 新语义的说明核对一遍）、`docs/glossary.md`（想法卡片、选题简报、头脑风暴、无项目会话、联网模式）、`docs/runbooks/dev-setup.md`（`TAVILY_API_KEY`、`STUDIO_WEB_MODE`）；核对 `AGENTS.md`。然后在「验证记录」补全 AC1–AC9、AC11、AC12，请负责人验收。
+- 等负责人验收（SOP §3 第 5 阶段）：演示路径见「验证记录」的 L4 部分；建议看 `/ideas`（头脑风暴抽屉 + 卡片）→ 「创建项目」→ 选题画布（`check_brief` 提示条、简报渲染/编辑、笔记）→ 定稿 → 叙事解锁。
+- 验收后按 SOP §7/§8 收尾：本计划移到 `plans/completed/`、状态改「已完成」；在分支 `m4-topic` 上 rebase 到最新 main，`make check` 全绿后 `--no-ff` 合并到 main；从技术债里挑一两项顺手处理（候选：TD-40 头脑风暴抽屉收起后卡片不刷新）。
+- 需要负责人决定的遗留问题：① `STUDIO_WEB_MODE=native` 下 OpenAI 托管搜索经 OpenRouter 是否可用未验证（要 `OPENAI_API_KEY`，有 API 费用），是否现在验证；② D4（后端不强制 `check_brief` 才能定稿）是否要改成强制。
 
 ## 决策记录
 
@@ -340,6 +343,18 @@
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
+- **AC1**：`pytest backend/tests/search/` → 31 个用例通过（mock HTTP；无真实网络请求）；`make check` 里 import-linter 的 `search` 契约 KEPT。
+- **AC2**：`pytest backend/tests/stages/test_web_tools.py` → 40 个通过（URL 来源规则含「用户消息里贴的链接重启后仍可抓取」、各类被拒 URL、截断提示、`SearchError`/缺 key 转工具错误、工具阶段范围）。
+- **AC3**：`pytest backend/tests/agent/test_web_mode.py backend/tests/test_config.py` 通过：`tools` 模式 `allow_web=False` 且有自建工具，`native` 模式 `allow_web=True` 且自建工具被滤掉，narrative/animation 两种模式都没有联网，`STUDIO_WEB_MODE` 非法值 `Settings` 校验失败；既有 Claude/OpenAI 运行时的 `allow_web` 分支测试未改。真实验证见 AC12。
+- **AC4**：`pytest backend/tests/db/test_repo_ideas.py backend/tests/api/test_ideas.py` → 47 个通过。
+- **AC5**：`pytest backend/tests/agent/test_runner_brainstorm.py backend/tests/api/test_brainstorm_sessions.py` → 18 个通过（无快照、scratch 重置、失败/取消/并发/全局上限/项目阶段与头脑风暴的双向校验、重启恢复、HTTP 层跑一轮）。
+- **AC6**：`pytest backend/tests/stages/test_brainstorm_tools.py backend/tests/stages/test_brainstorm_prompt.py` → 26 个通过。
+- **AC7**：`pytest backend/tests/stages/test_topic_brief.py backend/tests/stages/test_topic_check_tool.py backend/tests/stages/test_topic_prompt.py backend/tests/api/test_topic_check.py` → 47 个通过（含 L4 发现后补的「把握程度：中——说明」用例）。
+- **AC8**：`pytest backend/tests/api/test_projects.py` 中 `TestCreateProjectFromIdea`（8 个）通过：卡片 `picked` 并回填 `project_id`、`idea-card.md` 在 init 快照里、不存在 404 且无半成品、已选用/已归档 409、并发抢卡片输的一方清理项目并 409。
+- **AC9**：`pytest backend/tests/api/test_topic_flow.py` → 1 个端到端通过（头脑风暴 → 创建项目 → 选题两轮 → 定稿 → 叙事 `active`、`upstream/topic/` 可读）。
+- **AC11**：`make check` 全绿：后端 991 个测试（25 个冒烟/慢测按标记排除）、ruff/pyright/import-linter，前端 lint/typecheck、vitest 225 个，文档检查。
+- **AC12**：`make smoke SMOKE_ARGS="-k tavily"`、`-k brainstorm_claude_login`、`-k topic_claude_login` 全部通过（本机 Claude 登录 + 真实 Tavily key）。证据 `data/evidence/m4-topic/smoke/`（不进 git）：Tavily 搜索约 2.1 秒、抓取约 1.1 秒；头脑风暴 4 步（`list_ideas` → `web_search` → `create_idea` ×2），2 张卡片带反直觉点和评分，turn 无快照；选题打磨 `tools` 模式 9 步（自建 `web_search`/`fetch_url` + `check_brief`，简报 2719 字、`check` 无错误无警告）、`native` 模式 10 步（原生 `WebSearch`/`WebFetch`、没有自建联网工具，简报 2698 字、`check` 无错误）；两个选题用例都没有用到追加轮。OpenAI 托管搜索（`native` 模式经 OpenRouter）**未验证**（需要 `OPENAI_API_KEY`，有 API 费用，见「意外与发现」和 ADR 0010）。
+- **AC10（界面）**：见下面的 L4 走查；浏览器工具不能落盘截图，所以「截图见验证记录」这一项改为下面的文字观察，没有存到 `data/evidence/m4-topic/`。前端纯逻辑由 vitest 覆盖（`ideaView`/`briefStatus`/`sessionScope`/`ideaEvents`/`useSessionStream` 新用例/endpoints/queries，225 个）。
 - **T12 / AC10 L4 走查（2026-09-29，Claude 桌面版内置浏览器，1440x900）**：浏览器工具不能把截图落盘，所以没有存到 `data/evidence/m4-topic/`，下面是走查时的观察：
   - 选题池：3 张手工卡片（`POST /api/ideas`）渲染出标题/卖点/反直觉点/标签/四项评分条；「头脑风暴」打开右侧停靠面板；Fake 会话（无项目）发消息后消息流出现回显，后端 `turns` 为 `done`、无快照。
   - 编辑对话框预填正确，设评分并保存后卡片刷新（后端 `scores` 已变）；归档后从「未归档」消失、在「已归档」出现并有「恢复」，恢复后回来。
