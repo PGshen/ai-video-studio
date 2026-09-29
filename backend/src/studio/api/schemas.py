@@ -15,6 +15,8 @@ from pydantic import BaseModel
 class ProjectCreate(BaseModel):
     title: str
     settings: dict[str, Any] | None = None
+    idea_id: str | None = None
+    """从选题池的想法卡片创建（卡片须为 `idea` 状态；成功后卡片变为 `picked`）。"""
 
 
 class StageOut(BaseModel):
