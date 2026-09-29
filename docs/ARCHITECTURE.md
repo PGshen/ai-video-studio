@@ -32,7 +32,7 @@ ai-video-studio/
 | `jobs` | SQLite 任务队列：`create_job`/`claim_next`/`heartbeat`/`update_progress`/`complete`/`fail`/`get_job`/`list_jobs`/`reap_stale_running`；`jobs.repo` 转发自 `db.repo.jobs`（`Job` 模型的直接读写按规则 5 留在 `db.repo`） | `db`、`config` |
 | `agent` | 事件（`events`）、`ToolSpec`（`tools`）、运行时协议与注册表（`runtime`）、**阶段定义协议与注册表（`stage`）**、**阶段流转：定稿/重新打开/stale（`stage_flow`）**、会话总线（`bus`）、上下文前言（`preamble`）、TurnRunner（`runner`：公开接口、排队调度、`_persist`/`_publish` 等总线基础方法；一轮生命周期的其余部分拆到同包内的 `turn_state`——`_Job`/`_State` 共享结构、`turn_events`——运行时事件落库与推送、`turn_finish`——收尾（越界检查/快照/写状态）、`recovery`——重启恢复，见 TD-15）、Claude/OpenAI/Fake 适配器（`claude_runtime` 中环境变量拆到 `claude_env`，读写范围 hook 与 Bash sandbox 配置拆到 `claude_scope`，SDK 消息转换与业务工具桥接拆到 `claude_messages`；`openai_runtime` 中 `LocalShellExecutor` 拆到 `shell`（经 macOS `sandbox-exec` 执行，Seatbelt 配置生成与平台判断在 `shell_sandbox`），业务工具桥接与 item→事件转换拆到 `openai_tools`）、兜底文件工具与 `ApplyPatchEditor` | `workspace`、`db`、`config` |
 | `stages.common` | 各阶段共用的业务工具：`suggest_upstream_change`（M2 T6 已实现，写 `suggestions` 表；因 `ToolContext` 拿不到 `Engine`，暂未接入 `AnimationStage.tools()`，见 TD-32） | `agent`、`workspace`、`db`、`config` |
-| `stages.<topic\|narrative\|animation>`（brainstorm 在 M4） | 各阶段的提示词、专属工具、产物 schema、校验器，实现 `agent.stage.StageDefinition`；`animation`（M2）已有完整提示词 + `validate_scenes`/`render_preview` 工具，`topic`/`narrative` 仍是 M1 占位定义（提示词 + 可写范围） | `stages.common`、`agent`、`workspace`、`engines`、`search`、`jobs`、`db`、`config` |
+| `stages.<topic\|narrative\|animation>`（brainstorm 在 M4） | 各阶段的提示词、专属工具、产物 schema、校验器，实现 `agent.stage.StageDefinition`；`animation`（M2）已有完整提示词 + `validate_scenes`/`render_preview` 工具，`narrative`（M3）已有完整提示词 + `validate_narrative`/`synthesize_tts` 工具与产物 schema（`schema.py`），`topic` 仍是 M1 占位定义（提示词 + 可写范围） | `stages.common`、`agent`、`workspace`、`engines`、`search`、`jobs`、`db`、`config` |
 | `api` | HTTP 路由、SSE | 以上全部（除 `main`） |
 | `main` | api 进程入口：组装应用，**注册各阶段**与各运行时，lifespan 关闭时收尾运行中的 turn | 以上全部 |
 | `worker` | worker 进程入口：成片任务循环（M2 T5） | `jobs`、`engines`、`workspace`、`db`、`config` |
@@ -61,7 +61,8 @@ ai-video-studio/
 | `features/workbench/` | 项目工作台外壳：阶段导航、会话选择、对话面板、快照时间线；纯逻辑抽成 `.ts`（`turnControls`、`stageStatus`、`snapshotSelection`、`snapshotReason`、`optimisticSend` 等）单测 |
 | `features/canvas/generic/` | M1 的通用文件画布：文件树 + CodeMirror 编辑器、只读/冲突状态 |
 | `features/canvas/animation/`（M2） | 动画阶段专属画布：镜头列表（`SceneList.vue`）、代码编辑器、关键帧提示（`KeyframeStrip.vue`）、成片面板（`FinalRenderPanel.vue`：渲染/进度/播放器/定稿） |
-| `features/canvas/<topic\|narrative>/`（M3/M4） | 尚未实现 |
+| `features/canvas/narrative/`（M3） | 叙事阶段专属画布：镜头卡片（`SceneCardList.vue`）、按 beat 分段的配音播放条（`BeatTimeline.vue`，音频先 fetch 成 blob 以支持跳转，见 TD-37）、原始 JSON 标签页；校验标记/配音状态/定稿提示条的纯逻辑在 `narrativeDoc.ts`/`timingStatus.ts` |
+| `features/canvas/topic/`（M4） | 尚未实现 |
 | `features/settings/`（M5） | 模型配置、风格库、TTS 音色；M1 只有占位页 `pages/SettingsPage.vue` |
 | `components/ui/` | shadcn-vue 生成的组件（通过 CLI 添加，尽量不手改） |
 | `components/ai-elements/` | @ai-elements 生成的组件（通过 CLI 添加，尽量不手改） |

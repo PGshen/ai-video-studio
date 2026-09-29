@@ -46,6 +46,7 @@ from studio.workspace.scope import WriteScope
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1" / "smoke"
 M1X_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1x" / "smoke"
+M3_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m3-narrative" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}

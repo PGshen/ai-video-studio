@@ -25,9 +25,11 @@ import pytest
 from studio.agent.preamble import GUARD_RESTORED_NOTICE
 from studio.agent.stage_flow import finalize
 from studio.db.repo.sessions import get_session
+from studio.engines.tts import TTSRequest, align_scene_beats, build_tts_engine
 
 from .support import (
     M1X_EVIDENCE_DIR,
+    M3_EVIDENCE_DIR,
     REPO_ROOT,
     SmokeHarness,
     TurnOutcome,
@@ -415,3 +417,51 @@ async def test_deepseek_litellm(harness: SmokeHarness) -> None:
         assert outcome.turn.cost_usd is not None and outcome.turn.cost_usd <= limit
     finally:
         record_evidence("deepseek-litellm", evidence)
+
+
+# ---- Volcengine TTS（M3 T13，AC10）-------------------------------------------------
+# 引擎层直接调用，不经 TurnRunner：这不是模型对话。文本很短，控制费用和时长。
+
+TTS_NARRATION = "这是一次语音合成测试"
+TTS_CUES = ["这是一次", "语音合成测试"]
+
+
+async def test_volcengine_tts() -> None:
+    _require_env("VOLCENGINE_TTS_API_KEY")
+    engine = build_tts_engine()
+    result = await engine.synthesize(TTSRequest(text=TTS_NARRATION, voice="zizi", speed=1.0))
+    evidence: dict[str, Any] = {
+        "success": result.success,
+        "error_message": result.error_message,
+        "audio_bytes": len(result.audio_bytes),
+        "duration_seconds": result.duration_seconds,
+        "word_timestamps": [
+            {"word": w.word, "start": w.start_time, "end": w.end_time}
+            for w in result.word_timestamps
+        ],
+    }
+    try:
+        assert result.success, result.error_message
+        assert result.audio_bytes, "合成成功但音频为空"
+        assert result.duration_seconds is not None and 0.5 <= result.duration_seconds <= 15
+        assert result.word_timestamps, "没有返回逐字时间戳"
+
+        aligned = align_scene_beats(
+            {
+                "narration": TTS_NARRATION,
+                "duration_seconds": result.duration_seconds,
+                "beats": [{"cue_text": cue} for cue in TTS_CUES],
+                "word_timestamps": [
+                    {"word": w.word, "start_time": w.start_time, "end_time": w.end_time}
+                    for w in result.word_timestamps
+                ],
+            },
+            scene_id="smoke",
+        )
+        evidence["aligned"] = aligned
+        # 真实时间戳可能有缺口，不要求 1.0；只要求对齐没有整体失败、时间单调。
+        assert 0.0 <= aligned["alignment_coverage"] <= 1.0
+        starts = [beat["speech_start_seconds"] for beat in aligned["beats"]]
+        assert starts == sorted(starts)
+    finally:
+        record_evidence("volcengine-tts", evidence, M3_EVIDENCE_DIR)

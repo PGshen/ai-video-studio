@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 执行中（T1–T13 代码完成；AC10 待 key，待负责人验收） |
 | 里程碑 | M3 |
 | 设计依据 | [架构设计 §5.2、§5.4、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m3-narrative` |
@@ -37,15 +37,15 @@
 
 ## 验收标准
 
-- [ ] AC1：`VolcengineTTSEngine.synthesize` 在 mock HTTP 层下返回音频字节、时长、逐字时间戳；重试与不可重试错误的判定符合旧行为；`resolve_speaker` 对未知别名/引擎报错（验证：`pytest backend/tests/engines/test_tts_engine.py`）
-- [ ] AC2：`beat_aligner.align_scene_beats` 对给定 narration/beats/word_timestamps，输出的 `speech_start_seconds`/`speech_end_seconds` 单调、`alignment_coverage` 计算正确；找不到时间戳的 beat 走插值路径且 `alignment_status="interpolated"`（验证：`pytest backend/tests/engines/test_beat_aligner.py`）
-- [ ] AC3：`stages.narrative.schema.validate_and_normalize` 对合法/非法 `narrative.json` 给出正确的错误列表；`cue_text` 拼接必须覆盖 narration（标点/空白归一化后）的校验生效；`transition` 非法值报错（验证：`pytest backend/tests/stages/test_narrative_schema.py`）
-- [ ] AC4：`validate_narrative` 工具在 fixture 项目上，对合法产物返回"校验通过"，对故意破坏的产物（缺字段/cue_text 不覆盖 narration/非法 transition）返回 `is_error=True` 且点名具体镜头（验证：`pytest backend/tests/stages/test_narrative_validate.py`）
-- [ ] AC5：`synthesize_tts` 工具（mock TTS 引擎，不发真实网络请求）对指定 `scene_ids` 或全部镜头生成 `narrative/audio/<id>.mp3`、更新 `narrative/timing.json`，字段形状与 M2 fixture（`backend/tests/fixtures/animation/timing.json`）一致；只重新配音部分镜头时，其余镜头的 timing 条目原样保留（验证：`pytest backend/tests/stages/test_narrative_synthesize.py`）
-- [ ] AC6：`FakeRuntime` 端到端一轮：narrative agent 写 `narrative.json` → 调 `validate_narrative` → 调 `synthesize_tts` → 定稿；animation 阶段从 `upstream/narrative/` 物化的内容里能读到同样 schema 的产物并跑通 `validate_scenes`（验证：`pytest backend/tests/api/test_narrative_flow.py`）
-- [ ] AC7：`agent.preamble._upstream_changes` 对"叙事→动画"边输出按镜头 id 的新增/删除/旁白变化/beat 变化摘要（不是文件级 diff）；"选题→叙事"边仍是文件级摘要（验证：`pytest backend/tests/agent/test_preamble.py`）
-- [ ] AC8：前端叙事画布能显示镜头卡片（旁白/beats/校验标记）、按 beat 分段的音频播放条、原始 JSON 标签页；"配音是否最新/对齐覆盖率"状态能正确反映 `timing.json` 与当前 `narrative.json` 是否一致（验证：`make dev` 手动走查 + `pytest frontend`；截图见「验证记录」）
-- [ ] AC9：`make check` 全绿
+- [x] AC1：`VolcengineTTSEngine.synthesize` 在 mock HTTP 层下返回音频字节、时长、逐字时间戳；重试与不可重试错误的判定符合旧行为；`resolve_speaker` 对未知别名/引擎报错（验证：`pytest backend/tests/engines/test_tts_engine.py`）
+- [x] AC2：`beat_aligner.align_scene_beats` 对给定 narration/beats/word_timestamps，输出的 `speech_start_seconds`/`speech_end_seconds` 单调、`alignment_coverage` 计算正确；找不到时间戳的 beat 走插值路径且 `alignment_status="interpolated"`（验证：`pytest backend/tests/engines/test_beat_aligner.py`）
+- [x] AC3：`stages.narrative.schema.validate_and_normalize` 对合法/非法 `narrative.json` 给出正确的错误列表；`cue_text` 拼接必须覆盖 narration（标点/空白归一化后）的校验生效；`transition` 非法值报错（验证：`pytest backend/tests/stages/test_narrative_schema.py`）
+- [x] AC4：`validate_narrative` 工具在 fixture 项目上，对合法产物返回"校验通过"，对故意破坏的产物（缺字段/cue_text 不覆盖 narration/非法 transition）返回 `is_error=True` 且点名具体镜头（验证：`pytest backend/tests/stages/test_narrative_validate.py`）
+- [x] AC5：`synthesize_tts` 工具（mock TTS 引擎，不发真实网络请求）对指定 `scene_ids` 或全部镜头生成 `narrative/audio/<id>.mp3`、更新 `narrative/timing.json`，字段形状与 M2 fixture（`backend/tests/fixtures/animation/timing.json`）一致；只重新配音部分镜头时，其余镜头的 timing 条目原样保留（验证：`pytest backend/tests/stages/test_narrative_synthesize.py`）
+- [x] AC6：`FakeRuntime` 端到端一轮：narrative agent 写 `narrative.json` → 调 `validate_narrative` → 调 `synthesize_tts` → 定稿；animation 阶段从 `upstream/narrative/` 物化的内容里能读到同样 schema 的产物并跑通 `validate_scenes`（验证：`pytest backend/tests/api/test_narrative_flow.py`）
+- [x] AC7：`agent.preamble._upstream_changes` 对"叙事→动画"边输出按镜头 id 的新增/删除/旁白变化/beat 变化摘要（不是文件级 diff）；"选题→叙事"边仍是文件级摘要（验证：`pytest backend/tests/agent/test_preamble.py`）
+- [x] AC8：前端叙事画布能显示镜头卡片（旁白/beats/校验标记）、按 beat 分段的音频播放条、原始 JSON 标签页；"配音是否最新/对齐覆盖率"状态能正确反映 `timing.json` 与当前 `narrative.json` 是否一致（验证：`make dev` 手动走查 + `pytest frontend`；截图见「验证记录」）
+- [x] AC9：`make check` 全绿
 - [ ] AC10：真实 Volcengine API key 下，`synthesize_tts` 完整跑一次合成 + 对齐，产出可播放音频与合理的对齐覆盖率（验证：`make smoke SMOKE_ARGS="-k volcengine_tts"`；需要真实付费 key，属于计划已预先说明的费用，符合 SOP §6 第 7 条的例外记录）
 
 ## 任务
@@ -217,7 +217,7 @@
 - **完成标准**：`make check` 通过（文档检查项）。
 - **验证命令**：`make check`
 
-### T13：真实 Volcengine TTS 冒烟测试（待开始）
+### T13：真实 Volcengine TTS 冒烟测试（代码完成，真实调用未验证：缺 key）
 
 - **目标**：`backend/tests/smoke/test_smoke.py` 新增 `test_volcengine_tts`（`@pytest.mark.smoke`），用真实 `VOLCENGINE_TTS_API_KEY` 直接调用 `VolcengineTTSEngine.synthesize`（不经 `TurnRunner`，因为这不是模型对话，是引擎层的直接调用），验证真实合成返回非空音频、`duration_seconds` 合理、`word_timestamps` 非空；再跑一次 `align_scene_beats` 验证真实时间戳下的对齐覆盖率处于合理区间（不要求 1.0，真实语音识别时间戳可能有缺口）。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`（新增用例）、`Makefile`（`smoke` 目标的 `env -i` 白名单加 `VOLCENGINE_TTS_API_KEY`，和现有的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`DEEPSEEK_API_KEY` 并列）、`docs/runbooks/verification.md`（冒烟测试用例表格加一行）。
@@ -247,8 +247,10 @@
 
 ## 下一步
 
-- 从 T13 开始：`backend/tests/smoke/test_smoke.py` 加 `test_volcengine_tts`（缺 key `pytest.skip`），`Makefile` 的 `smoke` 白名单加 `VOLCENGINE_TTS_API_KEY`，`docs/runbooks/verification.md` 用例表加一行。落盘证据沿用其它用例的写法。之后 `docs/references/volcengine-tts.md` 只能基于真实调用结果写——没有 key 就不写（不要编造行为），在计划里标未验证。
-- T13 需要真实付费 Volcengine key（`VOLCENGINE_TTS_API_KEY`）：先看 `backend/.env` 里有没有；没有就按 SOP §6 在「阻塞」里写明并把 AC10 标"未验证"，不要停下来等。
+- 所有任务的代码都已完成并提交，剩下的只有需要负责人介入的事：
+  1. **AC10 未验证**：本机没有 `VOLCENGINE_TTS_API_KEY`。负责人在 `backend/.env` 里设置后，运行 `make smoke SMOKE_ARGS="-k volcengine_tts"`（没有 key 时显示 `SKIPPED`，已验证）。通过后：把结果写进「验证记录」的 AC10，新建 `docs/references/volcengine-tts.md`（只写真实调用观察到的行为：流式分片顺序、时间戳精度、极短文本的 mp3 时长解析；注明日期和来源），把 `docs/quality/QUALITY.md` 里 `engines.tts` 的"真实 API 行为没验证过"改掉。
+  2. 负责人验收（SOP §3 第 5 步）：AI 演示，人确认；之后按 SOP §7 收尾（计划移到 `plans/completed/`、rebase 到 main、`--no-ff` 合并）。
+- 开发库 `data/` 里留有一个 L4 走查用的演示项目（标题"叙事阶段 fixture 项目"，不进 git），验收后可以在 UI 里删除或直接忽略。
 
 ## 决策记录
 
@@ -275,6 +277,7 @@
 - 2026-09-29（T10 执行中）：JSON 标签页可编辑，缓冲区/冲突处理是 `animation/conflictState.ts` 的简化内联版（写在 `NarrativeCanvas.vue` 里，不另起模块，也不 import 其他 feature），没有单元测试，靠 T11 的 L4 走查覆盖。
 - 2026-09-29（T11 执行中）：定稿按钮**不**根据叙事的校验/配音结果禁用——`StageNav` 在 `features/workbench`，画布在 `features/canvas/narrative`，features 之间不能互相 import，硬接要把状态提到页面层；而设计 §5.2 的定稿条件本来就是"由用户确认"，后端 `finalize` 也不强制。所以只保留画布顶部的状态提示条（`computeReadiness`，绿色=可以定稿，灰色=列出不满足的原因）。L4 里实测：坏镜头存在时提示条列原因，修好并配音后变绿。
 - 2026-09-29（T12 执行中）：`.env.example` 的 `VOLCENGINE_TTS_API_KEY` 说明 T1 已写，未再改；tech-debt 新增 TD-36（配音过期检测）和 TD-37（文件端点不支持 Range）。`docs/references/volcengine-tts.md` 按原计划留到 T13 冒烟之后，因为内容必须来自真实调用；本机 `backend/.env` 和环境里都没有 `VOLCENGINE_TTS_API_KEY`。
+- 2026-09-29（T13 执行中）：真实证据目录用 `data/evidence/m3-narrative/smoke/`（`support.py` 新增 `M3_EVIDENCE_DIR`），和 `m1`/`m1x` 的 `smoke/` 并列，沿用 `record_evidence` 的写法（含 key 打码）。用例只断言"合成成功、音频非空、时长 0.5–15 秒、时间戳非空、对齐覆盖率在 0–1、beat 起点单调"，不要求覆盖率 1.0。
 
 ## 意外与发现
 
@@ -287,12 +290,22 @@
 
 <!-- 触发 SOP §6 升级条件时填写：问题、已尝试的办法、可选方案和推荐。解决后保留记录，并注明怎么解决的。 -->
 
-- 无
+- 2026-09-29（T13 / AC10）：需要真实付费的 `VOLCENGINE_TTS_API_KEY`，计划已预先说明费用（本文件元信息「批准记录」），但本机 `backend/.env` 和环境变量里都没有这个 key。已尝试：确认 `.env` 与 `env` 中都没有；`make smoke SMOKE_ARGS="-k volcengine_tts"` 按设计 `SKIPPED`。**没有阻塞其余任务**：T1–T12 和 T13 的代码都已完成。可选方案：(a) 负责人提供 key 后重跑那一条冒烟（推荐，一次很短的合成，费用极小）；(b) 接受 AC10 记为"未验证"直接验收其余部分，把这条留到有 key 时补。推荐 (a)。
 
 ## 验证记录
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
+- **AC1**：`pytest backend/tests/engines/test_tts_engine.py` → 14 passed（mock HTTP：成功路径、5xx/429 重试耗尽、不可重试错误不重试、`resolve_speaker` 未知别名/引擎报错、缺 key 抛 `RuntimeError`）。
+- **AC2**：`pytest backend/tests/engines/test_beat_aligner.py` → 6 passed。
+- **AC3**：`pytest backend/tests/stages/test_narrative_schema.py` → 6 passed。
+- **AC4**：`pytest backend/tests/stages/test_narrative_validate.py` → 5 passed。
+- **AC5**：`pytest backend/tests/stages/test_narrative_synthesize.py` → 6 passed（含 timing.json 字段形状、部分镜头重配、单镜头失败、非法叙事拒绝、未知 id）；`test_narrative_flow.py` 里另与 M2 fixture 的键集合逐项比对一致。
+- **AC6**：`pytest backend/tests/api/test_narrative_flow.py` → 1 passed（真实 `TurnRunner` + `FakeRuntime`：写 narrative.json → `validate_narrative` → `synthesize_tts` → `stage_flow.finalize` → 动画阶段 `upstream/narrative/` 内容一致，`validate_scenes` 读出 s-hook/s-explain）。
+- **AC7**：`pytest backend/tests/agent/test_preamble.py` → 10 passed（新增 6 个：新增/删除/旁白/beat 变化、无变化为空列表、解析失败为 `None`、渲染优先用摘要、真实 DB 上叙事→动画边有摘要而选题→叙事边仍是文件级）；另有 L4 补充见下。
+- **AC8**：`pnpm exec vitest run`（narrative 目录 20 个用例，全量 187 个）+ 下面的 L4 走查。
+- **AC9**：`make check` 全绿（后端 pytest 756 项通过（21 项冒烟/慢测按标记排除），ruff/pyright/import-linter，前端 lint/typecheck/vitest 187，文档检查）。
+- **AC10：未验证**——无 `VOLCENGINE_TTS_API_KEY`，见「阻塞」。`make smoke SMOKE_ARGS="-k volcengine_tts"` 在本机输出 `SKIPPED [1] ... 未设置 VOLCENGINE_TTS_API_KEY`，证明缺 key 时跳过的约定成立；真实合成与对齐覆盖率没有跑过。
 - **T11 / AC8 L4 走查（2026-09-29，Claude 桌面版内置浏览器，1440x900）**：在开发数据目录用 `seed_narrative_project` 建了一个演示项目（标题"叙事阶段 fixture 项目"，`data/` 不进 git，可自行删除），叙事写入 4 个镜头（1 个 cue_text 不覆盖旁白且 transition 非法、1 个未配音、2 个配音）。截图是会话内截图，浏览器工具不能落盘，所以**没有**存到 `data/evidence/m3-narrative/`：
   - 镜头卡片列表：校验通过/`2 个问题` 红标、已配音/未配音标签正确；顶部提示条"暂不满足定稿条件：1 个镜头有校验问题；2 个镜头还没有配音（当前对齐覆盖率 100%）"。
   - 选中已配音镜头：`<audio>` 时长 0:06，两段 beat 刻度条；点第 2 段后 `currentTime≈4.45s`（beat 起点 3.82s + 0.6s）、第 2 段高亮（首次实测跳转失败，修复见「意外与发现」）。选中坏镜头：红色问题框列出"beat 1 的 transition 不合法：bogus / beats 的 cue_text 没有完整覆盖旁白"，配音区提示"还没有配音"。
