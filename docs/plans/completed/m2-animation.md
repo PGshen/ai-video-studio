@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 已批准 |
+| 状态 | 已完成 |
 | 里程碑 | M2 |
 | 设计依据 | [架构设计 §5.3、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m2-animation` |
-| 批准记录 | 2026-09-28：负责人批准计划，执行方式为 subagent 驱动开发 |
+| 批准记录 | 2026-09-28：负责人批准计划，执行方式为 subagent 驱动开发；2026-09-29：T1–T14 全部完成、独立代码评审处理完发现（决策记录 D45）后，负责人验收通过 |
 
 ## 目标
 
@@ -287,32 +287,33 @@ D36 的 CodeEditor.vue 搬家、D22/TD-32 的诚实搁置）没有发现"看似�
 本计划不需要新会话继续写代码。接下来按 SOP §3 走：
 
 1. ~~**阶段 5：评审**~~（已完成，见上）。
-2. **阶段 6：人验收**——AI 向负责人演示（`make dev` 走一遍 T12/T13 记录的浏览器
-   操作序列，或直接看「验证记录」），负责人确认。**这一步需要负责人明确同意，
-   不能由 AI 自己判断"验收通过"。**
-3. 验收通过后，按 **SOP §7 收尾清单**处理（这些都不是任务循环的一部分，
-   需要负责人先验收，本次会话不执行）：
-   - [ ] 勾选 SOP §7 清单里"计划中所有任务都已勾选，「验证记录」完整"（本次
-     已满足，见上）。
-   - [ ] 计划从 `plans/active/` 移到 `plans/completed/`，状态改为「已完成」。
-   - [ ] 影响范围超出本计划的决定是否需要写成 ADR（复核 D1–D44，目前判断都是
-     本计划内部的实现决定，没有发现需要单独写 ADR 的项；收尾时可以再复核一次）。
-   - [ ] `docs/ARCHITECTURE.md` 与代码实际结构是否一致（T1/T3/T5 各自新增过
-     import-linter 契约，执行过程中已同步更新，收尾时再扫一遍）。
-   - [ ] `docs/quality/QUALITY.md` 是否需要补上 `engines.render`/`jobs`/
-     `worker`/`stages.animation` 几个新模块的评级。
-   - [ ] `docs/quality/tech-debt.md` 是否已经登记 TD-32（`suggest_upstream_change`
-     未接入 `AnimationStage.tools()`）、TD-33（镜头状态无"已校验/已过期"跟踪）、
-     TD-34（成片面板刷新后不恢复任务进度）——这三条本计划执行中已经登记，
-     收尾时确认条目还在、描述准确。
-   - [ ] `docs/references/` 是否已经收录本计划验证过的 SDK/工具行为
-     （manim 音轨 1 秒静音下限、ffmpeg 编译缺 libass 等，已在 T2/T5 写入
-     `references/manim.md`/`references/ffmpeg.md`）。
-   - [ ] `AGENTS.md` 里的命令和链接是否仍然有效（`make dev` 现在起三个进程，
-     `AGENTS.md` 已在 T5 同步）。
-   - [ ] 分支 `m2-animation` rebase 到最新 `main`，跑一次完整 `make check`，
-     以 `--no-ff` 合并到 `main`。**本次会话不执行这一步**——AGENTS.md/任务
-     指令明确这需要负责人先验收，不是执行者能自行决定的事。
+2. ~~**阶段 6：人验收**~~——2026-09-29，负责人明确同意收尾（"可以收尾了"）。
+3. **SOP §7 收尾清单**（本次会话执行，负责人已验收）：
+   - [x] 计划中所有任务都已勾选，「验证记录」完整。
+   - [x] 负责人已验收。
+   - [x] 计划从 `plans/active/` 移到 `plans/completed/`，状态改为「已完成」。
+   - [x] 影响范围超出本计划的决定是否需要写成 ADR——复核 D1–D45，都是本计划
+     内部的实现决定（`jobs.repo` 转发、`suggest_upstream_change` 暂不接线、
+     `completed_at` 清空时机等），没有发现需要单独写 ADR 的项。
+   - [x] `docs/ARCHITECTURE.md` 与代码实际结构一致——补了几处收尾时才发现的
+     滞后（`engines.tts`/`stages.common` 的 M2+ 占位文案没跟上实际进度、前端
+     `features/canvas/animation/` 和搬到 `components/` 的 `CodeEditor.vue`
+     没有对应表项），已修正。
+   - [x] `docs/quality/QUALITY.md` 补上 `jobs`/`engines.render`/`worker`/
+     `stages.animation`/`api`/`frontend` 六行评级（`jobs`/`worker` 从"—"变
+     "B"，`engines.render` 评"A"，`stages.animation` 从"C"变"B"，`api`/
+     `frontend` 更新已知缺口）。
+   - [x] `docs/quality/tech-debt.md` 已登记 TD-32/33/34（本计划执行中）、
+     TD-35（代码评审发现）；四条描述准确、条目还在。
+   - [x] `docs/references/` 已收录 `manim.md`（音轨 1 秒静音下限）、
+     `ffmpeg.md`（本机编译缺 drawtext/subtitles 滤镜），索引齐全。
+   - [x] `AGENTS.md` 里的命令和链接仍然有效（`make dev` 三进程说明已在 T5
+     同步，本次复核未发现新的失效链接）。
+   - [x] **整理**：技术债 TD-32/33/34/35 评估后判断都不适合在本计划"顺手处理"
+     （各自需要一个跨阶段的接口改动或新数据模型，成本不小），排进后续计划
+     （M3 落地 narrative agent 时天然会碰到 TD-32；有余力再挑 TD-33/34/35）；
+     没有发现应该改成机器检查的文字约定；没有发现需要清理的过期文档。
+   - [x] 分支 `m2-animation` 合并到 `main`（见下）。
 
 ## 决策记录
 
