@@ -55,8 +55,13 @@ function errorDetail(error: unknown): string {
 }
 
 async function confirmFinalize(): Promise<void> {
-  await finalizeMutation.mutateAsync(props.currentStage)
-  finalizeDialogOpen.value = false
+  try {
+    await finalizeMutation.mutateAsync(props.currentStage)
+  } catch {
+    // 被拒绝（例如选题简报没通过 `check_brief`，409）：错误显示在导航条上，见模板。
+  } finally {
+    finalizeDialogOpen.value = false
+  }
 }
 </script>
 

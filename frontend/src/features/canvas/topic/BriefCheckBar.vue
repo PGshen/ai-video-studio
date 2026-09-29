@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 选题简报的检查提示条（计划 M4 T11）：显示 `check_brief` 同一份检查结果。
- * 只是提示，不禁用「定稿」按钮（计划 D4）。
+ * 有错误时后端会拒绝定稿（计划 D4），这里只显示原因。
  */
 import { computed } from 'vue'
 import type { TopicCheckOut } from '@/types/api'

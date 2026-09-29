@@ -2,9 +2,8 @@
 /**
  * 一个 Markdown 文件的渲染视图 + 编辑模式（计划 M4 T11）：选题简报和调研笔记共用。
  *
- * 缓冲区/冲突处理是 `NarrativeCanvas.vue` 那套的内联版（features 之间不能互相 import）：
- * 缓冲区干净时直接采用服务器的新内容（agent 写的），脏时进入冲突态让用户选择；`path` 变化时
- * 重置。agent 运行时（`busy`）只读，不能切到编辑或保存。渲染视图显示的是缓冲区内容，
+ * 缓冲区/冲突处理用共享的 `composables/conflictState.ts`：缓冲区干净时直接采用服务器的新内容
+ * （agent 写的），脏时进入冲突态让用户选择；`path` 变化时重置。agent 运行时（`busy`）只读，不能切到编辑或保存。渲染视图显示的是缓冲区内容，
  * 所以编辑后不保存也能看到渲染效果。
  */
 import { computed, ref, watch } from 'vue'
@@ -12,6 +11,15 @@ import { ApiError } from '@/api/http'
 import CodeEditor from '@/components/CodeEditor.vue'
 import MessageResponse from '@/components/ai-elements/message/MessageResponse.vue'
 import { Button } from '@/components/ui/button'
+import {
+  edit,
+  initBuffer,
+  keepMine,
+  loadLatest,
+  saved,
+  serverUpdate,
+  type BufferState,
+} from '@/composables/conflictState'
 import {
   useFileContentQuery,
   useFileTreeQuery,
@@ -28,14 +36,8 @@ const props = defineProps<{
   emptyHint: string
 }>()
 
-interface Buffer {
-  content: string
-  saved: string
-  incoming: string | null
-}
-
 const mode = ref<'view' | 'edit'>('view')
-const buffer = ref<Buffer | null>(null)
+const buffer = ref<BufferState | null>(null)
 const saveError = ref<string | null>(null)
 
 // 文件是否存在看文件树，不靠读取 404（TanStack 会对失败的请求重试，"加载中"会拖很久）。
@@ -55,12 +57,7 @@ watch(
       mode.value = 'view'
     }
     if (content === undefined) return
-    const current = buffer.value
-    if (current === null || (current.content === current.saved && current.incoming === null)) {
-      buffer.value = { content, saved: content, incoming: null }
-    } else if (content !== current.saved) {
-      buffer.value = { ...current, incoming: content }
-    }
+    buffer.value = buffer.value === null ? initBuffer(content) : serverUpdate(buffer.value, content)
   },
   { immediate: true },
 )
@@ -73,8 +70,6 @@ watch(
   },
 )
 
-const dirty = computed(() => buffer.value !== null && buffer.value.content !== buffer.value.saved)
-const conflict = computed(() => buffer.value?.incoming != null)
 const missing = computed(() => fileTree.value !== undefined && !exists.value)
 
 // 文件被回滚/删除：清空缓冲区（不会在 agent 已经不再有的文件上保留编辑状态）。
@@ -97,18 +92,13 @@ function describeError(err: unknown): string {
 }
 
 function onEdit(content: string): void {
-  if (buffer.value) buffer.value = { ...buffer.value, content }
+  if (buffer.value) buffer.value = edit(buffer.value, content)
 }
 function onKeepMine(): void {
-  if (buffer.value?.incoming != null) {
-    buffer.value = { ...buffer.value, saved: buffer.value.incoming, incoming: null }
-  }
+  if (buffer.value) buffer.value = keepMine(buffer.value)
 }
 function onLoadLatest(): void {
-  if (buffer.value?.incoming != null) {
-    const latest = buffer.value.incoming
-    buffer.value = { content: latest, saved: latest, incoming: null }
-  }
+  if (buffer.value) buffer.value = loadLatest(buffer.value)
 }
 async function onSave(): Promise<void> {
   if (!buffer.value) return
@@ -116,7 +106,7 @@ async function onSave(): Promise<void> {
   const content = buffer.value.content
   try {
     await writeMutation.mutateAsync({ path: props.path, stage: props.stage, content })
-    buffer.value = { content, saved: content, incoming: null }
+    buffer.value = saved(buffer.value, content)
   } catch (err) {
     saveError.value = describeError(err)
   }
@@ -145,7 +135,7 @@ async function onSave(): Promise<void> {
     </p>
     <template v-else>
       <div
-        v-if="conflict"
+        v-if="buffer.conflict"
         class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
       >
         <span>这个文件在你编辑期间被更新了（可能是 agent 写的）。</span>
@@ -217,7 +207,7 @@ async function onSave(): Promise<void> {
             {{ saveError }}
           </p>
           <span
-            v-else-if="dirty"
+            v-else-if="buffer.dirty"
             class="text-muted-foreground text-xs"
           >
             有未保存的修改
@@ -225,7 +215,7 @@ async function onSave(): Promise<void> {
           <span v-else />
           <Button
             size="sm"
-            :disabled="!dirty || busy || writeMutation.isPending.value"
+            :disabled="!buffer.dirty || busy || writeMutation.isPending.value"
             @click="onSave"
           >
             保存

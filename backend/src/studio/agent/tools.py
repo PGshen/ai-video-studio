@@ -19,11 +19,6 @@ from sqlalchemy import Engine
 
 from studio.agent.events import ImageData
 
-WEB_TOOL_NAMES = frozenset({"web_search", "fetch_url"})
-"""自建联网工具的名字（`stages.common.web_tools`）。`STUDIO_WEB_MODE=native` 时 TurnRunner
-把它们从阶段工具列表里滤掉，改用运行时的原生联网能力（`agent` 不 import `stages`，
-所以名字定义在这一层）。"""
-
 
 @dataclass(frozen=True, slots=True)
 class ToolResult:
@@ -81,6 +76,9 @@ class ToolSpec:
     input_model: type[BaseModel]
     stages: set[str]
     handler: ToolHandler
+    web: bool = False
+    """自建联网工具（`stages.common.web_tools`）。`STUDIO_WEB_MODE=native` 时 TurnRunner 把带这个
+    标志的工具滤掉，改用运行时的原生联网能力。"""
 
 
 async def invoke_tool(spec: ToolSpec, ctx: ToolContext, raw_args: dict[str, Any]) -> ToolResult:

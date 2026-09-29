@@ -20,6 +20,7 @@ from studio.workspace import (
     guard,
     materialize_upstream,
     project_dir,
+    remove_scratch,
     scan,
     upstream_drift,
 )
@@ -42,6 +43,9 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
     project_id = job.project_id
     if project_id is not None:
         status, error = _guard_workspace(runner, job, state, project_id, status, error)
+    else:
+        # 无项目会话的 scratch 只是这一轮的 cwd，用完即删（下一轮开始时还会重建）。
+        remove_scratch(runner._settings.data_dir, job.session.id)
 
     if status == "failed":
         runner._safe_persist(job, "error", {"message": error or "未知错误"})

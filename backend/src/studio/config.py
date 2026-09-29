@@ -93,6 +93,14 @@ class Settings(BaseSettings):
             return value or None
         return value
 
+    @field_validator("web_mode", mode="before")
+    @classmethod
+    def _blank_web_mode_is_default(cls, value: object) -> object:
+        # `.env` 里写了 `STUDIO_WEB_MODE=` 但没填值：当作没设置，用默认的 tools。
+        if isinstance(value, str) and not value.strip():
+            return "tools"
+        return value
+
     @field_validator("data_dir")
     @classmethod
     def _resolve_and_validate_data_dir(cls, value: Path) -> Path:

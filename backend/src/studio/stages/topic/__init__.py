@@ -25,6 +25,7 @@ class TopicStage:
     name = "topic"
     allow_web = True
     """本阶段允许联网；具体用自建工具还是原生工具由 `STUDIO_WEB_MODE` 决定（ADR 0010）。"""
+    workspaceless = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")
@@ -40,6 +41,10 @@ class TopicStage:
 
     def artifact_dirs(self) -> list[str]:
         return ["topic"]
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        """`check_brief` 的错误（警告不阻止定稿，设计 §5.1）。"""
+        return check_workspace(workdir).errors
 
     def status_summary(self, workdir: Path) -> str:
         count = sum(1 for path in files.list_tree(workdir) if path.startswith("topic/"))

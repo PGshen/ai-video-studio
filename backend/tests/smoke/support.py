@@ -112,6 +112,10 @@ class SmokeStage:
     (keeps the turn small and deterministic)."""
 
     allow_web = False
+    workspaceless = False
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        return []
 
     def __init__(self, base: StageDefinition) -> None:
         self._base = base

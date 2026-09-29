@@ -30,6 +30,7 @@ _TOOLS: list[ToolSpec] = [
 class NarrativeStage:
     name = "narrative"
     allow_web = False
+    workspaceless = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")
@@ -45,6 +46,9 @@ class NarrativeStage:
 
     def artifact_dirs(self) -> list[str]:
         return ["narrative"]
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        return []
 
     def status_summary(self, workdir: Path) -> str:
         count = sum(1 for path in files.list_tree(workdir) if path.startswith("narrative/"))

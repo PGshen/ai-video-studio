@@ -23,7 +23,7 @@ class _Job:
     turn_id: str
     session: SessionValue
     project_id: str | None
-    """`None`：无项目会话（头脑风暴），走「无工作区」模式（`WORKSPACELESS_STAGES`）。"""
+    """`None`：无项目会话（头脑风暴），走「无工作区」模式（`StageDefinition.workspaceless`）。"""
     stage: StageDefinition
     profile: ModelProfileValue
     user_input: UserInput

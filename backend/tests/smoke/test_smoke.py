@@ -497,7 +497,7 @@ async def test_tavily_search() -> None:
     _require_env("TAVILY_API_KEY")
     import time
 
-    from studio.search import build_search_provider
+    from studio.search import SearchError, build_search_provider
 
     provider = build_search_provider()
     evidence: dict[str, Any] = {}
@@ -523,7 +523,7 @@ async def test_tavily_search() -> None:
             started = time.monotonic()
             try:
                 page = await provider.extract(hit.url, max_chars=2000)
-            except Exception as exc:  # noqa: BLE001 - 记录失败原因，不中断
+            except SearchError as exc:  # 记录失败原因，不中断
                 pages.append({"url": hit.url, "error": f"{type(exc).__name__}: {exc}"})
                 continue
             pages.append(

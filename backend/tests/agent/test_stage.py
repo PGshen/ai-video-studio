@@ -16,6 +16,10 @@ from studio.workspace.scope import WriteScope
 class _StubStage:
     name = "stub"
     allow_web = False
+    workspaceless = False
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        return []
 
     def system_prompt(self) -> str:
         return "stub"

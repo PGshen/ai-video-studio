@@ -14,17 +14,17 @@ from typing import Protocol, runtime_checkable
 from studio.agent.tools import ToolSpec
 from studio.workspace.scope import WriteScope
 
-WORKSPACELESS_STAGES = frozenset({"brainstorm"})
-"""不属于任何项目、没有工作区的阶段（设计 §3.1：头脑风暴会话 `project_id` 为空）。
-这些阶段的会话 `project_id is None`，TurnRunner 走「无工作区」模式：没有快照、没有
-`upstream/`、没有越界检查，cwd 是每轮重置的 scratch 目录。其余阶段必须有项目。"""
-
 
 @runtime_checkable
 class StageDefinition(Protocol):
     name: str
     allow_web: bool
-    """是否给 agent 开放联网工具（设计 §4.2：只有 brainstorm/topic 联网）。"""
+    """本阶段是否允许联网（设计 §4.2：只有 brainstorm/topic 联网）；具体用自建工具还是运行时
+    原生联网由 `STUDIO_WEB_MODE` 决定（ADR 0010）。"""
+    workspaceless: bool
+    """没有项目、没有工作区的阶段（头脑风暴，设计 §3.1）：会话 `project_id` 为空，TurnRunner 走
+    「无工作区」模式——没有快照、`upstream/`、越界检查，cwd 是每轮重置的 scratch 目录。其余阶段
+    必须有项目。"""
 
     def system_prompt(self) -> str: ...
 
@@ -37,6 +37,11 @@ class StageDefinition(Protocol):
     def artifact_dirs(self) -> list[str]: ...
 
     def status_summary(self, workdir: Path) -> str: ...
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        """定稿前必须先解决的问题（中文说明，每条一行）；空列表表示可以定稿。
+        由 api 在调用 `stage_flow.finalize` 之前检查，有问题时拒绝定稿（409）。"""
+        ...
 
 
 class StageRegistry:

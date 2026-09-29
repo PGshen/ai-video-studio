@@ -29,6 +29,7 @@ class BrainstormStage:
     name = "brainstorm"
     allow_web = True
     """本阶段允许联网；具体用自建工具还是原生工具由 `STUDIO_WEB_MODE` 决定。"""
+    workspaceless = True
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")
@@ -43,6 +44,9 @@ class BrainstormStage:
         return []
 
     def artifact_dirs(self) -> list[str]:
+        return []
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
         return []
 
     def status_summary(self, workdir: Path) -> str:

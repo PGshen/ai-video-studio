@@ -9,6 +9,7 @@ describe('computeBriefStatus', () => {
   it('有错误：提示暂不满足定稿条件，并带上全部错误', () => {
     const status = computeBriefStatus({ ok: false, errors: ['缺少章节「风险点」', 'x'], warnings: ['w'] })
     expect(status.level).toBe('errors')
+    expect(status.headline).toContain('不能定稿')
     expect(status.headline).toContain('2 个错误')
     expect(status.errors).toEqual(['缺少章节「风险点」', 'x'])
     expect(status.warnings).toEqual(['w'])

@@ -18,6 +18,7 @@ from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.turns import (
     create_turn_if_session_idle,
     get_turn,
+    latest_turn,
     list_events,
     mark_turn_running,
 )
@@ -32,6 +33,11 @@ from .test_runner import Harness, _make_harness, _until
 def h(env: StudioEnv) -> Harness:
     env.registry.register(BRAINSTORM)
     return _make_harness(env)
+
+
+def _running(h: Harness, session_id: str) -> bool:
+    turn = latest_turn(h.env.engine, session_id)
+    return turn is not None and turn.status == "running"
 
 
 def _brainstorm_session(h: Harness, stage: str = "brainstorm") -> SessionValue:
@@ -66,24 +72,36 @@ class TestWorkspacelessTurn:
         assert ctx.user_input.text == "聊聊排序"  # no preamble
         assert ctx.write_scope.writable == [] and ctx.write_scope.tool_managed == []
         assert ctx.workdir == scratch_dir(h.env.data_dir, session.id)
-        assert ctx.workdir.is_dir()
+        assert not ctx.workdir.exists()  # removed again when the turn finished
 
-    async def test_scratch_is_reset_at_start_of_each_turn(self, h: Harness) -> None:
+    async def test_scratch_is_reset_at_start_and_removed_at_end(self, h: Harness) -> None:
         session = _brainstorm_session(h)
-        stale = scratch_dir(h.env.data_dir, session.id) / "old" / "leftover.txt"
+        scratch = scratch_dir(h.env.data_dir, session.id)
+        stale = scratch / "old" / "leftover.txt"
         stale.parent.mkdir(parents=True)
         stale.write_text("上一轮留下的", encoding="utf-8")
 
-        await h.run(session.id, [fake.say("ok")])
-        assert not stale.exists()
+        class Probe:
+            seen: bool | None = None
 
-        # 一轮里 Shell 写进去的东西，下一轮开始时也被清掉，且本轮没有越界还原通知。
-        await h.run(session.id, [fake.shell_write("note.txt", "x")])
-        note = scratch_dir(h.env.data_dir, session.id) / "note.txt"
-        assert note.exists()
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                Probe.seen = (ctx.workdir / "old").exists()
+                (ctx.workdir / "note.txt").write_text("x", encoding="utf-8")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        await h.run(session.id, Probe)
+        assert Probe.seen is False  # reset before the turn started
+        # 一轮里写进去的东西没有越界还原通知，且一轮结束后整个 scratch 被删除。
         assert not [r for r in list_events(h.env.engine, session.id) if r.type == "notice"]
-        await h.run(session.id, [fake.say("again")])
-        assert not note.exists()
+        assert not scratch.exists()
+
+    async def test_startup_recovery_removes_leftover_scratch(self, h: Harness) -> None:
+        session = _brainstorm_session(h)
+        leftover = scratch_dir(h.env.data_dir, session.id) / "crash.txt"
+        leftover.parent.mkdir(parents=True)
+        leftover.write_text("崩溃时遗留", encoding="utf-8")
+        h.runner.recover_on_startup()
+        assert not scratch_dir(h.env.data_dir, session.id).exists()
 
     async def test_failure_and_cancel_end_without_snapshot(self, h: Harness) -> None:
         session = _brainstorm_session(h)
@@ -100,7 +118,7 @@ class TestWorkspacelessTurn:
 
         h.scripts.append([fake.sleep(5)])
         turn_id = await h.runner.start_turn(session.id, UserInput(text="go"))
-        await _until(lambda: h.runner.is_session_busy(session.id))
+        await _until(lambda: _running(h, session.id))
         assert h.runner.cancel(turn_id) is True
         await asyncio.wait_for(h.runner.wait(turn_id), timeout=5)
         cancelled = get_turn(h.env.engine, turn_id)
@@ -136,7 +154,7 @@ class TestScheduling:
         first, second = _brainstorm_session(h), _brainstorm_session(h)
         h.scripts.append([fake.sleep(5)])
         t1 = await h.runner.start_turn(first.id, UserInput(text="a"))
-        await _until(lambda: h.runner.is_session_busy(first.id))
+        await _until(lambda: _running(h, first.id))
         turn = await h.run(second.id, [fake.say("并行")])
         assert turn.status == "done"
         h.runner.cancel(t1)
@@ -148,7 +166,7 @@ class TestScheduling:
         first, second = _brainstorm_session(h), _brainstorm_session(h)
         h.scripts.append([fake.sleep(5)])
         t1 = await h.runner.start_turn(first.id, UserInput(text="a"))
-        await _until(lambda: h.runner.is_session_busy(first.id))
+        await _until(lambda: _running(h, first.id))
         h.scripts.append([fake.say("等我")])
         t2 = await h.runner.start_turn(second.id, UserInput(text="b"))
         await asyncio.sleep(0.05)

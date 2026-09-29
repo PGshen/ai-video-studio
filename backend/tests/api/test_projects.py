@@ -6,9 +6,11 @@ from uuid import UUID
 
 import pytest
 
+from brief_builder import make_brief
 from studio.db.repo.ideas import IdeaStateError
 from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.stages import list_stages
+from studio.workspace import files
 
 from .conftest import ApiEnv, assert_detail
 
@@ -89,8 +91,7 @@ class TestFinalizeAndReopen:
     async def test_finalize_unlocks_downstream_stage(self, api_env: ApiEnv) -> None:
         project = await api_env.create_project()
         pid = project["id"]
-        (api_env.workdir(pid) / "topic").mkdir(parents=True, exist_ok=True)
-        (api_env.workdir(pid) / "topic" / "brief.md").write_text("定稿简报", encoding="utf-8")
+        files.write_text_unscoped(api_env.workdir(pid), "topic/brief.md", make_brief())
 
         response = await api_env.client.post(f"/api/projects/{pid}/stages/topic/finalize")
 
@@ -104,6 +105,7 @@ class TestFinalizeAndReopen:
     async def test_reopen_finalized_stage(self, api_env: ApiEnv) -> None:
         project = await api_env.create_project()
         pid = project["id"]
+        files.write_text_unscoped(api_env.workdir(pid), "topic/brief.md", make_brief())
         await api_env.client.post(f"/api/projects/{pid}/stages/topic/finalize")
 
         response = await api_env.client.post(f"/api/projects/{pid}/stages/topic/reopen")

@@ -136,3 +136,10 @@ def test_web_mode_rejects_unknown_value(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("STUDIO_WEB_MODE", "both")
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_blank_web_mode_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studio.config import Settings
+
+    monkeypatch.setenv("STUDIO_WEB_MODE", "  ")
+    assert Settings().web_mode == "tools"

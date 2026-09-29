@@ -48,7 +48,13 @@ from studio.db.repo.projects import (
 )
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
-from studio.workspace import BlobStore, create_snapshot, init_workspace, remove_workspace
+from studio.workspace import (
+    BlobStore,
+    create_snapshot,
+    init_workspace,
+    project_dir,
+    remove_workspace,
+)
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -216,10 +222,14 @@ async def finalize_stage_endpoint(
     blobs: BlobStore = Depends(get_blobs),
     registry: StageRegistry = Depends(get_registry),
     turn_runner: TurnRunner = Depends(get_turn_runner),
+    settings: Settings = Depends(get_settings),
 ) -> StageOut:
     _require_project(engine, project_id)
-    _require_stage_definition(stage, registry)
+    definition = _require_stage_definition(stage, registry)
     _require_not_busy(turn_runner, project_id)
+    blockers = definition.finalize_blockers(project_dir(settings.data_dir, project_id))
+    if blockers:
+        raise HTTPException(status_code=409, detail="暂时不能定稿：" + "；".join(blockers))
     try:
         value = finalize(engine, blobs, registry, project_id, stage)
     except StageFlowError as exc:

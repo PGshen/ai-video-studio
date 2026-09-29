@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.sessions import SessionValue, get_session
 from studio.db.repo.snapshots import get_snapshot
-from studio.workspace import create_snapshot, guard, project_dir, scan
+from studio.workspace import create_snapshot, guard, project_dir, remove_scratch, scan
 
 if TYPE_CHECKING:
     from studio.agent.runner import TurnRunner
@@ -31,6 +31,8 @@ def recover_on_startup(runner: TurnRunner) -> None:
     `queued` 的 turn 从未开始，排队信息只在内存里，同样标记为 `interrupted`，
     否则会话会一直"忙"。
     """
+    # 上次进程遗留的无项目会话 scratch（崩溃时来不及清理）：没有任何 turn 在跑，整体删除。
+    remove_scratch(runner._settings.data_dir)
     for turn in turns_repo.list_unfinished_turns(runner._engine):
         try:
             _recover_turn(runner, turn)

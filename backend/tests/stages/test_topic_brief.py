@@ -110,6 +110,23 @@ def test_fact_format_variants_are_accepted(fact: str) -> None:
     assert result.errors == [], result.errors
 
 
+def test_nested_sub_bullets_belong_to_the_fact_above() -> None:
+    facts = (
+        "- 归并排序最坏 O(n log n)（出处：https://example.com/a；把握程度：高）\n"
+        "  - 补充：稳定排序\n"
+        "    - 更深一层的说明\n"
+        "- 快速排序平均 O(n log n)（出处：教科书；把握程度：中）\n"
+        "  * 补充：最坏 O(n^2)"
+    )
+    assert check(_brief(关键事实=facts)).errors == []
+
+
+def test_missing_source_is_still_reported_when_facts_have_sub_bullets() -> None:
+    facts = "- 没有出处的事实\n  - 补充说明\n- 正常（出处：x；把握程度：高）"
+    errors = check(_brief(关键事实=facts)).errors
+    assert len(errors) == 2 and all("第 1 条" in e for e in errors)
+
+
 def test_low_confidence_facts_only_warn() -> None:
     facts = (
         "- A（出处：x；把握程度：低）\n- B（出处：y；把握程度：低）\n- C（出处：z；把握程度：高）"

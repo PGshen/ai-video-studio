@@ -184,6 +184,12 @@ def reset_scratch(data_dir: Path | str, session_id: str) -> Path:
     return path
 
 
+def remove_scratch(data_dir: Path | str, session_id: str | None = None) -> None:
+    """删除无项目会话的 scratch 目录；`session_id` 为空时删除全部（进程启动时清理遗留）。"""
+    path = scratch_dir(data_dir, session_id) if session_id else Path(data_dir) / "scratch"
+    shutil.rmtree(path, ignore_errors=True)
+
+
 def remove_workspace(data_dir: Path | str, project_id: str) -> None:
     """删除整个项目工作区（建项目失败时清理用）；目录不存在时什么都不做。"""
     shutil.rmtree(project_dir(data_dir, project_id), ignore_errors=True)

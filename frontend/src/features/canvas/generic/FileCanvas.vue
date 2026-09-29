@@ -7,7 +7,7 @@
  *   占位（`fileKind.isTextFile`）。
  * - 只读判断：`busy`（父组件传入，来自当前会话的 turn 状态）或者
  *   `FileEntry.readonly`（`upstream/`）——见 `editorReadonly.ts`。
- * - 未保存修改的冲突：`conflictState.ts` 状态机；`workspace_changed`
+ * - 未保存修改的冲突：`composables/conflictState.ts` 状态机；`workspace_changed`
  *   让 `useFileContentQuery` 重新拉取，命中冲突时不覆盖，显示横幅。
  * - 保存：`useWriteFileMutation`（`PUT .../files/{path}?stage=`），403/409
  *   转成中文提示，不静默失败。
@@ -21,7 +21,7 @@ import { ApiError } from '@/api/http'
 import CodeEditor from '@/components/CodeEditor.vue'
 import FileTree from './FileTree.vue'
 import { computeReadonly } from './editorReadonly'
-import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from './conflictState'
+import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from '@/composables/conflictState'
 import { editorLanguage, isTextFile } from './fileKind'
 import { computeMissingFileAction } from './missingFile'
 

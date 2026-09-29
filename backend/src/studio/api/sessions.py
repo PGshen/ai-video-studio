@@ -51,7 +51,7 @@ from sse_starlette.sse import EventSourceResponse
 from studio.agent.bus import SessionBus
 from studio.agent.runner import SessionBusyError, TurnRunner
 from studio.agent.runtime import RuntimeFactory, UserInput
-from studio.agent.stage import WORKSPACELESS_STAGES, StageRegistry
+from studio.agent.stage import StageRegistry
 from studio.api.deps import get_bus, get_engine, get_registry, get_runtime_factory, get_turn_runner
 from studio.api.schemas import (
     MessageCreate,
@@ -133,12 +133,12 @@ def _require_project(engine: Engine, project_id: str) -> None:
 
 
 def _require_stage(stage: str, registry: StageRegistry) -> None:
-    if stage in WORKSPACELESS_STAGES:  # 头脑风暴会话不属于项目，走 /api/brainstorm/sessions
-        raise HTTPException(status_code=404, detail=f"未知阶段：{stage}")
     try:
-        registry.get(stage)
+        definition = registry.get(stage)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"未知阶段：{stage}") from exc
+    if definition.workspaceless:  # 头脑风暴会话不属于项目，走 /api/brainstorm/sessions
+        raise HTTPException(status_code=404, detail=f"未知阶段：{stage}")
 
 
 def _require_session(engine: Engine, session_id: str) -> SessionValue:

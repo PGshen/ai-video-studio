@@ -4,7 +4,8 @@
  * 未保存的修改，不能直接用新内容覆盖用户还没保存的东西——要弹冲突横幅，
  * 让用户选[保留我的修改]或[载入最新]。
  *
- * 纯函数状态转换，`FileCanvas.vue` 是唯一调用方：
+ * 纯函数状态转换。通用文件画布、动画画布、叙事画布的 JSON 标签页、选题画布的 Markdown 文件面板共用这一份
+ * （M4 评审：原来复制了 4 份）：
  * - `initBuffer(serverContent)`：切换文件/首次加载。
  * - `edit(state, content)`：用户在编辑器里敲字。
  * - `serverUpdate(state, newServerContent)`：文件内容查询重新拉取到新内容。

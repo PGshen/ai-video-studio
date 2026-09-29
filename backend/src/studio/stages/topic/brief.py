@@ -84,13 +84,19 @@ def _split_sections(text: str) -> tuple[list[str], dict[str, str]]:
 
 
 def _fact_items(body: str) -> list[str]:
+    """把「关键事实」正文拆成条目：最小缩进的列表项是一条事实；缩进更深的子列表项和续行都并入
+    上一条（子列表常用来补充说明，不是独立的事实）。"""
+    lines = body.splitlines()
+    indents = [len(line) - len(line.lstrip()) for line in lines if _BULLET.match(line)]
+    top = min(indents, default=0)
     items: list[list[str]] = []
-    for line in body.splitlines():
+    for line in lines:
         bullet = _BULLET.match(line)
-        if bullet is not None:
+        indent = len(line) - len(line.lstrip())
+        if bullet is not None and indent <= top:
             items.append([bullet.group(1).strip()])
         elif items and line.strip():
-            items[-1].append(line.strip())
+            items[-1].append(bullet.group(1).strip() if bullet is not None else line.strip())
     return [" ".join(parts) for parts in items]
 
 

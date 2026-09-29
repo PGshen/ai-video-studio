@@ -41,13 +41,13 @@ from studio.agent.preamble import (
     gather_preamble_inputs,
 )
 from studio.agent.runtime import Budget, RuntimeFactory, TurnContext, UserInput
-from studio.agent.stage import WORKSPACELESS_STAGES, StageRegistry
-from studio.agent.tools import WEB_TOOL_NAMES, ToolSpec
+from studio.agent.stage import StageRegistry
+from studio.agent.tools import ToolSpec
 from studio.agent.turn_events import TOOL_RESULT_MAX_CHARS
 from studio.agent.turn_state import _Job, _State
 from studio.config import Settings
 from studio.db.repo import turns as turns_repo
-from studio.db.repo.profiles import get_model_profile_by_id
+from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
 from studio.db.repo.sessions import get_session
 from studio.db.repo.snapshots import latest_snapshot
 from studio.workspace import (
@@ -68,6 +68,10 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def _native_web_supported(profile: ModelProfileValue) -> bool:
+    return not (profile.runtime == "openai" and profile.provider != "openai")
 
 
 class SessionBusyError(Exception):
@@ -109,12 +113,11 @@ class TurnRunner:
         session = get_session(self._engine, session_id)
         if session is None:
             raise SessionNotFoundError(session_id)
-        workspaceless = session.stage in WORKSPACELESS_STAGES
-        if session.project_id is None and not workspaceless:
-            raise ValueError(f"阶段 {session.stage} 的会话必须属于某个项目")
-        if session.project_id is not None and workspaceless:
-            raise ValueError(f"头脑风暴会话不能属于项目：{session.id}")
         stage = self._registry.get(session.stage)
+        if session.project_id is None and not stage.workspaceless:
+            raise ValueError(f"阶段 {session.stage} 的会话必须属于某个项目")
+        if session.project_id is not None and stage.workspaceless:
+            raise ValueError(f"头脑风暴会话不能属于项目：{session.id}")
         profile = get_model_profile_by_id(self._engine, session.model_profile_id)
         if profile is None:
             raise LookupError(f"模型配置不存在：{session.model_profile_id}")
@@ -160,10 +163,6 @@ class TurnRunner:
         job = self._jobs.get(turn_id)
         if job is not None:
             await job.done.wait()
-
-    def is_session_busy(self, session_id: str) -> bool:
-        """会话是否有 turn 在跑（不含排队中的）。"""
-        return any(job.session.id == session_id for job in self._running.values())
 
     def is_project_busy(self, project_id: str) -> bool:
         """项目是否有 turn 在跑。只能在事件循环线程上调用（I4）：`_running` 和排队
@@ -238,10 +237,12 @@ class TurnRunner:
 
     def _tools_and_web(self, job: _Job) -> tuple[list[ToolSpec], bool]:
         """本轮的工具列表和 `allow_web`（决策 D1）。`STUDIO_WEB_MODE=tools`：阶段自带的自建
-        联网工具原样保留，运行时不开原生联网；`native`：滤掉自建联网工具，允许联网的阶段开原生联网。"""
+        联网工具原样保留，运行时不开原生联网；`native`：滤掉自建联网工具，允许联网的阶段开原生联网。
+        `native` 但模型走不了原生联网（经 LiteLLM 的非官方 OpenAI 兼容模型，OpenAI 运行时只在官方
+        `provider == "openai"` 时加托管搜索）时回退到自建工具，否则这一轮完全没有联网能力。"""
         tools = job.stage.tools()
-        if self._settings.web_mode == "native":
-            return [t for t in tools if t.name not in WEB_TOOL_NAMES], job.stage.allow_web
+        if self._settings.web_mode == "native" and _native_web_supported(job.profile):
+            return [t for t in tools if not t.web], job.stage.allow_web
         return tools, False
 
     # ---- one turn -------------------------------------------------------

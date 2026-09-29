@@ -533,6 +533,10 @@ class TestGuard:
                 self._base = h.env.registry.get("narrative")
 
             allow_web = False
+            workspaceless = False
+
+            def finalize_blockers(self, workdir: Path) -> list[str]:
+                return []
 
             def system_prompt(self) -> str:
                 return "p"
@@ -583,6 +587,10 @@ class TestGuard:
         class TopicWithTool:
             name = "topic"
             allow_web = False
+            workspaceless = False
+
+            def finalize_blockers(self, workdir: Path) -> list[str]:
+                return []
 
             def __init__(self) -> None:
                 self._base = h.env.registry.get("topic")
@@ -634,6 +642,10 @@ class TestToolResultImages:
         class TopicWithImageTool:
             name = "topic"
             allow_web = False
+            workspaceless = False
+
+            def finalize_blockers(self, workdir: Path) -> list[str]:
+                return []
 
             def __init__(self) -> None:
                 self._base = h.env.registry.get("topic")

@@ -2,8 +2,8 @@
  * 选题画布的纯逻辑（计划 M4 T11）：简报检查结果 → 提示条状态；从文件树里取笔记列表。
  *
  * 检查本身在后端（`GET /projects/{id}/topic/check`，和 `check_brief` 工具同一份逻辑），
- * 这里只负责把结果翻成界面状态。和叙事画布一样，提示条只是提示，不禁用「定稿」按钮
- * （计划 D4：定稿由用户确认，后端 `finalize` 不强制）。
+ * 这里只负责把结果翻成界面状态。有错误时后端 `finalize` 会拒绝（409，计划 D4 已改为强制），
+ * 「定稿」按钮不在这里禁用（`StageNav` 在 `features/workbench`），被拒时导航条显示原因。
  */
 
 import type { TopicCheckOut } from '@/types/api'
@@ -27,7 +27,7 @@ export function computeBriefStatus(check: TopicCheckOut | undefined): BriefStatu
   if (errors.length > 0) {
     return {
       level: 'errors',
-      headline: `暂不满足定稿条件：${errors.length} 个错误`,
+      headline: `不能定稿：简报有 ${errors.length} 个错误`,
       errors,
       warnings,
     }

@@ -9,13 +9,14 @@ from typing import Literal
 import pytest
 
 from studio.agent import fake
-from studio.agent.tools import WEB_TOOL_NAMES
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import create_session
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 
 from .conftest import StudioEnv
 from .test_runner import Harness, _make_harness
+
+WEB_TOOLS = {"web_search", "fetch_url"}
 
 
 def _harness(env: StudioEnv, mode: Literal["tools", "native"]) -> Harness:
@@ -48,7 +49,7 @@ async def test_tools_mode_offers_self_built_tools_and_no_native_web(
     await h.run(session, [fake.say("x")])
 
     assert h.contexts[-1].allow_web is False
-    assert WEB_TOOL_NAMES <= _tool_names(h)
+    assert WEB_TOOLS <= _tool_names(h)
 
 
 @pytest.mark.parametrize("stage", ["topic", "brainstorm"])
@@ -60,7 +61,7 @@ async def test_native_mode_uses_native_web_and_hides_self_built_tools(
     await h.run(session, [fake.say("x")])
 
     assert h.contexts[-1].allow_web is True
-    assert not (WEB_TOOL_NAMES & _tool_names(h))
+    assert not (WEB_TOOLS & _tool_names(h))
 
 
 @pytest.mark.parametrize("mode", ["tools", "native"])
@@ -71,10 +72,47 @@ async def test_narrative_and_animation_never_get_web(
     for stage in ("narrative", "animation"):
         await h.run(h.session(stage=stage), [fake.say("x")])
         assert h.contexts[-1].allow_web is False
-        assert not (WEB_TOOL_NAMES & _tool_names(h))
+        assert not (WEB_TOOLS & _tool_names(h))
 
 
 async def test_native_mode_keeps_the_stages_other_tools(env: StudioEnv) -> None:
     h = _harness(env, "native")
     await h.run(_brainstorm_session(h), [fake.say("x")])
     assert {"list_ideas", "create_idea", "update_idea"} <= _tool_names(h)
+
+
+async def test_native_mode_falls_back_to_self_built_tools_for_litellm_models(
+    env: StudioEnv,
+) -> None:
+    """经 LiteLLM 的非官方 OpenAI 兼容模型没有原生联网：保留自建工具，不开 `allow_web`。"""
+    from studio.db.engine import session_scope
+    from studio.db.models import ModelProfile
+
+    h = _harness(env, "native")
+    with session_scope(env.engine) as db:
+        row = ModelProfile(name="deepseek-like", provider="deepseek", model="m", runtime="openai")
+        db.add(row)
+        db.flush()
+        profile_id = row.id
+    session = create_session(
+        env.engine,
+        project_id=None,
+        stage="brainstorm",
+        model_profile_id=profile_id,
+        runtime="fake",
+    )
+    await h.run(session.id, [fake.say("x")])
+
+    assert h.contexts[-1].allow_web is False
+    assert WEB_TOOLS <= _tool_names(h)
+
+
+def test_stage_flags() -> None:
+    from studio.stages.animation import STAGE as ANIMATION
+    from studio.stages.narrative import STAGE as NARRATIVE
+    from studio.stages.topic import STAGE as TOPIC
+
+    assert BRAINSTORM.workspaceless is True
+    assert not any(s.workspaceless for s in (TOPIC, NARRATIVE, ANIMATION))
+    for stage in (BRAINSTORM, TOPIC):
+        assert {t.name for t in stage.tools() if t.web} == WEB_TOOLS
