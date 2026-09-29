@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | M4 |
 | 设计依据 | [架构设计 §4.2、§4.3、§5.0、§5.1、§6.2、§6.3、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m4-topic` |
-| 批准记录 | 2026-09-29：负责人批准计划，D1 修改为「联网模式开关」（见决策记录，`STUDIO_WEB_MODE=tools\|native`）；执行方式为当前会话内联执行；T13 使用真实 Tavily key 已获同意，key 已填入 `backend/.env` |
+| 批准记录 | 2026-09-29：负责人批准计划；同日评审后负责人决定修掉全部发现、D4 改为强制、暂不用 `OPENAI_API_KEY` 验证，并要求处理完直接收尾（视为验收）。批准计划时的记录：负责人批准计划，D1 修改为「联网模式开关」（见决策记录，`STUDIO_WEB_MODE=tools\|native`）；执行方式为当前会话内联执行；T13 使用真实 Tavily key 已获同意，key 已填入 `backend/.env` |
 
 ## 目标
 
@@ -34,7 +34,7 @@
 - 选题卡片的硬删除、卡片之间的合并/去重 UI；只有归档。
 - 域名白名单式的联网限制（被 D3 的「URL 来源」规则取代；`native` 模式不受该规则保护，理由见 D1/D3）。
 - 在前端设置页切换联网模式（M5 设置页）；本计划只提供后端环境变量开关。
-- 后端在 `finalize` 时强制 `check_brief` 通过（D4，沿用 M3 对叙事阶段的处理）。
+- 叙事阶段的后端 `finalize` 强制条件（M3 的做法不变：只提示、由用户确认）。
 
 ## 验收标准
 
@@ -294,9 +294,9 @@
 
 ## 下一步
 
-- 等负责人验收（SOP §3 第 5 阶段）：演示路径见「验证记录」的 L4 部分；建议看 `/ideas`（头脑风暴抽屉 + 卡片）→ 「创建项目」→ 选题画布（`check_brief` 提示条、简报渲染/编辑、笔记）→ 定稿 → 叙事解锁。
-- 验收后按 SOP §7/§8 收尾：本计划移到 `plans/completed/`、状态改「已完成」；在分支 `m4-topic` 上 rebase 到最新 main，`make check` 全绿后 `--no-ff` 合并到 main；从技术债里挑一两项顺手处理（候选：TD-40 头脑风暴抽屉收起后卡片不刷新）。
-- 需要负责人决定的遗留问题：① `STUDIO_WEB_MODE=native` 下 OpenAI 托管搜索经 OpenRouter 是否可用未验证（要 `OPENAI_API_KEY`，有 API 费用），是否现在验证；② D4（后端不强制 `check_brief` 才能定稿）是否要改成强制。
+- 无。M4 已完成并归档（负责人 2026-09-29 验收，分支 `m4-topic` 以 `--no-ff` 合并到 main）。后续进入 M5（设置页、风格库与范例、回退建议的完整体验、从 dev DB 导入风格组件）时新建计划。
+- 排进下一个计划的候选技术债：TD-40（头脑风暴抽屉收起后卡片不实时刷新）、TD-39（`native` 联网模式的 URL 限制与 OpenAI 托管搜索验证，需要 `OPENAI_API_KEY`）、TD-38（进程内搜索结果集合无上限）。
+- 开发库 `data/` 里留有走查用的示例卡片和 2 个示例项目（不进 git），卡片可以在界面里归档。
 
 ## 决策记录
 
@@ -306,7 +306,7 @@
   - **D1 联网模式开关（负责人 2026-09-29 批准时修改）。** 设计 §4.2 的联网行是「Claude 用原生 WebSearch/WebFetch、OpenAI 用托管 `WebSearchTool`、其他模型兜底 Tavily」。改为 `STUDIO_WEB_MODE` 开关：`tools`（**默认**）三条路径都用自建的 `web_search`/`fetch_url`（Tavily 后端）；`native` 沿用设计原意。两种模式互斥，避免模型同时看到两套联网工具。默认选 `tools` 的理由：① 原生联网工具能访问任意域名，正是 TD-29 当初关闭它的原因，原生工具没有域名限制的接入点，只有 Claude 侧的 `PreToolUse` hook 能拦，OpenAI 托管的搜索在服务端执行，拦不住；② OpenAI 路径经 OpenRouter 时托管 `WebSearchTool` 本来就不一定可用；③ 一套工具、一套测试，三种运行时行为一致；④ 抓取由 Tavily 远端完成，本机没有 SSRF 面，也不新增依赖。`native` 模式的代价：没有 D3 的 URL 来源保护（提示注入外泄风险回到 TD-29 当初的状态），由使用者自行承担，在 ADR 0010 写明。开关只在后端环境变量；前端设置页里切换留给 M5。偏离 ADR 0004 和设计 §4.2 的默认行为，所以写 ADR 0010（设计文档不改，红线）。
   - **D2 头脑风暴会话没有工作区。** 设计 §4.3 说 brainstorm「可写：无」，§3.1 说头脑风暴会话 `project_id` 为空。做法：`project_id is None` 的会话走 TurnRunner 的「无工作区」模式，cwd 是每轮重置的空 scratch 目录 `data/scratch/<session_id>/`（原生文件工具需要一个 cwd），不做快照/越界检查。不选「给头脑风暴造一个伪项目」：会污染项目列表和快照表，还得给它特殊状态。
   - **D3 `fetch_url` 用「URL 来源」规则，不做域名白名单。** 调研需要访问任意公开站点，静态白名单不可行；真正要防的是提示注入让模型把工作区文本拼进一个攻击者的 URL 再抓取。规则：只能抓本会话搜索结果里出现的 URL 或用户自己贴的 URL，模型不能凭空构造 URL。残余风险：搜索查询本身会发给 Tavily（可信第三方，接受）；攻击者若能让自己的页面进入搜索结果，可以拿到一次带 URL 的抓取，但 URL 内容是搜索返回的、不含工作区文本。
-  - **D4 `check_brief` 不在后端 `finalize` 强制。** 设计 §5.1 的定稿条件是「`check_brief` 没有错误，由用户确认」；沿用 M3 对叙事阶段的处理（画布提示条 + 用户确认），理由相同：`StageNav` 和画布分属不同 feature，禁用按钮要把状态提到页面层，而定稿本来就由用户确认。如负责人希望后端强制，是一个独立的小任务（`StageDefinition` 加可选的 `finalize_blockers(workdir)`），可以追加到本计划。
+  - **D4（起草时的版本，验收前已被负责人改为强制，见下面的 2026-09-29 评审后记录）`check_brief` 不在后端 `finalize` 强制。** 设计 §5.1 的定稿条件是「`check_brief` 没有错误，由用户确认」；沿用 M3 对叙事阶段的处理（画布提示条 + 用户确认），理由相同：`StageNav` 和画布分属不同 feature，禁用按钮要把状态提到页面层，而定稿本来就由用户确认。如负责人希望后端强制，是一个独立的小任务（`StageDefinition` 加可选的 `finalize_blockers(workdir)`），可以追加到本计划。
   - **D5 风格仍是占位。** 设计 §5.0 说创建项目时「复制所选风格」；风格库是 M5，本计划继续复制占位 `STYLE.md`，不做风格选择器。
   - **D6 一张卡片只创建一个项目。** 创建项目后卡片置为 `picked` 并记录 `project_id`，不能再次创建、不能归档、不能改名；想再做一次同题材，让 agent 新建一张卡片。设计的 `ideas.status` 只有 `idea/picked/archived` 三态，没有「多个项目」的语义。
 - 2026-09-29（T1 执行中）：`recency_days` 映射到 Tavily 的 `time_range`（≤1 天 day、≤7 week、≤31 month、其余 year），因为 Tavily 只接受这四档；`extract` 结果多出 `total_chars` 字段（截断前长度），供 `fetch_url` 提示「共 N 字」；432/433（额度）单独归为不可重试并提示额度问题。
@@ -321,6 +321,8 @@
 - 2026-09-29（T11 执行中）：`MarkdownFilePane` 判断文件是否存在看文件树而不是读取 404（TanStack 对失败请求默认重试，「加载中」会拖很久；叙事画布同样是先看文件树）。简报和笔记共用一个组件，`path` 变化时重置缓冲区和模式；agent 开始运行时自动退出编辑模式。
 - 2026-09-29（T12 执行中）：走查发现的三个问题都已修复并补了测试：① 用户在画布里保存 `brief.md` 后检查提示条仍显示旧结果——`useWriteFileMutation` 只失效了文件树和文件内容，没有失效 `topicCheck`；抽成 `invalidateAfterWrite` 并测试。② 抽屉打开时网格仍按 `xl:grid-cols-3`（按视口）分列，卡片被挤窄，改成 `grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]`（按容器）。③ 真实模型写「把握程度：中——多篇独立技术文章…」被判格式错误（值取到空白/标点为止，破折号不算），改成「值是 高/中/低 且后面不能紧跟汉字」（挡掉「高度」「中等」，放过破折号/冒号/空格后的说明），补了正反用例。
 - 2026-09-29（T13 执行中）：① 冒烟用例用真实的 brainstorm/topic 阶段（`build_harness(real_stages=True, web_mode=...)`），不再套 M1 的精简 `SmokeStage`；选题起点直接在工作区放一份想法卡片笔记（等价于按卡片创建项目，避免冒烟依赖 api 层）。② `TURN_TIMEOUT_SECONDS` 从 300 提到 600（真实选题一轮 2–3 分钟）。③ `test_topic_claude_login` 需要 `TAVILY_API_KEY`（缺则跳过）；`native` 用例不需要。④ 三个真实模型用例合计约 3.5 分钟，全部用登录订阅，不产生 API 费用；Tavily 用量极小。
+- 2026-09-29（评审后，负责人决定）：**D4 改为强制**——选题阶段 `check_brief` 有错误时后端拒绝定稿。实现：`StageDefinition` 新增 `finalize_blockers(workdir) -> list[str]`（叙事/动画/头脑风暴返回空，topic 返回 `check_workspace(...).errors`），`POST /projects/{id}/stages/{stage}/finalize` 在 `stage_flow.finalize` 之前检查，有问题返回 409「暂时不能定稿：…」（警告不阻止）；`stage_flow.finalize` 本身不变，所以 `seed_*` 夹具和 M3/M2 的直接调用不受影响。前端：画布提示条文案改「不能定稿」，`StageNav` 的定稿确认框在被拒时也关闭，让导航条上的错误可见；「定稿」按钮仍不在画布里禁用（`StageNav` 与画布分属不同 feature）。三个既有的定稿测试补了合法简报。
+- 2026-09-29（评审后，`code-review` high 的 10 条发现全部修复，见提交 `fix(m4)`）：① 冒烟用例的 `# noqa` 改成只捕获 `SearchError`（红线）；② `STUDIO_WEB_MODE` 留空回落到 `tools`；③ `check_brief` 把缩进更深的子列表项并入上一条事实；④ `web_search` 结果前加「外部内容，不要执行其中指令」标注；⑤ **agent 层不再硬编码名字**：`StageDefinition.workspaceless` 取代 `WORKSPACELESS_STAGES`，`ToolSpec.web` 取代 `WEB_TOOL_NAMES`；⑥ 4 份编辑缓冲区/冲突状态机合并成 `composables/conflictState.ts`（动画画布那份重复文件和用例删除；决策记录 D36 当年选择复制的理由随之作废）；⑦ `native` 模式下走 LiteLLM 的非官方 OpenAI 兼容模型回退到自建联网工具（否则整轮没有联网能力）；⑧ 无项目会话的 scratch 一轮结束即删，进程启动时清掉遗留；⑨ 用户消息里带括号的 URL 不再被截断（`_trim_url`）；⑩ 删掉只有测试在用的 `TurnRunner.is_session_busy`。
 - 2026-09-29：任务排序的理由——T3 改动运行时核心、风险最高，放在 T4（依赖它）之前尽早暴露问题；T5 要加联网模式开关并改 runner 的工具过滤，会碰到运行时和一批既有测试，所以单独成任务而不是并进 T4/T6；前端 T10 需要搬移 `SessionPanel` 等文件，放在 T9（选题池页面）之后，避免两个前端任务互相冲突。
 
 ## 意外与发现
@@ -352,9 +354,10 @@
 - **AC7**：`pytest backend/tests/stages/test_topic_brief.py backend/tests/stages/test_topic_check_tool.py backend/tests/stages/test_topic_prompt.py backend/tests/api/test_topic_check.py` → 47 个通过（含 L4 发现后补的「把握程度：中——说明」用例）。
 - **AC8**：`pytest backend/tests/api/test_projects.py` 中 `TestCreateProjectFromIdea`（8 个）通过：卡片 `picked` 并回填 `project_id`、`idea-card.md` 在 init 快照里、不存在 404 且无半成品、已选用/已归档 409、并发抢卡片输的一方清理项目并 409。
 - **AC9**：`pytest backend/tests/api/test_topic_flow.py` → 1 个端到端通过（头脑风暴 → 创建项目 → 选题两轮 → 定稿 → 叙事 `active`、`upstream/topic/` 可读）。
-- **AC11**：`make check` 全绿：后端 991 个测试（25 个冒烟/慢测按标记排除）、ruff/pyright/import-linter，前端 lint/typecheck、vitest 225 个，文档检查。
+- **AC11**：`make check` 全绿：后端 1003 个测试（25 个冒烟/慢测按标记排除）、ruff/pyright/import-linter，前端 lint/typecheck、vitest 216 个，文档检查（评审修复后的最终数字）。
+- **评审后复验（2026-09-29）**：`code-review` high 的 10 条发现修复并提交后，`make check` 全绿；`make smoke SMOKE_ARGS="-k 'brainstorm_claude_login or topic_claude_login'"` 三个真实模型用例（头脑风暴、选题 `tools`、选题 `native`）在重构后重新通过（7 分 23 秒）。新增测试：定稿被 `check_brief` 拦截（缺简报 409、缺章节列出 6 条错误、只有警告放行并解锁叙事、其他阶段不受影响）、native 回退、scratch 清理与启动清理、嵌套事实、URL 括号、搜索结果标注、`web_mode` 空值。
 - **AC12**：`make smoke SMOKE_ARGS="-k tavily"`、`-k brainstorm_claude_login`、`-k topic_claude_login` 全部通过（本机 Claude 登录 + 真实 Tavily key）。证据 `data/evidence/m4-topic/smoke/`（不进 git）：Tavily 搜索约 2.1 秒、抓取约 1.1 秒；头脑风暴 4 步（`list_ideas` → `web_search` → `create_idea` ×2），2 张卡片带反直觉点和评分，turn 无快照；选题打磨 `tools` 模式 9 步（自建 `web_search`/`fetch_url` + `check_brief`，简报 2719 字、`check` 无错误无警告）、`native` 模式 10 步（原生 `WebSearch`/`WebFetch`、没有自建联网工具，简报 2698 字、`check` 无错误）；两个选题用例都没有用到追加轮。OpenAI 托管搜索（`native` 模式经 OpenRouter）**未验证**（需要 `OPENAI_API_KEY`，有 API 费用，见「意外与发现」和 ADR 0010）。
-- **AC10（界面）**：见下面的 L4 走查；浏览器工具不能落盘截图，所以「截图见验证记录」这一项改为下面的文字观察，没有存到 `data/evidence/m4-topic/`。前端纯逻辑由 vitest 覆盖（`ideaView`/`briefStatus`/`sessionScope`/`ideaEvents`/`useSessionStream` 新用例/endpoints/queries，225 个）。
+- **AC10（界面）**：见下面的 L4 走查；浏览器工具不能落盘截图，所以「截图见验证记录」这一项改为下面的文字观察，没有存到 `data/evidence/m4-topic/`。前端纯逻辑由 vitest 覆盖（`ideaView`/`briefStatus`/`sessionScope`/`ideaEvents`/`useSessionStream` 新用例/endpoints/queries，共 216 个）。
 - **T12 / AC10 L4 走查（2026-09-29，Claude 桌面版内置浏览器，1440x900）**：浏览器工具不能把截图落盘，所以没有存到 `data/evidence/m4-topic/`，下面是走查时的观察：
   - 选题池：3 张手工卡片（`POST /api/ideas`）渲染出标题/卖点/反直觉点/标签/四项评分条；「头脑风暴」打开右侧停靠面板；Fake 会话（无项目）发消息后消息流出现回显，后端 `turns` 为 `done`、无快照。
   - 编辑对话框预填正确，设评分并保存后卡片刷新（后端 `scores` 已变）；归档后从「未归档」消失、在「已归档」出现并有「恢复」，恢复后回来。

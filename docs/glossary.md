@@ -7,7 +7,7 @@
 | 想法卡片 | idea | 选题池中的一条候选选题：标题、卖点、反直觉点、标签、四项评分（反直觉/可论证/可视化/新鲜度，1–5）；状态 `idea`/`picked`（已创建项目）/`archived` |
 | 头脑风暴 | brainstorm | 没有项目的对话，agent 联网搜索并往选题池写想法卡片；阶段名 `brainstorm` |
 | 选题简报 | brief | 选题打磨阶段的产物 `topic/brief.md`：七个固定章节，关键事实逐条带出处和把握程度（高/中/低），由 `check_brief` 检查结构 |
-| 无项目会话 | workspaceless session | `project_id` 为空的会话（头脑风暴）：没有工作区和快照，cwd 是每轮重置的 scratch 目录 |
+| 无项目会话 | workspaceless session | `project_id` 为空的会话（头脑风暴）：没有工作区和快照，cwd 是每轮重建、一轮结束即删的 scratch 目录 |
 | 联网模式 | web mode | `STUDIO_WEB_MODE`：`tools`（默认，自建 `web_search`/`fetch_url`）或 `native`（运行时原生联网），互斥，见 ADR 0010 |
 | URL 来源规则 | URL provenance | `fetch_url` 只能抓本会话搜索结果里出现过的、或用户消息里给出的 URL，模型不能凭空构造 URL |
 | 选题池 | idea pool | 所有想法卡片的集合，头脑风暴的产出放在这里 |
