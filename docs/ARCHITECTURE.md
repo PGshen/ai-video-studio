@@ -26,7 +26,7 @@ ai-video-studio/
 | `config` | 配置：数据目录、模型 key、搜索 key | — |
 | `db` | SQLite 连接（WAL）、ORM 模型、迁移 | `config` |
 | `engines.render` | manim 渲染：静态校验、全画质渲染（`manim/{script,process,engine}.py`）、预览与关键帧抽取（T2） | `config` |
-| `engines.tts`（M3） | 语音合成、beat 对齐 | `config` |
+| `engines.tts` | Volcengine 语音合成（`base`/`voice_map`/`volcengine`/`factory`，M3 T1）；beat 对齐（T2） | `config` |
 | `search`（M4） | 搜索提供方接口，以及 Tavily 实现 | `config` |
 | `workspace` | 工作区布局（`layout`）、快照库与 diff/回滚（`snapshot`、`blobs`）、越界检查（`scope`）、上游只读副本（`upstream`）、受控文件读写与建/删工作区（`files`） | `db`、`config` |
 | `jobs` | SQLite 任务队列：`create_job`/`claim_next`/`heartbeat`/`update_progress`/`complete`/`fail`/`get_job`/`list_jobs`/`reap_stale_running`；`jobs.repo` 转发自 `db.repo.jobs`（`Job` 模型的直接读写按规则 5 留在 `db.repo`） | `db`、`config` |

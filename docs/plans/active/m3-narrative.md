@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 执行中 |
 | 里程碑 | M3 |
 | 设计依据 | [架构设计 §5.2、§5.4、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m3-narrative` |
-| 批准记录 | 待批准 |
+| 批准记录 | 2026-09-29：负责人批准计划，执行方式为当前会话内联执行（不派发 subagent），T13 需要真实付费 Volcengine key 一并获得同意 |
 
 ## 目标
 
@@ -52,7 +52,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：`engines.tts` 协议与 Volcengine 引擎迁移（待开始）
+### T1：`engines.tts` 协议与 Volcengine 引擎迁移（完成）
 
 - **目标**：`backend/src/studio/engines/tts/` 下有可用的 `TTSEngine` 协议和 `VolcengineTTSEngine` 实现，API key 按固定环境变量名读取（不进 `Settings`，与 `model_profiles.api_key_env` 同一原则：真实 key 不落进配置字段）。
 - **涉及文件**：
@@ -233,11 +233,11 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-09-29 — T1 `engines.tts` 协议与 Volcengine 引擎迁移 — 14 个测试通过，`make check` 全绿（commit 待记录）
 
 ## 下一步
 
-- 计划待负责人批准（含 T13 需要真实付费 Volcengine key 这一点）。批准后从 T1 开始：先在 `backend/pyproject.toml` 加 `respx` 测试依赖，再迁移 `engines/tts/base.py`/`voice_map.py`/`volcengine.py`，写 `test_tts_engine.py`。
+- 从 T2 开始：新建 `backend/src/studio/engines/tts/beat_aligner.py`（迁移 `../ai-video/backend/app/services/beat_aligner.py`，去掉 `fallback_weight`，改用固定权重 1.0）和 `backend/src/studio/engines/tts/text_normalize.py`（迁移 `normalize_alignment_text`），写 `backend/tests/engines/test_beat_aligner.py`。
 
 ## 决策记录
 
@@ -249,6 +249,8 @@
   - `timing.json` 的 `beats[].start_seconds/end_seconds` 取对齐后的"发言起止时间"（`speech_start/end`），不叠加 `animation_start/end` 的 pre/post-roll——和 M2 已有 fixture 的取值方式保持一致，避免改动 `render_preview` 的既有假设。
   - "叙事→动画"上游变更摘要按镜头 id 的解析逻辑放在 `agent/preamble.py` 内部（硬编码只处理 `name == "narrative"` 这一条边），不修改 `agent.stage.StageDefinition` Protocol——范围收得更紧，符合 TD-6 里"在 `agent/preamble.py` 里改"的原始建议。
   - "配音是否过期"（narration 改了但没重新合成）不在本计划实现检测，只做"是否配过音"的判断；过期检测登记进 tech-debt，留给出现真实需求时再做。
+- 2026-09-29（T1 执行中）：`build_tts_engine()` 改成无参数（计划草稿里写的是 `(*, voice, speed)`）——音色/语速本来就要按 `TTSRequest` 逐次传给 `synthesize()`，构造引擎时接收这两个参数只会是死参数，不使用。改动范围只在这一个函数签名，不影响其它任务。
+- 2026-09-29（T1 执行中）：mp3 时长解析测试没有 mock `mutagen`，而是生成了一个真实的极短 mp3（`ffmpeg`/`lame`，本机开发环境已有）存成二进制 fixture `backend/tests/fixtures/tts/tiny.mp3`（2.4KB，已提交）。理由：`_parse_mp3_duration` 的正确性依赖 mutagen 真的能解析出时长，mock 掉会让"时间戳按真实时长夹紧"这条关键行为测不到；测试本身运行时不再需要 `ffmpeg`/`lame`（只读预生成的文件），不影响可移植性。
 
 ## 意外与发现
 
