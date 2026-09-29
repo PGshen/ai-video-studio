@@ -84,7 +84,7 @@
 - **完成标准**：`pytest backend/tests/engines/test_beat_aligner.py` 通过。
 - **验证命令**：`make check`
 
-### T3：`stages.narrative.schema`——产物 schema 与校验规则（待开始）
+### T3：`stages.narrative.schema`——产物 schema 与校验规则（完成）
 
 - **目标**：`stages/narrative/schema.py` 定义新 narrative 产物的 pydantic 模型和一个可复用的校验函数，供 T4 的 `validate_narrative` 工具和 T5 的 `synthesize_tts` 工具共用。
 - **涉及文件**：新建 `backend/src/studio/stages/narrative/schema.py`、`backend/tests/stages/test_narrative_schema.py`（新建）。
@@ -234,11 +234,12 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-09-29 — T1 `engines.tts` 协议与 Volcengine 引擎迁移 — 14 个测试通过，`make check` 全绿（commit `20bf088`）
-- 2026-09-29 — T2 `beat_aligner`/`text_normalize` 迁移 — 6 个测试通过，`make check` 全绿（commit 待记录）
+- 2026-09-29 — T2 `beat_aligner`/`text_normalize` 迁移 — 6 个测试通过，`make check` 全绿（commit `6b24bf4`）
+- 2026-09-29 — T3 `stages.narrative.schema` — 6 个测试通过，`make check` 全绿（commit 待记录）
 
 ## 下一步
 
-- 从 T3 开始：新建 `backend/src/studio/stages/narrative/schema.py`（pydantic `Beat`/`Scene`/`Narrative` + `validate_and_normalize`，用 T2 的 `text_normalize.normalize_alignment_text` 做 cue_text 覆盖 narration 的校验），写 `backend/tests/stages/test_narrative_schema.py`。
+- 从 T4 开始：新建 `backend/tests/fixtures/narrative/brief.md` + `backend/tests/fixtures/narrative/seed.py::seed_narrative_project`（建项目 → 写 `topic/brief.md` → `stage_flow.finalize(..., "topic")`），供 T5/T6/T8 测试使用。
 
 ## 决策记录
 
