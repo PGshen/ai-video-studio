@@ -148,3 +148,23 @@ export interface ModelProfileOut {
   max_steps_per_turn: number | null
   key_configured: boolean
 }
+
+/**
+ * 按镜头聚合的 `validate_scenes`/`render_preview` 最近状态（TD-33，后端
+ * `api/schemas.py::SceneCheckOut`）：读时聚合，不对应任何持久化表。
+ */
+export interface SceneCheckOut {
+  status: 'passed' | 'failed' | 'not_checked'
+  /** 检查之后镜头代码又改过，需要重新检查。 */
+  stale: boolean
+  checked_at: string | null
+}
+
+export interface SceneChecksOut {
+  validate_scenes: SceneCheckOut
+  render_preview: SceneCheckOut
+}
+
+export interface SceneChecksResponse {
+  scenes: Record<string, SceneChecksOut>
+}

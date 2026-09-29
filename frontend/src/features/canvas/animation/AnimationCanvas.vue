@@ -14,6 +14,10 @@
  * 本阶段自己的可写范围，只读的原因只有"agent 正在跑一轮"（`props.busy`）
  * 一种。
  *
+ * 镜头的"已校验/已过期"状态（TD-33）另外拉 `useSceneChecksQuery`（读模型，
+ * 见 `api/scene_checks.py`），和文件是否存在这个信号（决策记录 D38）合并
+ * 进同一个 `computeSceneStatuses` 调用。
+ *
  * 任务 T13 加了 `FinalRenderPanel`（成片面板：渲染成片/进度/播放器/成片
  * 定稿），挂在镜头列表+编辑器这个 grid 下方，只在镜头列表已知（叙事已
  * 物化且解析无误）时显示——见该组件顶部注释。
@@ -22,7 +26,12 @@ import { computed, ref, watch, watchEffect } from 'vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import type { EditorLanguage } from '@/components/codeEditorLanguage'
-import { useFileContentQuery, useFileTreeQuery, useWriteFileMutation } from '@/composables/queries'
+import {
+  useFileContentQuery,
+  useFileTreeQuery,
+  useSceneChecksQuery,
+  useWriteFileMutation,
+} from '@/composables/queries'
 import { ApiError } from '@/api/http'
 import type { FileWriteResult } from '@/types/api'
 import SceneList from './SceneList.vue'
@@ -62,7 +71,14 @@ const narrativeParse = computed<{ ids: string[]; error: string | null }>(() => {
   }
 })
 
-const scenes = computed(() => computeSceneStatuses(narrativeParse.value.ids, filePaths.value))
+const { data: sceneChecks } = useSceneChecksQuery(
+  () => props.projectId,
+  () => narrativeParse.value.ids,
+)
+
+const scenes = computed(() =>
+  computeSceneStatuses(narrativeParse.value.ids, filePaths.value, sceneChecks.value?.scenes),
+)
 
 // ---- 选中镜头 + 代码编辑缓冲区 --------------------------------------------
 

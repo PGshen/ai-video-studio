@@ -14,6 +14,7 @@ import type {
   ProjectCreate,
   ProjectDetailOut,
   ProjectOut,
+  SceneChecksResponse,
   SessionCreate,
   SessionDetailOut,
   SessionOut,
@@ -158,6 +159,16 @@ export function getJob(projectId: string, jobId: string): Promise<JobOut> {
 export function finalizeRender(projectId: string): Promise<StageOut> {
   return request(`/projects/${encodePathSegment(projectId)}/animation/finalize-render`, {
     method: 'POST',
+  })
+}
+
+/** 按镜头聚合的 `validate_scenes`/`render_preview` 最近状态（TD-33）。 */
+export function getSceneChecks(
+  projectId: string,
+  sceneIds: readonly string[],
+): Promise<SceneChecksResponse> {
+  return request(`/projects/${encodePathSegment(projectId)}/animation/scene-checks`, {
+    query: { scene_id: [...sceneIds] },
   })
 }
 

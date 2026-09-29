@@ -32,6 +32,15 @@ export const queryKeys = {
   session: (sessionId: string) => ['sessions', sessionId] as const,
   modelProfiles: () => ['model-profiles'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
+  /** `turn_status` 到达时用这个前缀失效，不管当时的镜头集合是什么。 */
+  sceneChecksAll: (projectId: string) => ['projects', projectId, 'animation', 'scene-checks'] as const,
+  /**
+   * `sceneIds` 拼进 key 尾部，这样镜头集合变化时 TanStack 会认出这是一个
+   * "新的" query 并重新取数；失效走 `sceneChecksAll` 这个前缀，靠 TanStack
+   * 默认的前缀匹配（`exact: false`）覆盖所有镜头集合的变体。
+   */
+  sceneChecks: (projectId: string, sceneIds: readonly string[]) =>
+    [...queryKeys.sceneChecksAll(projectId), sceneIds.join(',')] as const,
 }
 
 // ---- projects ---------------------------------------------------------
@@ -268,6 +277,21 @@ export function useFinalizeRenderMutation(projectId: MaybeRefOrGetter<string>) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(toValue(projectId)) })
     },
+  })
+}
+
+/**
+ * 按镜头聚合的 `validate_scenes`/`render_preview` 最近状态（TD-33）。
+ * `sceneIds` 是从 `narrative.json` 解析出的镜头 id 列表，随它一起放进 key。
+ */
+export function useSceneChecksQuery(
+  projectId: MaybeRefOrGetter<string>,
+  sceneIds: MaybeRefOrGetter<readonly string[]>,
+) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.sceneChecks(toValue(projectId), toValue(sceneIds))),
+    queryFn: () => api.getSceneChecks(toValue(projectId), toValue(sceneIds)),
+    enabled: computed(() => toValue(sceneIds).length > 0),
   })
 }
 

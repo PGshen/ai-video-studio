@@ -34,7 +34,8 @@ async function parseErrorDetail(response: Response): Promise<unknown> {
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
-  query?: Record<string, string | number | boolean | null | undefined>
+  /** 数组值编码成同名重复参数（`?scene_id=a&scene_id=b`），匹配 FastAPI 的 `list[str]` query 参数。 */
+  query?: Record<string, string | number | boolean | string[] | null | undefined>
   body?: unknown
   signal?: AbortSignal
 }
@@ -63,7 +64,10 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   const url = new URL(`${BASE_URL}${path}`, window.location.origin)
   if (query) {
     for (const [key, value] of Object.entries(query)) {
-      if (value !== null && value !== undefined) {
+      if (value === null || value === undefined) continue
+      if (Array.isArray(value)) {
+        for (const item of value) url.searchParams.append(key, item)
+      } else {
         url.searchParams.set(key, String(value))
       }
     }

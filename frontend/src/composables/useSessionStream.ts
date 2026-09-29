@@ -370,6 +370,11 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
         // `projectId`（挂载历史时从 `GET /sessions/{id}` 拿到）已知时
         // 才失效——理论上 `turn_status` 必然晚于 `applyHistory`。
         if (projectId) void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
+        // TD-33: a finished turn may have called validate_scenes/render_preview;
+        // the scene-checks read model can only change when a turn ends.
+        if (projectId) {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.sceneChecksAll(projectId) })
+        }
         break
       }
     }

@@ -162,3 +162,22 @@ class ModelProfileOut(BaseModel):
     max_cost_per_turn: float | None
     max_steps_per_turn: int | None
     key_configured: bool
+
+
+class SceneCheckOut(BaseModel):
+    """`scene_checks.py::SceneCheck` 的线上表示（TD-33，读时聚合，不对应任何表）。"""
+
+    status: str
+    """`"passed"`/`"failed"`/`"not_checked"`。"""
+    stale: bool
+    """检查之后镜头代码又改过，需要重新检查。"""
+    checked_at: datetime | None
+
+
+class SceneChecksOut(BaseModel):
+    validate_scenes: SceneCheckOut
+    render_preview: SceneCheckOut
+
+
+class SceneChecksResponse(BaseModel):
+    scenes: dict[str, SceneChecksOut]

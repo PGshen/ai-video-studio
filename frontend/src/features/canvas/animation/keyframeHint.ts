@@ -4,10 +4,11 @@
  * （`agent/turn_events.py::_persist_image`），左侧对话面板的工具结果卡片
  * 里能看到真缩略图（`SessionTimelineItem.vue`）。
  *
- * 这里仍然只做文字提示、不在画布里单独拉一份"按镜头 id 聚合的关键帧
- * 画廊"：后端没有"某个镜头最近一次 render_preview 结果"这种读模型
- * （TD-33），要做真正嵌入画布的缩略图需要先解决那条技术债，不在这里
- * 顺手做。
+ * 这里仍然只做文字提示、不在画布里单独嵌一份"按镜头 id 聚合的关键帧
+ * 画廊"：`SceneList.vue` 现在会显示每个镜头最近一次 `validate_scenes`/
+ * `render_preview` 是否通过、是否已过期（TD-33 的读模型），但那个读模型
+ * 只聚合"通过/失败"，不聚合图片内容——真要在画布里嵌缩略图还需要单独
+ * 把关键帧的 blob 引用也按镜头聚合一份，不在这次顺手做。
  */
 
 export function keyframeHint(sceneId: string | null): string {

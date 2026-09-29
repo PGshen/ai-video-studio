@@ -18,14 +18,15 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
 from studio.agent.stage import StageRegistry
 from studio.agent.stage_flow import StageFlowError, finalize
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
-from studio.api.schemas import StageOut
+from studio.api.scene_checks import compute_scene_checks
+from studio.api.schemas import SceneCheckOut, SceneChecksOut, SceneChecksResponse, StageOut
 from studio.config import Settings
 from studio.db.repo.projects import get_project, mark_project_completed
 from studio.db.repo.snapshots import latest_snapshot
@@ -90,3 +91,30 @@ async def finalize_render_endpoint(
 
     mark_project_completed(engine, project_id)
     return _stage_out(stage)
+
+
+@router.get("/projects/{project_id}/animation/scene-checks", response_model=SceneChecksResponse)
+def get_scene_checks_endpoint(
+    project_id: str,
+    scene_id: list[str] = Query(default=[]),
+    engine: Engine = Depends(get_engine),
+) -> SceneChecksResponse:
+    _require_project(engine, project_id)
+    checks = compute_scene_checks(engine, project_id, scene_id)
+    return SceneChecksResponse(
+        scenes={
+            sid: SceneChecksOut(
+                validate_scenes=SceneCheckOut(
+                    status=checks[sid].validate_scenes.status,
+                    stale=checks[sid].validate_scenes.stale,
+                    checked_at=checks[sid].validate_scenes.checked_at,
+                ),
+                render_preview=SceneCheckOut(
+                    status=checks[sid].render_preview.status,
+                    stale=checks[sid].render_preview.stale,
+                    checked_at=checks[sid].render_preview.checked_at,
+                ),
+            )
+            for sid in scene_id
+        }
+    )
