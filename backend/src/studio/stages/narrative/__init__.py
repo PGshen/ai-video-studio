@@ -15,7 +15,8 @@ from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _WRITE_SCOPE = WriteScope(
-    writable=["narrative/narrative.json"], tool_managed=["narrative/timing.json"]
+    writable=["narrative/narrative.json"],
+    tool_managed=["narrative/timing.json", "narrative/audio/**"],
 )
 
 

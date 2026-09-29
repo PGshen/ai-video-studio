@@ -124,7 +124,7 @@
 - **完成标准**：`pytest backend/tests/stages/test_narrative_validate.py` 通过。
 - **验证命令**：`make check`
 
-### T6：`stages.narrative`——`synthesize_tts` 工具（待开始）
+### T6：`stages.narrative`——`synthesize_tts` 工具（完成）
 
 - **目标**：narrative agent 能调用 `synthesize_tts(scene_ids)`，对指定镜头（或全部，`scene_ids=None`）用 T1 的引擎合成配音、用 T2 的对齐算法算出每个 beat 的起止时间，写 `narrative/audio/<id>.mp3` 和 `narrative/timing.json`。
 - **涉及文件**：新建 `backend/src/studio/stages/narrative/synthesize_tts.py`、`backend/src/studio/stages/narrative/__init__.py`（`tools()` 补上）、`backend/tests/stages/test_narrative_synthesize.py`（新建）。
@@ -237,11 +237,12 @@
 - 2026-09-29 — T2 `beat_aligner`/`text_normalize` 迁移 — 6 个测试通过，`make check` 全绿（commit `6b24bf4`）
 - 2026-09-29 — T3 `stages.narrative.schema` — 6 个测试通过，`make check` 全绿（commit `cca221d`）
 - 2026-09-29 — T4 选题简报 fixture + `seed_narrative_project` + `conftest.py` 的 `narrative_project` fixture — 4 个测试通过，`make check` 全绿（commit `2eea76e`）
-- 2026-09-29 — T5 `validate_narrative` 工具 — 5 个测试通过，`make check` 全绿（commit 待记录）
+- 2026-09-29 — T5 `validate_narrative` 工具 — 5 个测试通过，`make check` 全绿（commit `58bec39`）
+- 2026-09-29 — T6 `synthesize_tts` 工具 — 6 个测试通过，`make check` 全绿（commit `b3714b6`）
 
 ## 下一步
 
-- 从 T6 开始：新建 `backend/src/studio/stages/narrative/synthesize_tts.py`（`SynthesizeTtsArgs`、`handler` 按计划 T6 的 7 个步骤实现：校验 → 选镜头 → 读 project.settings → 逐镜头合成 → 对齐 → 写音频 → 更新 timing.json）。先确定测试替身怎么注入假 `TTSEngine`（计划里留了两种方案给实现时选，记入决策记录），再写 `backend/tests/stages/test_narrative_synthesize.py`。
+- 从 T7 开始：`NarrativeStage.tools()` 接入 `validate_narrative`、`synthesize_tts`、`suggest_upstream_change`（后者的 `stages` 集合要加上 `"narrative"`），并把 `prompt.md` 从占位扩写为完整版（参照 `stages/animation/prompt.md`）。目前 `tools()` 仍返回 `[]`。
 
 ## 决策记录
 
@@ -255,6 +256,9 @@
   - "配音是否过期"（narration 改了但没重新合成）不在本计划实现检测，只做"是否配过音"的判断；过期检测登记进 tech-debt，留给出现真实需求时再做。
 - 2026-09-29（T1 执行中）：`build_tts_engine()` 改成无参数（计划草稿里写的是 `(*, voice, speed)`）——音色/语速本来就要按 `TTSRequest` 逐次传给 `synthesize()`，构造引擎时接收这两个参数只会是死参数，不使用。改动范围只在这一个函数签名，不影响其它任务。
 - 2026-09-29（T1 执行中）：mp3 时长解析测试没有 mock `mutagen`，而是生成了一个真实的极短 mp3（`ffmpeg`/`lame`，本机开发环境已有）存成二进制 fixture `backend/tests/fixtures/tts/tiny.mp3`（2.4KB，已提交）。理由：`_parse_mp3_duration` 的正确性依赖 mutagen 真的能解析出时长，mock 掉会让"时间戳按真实时长夹紧"这条关键行为测不到；测试本身运行时不再需要 `ffmpeg`/`lame`（只读预生成的文件），不影响可移植性。
+
+- 2026-09-29（T6 执行中）：假引擎注入用模块级 `_ENGINE_FACTORY`（默认 `build_tts_engine`），测试 `monkeypatch.setattr` 替换——不改 `ToolContext`/`ToolSpec` 签名，改动最小。
+- 2026-09-29（T6 执行中）：`timing.json` 的镜头顺序按 `narrative.json` 中的顺序写出（不是按 id 字母序）；不在当前 narrative 里的旧条目原样追加在末尾；本次没有任何镜头成功时不写 `timing.json`，避免留下空文件。
 
 ## 意外与发现
 
