@@ -335,6 +335,8 @@ class TurnRunner:
             allow_web=allow_web,
             engine=engine,
             session_id=job.session.id,
+            turn_id=job.turn_id,
+            upstream_stages=tuple(job.stage.upstream_stages()),
         )
         await self._run_stream(job, state, ctx)
 
@@ -362,6 +364,8 @@ class TurnRunner:
             allow_web=allow_web,
             engine=self._engine,
             session_id=job.session.id,
+            turn_id=job.turn_id,
+            upstream_stages=tuple(job.stage.upstream_stages()),
         )
         await self._run_stream(job, state, ctx)
 

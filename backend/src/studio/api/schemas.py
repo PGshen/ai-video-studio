@@ -140,6 +140,20 @@ class SessionDetailOut(SessionOut):
     turns: list[TurnOut]
 
 
+class SuggestionOut(BaseModel):
+    """回退建议（M5 T9）：下游阶段的 agent 对上游产物提出的修改建议。"""
+
+    id: str
+    project_id: str
+    from_stage: str
+    to_stage: str
+    content: str
+    status: str
+    """`open`（待处理）/`applied`（已处理）/`dismissed`（已忽略）。"""
+    turn_id: str | None
+    created_at: datetime
+
+
 class MessageCreate(BaseModel):
     text: str
 

@@ -239,13 +239,15 @@ class TestWireEventTypesEnforcement:
         assert message["event"] == "text_delta"
         await gen.aclose()
 
-    def test_wire_event_types_has_exactly_the_nine_documented_names(self) -> None:
+    def test_wire_event_types_has_exactly_the_documented_names(self) -> None:
+        """T8 简报列出 9 种；M5 T9 增加 `suggestion`（回退建议），共 10 种。"""
         assert WIRE_EVENT_TYPES == {
             "text_delta",
             "text",
             "tool_call",
             "tool_result",
             "snapshot",
+            "suggestion",
             "notice",
             "error",
             "workspace_changed",

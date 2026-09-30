@@ -35,6 +35,7 @@ from studio.api.sessions import router as sessions_router
 from studio.api.settings import router as settings_router
 from studio.api.snapshots import router as snapshots_router
 from studio.api.styles import router as styles_router
+from studio.api.suggestions import router as suggestions_router
 from studio.api.topic import router as topic_router
 from studio.api.tts import router as tts_router
 from studio.config import Settings, get_settings
@@ -113,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(settings_router)
     app.include_router(styles_router)
     app.include_router(tts_router)
+    app.include_router(suggestions_router)
 
     return app
 

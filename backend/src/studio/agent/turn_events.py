@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from studio.agent import events
 from studio.agent.turn_state import _Job, _State
+from studio.db.repo import suggestions as suggestions_repo
 from studio.db.repo import turns as turns_repo
 
 if TYPE_CHECKING:
@@ -165,6 +166,32 @@ def _after_tool_result(
         runner._publish(job, "workspace_changed", {"paths": list(merged)})
     elif recorded:
         runner._publish(job, "workspace_changed", {"paths": recorded})
+    if call is not None and call.name == SUGGEST_TOOL_NAME and not event.is_error:
+        _announce_suggestions(runner, job, state)
+
+
+SUGGEST_TOOL_NAME = "suggest_upstream_change"
+"""业务工具名（Claude 侧的 `mcp__studio__` 前缀已在适配层去掉）。"""
+
+
+def _announce_suggestions(runner: TurnRunner, job: _Job, state: _State) -> None:
+    """`suggest_upstream_change` 成功后，给本轮里还没发过事件的建议各发一条 `suggestion` 事件
+    （M5 T9）。工具本身写库、拿不到总线，所以由这里按 `turn_id` 查回来；三个运行时都一样。"""
+    for suggestion in suggestions_repo.list_turn_suggestions(runner._engine, job.turn_id):
+        if suggestion.id in state.announced_suggestions:
+            continue
+        state.announced_suggestions.add(suggestion.id)
+        runner._persist(
+            job,
+            "suggestion",
+            {
+                "suggestion_id": suggestion.id,
+                "from_stage": suggestion.from_stage,
+                "to_stage": suggestion.to_stage,
+                "content": suggestion.content,
+                "status": suggestion.status,
+            },
+        )
 
 
 def _exceed_budget(runner: TurnRunner, job: _Job, state: _State, kind: str) -> None:

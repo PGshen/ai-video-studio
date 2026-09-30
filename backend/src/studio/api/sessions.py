@@ -90,13 +90,14 @@ WIRE_EVENT_TYPES = frozenset(
         "tool_call",
         "tool_result",
         "snapshot",
+        "suggestion",
         "notice",
         "error",
         "workspace_changed",
         "turn_status",
     }
 )
-"""SSE 上实际会出现的全部事件名（任务简报列出的 9 种），在一个地方统一定义
+"""SSE 上实际会出现的全部事件名（任务简报列出的 9 种，M5 T9 增加 `suggestion`），在一个地方统一定义
 （控制者裁定 6）。`_stream_events` 用它过滤——出现列表之外的 `type` 只在
 `TurnRunner`/`SessionBus` 出现新 bug 时才可能发生，属于防御性检查，不是
 正常路径。

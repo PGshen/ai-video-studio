@@ -179,7 +179,7 @@
 - **完成标准**：AC8 通过；真实试听一次（会产生少量 TTS 费用，计划已说明）的音频文件和响应头存进 `data/evidence/m5-polish/`。
 - **验证命令**：`make check`
 
-### T9：回退建议后端（待开始）
+### T9：回退建议后端（完成）
 
 - **目标**：回退建议从「只写进表」变成有事件、有接口、有状态流转的完整后端。
 - **涉及文件**：`stages/common/suggest_upstream_change.py`、`agent/tools.py`（`ToolContext` 增加 `turn_id`，若没有）、`agent/turn_events.py`（工具成功后发 `suggestion` 事件）、`api/sessions.py`（`WIRE_EVENT_TYPES` 增加 `suggestion`）、新建 `api/suggestions.py`、`db/repo/suggestions.py`（`apply`/`dismiss` 状态机、按项目统计待处理数）、`api/schemas.py`、`main.py`；`agent/bus.py` 文档注释里的事件类型说明同步；测试见 AC9。
@@ -259,11 +259,13 @@
 - 2026-09-30 — T6 完成：`db/repo/profiles.py`（校验、`create/update/delete_model_profile`、内置保护、被会话或阶段默认引用时不能删、`env_override_fields`）、`api/profiles.py`（`POST/PATCH/DELETE /api/model-profiles`，列表增加 `api_key_env`/`base_url`（打码）/`builtin`/`env_override`）。`make check` 全绿（1237 个后端测试）。
 - 2026-09-30 — T7 完成：`PATCH /api/sessions/{id}`（同 runtime、同 provider、key 已配置、Claude 只在同一种认证方式内；有排队/运行中的 turn 返回 409）、仓储 `set_session_model_if_idle`（同一事务里检查再更新）、每轮 `usage` 记录 `model`/`profile_name`、换了之后第一轮的 `model_switched` `notice`（`turn_events.note_model_switch`，无项目会话同样支持）。真实冒烟 `model_switch_claude_login` 通过：同一 SDK 会话 Sonnet → Haiku，`sdk_ref` 不变，第二轮答出第一轮的背景；ADR 0012、claude-agent-sdk.md、TD-41 已写。`make check` 全绿（1264 个后端测试）。
 - 2026-09-30 — T8 完成：`engines/tts/voice_map.py`（`VoiceInfo`/`list_voices`，中文名和性别取自旧库 `tts_voices` 表的只读查证）、`api/tts.py`（`GET /api/tts/voices`、`POST /api/tts/preview`：固定示例文本、磁盘缓存 `data/tts-preview/`、并发合并、失败不缓存、缺 key 503/供应商错误 502/越界或未知音色 422）、`PATCH /api/projects/{id}/settings`（只放行 `voice`/`speech_rate`，项目忙 409，`null` 清除）、`update_project_settings` 仓储、创建项目时复制 `settings.tts_default`。真实试听 `tts_preview_real` 通过：5 段合成，语速 0.5–2.0 两端供应商都接受且真实生效（zizi 0.5/1.0/2.0 → 11.69/6.43/2.95 秒），缓存命中；结论写进 `references/volcengine-tts.md`，证据 `data/evidence/m5-polish/smoke/`。`make check` 全绿（1307 个后端测试）。
+- 2026-09-30 — T9 完成：`suggest_upstream_change` 只允许向直接上游提（`ToolContext.upstream_stages`，由 runner 从 `StageDefinition.upstream_stages()` 传入）、内容去空白后非空且 ≤ 2000 字、记录 `turn_id`（`ToolContext`/`TurnContext` 新增 `turn_id`、`upstream_stages`）；`turn_events` 在工具成功后按 `turn_id` 查回新建的建议，各发一条持久的 `suggestion` 事件（三个运行时一致，`WIRE_EVENT_TYPES` 增加它）；`db/repo/suggestions.py` 增加 `resolve_suggestion`（`open → applied | dismissed`，重复 `SuggestionStateError`）、`list_turn_suggestions`、`count_open_by_target_stage`；`api/suggestions.py`：`GET /api/projects/{id}/suggestions?status=`、`.../suggestions/summary`、`POST /api/suggestions/{id}/apply|dismiss`。`make check` 全绿（1357 个后端测试）。后端部分（T1–T9）到此完成，接下来是前端（T10–T13）。
 
 ## 下一步
 
-- 做 T9（回退建议后端）：先写 `backend/tests/stages/test_suggest_upstream_change.py`、`backend/tests/api/test_suggestions.py`、`backend/tests/agent/test_runner_suggestion.py` 的失败用例。要点见计划正文 T9：工具校验 `to_stage` 必须是调用方的直接上游（`StageDefinition.upstream_stages()`）、内容去空白后非空且 ≤ 2000 字、写入 `turn_id=ctx.turn_id`（`ToolContext` 目前没有 `turn_id`，要加，见 `agent/tools.py`）；`suggestion` 事件落库并加进 `api/sessions.py::WIRE_EVENT_TYPES`；`GET /api/projects/{id}/suggestions?status=`、`.../suggestions/summary`、`POST /api/suggestions/{id}/apply|dismiss`（只能从 `open` 转出，重复 409）。
-- 现有代码里 `suggest_upstream_change` 目前把 `turn_id` 写成 `None`；`agent/bus.py` 的注释已经把 `suggestion` 列为持久事件类型，但没有任何地方发它。
+- 后端 T1–T9 已全部完成并提交，前端从 T10 开始。先读 `frontend/src/types/api.ts`、`api/endpoints.ts`、`composables/queries.ts`（TanStack Query 的写法：`queryKeys` + `useXxxQuery`/`useXxxMutation`）、`router.ts`、`pages/SettingsPage.vue`（占位）、`components/AppSidebar.vue`（有没有设置入口）。
+- T10 需要的后端接口（已就绪）：`GET/PATCH /api/settings`、`GET/POST/PATCH/DELETE /api/model-profiles`（响应新增 `api_key_env`、`base_url`、`builtin`、`env_override`）、`GET /api/tts/voices`。T10 先写纯逻辑的 vitest：`profileForm.ts`（表单校验与后端 `db/repo/profiles.py::_validate_profile` 同一组正反例）、`settingsView.ts`（联网模式来源文案、只读字段判断），再做组件，路由 `/settings/{models,styles,voice,general}`，`router.spec.ts` 同步。
+- 注意 ARCHITECTURE 规则：`features/*` 之间不互相 import，共用的东西放 `components/` 或 `composables/`；`pages/` 是组合层。L4 走查由我自己在内置浏览器里做（用 worktree 的 dev server，`backend/.env` 已链接到主检出）。
 
 ## 决策记录
 
