@@ -418,6 +418,9 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     const last = detail.turns.at(-1)
     if (last) {
       turnStatus.value = statusOf(last)
+      // A turn that never started has no events, so nothing would ever show its message;
+      // show it so the user sees what [重新发送] will send (TD-19).
+      if (last.never_started) ensureUserMessage(last.id)
     }
   }
 

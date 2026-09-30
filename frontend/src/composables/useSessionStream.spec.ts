@@ -524,6 +524,8 @@ describe('useSessionStream', () => {
         neverStarted: true,
         userMessage: '你好',
       })
+      // No events will ever arrive for it, so its message is shown from the history.
+      expect(result.items.value).toEqual([{ kind: 'user_message', turnId: 't1', text: '你好' }])
     })
 
     it('TD-19：收到 interrupted 的 turn_status 后重新拉取会话，拿到 neverStarted', async () => {

@@ -716,6 +716,25 @@ class TestWriteScopeHook:
         assert specific["permissionDecisionReason"]
 
 
+class TestWebHooks:
+    """TD-39: native web tools get the URL-source hooks; without web nothing extra is registered."""
+
+    async def test_registered_only_when_web_is_allowed(self, workdir: Path, data_dir: Path) -> None:
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir, allow_web=True))
+        hooks = clients.last.options.hooks
+        assert hooks is not None
+        assert "WebFetch" in [m.matcher for m in hooks["PreToolUse"]]
+        assert [m.matcher for m in hooks["PostToolUse"]] == ["WebSearch"]
+
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir, allow_web=False))
+        hooks = clients.last.options.hooks
+        assert hooks is not None
+        assert "WebFetch" not in [m.matcher for m in hooks["PreToolUse"]]
+        assert "PostToolUse" not in hooks
+
+
 class TestReadScopeHook:
     _decide = TestWriteScopeHook._decide
 

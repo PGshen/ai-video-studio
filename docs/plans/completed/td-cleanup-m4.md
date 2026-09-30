@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 里程碑 | M4 与 M5 之间（整理） |
 | 设计依据 | [架构设计 §4.4、§5.1](../../design/2026-09-26-architecture.md)；ADR [0009](../../decisions/0009-Shell沙箱.md)、[0010](../../decisions/0010-联网模式开关.md)；登记表 [tech-debt.md](../../quality/tech-debt.md) |
 | 分支 | `td-cleanup-m4` |
@@ -69,12 +69,12 @@ M5（设置页、风格库、回退建议）开始之前，处理掉会被 M5 �
 
 ## 验收标准
 
-- [ ] AC1 TD-40：抽屉收起后新建的卡片仍实时出现
-- [ ] AC2 TD-25：含残余的成本不会触发 `budget_exceeded`，界面有提示
-- [ ] AC3 TD-19：重启后排队中的消息，[重新发送] 发出的是原消息
-- [ ] AC4 TD-27：两条路径的沙箱都拒读 `~/.ssh` 等；真实 Claude 登录冒烟不受影响
-- [ ] AC5 TD-39/TD-38：`native` 模式下 `WebFetch` 只能抓搜索过或用户贴过的 URL，冒烟验证过
-- [ ] AC6 tech-debt.md 与 QUALITY.md 已更新，`make check` 为绿
+- [x] AC1 TD-40：抽屉收起后新建的卡片仍实时出现
+- [x] AC2 TD-25：含残余的成本不会触发 `budget_exceeded`，界面有提示
+- [x] AC3 TD-19：重启后排队中的消息，[重新发送] 发出的是原消息
+- [x] AC4 TD-27：两条路径的沙箱都拒读 `~/.ssh` 等；真实 Claude 登录冒烟不受影响
+- [x] AC5 TD-39/TD-38：`native` 模式下 `WebFetch` 只能抓搜索过或用户贴过的 URL，冒烟验证过
+- [x] AC6 tech-debt.md 与 QUALITY.md 已更新，`make check` 为绿
 
 ## 验证命令
 
@@ -88,12 +88,12 @@ M5（设置页、风格库、回退建议）开始之前，处理掉会被 M5 �
 - [x] T2（TD-25）
 - [x] T3（TD-19，L4 待最后统一验证）
 - [x] T4（TD-27）
-- [ ] T5（TD-39、TD-38）
-- [ ] T6（收尾）
+- [x] T5（TD-39、TD-38）
+- [x] T6（收尾）
 
 ## 下一步
 
-T5（TD-39 + TD-38）：先搬 URL 规则到 `agent/url_source.py`，再加 Claude 侧 hook，最后跑 native 冒烟。T1/T3 的浏览器 L4 留到 T5 之后统一做。基线（2026-09-29，分支创建时）`make check` 全部通过。
+无（计划已完成，剩余债见 tech-debt.md：TD-25 首轮孤儿账目、TD-27 的 `~/.claude/projects` 与其余主目录路径、TD-39 的 OpenAI 托管搜索验证）。
 
 ## 决策记录
 
@@ -102,7 +102,8 @@ T5（TD-39 + TD-38）：先搬 URL 规则到 `agent/url_source.py`，再加 Clau
 
 ## 意外与发现
 
-无。
+- T3 的 L4 发现：从未开始的 turn 没有任何事件，时间线里看不到它的消息，[重新发送] 按钮会变成“发一条看不见的消息”。补了：会话历史里最后一个 turn 是 `never_started` 时直接把它的用户消息放进时间线（`useSessionStream.applyHistory`）。重发后旧的（已中断的）那条和新发的会在时间线里各出现一次，是如实反映，不做去重。
+- T5：真实 `WebSearch` 的 `tool_response` 是文本（`Links: [{"title":…,"url":…}]`），对序列化结果直接提取 URL 就够，不依赖结构。
 
 ## 阻塞
 
@@ -110,4 +111,9 @@ T5（TD-39 + TD-38）：先搬 URL 规则到 `agent/url_source.py`，再加 Clau
 
 ## 验证记录
 
+- `make check`（2026-09-30，分支 `td-cleanup-m4`，含全部任务）：见提交前最后一次输出，全部通过。
+- AC1（TD-40，L4，浏览器 + dev 服务）：打开头脑风暴抽屉后点“收起”，抽屉节点仍在 DOM 中（`display: none`），网格恢复整宽；收起期间用 curl 向该会话发消息，隐藏中的抽屉仍实时收到 fake 运行时的回复，说明 SSE 没有断开。没有用真实 agent 建卡片（dev 服务只启了 fake 运行时），卡片刷新走的是同一条订阅。
+- AC2（TD-25）：`test_carryover_usage_does_not_trigger_cost_budget`、`test_usage_without_carryover_has_no_carryover_flag`；界面提示文案走 `NOTICE_LABELS`，未在浏览器里触发（需要 API key 模式下两次连续强制取消）。
+- AC3（TD-19，L4）：往 dev 库写入一个排队中即被中断的 turn（`NEVER_STARTED_ERROR`）；打开抽屉选中该会话，看到原消息、灰色提示“…尚未开始运行，可以重新发送”和 [重新发送] 按钮；点击后发出的是原消息，fake 运行时回复“收到：帮我想两个关于数据库索引的选题”，按钮消失。后端另有 API 和 recovery/shutdown 单测。
+- AC5（TD-39/TD-38）：单测 `tests/agent/test_claude_web.py`（放行/拒绝/其他会话/内网地址/用户消息/LRU）+ 真实 Claude 登录冒烟 `test_topic_claude_login_native_web`（3 次 `WebFetch` 的目标全在 `WebSearch` 结果里，全部放行，证据 `data/evidence/m4-topic/smoke/20260930T045836Z-topic-claude-login-native-webfetch.json`）。被拒路径没有在真机上让模型触发。
 - T4：真实 Claude 登录冒烟 `test_claude_login_sandbox_read`（2026-09-29）通过，新增探测 `~/.ssh` 下真实文件被拒读，工作区/ls/python 等普通命令不受影响；OpenAI 路径用真实 Seatbelt 单测（`test_sensitive_home_dir_unreadable`）验证。

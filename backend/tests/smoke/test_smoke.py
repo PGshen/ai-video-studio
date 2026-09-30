@@ -654,3 +654,33 @@ async def test_topic_claude_login_native_web(tmp_path: Path) -> None:
     assert not any(u("web_search") or u("fetch_url") for u in used), (
         "native 模式下不该有自建联网工具"
     )
+
+    # TD-39: the WebFetch URL-source hook. Record what happened; a WebFetch of a URL that a
+    # WebSearch result in the same run contained must not have been denied by the hook.
+    denied_marker = "不在本会话的搜索结果或用户消息里"
+    search_text = "\n".join(str(r["text"]) for o in outcomes for r in o.tool_results("WebSearch"))
+    fetches = []
+    for o in outcomes:
+        calls = {
+            e.payload["call_id"]: e.payload["args"]
+            for e in o.events
+            if e.type == "tool_call" and e.payload["name"] == "WebFetch"
+        }
+        for r in o.tool_results("WebFetch"):
+            url = str(calls.get(r["call_id"], {}).get("url", ""))
+            fetches.append(
+                {
+                    "url": url,
+                    "is_error": r["is_error"],
+                    "denied_by_hook": denied_marker in str(r["text"]),
+                    "url_in_search_results": bool(url) and url.rstrip("/") in search_text,
+                    "text_head": str(r["text"])[:200],
+                }
+            )
+    record_evidence(
+        "topic-claude-login-native-webfetch",
+        {"search_result_head": search_text[:1500], "fetches": fetches},
+        M4_EVIDENCE_DIR,
+    )
+    for fetch in fetches:
+        assert not (fetch["denied_by_hook"] and fetch["url_in_search_results"]), fetch
