@@ -29,6 +29,10 @@ import type {
   SnapshotDiffOut,
   SnapshotOut,
   StageOut,
+  StylePresetCreate,
+  StylePresetOut,
+  StylePresetPatch,
+  StylePresetSummaryOut,
   TopicCheckOut,
   TurnAccepted,
 } from '@/types/api'
@@ -175,6 +179,35 @@ export function updateModelProfile(
 
 export function deleteModelProfile(profileId: string): Promise<void> {
   return request(`/model-profiles/${encodePathSegment(profileId)}`, { method: 'DELETE' })
+}
+
+// ---- style presets（M5，对应 `api/styles.py`）--------------------------
+
+export function listStylePresets(): Promise<StylePresetSummaryOut[]> {
+  return request('/style-presets')
+}
+
+export function getStylePreset(presetId: string): Promise<StylePresetOut> {
+  return request(`/style-presets/${encodePathSegment(presetId)}`)
+}
+
+export function createStylePreset(body: StylePresetCreate): Promise<StylePresetOut> {
+  return request('/style-presets', { method: 'POST', body })
+}
+
+export function updateStylePreset(
+  presetId: string,
+  body: StylePresetPatch,
+): Promise<StylePresetOut> {
+  return request(`/style-presets/${encodePathSegment(presetId)}`, { method: 'PATCH', body })
+}
+
+export function deleteStylePreset(presetId: string): Promise<void> {
+  return request(`/style-presets/${encodePathSegment(presetId)}`, { method: 'DELETE' })
+}
+
+export function duplicateStylePreset(presetId: string): Promise<StylePresetOut> {
+  return request(`/style-presets/${encodePathSegment(presetId)}/duplicate`, { method: 'POST' })
 }
 
 // ---- settings（M5，对应 `api/settings.py`）-----------------------------

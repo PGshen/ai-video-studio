@@ -9,6 +9,58 @@ export interface ProjectCreate {
   settings?: Record<string, unknown> | null
   /** 从选题池的想法卡片创建（卡片须为 `idea` 状态，成功后变为 `picked`）。 */
   idea_id?: string | null
+  /** 风格库里的预设 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。 */
+  style_preset_id?: string | null
+}
+
+/** 风格预设里的一个文件（`references/*` 或 `exemplars/*`）。 */
+export interface StyleFile {
+  name: string
+  text: string
+}
+
+/** `GET /api/style-presets` 的一项（不含文件内容）。 */
+export interface StylePresetSummaryOut {
+  id: string
+  name: string
+  category: string
+  description: string | null
+  reference_count: number
+  exemplar_count: number
+  is_default: boolean
+}
+
+/** 一套风格 = skill 形态的目录：入口 `STYLE.md` + `references/` + `exemplars/`（ADR 0011）。 */
+export interface StylePresetOut {
+  id: string
+  name: string
+  category: string
+  description: string | null
+  /** 入口 `STYLE.md` 全文。 */
+  content: string
+  references: StyleFile[]
+  exemplars: StyleFile[]
+  is_default: boolean
+  created_at: string
+}
+
+export interface StylePresetCreate {
+  name: string
+  category: string
+  description?: string | null
+  content: string
+  references: StyleFile[]
+  exemplars: StyleFile[]
+}
+
+/** 只含要改的字段；`references`/`exemplars` 给了就整体替换。 */
+export interface StylePresetPatch {
+  name?: string
+  category?: string
+  description?: string | null
+  content?: string
+  references?: StyleFile[]
+  exemplars?: StyleFile[]
 }
 
 export interface StageOut {

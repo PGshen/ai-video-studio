@@ -24,6 +24,8 @@ import type {
   SessionCreate,
   SettingsOut,
   SettingsPatch,
+  StylePresetCreate,
+  StylePresetPatch,
 } from '@/types/api'
 
 /** 选题池列表的视图：`null` 是未归档（后端默认），`'archived'` 是已归档。 */
@@ -53,6 +55,8 @@ export const queryKeys = {
       : queryKeys.sessions(scope.projectId, scope.stage),
   modelProfiles: () => ['model-profiles'] as const,
   settings: () => ['settings'] as const,
+  stylePresets: () => ['style-presets'] as const,
+  stylePreset: (presetId: string) => ['style-presets', presetId] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   latestJob: (projectId: string, type: string) =>
     ['projects', projectId, 'jobs', 'latest', type] as const,
@@ -312,14 +316,71 @@ export function useSettingsQuery() {
   return useQuery({ queryKey: queryKeys.settings(), queryFn: api.getSettings })
 }
 
-/** 写入后直接用响应更新缓存（后端返回的是更新后的全部设置）。 */
+/**
+ * 写入后直接用响应更新缓存（后端返回的是更新后的全部设置）。风格列表里的「默认」标记来自
+ * 设置，所以默认风格变了要让风格列表也失效。
+ */
 export function usePatchSettingsMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (patch: SettingsPatch) => api.patchSettings(patch),
     onSuccess: (settings: SettingsOut) => {
       queryClient.setQueryData(queryKeys.settings(), settings)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.stylePresets() })
     },
+  })
+}
+
+// ---- style presets（M5）-----------------------------------------------
+
+export function useStylePresetsQuery() {
+  return useQuery({ queryKey: queryKeys.stylePresets(), queryFn: api.listStylePresets })
+}
+
+export function useStylePresetQuery(presetId: MaybeRefOrGetter<string | null>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.stylePreset(toValue(presetId) ?? '')),
+    queryFn: () => api.getStylePreset(toValue(presetId) as string),
+    enabled: computed(() => toValue(presetId) !== null),
+  })
+}
+
+/** 风格的增删改复制都会改列表；删除还可能清掉默认风格设置，所以一并失效。 */
+function invalidateStyles(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.stylePresets() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.settings() })
+}
+
+export function useCreateStylePresetMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: StylePresetCreate) => api.createStylePreset(body),
+    onSuccess: () => invalidateStyles(queryClient),
+  })
+}
+
+export function useUpdateStylePresetMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: { id: string; patch: StylePresetPatch }) =>
+      api.updateStylePreset(args.id, args.patch),
+    onSuccess: () => invalidateStyles(queryClient),
+  })
+}
+
+export function useDeleteStylePresetMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (presetId: string) => api.deleteStylePreset(presetId),
+    onSuccess: () => invalidateStyles(queryClient),
+  })
+}
+
+export function useDuplicateStylePresetMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (presetId: string) => api.duplicateStylePreset(presetId),
+    onSuccess: () => invalidateStyles(queryClient),
   })
 }
 
