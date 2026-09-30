@@ -11,6 +11,7 @@ import pytest
 from studio.agent import fake
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import create_session
+from studio.db.repo.settings import update_settings
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 
 from .conftest import StudioEnv
@@ -102,6 +103,36 @@ async def test_native_mode_falls_back_to_self_built_tools_for_litellm_models(
         runtime="fake",
     )
     await h.run(session.id, [fake.say("x")])
+
+    assert h.contexts[-1].allow_web is False
+    assert WEB_TOOLS <= _tool_names(h)
+
+
+async def test_ui_override_wins_over_env_and_clearing_falls_back(env: StudioEnv) -> None:
+    """界面设置的联网模式每轮重新读取：同一个 runner 里改了，下一轮工具列表就变（M5 T1）。"""
+    h = _harness(env, "tools")
+    session = _brainstorm_session(h)
+
+    await h.run(session, [fake.say("x")])
+    assert h.contexts[-1].allow_web is False
+    assert WEB_TOOLS <= _tool_names(h)
+
+    update_settings(env.engine, {"web_mode": "native"})
+    await h.run(session, [fake.say("x")])
+    assert h.contexts[-1].allow_web is True
+    assert not (WEB_TOOLS & _tool_names(h))
+
+    update_settings(env.engine, {"web_mode": None})
+    await h.run(session, [fake.say("x")])
+    assert h.contexts[-1].allow_web is False
+    assert WEB_TOOLS <= _tool_names(h)
+
+
+async def test_ui_tools_override_beats_native_env(env: StudioEnv) -> None:
+    h = _harness(env, "native")
+    update_settings(env.engine, {"web_mode": "tools"})
+
+    await h.run(_brainstorm_session(h), [fake.say("x")])
 
     assert h.contexts[-1].allow_web is False
     assert WEB_TOOLS <= _tool_names(h)

@@ -7,9 +7,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ProjectCreate(BaseModel):
@@ -224,3 +224,32 @@ class IdeaUpdate(BaseModel):
     tags: list[str] | None = None
     scores: dict[str, Any] | None = None
     status: str | None = None
+
+
+class TtsDefaultOut(BaseModel):
+    voice: str
+    speech_rate: float
+
+
+class SettingsOut(BaseModel):
+    stage_default_profile: dict[str, str]
+    """`{阶段: 模型配置 id}`，新建会话时预选；没设置的阶段不出现。"""
+    web_mode: Literal["tools", "native"]
+    """有效的联网模式：界面覆盖优先，否则是环境变量 `STUDIO_WEB_MODE`。"""
+    web_mode_source: Literal["ui", "env"]
+    web_mode_env: Literal["tools", "native"]
+    """环境变量给出的默认值，界面「清除覆盖」后回落到它。"""
+    tts_default: TtsDefaultOut
+    """新项目的默认音色/语速；没设置时是内置默认值。"""
+    default_style_preset_id: str | None
+
+
+class SettingsPatch(BaseModel):
+    """补丁语义：只改出现的字段（`model_fields_set`）；值为 `null` 表示清除。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage_default_profile: dict[str, str | None] | None = None
+    web_mode: Literal["tools", "native"] | None = None
+    tts_default: dict[str, Any] | None = None
+    default_style_preset_id: str | None = None

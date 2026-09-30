@@ -49,6 +49,7 @@ from studio.config import Settings
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
 from studio.db.repo.sessions import get_session
+from studio.db.repo.settings import effective_web_mode
 from studio.db.repo.snapshots import latest_snapshot
 from studio.workspace import (
     BlobStore,
@@ -241,12 +242,14 @@ class TurnRunner:
             )
 
     def _tools_and_web(self, job: _Job) -> tuple[list[ToolSpec], bool]:
-        """本轮的工具列表和 `allow_web`（决策 D1）。`STUDIO_WEB_MODE=tools`：阶段自带的自建
+        """本轮的工具列表和 `allow_web`（决策 D1）。联网模式每轮读一次：界面设置（`settings` 表）
+        优先，没设置时用环境变量 `STUDIO_WEB_MODE`。`tools`：阶段自带的自建
         联网工具原样保留，运行时不开原生联网；`native`：滤掉自建联网工具，允许联网的阶段开原生联网。
         `native` 但模型走不了原生联网（经 LiteLLM 的非官方 OpenAI 兼容模型，OpenAI 运行时只在官方
         `provider == "openai"` 时加托管搜索）时回退到自建工具，否则这一轮完全没有联网能力。"""
         tools = job.stage.tools()
-        if self._settings.web_mode == "native" and _native_web_supported(job.profile):
+        web_mode = effective_web_mode(self._engine, self._settings.web_mode)
+        if web_mode == "native" and _native_web_supported(job.profile):
             return [t for t in tools if not t.web], job.stage.allow_web
         return tools, False
 

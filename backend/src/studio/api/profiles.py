@@ -18,7 +18,7 @@ from studio.db.repo.profiles import ModelProfileValue, list_model_profiles
 router = APIRouter(prefix="/api", tags=["model-profiles"])
 
 
-def _key_configured(value: ModelProfileValue) -> bool:
+def key_configured(value: ModelProfileValue) -> bool:
     if value.api_key_env is None:
         return True
     return bool(os.environ.get(value.api_key_env))
@@ -36,7 +36,7 @@ def _to_out(value: ModelProfileValue) -> ModelProfileOut:
         price_output=value.price_output,
         max_cost_per_turn=value.max_cost_per_turn,
         max_steps_per_turn=value.max_steps_per_turn,
-        key_configured=_key_configured(value),
+        key_configured=key_configured(value),
     )
 
 
