@@ -4,10 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | M5 |
 | 设计依据 | [架构设计 §3.1（`model_profiles`/`style_presets`/`settings`）、§5.4、§5.5、§6.2、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m5-polish` |
+| 验收 | 2026-09-30：负责人验收通过，合并到 main |
 | 批准记录 | 2026-09-30：负责人批准计划；确认旧项目 Postgres 已启动（T4 可直接做真实导出）；确认 TTS 真实试听产生的费用可以接受。执行方式：当前会话内联执行（沿用 M3/M4 做法，负责人批准时未另行指定）。起草前的输入（2026-09-30）：旧风格数据「你启动 Docker，我只读导出成 JSON」；风格映射问「能否做成 skill」（结论见 D1）；设置页范围全选，并新增「对话中可切换同一供应商的其他模型」和「TTS 试听（页面标注可能产生费用）」两项 |
 
 ## 目标
@@ -52,7 +53,7 @@
 - [x] AC9：回退建议后端：`suggest_upstream_change` 记录 `turn_id`、校验 `to_stage` 是调用方的直接上游（否则工具返回错误说明可选阶段）、内容去空白后非空且有长度上限；`suggestion` 事件落库并出现在 SSE（回放与实时）；`GET /api/projects/{id}/suggestions?status=`、`POST /api/suggestions/{id}/apply|dismiss`（只能从 `open` 转出，重复操作返回 409）（验证：`pytest backend/tests/stages/test_suggest_upstream_change.py backend/tests/api/test_suggestions.py backend/tests/agent/test_runner_suggestion.py`）
 - [x] AC10：设置页前端：四个子页可达；模型配置列表/编辑/新增/删除，未配置 key 的有提示，环境变量覆盖的字段只读并说明；通用页设置各阶段默认模型、联网模式（OpenAI 路径旁标注托管搜索未验证）、新项目默认音色/语速；语音页列出音色、设置默认值、试听按钮旁写明「会调用 TTS，可能产生费用」；风格库页列表、新建/复制/删除、编辑入口与引用文件与金样本、设默认（验证：vitest 纯逻辑用例 + L4 走查，截图见「验证记录」）
 - [x] AC11：工作台前端：创建项目对话框有风格选择器（预选默认风格）；会话头部可换同供应商的其他模型，运行中禁用；新建会话的模型预选取该阶段默认；项目设置对话框改音色/语速并试听；回退建议在对话流里显示卡片（去处理/忽略），上游阶段在导航上有待处理数量角标；点「去处理」跳到上游阶段并把内容预填进输入框，目标阶段已定稿时先确认并重新打开，发送后建议标为 `applied`（验证：vitest + L4 走查，含真实 Fake 运行时走完「动画提建议 → 去叙事处理 → 建议变已处理」）
-- [ ] AC12：`make check` 全绿；收尾清单（SOP §7）全部完成
+- [x] AC12：`make check` 全绿；收尾清单（SOP §7）全部完成
 
 ## 评审关注点
 
@@ -266,14 +267,11 @@
 - 2026-09-30 — T13 完成：`suggestion` 事件进时间线（`useSessionStream` 新增 `SuggestionItem`，同时让所有建议查询失效）、`SuggestionCard`（来源阶段 → 目标阶段、内容、状态徽标、「去处理」「忽略」，目标阶段已定稿先确认并重新打开，未开放时禁用并说明）、`suggestionFlow.ts`（动作、预填、跳转、角标的纯逻辑）、`PromptPrefill`（往 `PromptInput` 预填）、`SessionPanel` 的 `prefill`/`sent`、`StageNav` 阶段按钮角标、`ProjectWorkbenchPage` 读 `?suggestion=` 预填并在发送成功后标为已处理、类型/接口/hooks 同步。vitest 增到 374。L4 走查（内置浏览器；用仓储函数在开发库里造「叙事已定稿、动画进行中」的项目和一条建议，走的是与 `suggest_upstream_change` + TurnRunner 相同的落库路径）通过：动画会话里出现「回退建议：动画 → 叙事 待处理」卡片，叙事阶段按钮有角标 1；点「去处理」弹确认「先重新打开叙事阶段？」，确认后叙事阶段变 `active`、跳到 `narrative?suggestion=…`、输入框预填建议内容；新建会话并发送后建议变 `applied`、角标消失、`?suggestion=` 被清掉、输入框清空；回动画阶段卡片灰显「已处理」且没有按钮；截图 `data/evidence/m5-polish/l4/t13-*.jpg`。`make check` 全绿。前端 T10–T13 全部完成。
 - 2026-09-30 — T14 完成（文档与最终自验证部分）：ADR 0011、ARCHITECTURE（新模块、去掉「（M5）」标注）、QUALITY、tech-debt（TD-42 新登记；TD-39 的设置页提示部分进「已处理」）、glossary、runbooks（dev-setup：设置页/风格库导入/试听所需环境；verification：worktree 里做 L4 的方法、三个新冒烟用例）、AGENTS.md 命令表；新增冒烟 `suggestion_claude_login`（Claude 侧工具名前缀去掉后 `suggestion` 事件仍正确发出）；四个 M5 冒烟（`style_claude_login`、`model_switch_claude_login`、`tts_preview_real`、`suggestion_claude_login`）在最终代码上再跑一遍全部通过（145 秒）。走查用的后台 dev server 已停。
 - 2026-09-30 — 独立评审（`code-review` high）处理完毕：9 条中修 5 条（另有一条修了未在浏览器复验），跳过 3 条（详见「验证记录」），登记 TD-43；`make check` 全绿（后端 1367、前端 376）。状态改为待验收。
+- 2026-09-30 — 负责人验收通过；计划归档到 `plans/completed/`，ADR 0011/0012 的链接同步改过去；`m5-polish` 以 `--no-ff` 合并到 main，合并后的 `make check` 全绿。
 
 ## 下一步
 
-- **等负责人验收**（SOP §3 第 6 步）。验收通过后：
-  1. 计划移到 `docs/plans/completed/m5-polish.md`（状态改「已完成」），ADR 0011/0012 里指向 `../plans/active/m5-polish.md` 的链接改为 `completed/`；勾选 SOP §7 收尾清单（AC12）。
-  2. 把 `m5-polish` 用 `--no-ff` 合并到 `main`，在 main 上再跑一次 `make check`。
-  3. 在主检出导入旧风格：把 worktree 的 `data/legacy-export/styles.json` 复制到主检出的 `data/legacy-export/`（或重新 `make export-legacy-styles`），跑 `make import-legacy-styles`。
-  4. 清理 worktree。
+- 无（已验收并合并到 main）。合并后在主检出跑 `make import-legacy-styles` 把旧风格导入开发库。
 
 ## 决策记录
 
