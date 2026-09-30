@@ -46,8 +46,10 @@ from studio.db.repo.projects import (
     get_project,
     list_projects,
 )
+from studio.db.repo.settings import get_all_settings
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
+from studio.db.repo.style_presets import get_style_preset
 from studio.workspace import (
     BlobStore,
     create_snapshot,
@@ -55,6 +57,7 @@ from studio.workspace import (
     project_dir,
     remove_workspace,
 )
+from studio.workspace.style_files import render_style_files
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -108,16 +111,39 @@ def _idea_card_markdown(idea: IdeaValue) -> str:
     return "\n".join(lines)
 
 
+_STYLE_SETTING_KEYS = ("style_preset_id", "style_name")
+"""`project.settings` 里由服务端记录的风格信息；客户端传来的同名键会被丢掉。"""
+
+
+def _style_for_new_project(
+    engine: Engine, requested_id: str | None, title: str
+) -> tuple[dict[str, str], dict[str, str]]:
+    """新项目的 `style/` 文件和要记进 `project.settings` 的风格信息。
+
+    顺序：请求指定的风格（不存在 → 404）→ 设置里的默认风格 → 占位 `STYLE.md`（风格库里没有
+    可用的预设时不报错）。风格是复制进工作区的，之后与风格库脱钩（决策 D5）。
+    """
+    if requested_id is not None:
+        preset = get_style_preset(engine, requested_id)
+        if preset is None:
+            raise HTTPException(status_code=404, detail=f"风格不存在：{requested_id}")
+    else:
+        default_id = get_all_settings(engine).default_style_preset_id
+        preset = get_style_preset(engine, default_id) if default_id is not None else None
+    if preset is None:
+        placeholder = f"# {title}\n\n（未选择风格：风格库里没有可用的预设，这是一份占位。）\n"
+        return {"style/STYLE.md": placeholder}, {}
+    return render_style_files(preset), {"style_preset_id": preset.id, "style_name": preset.name}
+
+
 def _init_workspace(
     engine: Engine,
     blobs: BlobStore,
     settings: Settings,
     project_id: str,
-    title: str,
-    extra_files: dict[str, str] | None = None,
+    initial_files: dict[str, str],
 ) -> None:
-    style = f"# {title}\n\n（风格占位，风格库在 M5 实现）\n"
-    init_workspace(settings.data_dir, project_id, {"style/STYLE.md": style, **(extra_files or {})})
+    init_workspace(settings.data_dir, project_id, initial_files)
     create_snapshot(engine, blobs, project_id, reason="init")
 
 
@@ -147,6 +173,10 @@ def create_project_endpoint(
     settings: Settings = Depends(get_settings),
 ) -> ProjectOut:
     idea = _require_pickable_idea(engine, body.idea_id) if body.idea_id is not None else None
+    style_files, style_settings = _style_for_new_project(engine, body.style_preset_id, body.title)
+    client_settings = {
+        key: value for key, value in (body.settings or {}).items() if key not in _STYLE_SETTING_KEYS
+    }
     project_id = uuid4().hex
     try:
         _init_workspace(
@@ -154,15 +184,17 @@ def create_project_endpoint(
             blobs,
             settings,
             project_id,
-            body.title,
-            {IDEA_CARD_PATH: _idea_card_markdown(idea)} if idea is not None else None,
+            {
+                **style_files,
+                **({IDEA_CARD_PATH: _idea_card_markdown(idea)} if idea is not None else {}),
+            },
         )
         project = create_project(
             engine,
             id=project_id,
             title=body.title,
             idea_id=body.idea_id,
-            settings=body.settings,
+            settings={**client_settings, **style_settings},
         )
         for stage, status in _INITIAL_STAGES:
             create_stage(engine, project_id=project_id, stage=stage, status=status)

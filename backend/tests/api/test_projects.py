@@ -288,3 +288,156 @@ class TestCreateProjectFromIdea:
         project = await api_env.create_project()
         assert project["idea_id"] is None
         assert not (api_env.workdir(project["id"]) / "topic").exists()
+
+
+STYLE_ENTRY = """---
+name: 暖纸双色
+description: 暖色纸张质感的双色风格
+---
+
+先读 `references/color-scheme.md`。
+"""
+
+
+class TestCreateProjectWithStyle:
+    async def _preset(self, api_env: ApiEnv, name: str = "暖纸双色", **extra: object) -> dict:
+        response = await api_env.client.post(
+            "/api/style-presets",
+            json={
+                "name": name,
+                "category": "概念传记",
+                "content": STYLE_ENTRY,
+                "references": [{"name": "color-scheme.md", "text": "主色：暖白"}],
+                "exemplars": [{"name": "exemplar-1.json", "text": "{}"}],
+                **extra,
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def _style_files(self, api_env: ApiEnv, project_id: str) -> dict[str, str]:
+        workdir = api_env.workdir(project_id)
+        return {
+            path: files.read_text(workdir, path)
+            for path in files.list_tree(workdir)
+            if path.startswith("style/")
+        }
+
+    async def test_chosen_preset_is_written_into_style_dir_and_init_snapshot(
+        self, api_env: ApiEnv
+    ) -> None:
+        preset = await self._preset(api_env)
+
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "style_preset_id": preset["id"]}
+        )
+
+        assert response.status_code == 201, response.text
+        project = response.json()
+        assert self._style_files(api_env, project["id"]) == {
+            "style/STYLE.md": STYLE_ENTRY,
+            "style/references/color-scheme.md": "主色：暖白",
+            "style/exemplars/exemplar-1.json": "{}",
+        }
+        assert project["settings"]["style_preset_id"] == preset["id"]
+        assert project["settings"]["style_name"] == "暖纸双色"
+        snapshots = list_snapshots(api_env.app.state.engine, project["id"])
+        assert [s.reason for s in snapshots] == ["init"]
+        assert {p for p in snapshots[0].manifest if p.startswith("style/")} == {
+            "style/STYLE.md",
+            "style/references/color-scheme.md",
+            "style/exemplars/exemplar-1.json",
+        }
+
+    async def test_default_preset_is_used_when_none_is_requested(self, api_env: ApiEnv) -> None:
+        await self._preset(api_env, name="别的")
+        default = await self._preset(api_env)
+        await api_env.client.patch("/api/settings", json={"default_style_preset_id": default["id"]})
+
+        project = await api_env.create_project()
+
+        assert project["settings"]["style_preset_id"] == default["id"]
+        assert "style/references/color-scheme.md" in self._style_files(api_env, project["id"])
+
+    async def test_requested_preset_beats_the_default(self, api_env: ApiEnv) -> None:
+        default = await self._preset(api_env, name="默认")
+        chosen = await self._preset(api_env)
+        await api_env.client.patch("/api/settings", json={"default_style_preset_id": default["id"]})
+
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "style_preset_id": chosen["id"]}
+        )
+
+        assert response.json()["settings"]["style_name"] == "暖纸双色"
+
+    async def test_without_any_preset_falls_back_to_the_placeholder(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project(title="我的视频")
+
+        assert list(self._style_files(api_env, project["id"])) == ["style/STYLE.md"]
+        assert "我的视频" in self._style_files(api_env, project["id"])["style/STYLE.md"]
+        assert "style_preset_id" not in project["settings"]
+
+    async def test_presets_without_a_default_also_fall_back_to_the_placeholder(
+        self, api_env: ApiEnv
+    ) -> None:
+        await self._preset(api_env)
+
+        project = await api_env.create_project()
+
+        assert list(self._style_files(api_env, project["id"])) == ["style/STYLE.md"]
+        assert "style_preset_id" not in project["settings"]
+
+    async def test_later_edits_and_deletion_do_not_change_existing_projects(
+        self, api_env: ApiEnv
+    ) -> None:
+        preset = await self._preset(api_env)
+        project = (
+            await api_env.client.post(
+                "/api/projects", json={"title": "P", "style_preset_id": preset["id"]}
+            )
+        ).json()
+        before = self._style_files(api_env, project["id"])
+
+        await api_env.client.patch(
+            f"/api/style-presets/{preset['id']}",
+            json={"references": [{"name": "color-scheme.md", "text": "改了"}]},
+        )
+        await api_env.client.delete(f"/api/style-presets/{preset['id']}")
+
+        assert self._style_files(api_env, project["id"]) == before
+
+    async def test_unknown_preset_is_404_and_leaves_nothing(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "style_preset_id": "missing"}
+        )
+
+        assert response.status_code == 404
+        assert "风格不存在" in assert_detail(response)
+        assert (await api_env.client.get("/api/projects")).json() == []
+        projects_dir = api_env.data_dir / "projects"
+        assert not projects_dir.exists() or list(projects_dir.iterdir()) == []
+
+    async def test_style_can_be_combined_with_an_idea(self, api_env: ApiEnv) -> None:
+        preset = await self._preset(api_env)
+        idea = (await api_env.client.post("/api/ideas", json={"title": "排序为什么这么快"})).json()
+
+        response = await api_env.client.post(
+            "/api/projects",
+            json={"title": "P", "idea_id": idea["id"], "style_preset_id": preset["id"]},
+        )
+
+        assert response.status_code == 201, response.text
+        project = response.json()
+        files_in_workspace = files.list_tree(api_env.workdir(project["id"]))
+        assert "topic/notes/idea-card.md" in files_in_workspace
+        assert "style/references/color-scheme.md" in files_in_workspace
+
+    async def test_client_cannot_forge_the_recorded_style(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects",
+            json={"title": "P", "settings": {"style_name": "伪造", "style_preset_id": "x"}},
+        )
+
+        assert response.status_code == 201
+        assert "style_name" not in response.json()["settings"]
+        assert "style_preset_id" not in response.json()["settings"]

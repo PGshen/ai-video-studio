@@ -97,7 +97,7 @@
 - **完成标准**：AC2 通过。
 - **验证命令**：`make check`
 
-### T3：创建项目时选风格（待开始）
+### T3：创建项目时选风格（完成）
 
 - **目标**：项目的 `style/` 目录来自所选预设；没有预设时行为和现在一样。
 - **涉及文件**：`api/projects.py`（`_init_workspace`、`create_project_endpoint`）、`api/schemas.py`（`ProjectCreate.style_preset_id`、`ProjectOut.settings` 里记录 `style_preset_id`/`style_name`）、`workspace/files.py`（如需支持多文件初始内容，检查 `init_workspace` 现有签名是否已够用）；测试 `backend/tests/api/test_projects.py`。
@@ -253,11 +253,12 @@
 - 2026-09-30 — 计划起草；负责人批准；建分支 `m5-polish` 与 worktree `.claude/worktrees/m5-polish`。
 - 2026-09-30 — T1 完成：`db/repo/settings.py`（补丁语义、整体校验、`effective_web_mode`）、`api/settings.py`（`GET/PATCH /api/settings`，引用检查：模型配置存在/运行时已启用/key 已配置，音色在可用列表内）、`TurnRunner._tools_and_web` 每轮读有效联网模式；`engines/tts/voice_map.py` 公开 `DEFAULT_ENGINE/VOICE/SPEED` 与 `voice_aliases()`，`synthesize_tts` 改用它们；`api/profiles.key_configured` 改为公开函数。`make check` 全绿。
 - 2026-09-30 — T2 完成：迁移 0004（`description`、`reference_files` 两列）、`db/repo/style_presets.py`（校验 + CRUD + 复制）、`workspace/style_files.py::render_style_files`、`api/styles.py`（`/api/style-presets*`）；`PATCH /api/settings` 补上默认风格存在性检查，删除默认风格时清掉设置（T1 留下的一项）。`make check` 全绿（1117 个后端测试）。
+- 2026-09-30 — T3 完成：`POST /api/projects` 支持 `style_preset_id`（请求指定 → 默认风格 → 占位；id 不存在 404 且无残留），风格文件经 `render_style_files` 写入 `style/` 并进 `init` 快照，`project.settings` 记 `style_preset_id`/`style_name`（客户端传同名键会被丢掉，防伪造）；预设之后被改/删不影响已有项目。`make check` 全绿（1126 个后端测试）。
 
 ## 下一步
 
-- 做 T3（创建项目时选风格）：先在 `backend/tests/api/test_projects.py` 写失败的用例（选了风格 → `style/` 文件齐全且在 `init` 快照里；默认风格兜底；一条预设都没有 → 占位；预设之后被编辑/删除，已有项目不变；风格 id 不存在 → 404 且无残留；`idea_id` + `style_preset_id` 同时给），再改 `api/projects.py`（`_init_workspace`、`create_project_endpoint`）、`api/schemas.py`（`ProjectCreate.style_preset_id`；`project.settings` 记 `style_preset_id`、`style_name`）。用 `workspace.style_files.render_style_files` 渲染。
-- T4 的真实导出：负责人已启动旧项目 Postgres，可直接做。
+- 做 T4（旧风格导出与导入）。旧项目 Postgres 已由负责人启动。先看旧项目 `docker-compose.yml`、环境文件确认 postgres 服务名、库名、账号（只读取，不复制进本仓库），再用 `docker compose -f ../ai-video/docker-compose.yml exec -T <服务> psql` 做只读 SELECT 探一下 `style_templates` 与 `prompt_components` 的真实内容和 `style_config` 结构，据此写 `backend/tests/db/test_legacy_styles.py` 的 fixture（手写小样，结构按真实字段），再写 `backend/src/studio/db/legacy_styles.py` 与 `scripts/export_legacy_styles.sh`。导入用 T2 的 `create_style_preset`，校验失败的模板进报告。
+- 注意红线：不改 `../ai-video` 的任何文件；不 import 旧代码；只执行 SELECT。
 
 ## 决策记录
 
