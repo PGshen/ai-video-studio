@@ -30,6 +30,7 @@
 | `make check-fast` | pre-commit 运行的快速子集 |
 | `make dev` | 启动 api、worker、frontend 三个进程 |
 | `make smoke` | 需要真实 API key 的冒烟测试（默认不包含在 `make check` 中） |
+| `make export-legacy-styles` / `make import-legacy-styles` | 一次性迁移旧项目的风格库（只读导出 → 导入），见 [dev-setup](docs/runbooks/dev-setup.md) |
 
 运行和自验证的方法见 [docs/runbooks/verification.md](docs/runbooks/verification.md)，环境搭建见 [docs/runbooks/dev-setup.md](docs/runbooks/dev-setup.md)。
 

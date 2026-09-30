@@ -948,3 +948,63 @@ async def test_tts_preview_real(tmp_path: Path) -> None:
     finally:
         evidence["durations"] = {f"{v}@{s}": d for (v, s), d in durations.items()}
         record_evidence("tts-preview-real", evidence, M5_EVIDENCE_DIR)
+
+
+# ---- M5 T9/T13: 回退建议经真实 Claude 的完整路径（本机登录）----------------------------------
+
+_SUGGESTION_PROMPT = (
+    "这是自动化测试。假设上游选题简报里的第一条关键事实缺少可靠出处。请调用一次 "
+    "suggest_upstream_change 工具，to_stage 填 topic，content 用一句话说明这条事实需要补充出处。"
+    "除此之外不要做任何事，不要写文件，不要调用其他工具。"
+)
+
+
+async def test_suggestion_claude_login(tmp_path: Path) -> None:
+    """Claude 侧业务工具带 `mcp__studio__` 前缀：确认去掉前缀后 TurnRunner 仍然认出
+    `suggest_upstream_change`，并给会话发了持久的 `suggestion` 事件、建议记录了 `turn_id`。"""
+    from studio.db.repo.suggestions import list_suggestions
+
+    from .support import M5_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    harness = build_harness(tmp_path, real_stages=True)
+    evidence: dict[str, Any] = {}
+    try:
+        brief = harness.workdir / "topic" / "brief.md"
+        brief.parent.mkdir(parents=True, exist_ok=True)
+        brief.write_text(
+            (Path(__file__).resolve().parents[1] / "fixtures" / "narrative" / "brief.md").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "topic")
+        profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
+        session_id = harness.session(profile, "claude", stage="narrative")
+
+        outcome = await harness.turn(session_id, _SUGGESTION_PROMPT)
+        rows = list_suggestions(harness.engine, harness.project_id)
+        suggestion_events = [e for e in outcome.events if e.type == "suggestion"]
+        evidence.update(
+            {
+                **outcome_summary(outcome),
+                "suggestions": [
+                    {"to_stage": r.to_stage, "status": r.status, "turn_id": r.turn_id} for r in rows
+                ],
+            }
+        )
+
+        assert outcome.turn.status == "done", (outcome.turn.status, outcome.turn.error)
+        assert outcome.used_tool("suggest_upstream_change"), outcome.tool_names
+        assert len(rows) == 1, rows
+        assert (rows[0].from_stage, rows[0].to_stage, rows[0].status) == (
+            "narrative",
+            "topic",
+            "open",
+        )
+        assert rows[0].turn_id == outcome.turn.id
+        assert len(suggestion_events) == 1, "工具成功后应该恰好发一条 suggestion 事件"
+        assert suggestion_events[0].payload["suggestion_id"] == rows[0].id
+    finally:
+        record_evidence("suggestion-claude-login", evidence, M5_EVIDENCE_DIR)
+        harness.engine.dispose()

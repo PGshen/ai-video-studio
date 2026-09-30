@@ -40,6 +40,20 @@ make setup
 - 默认（`STUDIO_WEB_MODE=tools`）用自建的 `web_search`/`fetch_url`，后端是 Tavily：在 `backend/.env` 里填 `TAVILY_API_KEY`（裸环境变量，不带 `STUDIO_` 前缀，同 `VOLCENGINE_TTS_API_KEY`；`make dev`/`make smoke` 会导出）。免费额度够单人使用。没有 key 时这两个工具返回可读的错误，不会让一轮失败。
 - `STUDIO_WEB_MODE=native`：改用运行时原生联网（Claude `WebSearch`/`WebFetch`；OpenAI 托管搜索），不需要 Tavily key，但没有「URL 来源」限制，提示注入外泄的风险回到 M1x 关闭联网前的状态，见 `docs/decisions/0010-联网模式开关.md`。OpenAI 路径经 OpenRouter 时托管搜索是否可用未验证。
 - 两种模式互斥；narrative 和 animation 阶段在任何模式下都没有联网能力。
+- 联网模式也可以在设置页（设置 → 通用）里切换，界面设置**覆盖**环境变量、下一轮对话起生效；「清除界面设置」回到环境变量的值（M5）。
+
+## 设置页、风格库与语音（M5）
+
+- **设置页**（`/settings`）：模型配置（增改删、单价、每轮预算；API key 的值仍然只放 `backend/.env`，界面只填环境变量的**名字**；由 `STUDIO_*` 网关变量决定的字段界面里只读）、风格库、语音、通用（各阶段默认模型、联网模式）。
+- **旧项目的风格库**（一次性）：先在旧项目目录 `docker compose up -d postgres`，再在本仓库
+
+  ```bash
+  make export-legacy-styles   # 只读导出到 data/legacy-export/styles.json（不改旧项目任何文件）
+  make import-legacy-styles   # 导入风格库；同名预设默认跳过，IMPORT_ARGS=--overwrite 才覆盖
+  ```
+
+  在 worktree 里开发时，`data/` 是 worktree 自己的目录，导入的风格不会出现在主检出的数据库里；合并后在主检出再跑一次（导出 JSON 复制过去，或重新导出）。
+- **语音试听**会真实调用火山引擎 TTS（可能产生少量费用，同一音色+语速只合成一次、之后走 `data/tts-preview/` 缓存）：需要 `backend/.env` 里的 `VOLCENGINE_TTS_API_KEY`（裸环境变量，`make dev`/`make smoke` 会导出；手动起 uvicorn 要先 `set -a; . backend/.env; set +a`，否则试听返回 503 并提示去配置）。
 
 ## 模型网关（可选）
 

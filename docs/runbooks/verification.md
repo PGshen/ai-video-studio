@@ -16,6 +16,10 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
 - 截图和日志放在 `data/evidence/<计划 id>/`（不进 git），计划里写明路径。
 - 如果某条验收标准无法验证（例如缺少 key），就明确写出"未验证"和原因，不能写成"通过"。
 
+## 在 worktree 里做 L4（浏览器走查）
+
+`.claude/launch.json` 的 `cwd` 是相对路径，`preview_start` 按**主检出**解析，所以在 worktree 里用它起的服务跑的是主检出（通常是旧）的代码。要走查 worktree 里的改动：直接在 worktree 里后台起两个进程——api：先 `set -a; . backend/.env; set +a`（否则读不到真实模型和 TTS/Tavily 的 key），再 `cd backend && STUDIO_ENABLE_FAKE_RUNTIME=true uv run uvicorn studio.main:app --reload --reload-dir src --host 127.0.0.1 --port 8000`；前端：`cd frontend && pnpm run dev`；然后用内置浏览器 `navigate` 到 `http://localhost:5173`。`backend/.env` 被 gitignore，worktree 里没有，可以做一个指向主检出的符号链接。第一次打开刚新增了组件的页面时可能因为热更新出现一次空白，重载即可。
+
 ## 冒烟测试（`make smoke`）
 
 - 命令：`make smoke`。它先导出 `backend/.env`（同 `scripts/dev.sh`），再在 `env -i` 白名单环境里运行 `cd backend && uv run pytest -m smoke -v -rs`；默认的 `make check` 用 `addopts = "-m 'not smoke'"` 排除这些用例。
@@ -30,6 +34,7 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
   - `test_topic_claude_login` / `test_topic_claude_login_native_web`（M4）：本机 Claude 登录，真实的 topic 阶段。前者 `tools` 模式（需要 `TAVILY_API_KEY`）断言用了自建 `web_search`、没有原生联网；后者 `STUDIO_WEB_MODE=native`，断言用了原生 `WebSearch`/`WebFetch`、没有自建联网工具。两者都要求写出 `topic/brief.md` 且 `check_brief` 没有错误（允许一次「根据 check_brief 继续」的追加轮）。命令：`make smoke SMOKE_ARGS="-k topic_claude_login"`（一次约 3–4 分钟）。
   - `test_style_claude_login`（M5）：本机 Claude 登录，验证风格目录被按需读取。前置：先 `make export-legacy-styles`（旧项目 Postgres 容器在运行时只读导出到 `data/legacy-export/styles.json`；没有这个文件用例自动跳过）。用例在临时数据目录里导入它，用「概念传记·纸上溯源」建项目，叙事一轮（上游简报用 `tests/fixtures/narrative/brief.md` 定稿）断言动笔写 `narrative/narrative.json` **之前**读过 `style/STYLE.md`、`style/references/narrative-blueprint.md`、`style/exemplars/`，产物通过 `validate_narrative`；动画一轮（叙事换成 `tests/fixtures/animation/` 的 fixture 定稿）断言写 `animation/scenes/` 之前读过配色和动画风格，`validate_scenes` 通过；两轮都不写 `style/`。证据写到 `data/evidence/m5-polish/smoke/`。命令：`make smoke SMOKE_ARGS="-k style_claude_login"`（约 2 分钟）。
   - `test_model_switch_claude_login`（M5）：本机 Claude 登录，验证会话内换模型（ADR 0012）。同一个会话第一轮用 `claude-login`（`claude-sonnet-5`）说一条项目背景，用 `set_session_model_if_idle` 换成同一登录下的 Haiku 配置，第二轮问背景：断言 `sdk_ref` 不变、答得出、`usage.model` 是 Haiku、时间线上有一条 `model_switched` 的 `notice`。提示词不能用“暗号”之类的说法（模型会当成可疑指令拒绝，首次实测踩过）。命令：`make smoke SMOKE_ARGS="-k model_switch_claude_login"`（约 20 秒）。
+  - `test_suggestion_claude_login`（M5）：本机 Claude 登录，narrative 阶段（上游简报用 fixture 定稿）让 agent 调一次 `suggest_upstream_change`（`to_stage=topic`）。断言：`suggestions` 表恰好一行（`narrative → topic`、`open`、记录了 `turn_id`），会话里恰好一条持久的 `suggestion` 事件——确认 Claude 侧业务工具带的 `mcp__studio__` 前缀去掉后 TurnRunner 仍认得它。命令：`make smoke SMOKE_ARGS="-k suggestion_claude_login"`（约 15 秒）。
   - `test_tts_preview_real`（M5）：需要 `VOLCENGINE_TTS_API_KEY`。经 `POST /api/tts/preview` 真实合成 5 段固定示例文本（`zizi` 1.0/0.5/2.0、`xiaohe` 1.2、`yunzhou` 1.0；真实付费，费用很小），断言状态、`audio/mpeg`、mp3 时长，边界语速 0.5/2.0 被接受且确实生效（0.5 比 1.0 长、2.0 比 1.0 短），同一组合第二次命中缓存（缓存文件数不变）。音频和观察写到 `data/evidence/m5-polish/smoke/`。命令：`make smoke SMOKE_ARGS="-k tts_preview_real"`（约 15 秒）。
 - 冒烟前在 `backend/.env` 设置网关（负责人要求，F2）：`STUDIO_ANTHROPIC_BASE_URL=https://ccproxy.yukework.com`（`test_claude_api_key` 经网关）、`STUDIO_OPENAI_BASE_URL=https://openrouter.ai/api/v1` 与 `STUDIO_OPENAI_MODEL=openai/gpt-6-luna`（必须选支持 `apply_patch` 工具的型号，gpt-5 不支持，见 ADR 0008）（`test_openai_responses` 经 OpenRouter，`OPENAI_API_KEY` 填 OpenRouter key）。`make smoke` 的白名单会带上所有 `STUDIO_*`，`build_harness` 用同一个 `Settings` 调种子，用例的模型配置从种子行复制，所以会用上这些值；不设则直连官方 API。经 OpenRouter 时 `gpt` 没有 Shell，用 `apply_patch` 建文件。
 - 缺少某个 key 时，对应的用例会被跳过，并在输出中说明原因；结论记为"未验证"。
