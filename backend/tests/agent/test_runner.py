@@ -27,6 +27,7 @@ from studio.db.repo.sessions import create_session, get_session
 from studio.db.repo.snapshots import get_snapshot, latest_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
 from studio.db.repo.turns import (
+    NEVER_STARTED_ERROR,
     TurnValue,
     create_turn_if_session_idle,
     get_turn,
@@ -305,6 +306,40 @@ class TestBudget:
         assert turn.status == "budget_exceeded"
         assert turn.cost_usd == pytest.approx(1.2)
         assert turn.end_snapshot_id is not None
+
+    async def test_carryover_usage_does_not_trigger_cost_budget(self, env: StudioEnv) -> None:
+        """TD-25: the residual of a previously aborted turn cannot be separated from this
+        turn's own cost, so a Usage that includes it is not judged against the budget."""
+        h = _make_harness(env)
+        _set_profile_limits(env, max_cost_per_turn=1.0)
+
+        class AfterAbort:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                yield events.Usage(
+                    input_tokens=10,
+                    output_tokens=10,
+                    cost_usd=5.0,
+                    auth="api_key",
+                    includes_carryover=True,
+                )
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session(profile="limited")
+        turn = await h.run(session_id, AfterAbort)
+
+        assert turn.status == "done"
+        assert turn.cost_usd == pytest.approx(5.0)
+        assert turn.usage is not None and turn.usage["includes_carryover"] is True
+        notices = [r.payload for r in list_events(env.engine, session_id) if r.type == "notice"]
+        assert [n["kind"] for n in notices] == ["cost_carryover"]
+
+    async def test_usage_without_carryover_has_no_carryover_flag(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+        session_id = h.session()
+
+        turn = await h.run(session_id, [fake.use_cost(0.1)])
+
+        assert turn.usage is not None and turn.usage["includes_carryover"] is False
 
     async def test_cost_is_advisory_for_login_auth(self, env: StudioEnv) -> None:
         h = _make_harness(env)
@@ -837,6 +872,9 @@ class TestRecovery:
         queued_after = get_turn(h.env.engine, queued.id)
         assert running_after is not None and queued_after is not None
         assert running_after.status == queued_after.status == "interrupted"
+        # TD-19: only the turn that never started is marked as such.
+        assert queued_after.error == NEVER_STARTED_ERROR
+        assert running_after.error is None
         partial = get_snapshot(h.env.engine, running_after.end_snapshot_id or "")
         assert partial is not None and partial.reason == "partial"
         assert "topic/brief.md" in partial.manifest
@@ -939,6 +977,9 @@ class TestShutdown:
         for turn_id in (first, second):
             turn = get_turn(env.engine, turn_id)
             assert turn is not None and turn.status == "interrupted", turn_id
+        first_turn, second_turn = get_turn(env.engine, first), get_turn(env.engine, second)
+        assert first_turn is not None and first_turn.error is None
+        assert second_turn is not None and second_turn.error == NEVER_STARTED_ERROR  # TD-19
         assert not h.scripts  # the queued turn never started a runtime
 
 

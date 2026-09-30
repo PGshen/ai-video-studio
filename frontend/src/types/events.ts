@@ -67,7 +67,7 @@ export interface SnapshotEventPayload {
   seq: number
 }
 
-/** `kind` 已知取值：`cost_unpriced`、`budget_exceeded`、`guard_restored`。 */
+/** `kind` 已知取值：`cost_unpriced`、`cost_carryover`、`budget_exceeded`、`guard_restored`。 */
 export interface NoticePayload {
   turn_id: string
   kind: string

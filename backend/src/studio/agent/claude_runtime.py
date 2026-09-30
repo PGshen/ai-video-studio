@@ -58,7 +58,7 @@ from claude_agent_sdk import (
     ResultMessage,
     create_sdk_mcp_server,
 )
-from claude_agent_sdk.types import McpServerConfig
+from claude_agent_sdk.types import HookEvent, McpServerConfig
 
 from studio.agent import events
 from studio.agent.claude_env import MissingApiKeyError, build_env
@@ -76,6 +76,12 @@ from studio.agent.claude_scope import (
     read_scope_hook,
     sandbox_settings,
     write_scope_hook,
+)
+from studio.agent.claude_web import (
+    WEB_FETCH_TOOL,
+    WEB_SEARCH_TOOL,
+    web_fetch_hook,
+    web_search_collect_hook,
 )
 from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext
 from studio.config import Settings
@@ -236,6 +242,24 @@ class ClaudeRuntime:
             hooks=[write_scope_hook(workdir, ctx.write_scope)],
         )
         read_hook = HookMatcher(matcher="|".join(READ_TOOLS), hooks=[read_scope_hook(workdir)])
+        pre_hooks = [write_hook, read_hook]
+        post_hooks: list[HookMatcher] = []
+        if ctx.allow_web:
+            # Native web mode: apply the same "URL source" rule as the self-built
+            # fetch_url tool (TD-39).
+            pre_hooks.append(
+                HookMatcher(
+                    matcher=WEB_FETCH_TOOL, hooks=[web_fetch_hook(ctx.engine, ctx.session_id)]
+                )
+            )
+            post_hooks.append(
+                HookMatcher(
+                    matcher=WEB_SEARCH_TOOL, hooks=[web_search_collect_hook(ctx.session_id)]
+                )
+            )
+        hooks: dict[HookEvent, list[HookMatcher]] = {"PreToolUse": pre_hooks}
+        if post_hooks:
+            hooks["PostToolUse"] = post_hooks
         return ClaudeAgentOptions(
             model=ctx.model_profile.model,
             cwd=ctx.workdir,
@@ -248,7 +272,7 @@ class ClaudeRuntime:
             permission_mode="acceptEdits",
             resume=ctx.resume_ref,
             env=env,
-            hooks={"PreToolUse": [write_hook, read_hook]},
+            hooks=hooks,
             sandbox=sandbox_settings(workdir, self._repo_root, self._data_dir),
             include_partial_messages=True,
             # The prompt embeds workspace-derived text (preamble); never expand @paths in it.

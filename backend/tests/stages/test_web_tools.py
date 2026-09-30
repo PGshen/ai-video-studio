@@ -8,11 +8,12 @@ import pytest
 from sqlalchemy import Engine
 
 from studio.agent.tools import ToolContext, ToolResult, invoke_tool
+from studio.agent.url_source import normalize_url, urls_in
 from studio.db.repo.sessions import create_session
 from studio.db.repo.turns import create_turn_if_session_idle
 from studio.search import ExtractedPage, SearchError, SearchHit, SearchResponse
 from studio.stages.common import web_tools
-from studio.stages.common.web_tools import FETCH_URL_TOOL, WEB_SEARCH_TOOL, normalize_url
+from studio.stages.common.web_tools import FETCH_URL_TOOL, WEB_SEARCH_TOOL
 
 
 class FakeProvider:
@@ -266,7 +267,7 @@ class TestFetchUrlProvenance:
 
 class TestUserUrlExtraction:
     def test_keeps_balanced_parentheses_and_strips_sentence_punctuation(self) -> None:
-        urls = web_tools._urls_in(
+        urls = urls_in(
             "看 https://en.wikipedia.org/wiki/Foo_(bar)，还有（https://a.com/x）。"
             "以及 [链接](https://b.com/y) 和 https://c.com/z."
         )

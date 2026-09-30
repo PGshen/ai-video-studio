@@ -7,6 +7,7 @@ describe('computeTurnControls', () => {
       inputDisabled: false,
       showStop: false,
       showContinue: false,
+      continueLabel: '继续',
     })
   })
 
@@ -15,6 +16,7 @@ describe('computeTurnControls', () => {
       inputDisabled: true,
       showStop: true,
       showContinue: false,
+      continueLabel: '继续',
     })
   })
 
@@ -25,15 +27,31 @@ describe('computeTurnControls', () => {
         inputDisabled: false,
         showStop: false,
         showContinue: true,
+        continueLabel: '继续',
       })
     },
   )
+
+  it('interrupted 且从未开始运行：按钮改为"重新发送"（TD-19）', () => {
+    expect(computeTurnControls('interrupted', true)).toEqual({
+      inputDisabled: false,
+      showStop: false,
+      showContinue: true,
+      continueLabel: '重新发送',
+    })
+  })
+
+  it('neverStarted 只对 interrupted 生效', () => {
+    expect(computeTurnControls('budget_exceeded', true).continueLabel).toBe('继续')
+    expect(computeTurnControls('done', true).showContinue).toBe(false)
+  })
 
   it.each(['done', 'failed', 'cancelled'] as const)('%s：输入可用，两个按钮都不显示', (status) => {
     expect(computeTurnControls(status)).toEqual({
       inputDisabled: false,
       showStop: false,
       showContinue: false,
+      continueLabel: '继续',
     })
   })
 })

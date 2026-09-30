@@ -3,12 +3,18 @@
  * 选题池页面（计划 M4）：想法卡片网格 + 可展开的头脑风暴面板。
  * 面板是页面层的开关，不属于卡片网格；两者都在 `features/ideas/`，由页面组合。
  */
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import BrainstormDrawer from '@/features/ideas/BrainstormDrawer.vue'
 import IdeaGrid from '@/features/ideas/IdeaGrid.vue'
 import { Button } from '@/components/ui/button'
 
 const chatOpen = ref(false)
+// 第一次打开后保持挂载（TD-40）：收起只是隐藏，SSE 不断开，agent 在后台建的卡片仍实时出现在网格里。
+// 从没打开过时不挂载，免得页面一加载就去请求会话列表。
+const chatMounted = ref(false)
+watch(chatOpen, (open) => {
+  if (open) chatMounted.value = true
+})
 </script>
 
 <template>
@@ -33,7 +39,8 @@ const chatOpen = ref(false)
         <IdeaGrid />
       </div>
       <BrainstormDrawer
-        v-if="chatOpen"
+        v-if="chatMounted"
+        v-show="chatOpen"
         @close="chatOpen = false"
       />
     </div>

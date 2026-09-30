@@ -90,6 +90,7 @@ describe('useSessionStream', () => {
             usage: null,
             cost_usd: 0,
             error: null,
+            never_started: false,
             created_at: '2026-01-01T00:00:00Z',
             updated_at: '2026-01-01T00:00:01Z',
           },
@@ -104,7 +105,7 @@ describe('useSessionStream', () => {
     const [url, options] = openStreamMock.mock.calls[0]!
     expect(url).toBe('/api/sessions/s1/stream')
     expect(options.afterSeq).toBe(0)
-    expect(result.turnStatus.value).toEqual({ turnId: 't1', status: 'done', error: null })
+    expect(result.turnStatus.value).toMatchObject({ turnId: 't1', status: 'done', error: null })
     // 挂载时还没有任何 SSE 事件到达，用户消息要等第一条属于这个 turn 的
     // 事件到达才插入（见 composable 文档里的排列规则）。
     expect(result.items.value).toEqual([])
@@ -268,7 +269,7 @@ describe('useSessionStream', () => {
 
     onEvent(frame('turn_status', { turn_id: 't2', status: 'running', error: null, seq: null }))
 
-    expect(result.turnStatus.value).toEqual({ turnId: 't2', status: 'running', error: null })
+    expect(result.turnStatus.value).toMatchObject({ turnId: 't2', status: 'running', error: null })
   })
 
   it('审查回归：sessionId 在 loadHistory 完成前又变化，慢的历史结果不生效、不会多开连接', async () => {
@@ -477,6 +478,7 @@ describe('useSessionStream', () => {
         usage: null,
         cost_usd: null,
         error: null,
+        never_started: false,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
       }
@@ -498,7 +500,47 @@ describe('useSessionStream', () => {
       await flushAsync()
 
       expect(getSessionMock).toHaveBeenCalledTimes(2)
-      expect(result.turnStatus.value).toEqual({ turnId: 't1', status: 'done', error: null })
+      expect(result.turnStatus.value).toMatchObject({ turnId: 't1', status: 'done', error: null })
+    })
+
+    it('TD-19：重启后排队中的 turn 是 interrupted + neverStarted，带上原消息', async () => {
+      getSessionMock.mockResolvedValueOnce(
+        sessionDetail({
+          turns: [
+            {
+              ...turn('interrupted'),
+              start_snapshot_id: null,
+              end_snapshot_id: null,
+              error: '还在排队，尚未开始运行',
+              never_started: true,
+            },
+          ],
+        }),
+      )
+      const { result } = await setup('s1')
+
+      expect(result.turnStatus.value).toMatchObject({
+        status: 'interrupted',
+        neverStarted: true,
+        userMessage: '你好',
+      })
+      // No events will ever arrive for it, so its message is shown from the history.
+      expect(result.items.value).toEqual([{ kind: 'user_message', turnId: 't1', text: '你好' }])
+    })
+
+    it('TD-19：收到 interrupted 的 turn_status 后重新拉取会话，拿到 neverStarted', async () => {
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turn('running')] }))
+      const { result } = await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+      getSessionMock.mockResolvedValueOnce(
+        sessionDetail({ turns: [{ ...turn('interrupted'), never_started: true }] }),
+      )
+
+      onEvent(frame('turn_status', { turn_id: 't1', status: 'interrupted', error: null }))
+      await flushAsync()
+
+      expect(getSessionMock).toHaveBeenCalledTimes(2)
+      expect(result.turnStatus.value).toMatchObject({ status: 'interrupted', neverStarted: true })
     })
 
     it('刷新请求期间先到达的 turn_status 不被旧响应覆盖', async () => {
@@ -521,7 +563,7 @@ describe('useSessionStream', () => {
       resolveRefresh(sessionDetail({ turns: [turn('done')] }))
       await flushAsync()
 
-      expect(result.turnStatus.value).toEqual({ turnId: 't2', status: 'running', error: null })
+      expect(result.turnStatus.value).toMatchObject({ turnId: 't2', status: 'running', error: null })
     })
 
     it('当前运行中 turn 的 snapshot 事件触发刷新', async () => {

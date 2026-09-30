@@ -18,6 +18,7 @@ from claude_agent_sdk.types import (
     SandboxSettings,
 )
 
+from studio.agent.sandbox_paths import sensitive_home_dirs
 from studio.workspace.scope import WriteScope, is_writable
 
 GUARDED_WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
@@ -41,8 +42,11 @@ class StudioSandboxSettings(SandboxSettings, total=False):
     filesystem: Required[SandboxFilesystem]
 
 
-def sandbox_settings(workdir: Path, repo_root: Path, data_dir: Path) -> StudioSandboxSettings:
-    """本轮的 Bash sandbox（TD-1）：拒读仓库和数据目录，再放回当前工作区。
+def sandbox_settings(
+    workdir: Path, repo_root: Path, data_dir: Path, *, home: Path | None = None
+) -> StudioSandboxSettings:
+    """本轮的 Bash sandbox（TD-1）：拒读仓库、数据目录和主目录下的凭据目录
+    （`sandbox_paths.sensitive_home_dirs`，TD-27），再放回当前工作区。
 
     CLI 的 `allowRead` 优先于 `denyRead`（2026-09-28 实测，见
     docs/references/claude-agent-sdk.md），所以拒读父目录后能放回其下的工作区；
@@ -55,7 +59,11 @@ def sandbox_settings(workdir: Path, repo_root: Path, data_dir: Path) -> StudioSa
         # Without this the model can opt out per command via dangerouslyDisableSandbox.
         "allowUnsandboxedCommands": False,
         "filesystem": {
-            "denyRead": [str(repo_root.resolve()), str(data_dir.resolve())],
+            "denyRead": [
+                str(repo_root.resolve()),
+                str(data_dir.resolve()),
+                *(str(path) for path in sensitive_home_dirs(home)),
+            ],
             "allowRead": [str(workdir.resolve())],
         },
     }

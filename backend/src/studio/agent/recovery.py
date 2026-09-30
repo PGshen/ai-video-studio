@@ -53,7 +53,13 @@ def _recover_turn(runner: TurnRunner, turn: turns_repo.TurnValue) -> None:
             end_snapshot_id = snapshot.id
         except Exception:
             logger.exception("turn %s 恢复时快照失败", turn.id)
-    turns_repo.interrupt_turn(runner._engine, turn.id, end_snapshot_id=end_snapshot_id)
+    turns_repo.interrupt_turn(
+        runner._engine,
+        turn.id,
+        end_snapshot_id=end_snapshot_id,
+        # TD-19: a turn that was still queued never ran; let [继续] re-send its message.
+        error=turns_repo.NEVER_STARTED_ERROR if turn.status == "queued" else None,
+    )
 
 
 def _guard_recovered_turn(

@@ -358,6 +358,12 @@ async def test_claude_login_sandbox_read() -> None:
             "other-project": other,
             "data-dir-file": canary,
         }
+        # TD-27: credentials under the home dir are denied too (only when the machine has some).
+        ssh_files = sorted(p for p in (Path.home() / ".ssh").glob("*") if p.is_file())
+        denied = ["backend-env", "repo-file", "other-project", "data-dir-file"]
+        if ssh_files:
+            targets["home-ssh"] = ssh_files[0]
+            denied.append("home-ssh")
         (h.workdir / "topic" / "probe.sh").write_text(_probe_script(targets), encoding="utf-8")
 
         profile = h.profile("claude-login", max_steps_per_turn=MAX_STEPS)
@@ -373,7 +379,7 @@ async def test_claude_login_sandbox_read() -> None:
         assert outcome.turn.status == "done", outcome.turn.error
         for name in ("workspace", "workspace-abs"):
             assert f"READABLE {name}" in output, output
-        for name in ("backend-env", "repo-file", "other-project", "data-dir-file"):
+        for name in denied:
             assert f"DENIED {name}" in output, output
         for marker in (SANDBOX_MARKER, "ls-ok", "usr-bin-ok", "py-ok"):
             assert marker in output, output
@@ -648,3 +654,33 @@ async def test_topic_claude_login_native_web(tmp_path: Path) -> None:
     assert not any(u("web_search") or u("fetch_url") for u in used), (
         "native 模式下不该有自建联网工具"
     )
+
+    # TD-39: the WebFetch URL-source hook. Record what happened; a WebFetch of a URL that a
+    # WebSearch result in the same run contained must not have been denied by the hook.
+    denied_marker = "不在本会话的搜索结果或用户消息里"
+    search_text = "\n".join(str(r["text"]) for o in outcomes for r in o.tool_results("WebSearch"))
+    fetches = []
+    for o in outcomes:
+        calls = {
+            e.payload["call_id"]: e.payload["args"]
+            for e in o.events
+            if e.type == "tool_call" and e.payload["name"] == "WebFetch"
+        }
+        for r in o.tool_results("WebFetch"):
+            url = str(calls.get(r["call_id"], {}).get("url", ""))
+            fetches.append(
+                {
+                    "url": url,
+                    "is_error": r["is_error"],
+                    "denied_by_hook": denied_marker in str(r["text"]),
+                    "url_in_search_results": bool(url) and url.rstrip("/") in search_text,
+                    "text_head": str(r["text"])[:200],
+                }
+            )
+    record_evidence(
+        "topic-claude-login-native-webfetch",
+        {"search_result_head": search_text[:1500], "fetches": fetches},
+        M4_EVIDENCE_DIR,
+    )
+    for fetch in fetches:
+        assert not (fetch["denied_by_hook"] and fetch["url_in_search_results"]), fetch

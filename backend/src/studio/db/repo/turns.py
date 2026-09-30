@@ -19,6 +19,10 @@ from studio.db.models import Session, Turn, TurnEvent
 
 UNFINISHED_TURN_STATUSES = ("queued", "running")
 
+NEVER_STARTED_ERROR = "进程重启或关闭前这一轮还在排队，尚未开始运行，可以重新发送"
+"""排队中的 turn 被 `interrupted` 时写进 `error`（TD-19）：`turns` 表没有"是否开始过"的列，
+用这条固定文案标记，API 据此把 [继续] 变成"重发原消息"。"""
+
 
 @dataclass(frozen=True, slots=True)
 class TurnValue:
@@ -209,13 +213,17 @@ def list_unfinished_turns(engine: Engine) -> list[TurnValue]:
         return [_turn_value(row) for row in rows]
 
 
-def interrupt_turn(engine: Engine, turn_id: str, *, end_snapshot_id: str | None) -> None:
+def interrupt_turn(
+    engine: Engine, turn_id: str, *, end_snapshot_id: str | None, error: str | None = None
+) -> None:
     """turn → `interrupted`，所属会话 → `interrupted`（同一事务）。"""
     with session_scope(engine) as db:
         turn = db.get(Turn, turn_id)
         if turn is None:
             raise KeyError(turn_id)
         turn.status = "interrupted"
+        if error is not None:
+            turn.error = error
         if end_snapshot_id is not None:
             turn.end_snapshot_id = end_snapshot_id
         session = db.get(Session, turn.session_id)

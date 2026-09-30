@@ -58,6 +58,7 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
         "input_tokens": state.input_tokens,
         "output_tokens": state.output_tokens,
         "steps": state.steps,
+        "includes_carryover": state.cost_carryover,
     }
     finish_turn_row(
         runner,

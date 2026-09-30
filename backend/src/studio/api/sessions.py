@@ -14,6 +14,7 @@ T9/T10 之后由 `main` 注册的 `claude`/`openai`）——两种情况都属�
 
 `POST .../continue`（控制者裁定 2）只对最近一个 turn 处于 `interrupted`/
 `budget_exceeded` 的会话开放，发送固定文本"继续"；否则 409。
+从未开始运行的 turn（重启时还在排队）改为重发它的原消息（TD-19）。
 
 SSE（`GET /sessions/{id}/stream`，控制者裁定 4）：`_stream_events` 是这个
 端点的核心逻辑，写成一个独立的模块级异步生成器，方便测试直接调用（不经过
@@ -111,6 +112,10 @@ def session_out(value: SessionValue) -> SessionOut:
     )
 
 
+def _never_started(value: TurnValue) -> bool:
+    return value.status == "interrupted" and value.error == turns_repo.NEVER_STARTED_ERROR
+
+
 def _turn_out(value: TurnValue) -> TurnOut:
     return TurnOut(
         id=value.id,
@@ -122,6 +127,7 @@ def _turn_out(value: TurnValue) -> TurnOut:
         usage=value.usage,
         cost_usd=value.cost_usd,
         error=value.error,
+        never_started=_never_started(value),
         created_at=value.created_at,
         updated_at=value.updated_at,
     )
@@ -232,7 +238,9 @@ async def continue_session_endpoint(
     if turn is None or turn.status not in _RESUMABLE_TURN_STATUSES:
         raise HTTPException(status_code=409, detail="当前会话没有可以继续的一轮")
     try:
-        turn_id = await turn_runner.start_turn(session_id, UserInput(text=CONTINUE_TEXT))
+        # TD-19: a turn that never started (still queued at restart) is re-sent as is.
+        text = turn.user_message if _never_started(turn) else CONTINUE_TEXT
+        turn_id = await turn_runner.start_turn(session_id, UserInput(text=text))
     except SessionBusyError as exc:
         raise HTTPException(status_code=409, detail="会话正忙，请等待当前一轮结束") from exc
     return TurnAccepted(turn_id=turn_id)
