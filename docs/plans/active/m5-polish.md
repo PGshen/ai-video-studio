@@ -82,7 +82,7 @@
 - **完成标准**：上述测试通过；现有 `test_web_mode.py` 不改断言也通过。
 - **验证命令**：`make check`
 
-### T2：风格库后端——迁移 0004、仓储、skill 形态渲染、REST（待开始）
+### T2：风格库后端——迁移 0004、仓储、skill 形态渲染、REST（完成）
 
 - **目标**：风格以「入口 + 引用文件 + 金样本」存在 `style_presets`，能渲染成工作区 `style/` 下的文件，并有完整的增删改查接口（D1、D2）。
 - **涉及文件**：新建迁移 `db/migrations/versions/0004_style_preset_files.py`（加 `description`、`references` 两列，均可空，旧行兼容）；改 `db/models.py`；新建 `db/repo/style_presets.py`、`workspace/style_files.py`、`api/styles.py`；改 `api/schemas.py`、`main.py`；测试 `backend/tests/db/test_style_presets_repo.py`、`backend/tests/workspace/test_style_files.py`、`backend/tests/api/test_styles.py`、迁移测试沿用现有写法。
@@ -252,11 +252,11 @@
 
 - 2026-09-30 — 计划起草；负责人批准；建分支 `m5-polish` 与 worktree `.claude/worktrees/m5-polish`。
 - 2026-09-30 — T1 完成：`db/repo/settings.py`（补丁语义、整体校验、`effective_web_mode`）、`api/settings.py`（`GET/PATCH /api/settings`，引用检查：模型配置存在/运行时已启用/key 已配置，音色在可用列表内）、`TurnRunner._tools_and_web` 每轮读有效联网模式；`engines/tts/voice_map.py` 公开 `DEFAULT_ENGINE/VOICE/SPEED` 与 `voice_aliases()`，`synthesize_tts` 改用它们；`api/profiles.key_configured` 改为公开函数。`make check` 全绿。
+- 2026-09-30 — T2 完成：迁移 0004（`description`、`reference_files` 两列）、`db/repo/style_presets.py`（校验 + CRUD + 复制）、`workspace/style_files.py::render_style_files`、`api/styles.py`（`/api/style-presets*`）；`PATCH /api/settings` 补上默认风格存在性检查，删除默认风格时清掉设置（T1 留下的一项）。`make check` 全绿（1117 个后端测试）。
 
 ## 下一步
 
-- 做 T2（风格库后端）：先写 `backend/tests/db/test_style_presets_repo.py`、`backend/tests/workspace/test_style_files.py`、`backend/tests/api/test_styles.py` 并确认失败，再写迁移 `0004_style_preset_files.py`、`db/repo/style_presets.py`、`workspace/style_files.py`、`api/styles.py`。
-- T2 里顺带补 T1 留下的一项：`PATCH /api/settings` 的 `default_style_preset_id` 要校验风格预设存在（`api/settings.py::_check_references`），并在删除默认风格时清掉这个设置；测试加在 `tests/api/test_settings.py`。
+- 做 T3（创建项目时选风格）：先在 `backend/tests/api/test_projects.py` 写失败的用例（选了风格 → `style/` 文件齐全且在 `init` 快照里；默认风格兜底；一条预设都没有 → 占位；预设之后被编辑/删除，已有项目不变；风格 id 不存在 → 404 且无残留；`idea_id` + `style_preset_id` 同时给），再改 `api/projects.py`（`_init_workspace`、`create_project_endpoint`）、`api/schemas.py`（`ProjectCreate.style_preset_id`；`project.settings` 记 `style_preset_id`、`style_name`）。用 `workspace.style_files.render_style_files` 渲染。
 - T4 的真实导出：负责人已启动旧项目 Postgres，可直接做。
 
 ## 决策记录
@@ -268,6 +268,7 @@
 - **D3 会话内换模型的边界**（2026-09-30，起草时）。设计 §1 写的是「运行时由所选模型决定，会话中途不切换」，本计划放宽为「同 runtime 且同 provider 内可切」（Claude 系列之间、OpenAI 官方配置之间等）。`TurnRunner` 本来每轮都按 `session.model_profile_id` 重读配置，所以实现很小；风险在 Claude SDK 的 `resume` 换模型、登录↔API key 互换是否保留记忆，先实测再定边界（T7）。写 ADR 0012。
 - **D4 回退建议只允许向直接上游提**（2026-09-30，起草时）。`suggest_upstream_change` 目前 `to_stage` 是任意字符串。动画只能向叙事提，叙事只能向选题提。理由：直接上游的产物就是本阶段的输入，建议才有明确的处理对象；跨级建议可以让使用者自己去处理。
 - **D5 默认值的复制与活继承**（2026-09-30，起草时）。风格和 TTS 默认值在创建项目时**复制**进项目，之后与设置页脱钩（和设计「创建项目时复制所选风格」一致）；联网模式和阶段默认模型是**运行时读取**的设置，改了下一轮生效。
+- **D8 `style_presets` 新列叫 `reference_files`**（2026-09-30，T2）。计划写的是 `references`，但它是 SQL 保留字；数据库列名用 `reference_files`，对外（仓储值对象、API）仍叫 `references`。预设名字在仓储层强制唯一（去首尾空白后），导入的幂等也靠它。`created_at` 读回来统一补 UTC 时区（SQLite 丢时区信息）。
 - **D7 默认风格的存在性校验推迟到 T2**（2026-09-30，T1）。T1 时风格库仓储还不存在，`default_style_preset_id` 只做形状校验；T2 建好仓储后补引用检查（已写进「下一步」），AC1 里「默认风格存在」这一项在 T2 才算完成。
 - **D6 环境变量网关覆盖保持优先**（2026-09-30，起草时）。`seed_model_profiles` 对 `claude-sonnet`/`gpt` 的 `base_url`/`model`/单价，在环境变量非空时每次启动都会覆盖库里的值。本计划不改这个行为，界面把这些字段标只读并说明；如果以后想让界面覆盖环境变量，是独立的改动。
 

@@ -1,8 +1,8 @@
 """`/api/settings`：各阶段默认模型、联网模式、新项目默认音色/语速、默认风格（计划 M5 T1）。
 
 补丁语义（`PATCH`）：只改请求里出现的字段，`null` 清除。形状校验在 `db.repo.settings`；
-这里补上引用其他资源的检查——模型配置存在、运行时已启用、key 已配置；音色在可用列表内。
-默认风格是否存在由 T2 补（风格库仓储建立之后）。
+这里补上引用其他资源的检查——模型配置存在、运行时已启用、key 已配置；音色在可用列表内；
+默认风格存在。
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from studio.db.repo.settings import (
     update_settings,
     validate_settings_patch,
 )
+from studio.db.repo.style_presets import get_style_preset
 from studio.engines.tts.voice_map import DEFAULT_SPEED, DEFAULT_VOICE, voice_aliases
 
 router = APIRouter(prefix="/api", tags=["settings"])
@@ -61,6 +62,9 @@ def _check_references(engine: Engine, runtimes: RuntimeFactory, patch: dict[str,
     voice = (patch.get("tts_default") or {}).get("voice")
     if voice is not None and voice not in voice_aliases():
         raise SettingsValidationError(f"音色不可用：{voice}")
+    style_id = patch.get("default_style_preset_id")
+    if style_id is not None and get_style_preset(engine, style_id) is None:
+        raise SettingsValidationError(f"风格不存在：{style_id}")
 
 
 @router.get("/settings", response_model=SettingsOut)
