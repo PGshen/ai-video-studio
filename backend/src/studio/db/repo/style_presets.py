@@ -85,7 +85,9 @@ def parse_frontmatter(content: str) -> dict[str, str] | None:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
+            quote, value = value[0], value[1:-1]
+            if quote == '"':  # YAML 双引号字符串里 \" 和 \\ 是转义
+                value = re.sub(r'\\(["\\])', r"\1", value)
         result[key.strip()] = value
     return result
 

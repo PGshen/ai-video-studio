@@ -110,7 +110,7 @@
 - **完成标准**：AC3 通过。
 - **验证命令**：`make check`
 
-### T4：旧风格数据导出与导入（待开始）
+### T4：旧风格数据导出与导入（完成）
 
 - **目标**：把旧项目 dev DB 里的风格组件一次性变成新风格库的初始预设。
 - **涉及文件**：新建 `scripts/export_legacy_styles.sh`（只读导出）、`backend/src/studio/db/legacy_styles.py`（转换与导入，`python -m studio.db.legacy_styles import <json> [--overwrite]`）、`Makefile`（`make import-legacy-styles FILE=...`）；测试 `backend/tests/db/test_legacy_styles.py`（用手写的小 fixture JSON，结构按旧表字段写）；更新 `docs/references/legacy-assets.md` 中「风格组件内容」「风格组件编写经验」两行的状态。
@@ -254,11 +254,13 @@
 - 2026-09-30 — T1 完成：`db/repo/settings.py`（补丁语义、整体校验、`effective_web_mode`）、`api/settings.py`（`GET/PATCH /api/settings`，引用检查：模型配置存在/运行时已启用/key 已配置，音色在可用列表内）、`TurnRunner._tools_and_web` 每轮读有效联网模式；`engines/tts/voice_map.py` 公开 `DEFAULT_ENGINE/VOICE/SPEED` 与 `voice_aliases()`，`synthesize_tts` 改用它们；`api/profiles.key_configured` 改为公开函数。`make check` 全绿。
 - 2026-09-30 — T2 完成：迁移 0004（`description`、`reference_files` 两列）、`db/repo/style_presets.py`（校验 + CRUD + 复制）、`workspace/style_files.py::render_style_files`、`api/styles.py`（`/api/style-presets*`）；`PATCH /api/settings` 补上默认风格存在性检查，删除默认风格时清掉设置（T1 留下的一项）。`make check` 全绿（1117 个后端测试）。
 - 2026-09-30 — T3 完成：`POST /api/projects` 支持 `style_preset_id`（请求指定 → 默认风格 → 占位；id 不存在 404 且无残留），风格文件经 `render_style_files` 写入 `style/` 并进 `init` 快照，`project.settings` 记 `style_preset_id`/`style_name`（客户端传同名键会被丢掉，防伪造）；预设之后被改/删不影响已有项目。`make check` 全绿（1126 个后端测试）。
+- 2026-09-30 — T4 完成：`scripts/export_legacy_styles.sh`（`make export-legacy-styles`，只读会话，从旧 compose 文件读库名/用户名）、`db/legacy_styles.py`（`make import-legacy-styles`，幂等、`--overwrite`、报告）；真实导出 9 个模板、34 个组件，导入 9 套预设到 worktree 的 `data/studio.db`，再导入全部跳过、`--overwrite` 覆盖 9 套均验证过，证据 `data/evidence/m5-polish/t4-legacy-import.md`。`make check` 全绿（1160 个后端测试）。
 
 ## 下一步
 
-- 做 T4（旧风格导出与导入）。旧项目 Postgres 已由负责人启动。先看旧项目 `docker-compose.yml`、环境文件确认 postgres 服务名、库名、账号（只读取，不复制进本仓库），再用 `docker compose -f ../ai-video/docker-compose.yml exec -T <服务> psql` 做只读 SELECT 探一下 `style_templates` 与 `prompt_components` 的真实内容和 `style_config` 结构，据此写 `backend/tests/db/test_legacy_styles.py` 的 fixture（手写小样，结构按真实字段），再写 `backend/src/studio/db/legacy_styles.py` 与 `scripts/export_legacy_styles.sh`。导入用 T2 的 `create_style_preset`，校验失败的模板进报告。
-- 注意红线：不改 `../ai-video` 的任何文件；不 import 旧代码；只执行 SELECT。
+- 做 T5（三个阶段提示词按需读取风格目录 + 真实冒烟）。先读 `stages/{narrative,animation,topic}/prompt.md` 里现有的 `style/STYLE.md` 说明和对应的关键词断言测试，先改测试（提示词里要有各阶段应读的文件路径：narrative → `style/references/narrative-blueprint.md`、`style/exemplars/`；animation → `style/references/color-scheme.md`、`style/references/animation-style.md`；topic → 只读入口；且要有「没有这些文件时跳过」的措辞），确认失败，再改提示词。入口 `STYLE.md` 里已写明「什么时候读」（T4 生成），提示词与它保持一致。
+- 冒烟用例 `style_claude_login`（`backend/tests/smoke/`，沿用现有冒烟写法）：用 worktree 数据库里已导入的预设创建项目（例如「概念传记·纸上溯源」），让 narrative、animation 各跑一轮，检查 `turn_events` 里对相应 `style/references/*`、`style/exemplars/*` 的读取；本机 Claude 登录，不产生 API 费用。冒烟要用**测试自己的临时数据目录**，从导出 JSON（`data/legacy-export/styles.json`）导入，不要碰 worktree 的开发数据库。
+- 关注（见「意外与发现」）：导入的叙事蓝图 7/9 提到旧字段名，冒烟里要确认 agent 产出的 `narrative.json` 仍能通过 `validate_narrative`。
 
 ## 决策记录
 
@@ -270,6 +272,7 @@
 - **D4 回退建议只允许向直接上游提**（2026-09-30，起草时）。`suggest_upstream_change` 目前 `to_stage` 是任意字符串。动画只能向叙事提，叙事只能向选题提。理由：直接上游的产物就是本阶段的输入，建议才有明确的处理对象；跨级建议可以让使用者自己去处理。
 - **D5 默认值的复制与活继承**（2026-09-30，起草时）。风格和 TTS 默认值在创建项目时**复制**进项目，之后与设置页脱钩（和设计「创建项目时复制所选风格」一致）；联网模式和阶段默认模型是**运行时读取**的设置，改了下一轮生效。
 - **D8 `style_presets` 新列叫 `reference_files`**（2026-09-30，T2）。计划写的是 `references`，但它是 SQL 保留字；数据库列名用 `reference_files`，对外（仓储值对象、API）仍叫 `references`。预设名字在仓储层强制唯一（去首尾空白后），导入的幂等也靠它。`created_at` 读回来统一补 UTC 时区（SQLite 丢时区信息）。
+- **D9 旧字段名的提示不只针对金样本**（2026-09-30，T4）。真实数据显示 8 个叙事蓝图里 6 个（对应 7 个模板）提到旧系统的镜头字段名（`scene_index`、`beat_index`、`estimated_duration_seconds`），所有 5 个金样本都是旧格式。导入仍然不改写正文（D2），但入口 `STYLE.md` 的「旧格式提示」会点名受影响的文件，并写明 `narrative.json` 的字段以叙事阶段系统提示词为准。这条提示是否足够，由 T5 的真实冒烟判断；不够就在叙事提示词里加强，而不是改导入内容。
 - **D7 默认风格的存在性校验推迟到 T2**（2026-09-30，T1）。T1 时风格库仓储还不存在，`default_style_preset_id` 只做形状校验；T2 建好仓储后补引用检查（已写进「下一步」），AC1 里「默认风格存在」这一项在 T2 才算完成。
 - **D6 环境变量网关覆盖保持优先**（2026-09-30，起草时）。`seed_model_profiles` 对 `claude-sonnet`/`gpt` 的 `base_url`/`model`/单价，在环境变量非空时每次启动都会覆盖库里的值。本计划不改这个行为，界面把这些字段标只读并说明；如果以后想让界面覆盖环境变量，是独立的改动。
 
@@ -279,6 +282,8 @@
 
 - 起草时发现：`suggest_upstream_change` 写 `suggestions` 时 `turn_id` 恒为 `None`，不发 `suggestion` 事件，`api/sessions.py` 的 `WIRE_EVENT_TYPES` 也没有这个类型；前端没有任何读取建议的接口或界面。所以「完整体验」是从后端事件开始做的（T9），不只是加一个前端卡片。
 - 起草时发现：`ProjectCreate.settings` 是任意 dict，`voice`/`speech_rate` 目前只有 `synthesize_tts` 读取，界面没有任何入口设置（创建项目对话框只有标题）。
+- T4 实测：旧库共 9 个模板、34 个组件（叙事蓝图 8、配色 11、动画风格 10、金样本 5），没有悬空 id、没有类别不符；4 个组件没被任何模板引用（冷白学术图解·证据驱动、心理认知紫、语义驱动动态图解、高对比亮底认知紫）；「冷白学术图解·紫青语义」没有叙事蓝图，「暖白极简科普」「群像剧场」「记忆唤醒·理科卡片」没有金样本；不同模板共享同一个组件。所有金样本都是纯 JSON，但用旧系统格式。
+- T4 注意：`data/` 在 worktree 里是 worktree 自己的目录（`.claude/worktrees/m5-polish/data`），导入的风格在合并到 main 之后不会自动出现在主检出的数据库里；收尾（T14）时在 main 上再跑一次 `make import-legacy-styles`（导出 JSON 可以从 worktree 的 `data/legacy-export/` 复制，或重新导出）。
 - 起草时发现：旧项目风格组件在 Postgres 里，并且由 21 个 alembic 迁移逐步种入和改写；旧 dev DB 曾在 git 之外被改过（见 legacy-assets.md），所以导入以真实库为准而不是重放迁移。
 
 ## 阻塞

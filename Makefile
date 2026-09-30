@@ -11,7 +11,8 @@ PYTHON ?= python3
 HAS_BACKEND  := $(wildcard backend/pyproject.toml)
 HAS_FRONTEND := $(wildcard frontend/package.json)
 
-.PHONY: setup check check-fast check-docs check-backend check-frontend dev smoke
+.PHONY: setup check check-fast check-docs check-backend check-frontend dev smoke \
+        export-legacy-styles import-legacy-styles
 
 setup:
 	git config core.hooksPath .githooks
@@ -59,6 +60,16 @@ endif
 
 dev:
 	@bash scripts/dev.sh
+
+# 旧项目风格库的一次性迁移（计划 M5 T4）：先只读导出成 JSON（需要旧项目的 postgres 容器在
+# 运行），再导入新风格库。同名预设默认跳过，IMPORT_ARGS=--overwrite 才覆盖。
+LEGACY_STYLES_FILE ?= data/legacy-export/styles.json
+
+export-legacy-styles:
+	@bash scripts/export_legacy_styles.sh $(LEGACY_STYLES_FILE)
+
+import-legacy-styles:
+	cd backend && $(UV) run python -m studio.db.legacy_styles import $(abspath $(LEGACY_STYLES_FILE)) $(IMPORT_ARGS)
 
 # 真实模型的冒烟测试（计划 T15）：先导出 backend/.env（同 scripts/dev.sh），再用 env -i
 # 只带白名单变量运行 pytest——在 Claude Code 等宿主里执行时，宿主注入的 CLAUDE_CODE_* /

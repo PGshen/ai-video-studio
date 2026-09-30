@@ -60,6 +60,10 @@ class TestFrontmatter:
     def test_strips_matching_quotes(self, value: str) -> None:
         assert parse_frontmatter(f"---\nname: {value}\n---\n") == {"name": "带: 冒号"}
 
+    def test_unescapes_double_quoted_values(self) -> None:
+        content = '---\nname: "带\\"引号\\"和\\\\反斜杠"\n---\n'
+        assert parse_frontmatter(content) == {"name": '带"引号"和\\反斜杠'}
+
     @pytest.mark.parametrize("content", ["# 没有 frontmatter\n", "---\nname: x\n", ""])
     def test_returns_none_without_a_closed_block(self, content: str) -> None:
         assert parse_frontmatter(content) is None
