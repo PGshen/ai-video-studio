@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, encodeFilePath, encodePathSegment, request, requestText } from '@/api/http'
+import {
+  ApiError,
+  encodeFilePath,
+  encodePathSegment,
+  errorMessage,
+  request,
+  requestText,
+} from '@/api/http'
 
 describe('request', () => {
   afterEach(() => {
@@ -111,5 +118,32 @@ describe('encodePathSegment / encodeFilePath', () => {
 
     const [url] = fetchMock.mock.calls[0]!
     expect(String(url)).toBe('/api/projects/proj%231')
+  })
+})
+
+describe('errorMessage', () => {
+  it('字符串 detail 原样返回', () => {
+    expect(errorMessage(new ApiError(409, '配置正被 2 个会话使用'))).toBe('配置正被 2 个会话使用')
+  })
+
+  it('FastAPI 校验错误列表逐条拼起来，去掉 body 前缀', () => {
+    const detail = [
+      { loc: ['body', 'nope'], msg: 'Extra inputs are not permitted' },
+      { loc: ['body', 'speed'], msg: 'Input should be a valid number' },
+    ]
+
+    expect(errorMessage(new ApiError(422, detail))).toBe(
+      'nope：Extra inputs are not permitted；speed：Input should be a valid number',
+    )
+  })
+
+  it('空列表或未知结构回退到默认文案', () => {
+    expect(errorMessage(new ApiError(500, []))).toBe('请求失败（500）')
+    expect(errorMessage(new ApiError(500, null))).toBe('请求失败（500）')
+  })
+
+  it('普通 Error 用它的 message，其他值是未知错误', () => {
+    expect(errorMessage(new Error('断网了'))).toBe('断网了')
+    expect(errorMessage('boom')).toBe('未知错误')
   })
 })

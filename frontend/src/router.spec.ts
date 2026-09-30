@@ -35,9 +35,24 @@ describe('router', () => {
     expect(router.currentRoute.value.name).toBe('ideas')
   })
 
-  it('resolves /settings to the settings placeholder page', async () => {
+  it('redirects /settings to the model profiles sub page', async () => {
     const router = makeRouter()
     await router.push('/settings')
-    expect(router.currentRoute.value.name).toBe('settings')
+    expect(router.currentRoute.value.path).toBe('/settings/models')
+    expect(router.currentRoute.value.name).toBe('settings-models')
+  })
+
+  it.each([
+    ['/settings/models', 'settings-models'],
+    ['/settings/styles', 'settings-styles'],
+    ['/settings/voice', 'settings-voice'],
+    ['/settings/general', 'settings-general'],
+  ])('resolves %s to the %s sub page inside the settings shell', async (path, name) => {
+    const router = makeRouter()
+    await router.push(path)
+    const route = router.currentRoute.value
+    expect(route.name).toBe(name)
+    expect(route.matched.map((r) => r.name)).toEqual(['settings', name])
+    expect(route.meta.title).toBe('设置')
   })
 })

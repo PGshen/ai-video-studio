@@ -17,9 +17,13 @@ import type {
   IdeaUpdate,
   JobOut,
   MessageCreate,
+  ModelProfileCreate,
+  ModelProfilePatch,
   ProjectCreate,
   ProjectOut,
   SessionCreate,
+  SettingsOut,
+  SettingsPatch,
 } from '@/types/api'
 
 /** 选题池列表的视图：`null` 是未归档（后端默认），`'archived'` 是已归档。 */
@@ -48,6 +52,7 @@ export const queryKeys = {
       ? queryKeys.brainstormSessions()
       : queryKeys.sessions(scope.projectId, scope.stage),
   modelProfiles: () => ['model-profiles'] as const,
+  settings: () => ['settings'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   latestJob: (projectId: string, type: string) =>
     ['projects', projectId, 'jobs', 'latest', type] as const,
@@ -268,6 +273,54 @@ export function useContinueSessionMutation(sessionId: MaybeRefOrGetter<string>) 
 
 export function useModelProfilesQuery() {
   return useQuery({ queryKey: queryKeys.modelProfiles(), queryFn: api.listModelProfiles })
+}
+
+export function useCreateModelProfileMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: ModelProfileCreate) => api.createModelProfile(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.modelProfiles() })
+    },
+  })
+}
+
+export function useUpdateModelProfileMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: { id: string; patch: ModelProfilePatch }) =>
+      api.updateModelProfile(args.id, args.patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.modelProfiles() })
+    },
+  })
+}
+
+export function useDeleteModelProfileMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (profileId: string) => api.deleteModelProfile(profileId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.modelProfiles() })
+    },
+  })
+}
+
+// ---- settings（M5）----------------------------------------------------
+
+export function useSettingsQuery() {
+  return useQuery({ queryKey: queryKeys.settings(), queryFn: api.getSettings })
+}
+
+/** 写入后直接用响应更新缓存（后端返回的是更新后的全部设置）。 */
+export function usePatchSettingsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: SettingsPatch) => api.patchSettings(patch),
+    onSuccess: (settings: SettingsOut) => {
+      queryClient.setQueryData(queryKeys.settings(), settings)
+    },
+  })
 }
 
 // ---- jobs / 成片渲染（任务 T13）-------------------------------------------

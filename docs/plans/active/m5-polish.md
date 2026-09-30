@@ -192,7 +192,7 @@
 - **完成标准**：AC9 通过。
 - **验证命令**：`make check`
 
-### T10：前端设置页——框架、通用、模型配置（待开始）
+### T10：前端设置页——框架、通用、模型配置（完成）
 
 - **目标**：设置页的四个子页骨架，以及「通用」和「模型配置」两页。
 - **涉及文件**：改 `frontend/src/router.ts`（`/settings` 下四个子路由，`/settings` 重定向到模型配置）、`router.spec.ts`、`pages/SettingsPage.vue`（布局 + 子导航）；新建 `features/settings/`：`ModelProfilesPanel.vue`、`ModelProfileDialog.vue`、`GeneralPanel.vue`，纯逻辑 `profileForm.ts`（表单校验与后端一致）、`settingsView.ts`；改 `api/endpoints.ts`、`types/api.ts`、`composables/queries.ts`；对应 `.spec.ts`。
@@ -260,12 +260,12 @@
 - 2026-09-30 — T7 完成：`PATCH /api/sessions/{id}`（同 runtime、同 provider、key 已配置、Claude 只在同一种认证方式内；有排队/运行中的 turn 返回 409）、仓储 `set_session_model_if_idle`（同一事务里检查再更新）、每轮 `usage` 记录 `model`/`profile_name`、换了之后第一轮的 `model_switched` `notice`（`turn_events.note_model_switch`，无项目会话同样支持）。真实冒烟 `model_switch_claude_login` 通过：同一 SDK 会话 Sonnet → Haiku，`sdk_ref` 不变，第二轮答出第一轮的背景；ADR 0012、claude-agent-sdk.md、TD-41 已写。`make check` 全绿（1264 个后端测试）。
 - 2026-09-30 — T8 完成：`engines/tts/voice_map.py`（`VoiceInfo`/`list_voices`，中文名和性别取自旧库 `tts_voices` 表的只读查证）、`api/tts.py`（`GET /api/tts/voices`、`POST /api/tts/preview`：固定示例文本、磁盘缓存 `data/tts-preview/`、并发合并、失败不缓存、缺 key 503/供应商错误 502/越界或未知音色 422）、`PATCH /api/projects/{id}/settings`（只放行 `voice`/`speech_rate`，项目忙 409，`null` 清除）、`update_project_settings` 仓储、创建项目时复制 `settings.tts_default`。真实试听 `tts_preview_real` 通过：5 段合成，语速 0.5–2.0 两端供应商都接受且真实生效（zizi 0.5/1.0/2.0 → 11.69/6.43/2.95 秒），缓存命中；结论写进 `references/volcengine-tts.md`，证据 `data/evidence/m5-polish/smoke/`。`make check` 全绿（1307 个后端测试）。
 - 2026-09-30 — T9 完成：`suggest_upstream_change` 只允许向直接上游提（`ToolContext.upstream_stages`，由 runner 从 `StageDefinition.upstream_stages()` 传入）、内容去空白后非空且 ≤ 2000 字、记录 `turn_id`（`ToolContext`/`TurnContext` 新增 `turn_id`、`upstream_stages`）；`turn_events` 在工具成功后按 `turn_id` 查回新建的建议，各发一条持久的 `suggestion` 事件（三个运行时一致，`WIRE_EVENT_TYPES` 增加它）；`db/repo/suggestions.py` 增加 `resolve_suggestion`（`open → applied | dismissed`，重复 `SuggestionStateError`）、`list_turn_suggestions`、`count_open_by_target_stage`；`api/suggestions.py`：`GET /api/projects/{id}/suggestions?status=`、`.../suggestions/summary`、`POST /api/suggestions/{id}/apply|dismiss`。`make check` 全绿（1357 个后端测试）。后端部分（T1–T9）到此完成，接下来是前端（T10–T13）。
+- 2026-09-30 — T10 完成：`/settings` 改为外壳 + 四个子路由（`/settings/{models,styles,voice,general}`，`/settings` 重定向到 models）；`features/settings/`：`profileForm.ts`（校验与后端同一组规则，表单 ↔ 请求体，补丁只含改过且非环境变量决定的字段）、`settingsView.ts`（默认模型可选项、联网模式来源文案与风险提示、锁定字段、key 状态）、`ModelProfilesPanel`/`ModelProfileDialog`（增改删）、`GeneralPanel`（各阶段默认模型、联网模式）；`api/http.ts::errorMessage`（兼容 pydantic 的 422 列表）；types/endpoints/queries 同步。vitest 从 220 增到 282。L4 走查（内置浏览器 + worktree 的 dev server，Fake 运行时）通过：模型配置列表（内置徽章、密钥状态、环境变量决定的字段提示）、编辑 `gpt` 的步数上限 12 并落库、环境变量锁定的字段禁用并说明、空表单三条校验错误点名、新增 `ui-test` 后删除、内置配置的删除按钮禁用、通用页联网模式切到原生后出现风险提示与「清除界面设置」按钮、默认模型只列密钥已配置的且落库；截图 `data/evidence/m5-polish/l4/t10-*.jpg`。`make check` 全绿。
 
 ## 下一步
 
-- 后端 T1–T9 已全部完成并提交，前端从 T10 开始。先读 `frontend/src/types/api.ts`、`api/endpoints.ts`、`composables/queries.ts`（TanStack Query 的写法：`queryKeys` + `useXxxQuery`/`useXxxMutation`）、`router.ts`、`pages/SettingsPage.vue`（占位）、`components/AppSidebar.vue`（有没有设置入口）。
-- T10 需要的后端接口（已就绪）：`GET/PATCH /api/settings`、`GET/POST/PATCH/DELETE /api/model-profiles`（响应新增 `api_key_env`、`base_url`、`builtin`、`env_override`）、`GET /api/tts/voices`。T10 先写纯逻辑的 vitest：`profileForm.ts`（表单校验与后端 `db/repo/profiles.py::_validate_profile` 同一组正反例）、`settingsView.ts`（联网模式来源文案、只读字段判断），再做组件，路由 `/settings/{models,styles,voice,general}`，`router.spec.ts` 同步。
-- 注意 ARCHITECTURE 规则：`features/*` 之间不互相 import，共用的东西放 `components/` 或 `composables/`；`pages/` 是组合层。L4 走查由我自己在内置浏览器里做（用 worktree 的 dev server，`backend/.env` 已链接到主检出）。
+- 做 T11（前端风格库页与创建项目选风格）。`features/settings/StylePresetsPanel.vue` 现在是占位，替换成真实的；后端接口已就绪：`GET/POST /api/style-presets`、`GET/PATCH/DELETE /api/style-presets/{id}`、`POST /api/style-presets/{id}/duplicate`，默认风格用 `PATCH /api/settings {default_style_preset_id}`，`POST /api/projects` 带 `style_preset_id`。先在 `types/api.ts`/`api/endpoints.ts`/`composables/queries.ts` 补类型、接口和 hooks（含 `endpoints.spec.ts`），再写纯逻辑 `features/settings/styleDraft.ts`（文件名规则与后端 `db/repo/style_presets.py::validate_style_preset` 一致：`^[\w.\-]+$`、不以点开头、≤80 字、references 只能 `.md`、exemplars 只能 `.json/.md`、`.json` 必须是合法 JSON、STYLE.md 需要 frontmatter 的 name/description、引用的文件必须存在、同目录不重名）的 spec，再做组件：`StylePresetsPanel.vue`（列表按 `category` 分组、新建/复制/删除/设默认）、`StylePresetEditor.vue`（左侧文件树 STYLE.md/references/exemplars，右侧 `components/CodeEditor.vue`），改 `features/ideas/CreateProjectDialog.vue` 加风格下拉（预选默认，没有预设时隐藏并提示占位）。
+- 走查用 worktree 里已导入的 9 套旧风格（`data/studio.db`）；dev server 现在在后台跑着（api 8000、frontend 5173，来自 worktree，不是 preview_start——`launch.json` 的相对路径指向主检出，预览工具会起旧代码）。
 
 ## 决策记录
 
@@ -277,6 +277,7 @@
 - **D4 回退建议只允许向直接上游提**（2026-09-30，起草时）。`suggest_upstream_change` 目前 `to_stage` 是任意字符串。动画只能向叙事提，叙事只能向选题提。理由：直接上游的产物就是本阶段的输入，建议才有明确的处理对象；跨级建议可以让使用者自己去处理。
 - **D5 默认值的复制与活继承**（2026-09-30，起草时）。风格和 TTS 默认值在创建项目时**复制**进项目，之后与设置页脱钩（和设计「创建项目时复制所选风格」一致）；联网模式和阶段默认模型是**运行时读取**的设置，改了下一轮生效。
 - **D8 `style_presets` 新列叫 `reference_files`**（2026-09-30，T2）。计划写的是 `references`，但它是 SQL 保留字；数据库列名用 `reference_files`，对外（仓储值对象、API）仍叫 `references`。预设名字在仓储层强制唯一（去首尾空白后），导入的幂等也靠它。`created_at` 读回来统一补 UTC 时区（SQLite 丢时区信息）。
+- **D12 「新项目默认音色/语速」放在语音页，不放通用页**（2026-09-30，T10）。计划 T10 把它写在通用页；T12 的语音页本来就要列音色、试听、设默认值，放两处会重复，所以只放语音页（T12 做）。通用页只有各阶段默认模型和联网模式。
 - **D11 Claude 会话换模型先限制在同一种认证方式内**（2026-09-30，T7）。计划写的是「同 runtime 且同 provider，登录 ↔ key 互换不行再收紧」；互换要用 API key 付费实测，计划只预先授权了本机登录的冒烟（SOP §6 第 7 条），所以没有先放开再测，而是先按收紧后的规则上线，互换登记为 TD-41，验证后再放宽。OpenAI 及其他运行时不受这条限制（`SQLiteSession` 与模型、key 无关），只有 mock 测试。见 ADR 0012。
 - **D10 模型配置接口现在返回环境变量名和网关地址**（2026-09-30，T6）。M1 T7 时刻意不返回 `api_key_env`；界面要编辑它就必须返回。返回的是环境变量的**名字**和 `base_url`（账号密码打码，写入时也拒绝带账号密码的地址），永远不返回 key 的值，`test_profiles.py` 里原来的「不泄露环境变量名」测试改成「不泄露 key 值」并新增打码断言。`name`/`provider`/`runtime` 建好后不可改（会话按它们判断能否换模型，T7）；环境变量决定的字段界面不让改（422 说明改 `backend/.env`）。
 - **D9 旧字段名的提示不只针对金样本**（2026-09-30，T4）。真实数据显示 8 个叙事蓝图里 6 个（对应 7 个模板）提到旧系统的镜头字段名（`scene_index`、`beat_index`、`estimated_duration_seconds`），所有 5 个金样本都是旧格式。导入仍然不改写正文（D2），但入口 `STYLE.md` 的「旧格式提示」会点名受影响的文件，并写明 `narrative.json` 的字段以叙事阶段系统提示词为准。这条提示是否足够，由 T5 的真实冒烟判断；不够就在叙事提示词里加强，而不是改导入内容。

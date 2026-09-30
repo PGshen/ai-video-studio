@@ -21,10 +21,35 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '选题池' },
   },
   {
+    // 设置页外壳 + 四个子页（M5 T10）。子页直接是 `features/settings/` 的面板；外壳
+    // `pages/SettingsPage.vue` 只负责子导航。
     path: '/settings',
     name: 'settings',
     component: () => import('@/pages/SettingsPage.vue'),
+    redirect: '/settings/models',
     meta: { title: '设置' },
+    children: [
+      {
+        path: 'models',
+        name: 'settings-models',
+        component: () => import('@/features/settings/ModelProfilesPanel.vue'),
+      },
+      {
+        path: 'styles',
+        name: 'settings-styles',
+        component: () => import('@/features/settings/StylePresetsPanel.vue'),
+      },
+      {
+        path: 'voice',
+        name: 'settings-voice',
+        component: () => import('@/features/settings/VoicePanel.vue'),
+      },
+      {
+        path: 'general',
+        name: 'settings-general',
+        component: () => import('@/features/settings/GeneralPanel.vue'),
+      },
+    ],
   },
 ]
 

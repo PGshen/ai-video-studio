@@ -14,12 +14,16 @@ import type {
   IdeaUpdate,
   JobOut,
   MessageCreate,
+  ModelProfileCreate,
   ModelProfileOut,
+  ModelProfilePatch,
   ProjectCreate,
   ProjectDetailOut,
   ProjectOut,
   SceneChecksResponse,
   SessionCreate,
+  SettingsOut,
+  SettingsPatch,
   SessionDetailOut,
   SessionOut,
   SnapshotDiffOut,
@@ -156,6 +160,31 @@ export function sessionStreamUrl(sessionId: string): string {
 
 export function listModelProfiles(): Promise<ModelProfileOut[]> {
   return request('/model-profiles')
+}
+
+export function createModelProfile(body: ModelProfileCreate): Promise<ModelProfileOut> {
+  return request('/model-profiles', { method: 'POST', body })
+}
+
+export function updateModelProfile(
+  profileId: string,
+  body: ModelProfilePatch,
+): Promise<ModelProfileOut> {
+  return request(`/model-profiles/${encodePathSegment(profileId)}`, { method: 'PATCH', body })
+}
+
+export function deleteModelProfile(profileId: string): Promise<void> {
+  return request(`/model-profiles/${encodePathSegment(profileId)}`, { method: 'DELETE' })
+}
+
+// ---- settings（M5，对应 `api/settings.py`）-----------------------------
+
+export function getSettings(): Promise<SettingsOut> {
+  return request('/settings')
+}
+
+export function patchSettings(body: SettingsPatch): Promise<SettingsOut> {
+  return request('/settings', { method: 'PATCH', body })
 }
 
 // ---- jobs / 成片渲染（任务 T13，对应 `api/jobs.py`、`api/animation.py`）----

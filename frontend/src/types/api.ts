@@ -145,12 +145,77 @@ export interface ModelProfileOut {
   provider: string
   model: string
   runtime: string
+  /** 账号密码已被后端打码（`https://***@host/v1`）。 */
+  base_url: string | null
+  /** 环境变量的**名字**（不是 key 的值）；`null` 表示使用本机登录（仅 claude）。 */
+  api_key_env: string | null
   supports_vision: boolean
   price_input: number | null
   price_output: number | null
   max_cost_per_turn: number | null
   max_steps_per_turn: number | null
   key_configured: boolean
+  /** 内置配置（种子名和 `fake`）：可以编辑，不能删除。 */
+  builtin: boolean
+  /** 当前由环境变量（`STUDIO_*`）决定的字段；后端拒绝在界面里改它们。 */
+  env_override: string[]
+}
+
+export interface ModelProfileCreate {
+  name: string
+  provider: string
+  model: string
+  runtime: string
+  base_url: string | null
+  api_key_env: string | null
+  supports_vision: boolean
+  price_input: number | null
+  price_output: number | null
+  max_cost_per_turn: number | null
+  max_steps_per_turn: number | null
+}
+
+/** 只含要改的字段；`null` 清空可空字段。`name`/`provider`/`runtime` 建好后不可改。 */
+export type ModelProfilePatch = Partial<
+  Pick<
+    ModelProfileCreate,
+    | 'model'
+    | 'base_url'
+    | 'api_key_env'
+    | 'supports_vision'
+    | 'price_input'
+    | 'price_output'
+    | 'max_cost_per_turn'
+    | 'max_steps_per_turn'
+  >
+>
+
+export type WebMode = 'tools' | 'native'
+
+export interface TtsDefaultOut {
+  voice: string
+  speech_rate: number
+}
+
+/** `GET /api/settings`（后端 `api/schemas.py::SettingsOut`）。 */
+export interface SettingsOut {
+  /** `{阶段: 模型配置 id}`，新建会话时预选；没设置的阶段不出现。 */
+  stage_default_profile: Record<string, string>
+  /** 有效的联网模式：界面覆盖优先，否则是环境变量 `STUDIO_WEB_MODE`。 */
+  web_mode: WebMode
+  web_mode_source: 'ui' | 'env'
+  /** 环境变量给出的默认值，「清除覆盖」后回落到它。 */
+  web_mode_env: WebMode
+  tts_default: TtsDefaultOut
+  default_style_preset_id: string | null
+}
+
+/** `PATCH /api/settings`：只改出现的字段，`null` 清除。 */
+export interface SettingsPatch {
+  stage_default_profile?: Record<string, string | null>
+  web_mode?: WebMode | null
+  tts_default?: { voice?: string | null; speech_rate?: number | null }
+  default_style_preset_id?: string | null
 }
 
 /**
