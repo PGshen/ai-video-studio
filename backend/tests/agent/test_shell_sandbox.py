@@ -17,6 +17,7 @@ from agents import RunContextWrapper, ShellCallData, ShellCommandRequest, ShellR
 from agents.tool import ShellActionRequest
 
 from studio.agent.openai_runtime import native_shell_supported
+from studio.agent.sandbox_paths import sensitive_home_dirs
 from studio.agent.shell import LocalShellExecutor
 from studio.agent.shell_sandbox import (
     SANDBOX_EXEC,
@@ -226,6 +227,20 @@ class TestSandboxedExecution:
         result = await executor(_request([f"cat {repo_root() / 'AGENTS.md'}"]))
         assert result.output[0].exit_code != 0
         assert "AGENTS.md" in result.output[0].stderr
+
+    async def test_sensitive_home_dir_unreadable(self, tmp_path: Path) -> None:
+        """TD-27: a credentials directory under the home dir is denied like the repo root."""
+        home = tmp_path / "home"
+        (home / ".ssh").mkdir(parents=True)
+        (home / ".ssh" / "id_rsa").write_text("PRIVATE-KEY-MATERIAL\n")
+        workdir = tmp_path / "w"
+        workdir.mkdir()
+        executor = LocalShellExecutor(workdir, set(), deny_read=sensitive_home_dirs(home))
+
+        result = await executor(_request([f"cat {home / '.ssh' / 'id_rsa'}"]))
+
+        assert result.output[0].exit_code != 0
+        assert "PRIVATE-KEY-MATERIAL" not in result.output[0].stdout
 
     async def test_write_outside_workspace_fails(self, layout: _Layout) -> None:
         home_file = Path.home() / f".studio-sandbox-probe-{uuid.uuid4().hex}"

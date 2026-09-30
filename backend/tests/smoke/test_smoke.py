@@ -358,6 +358,12 @@ async def test_claude_login_sandbox_read() -> None:
             "other-project": other,
             "data-dir-file": canary,
         }
+        # TD-27: credentials under the home dir are denied too (only when the machine has some).
+        ssh_files = sorted(p for p in (Path.home() / ".ssh").glob("*") if p.is_file())
+        denied = ["backend-env", "repo-file", "other-project", "data-dir-file"]
+        if ssh_files:
+            targets["home-ssh"] = ssh_files[0]
+            denied.append("home-ssh")
         (h.workdir / "topic" / "probe.sh").write_text(_probe_script(targets), encoding="utf-8")
 
         profile = h.profile("claude-login", max_steps_per_turn=MAX_STEPS)
@@ -373,7 +379,7 @@ async def test_claude_login_sandbox_read() -> None:
         assert outcome.turn.status == "done", outcome.turn.error
         for name in ("workspace", "workspace-abs"):
             assert f"READABLE {name}" in output, output
-        for name in ("backend-env", "repo-file", "other-project", "data-dir-file"):
+        for name in denied:
             assert f"DENIED {name}" in output, output
         for marker in (SANDBOX_MARKER, "ls-ok", "usr-bin-ok", "py-ok"):
             assert marker in output, output

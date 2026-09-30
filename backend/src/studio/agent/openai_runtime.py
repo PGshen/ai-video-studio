@@ -68,6 +68,7 @@ from studio.agent.apply_patch import WorkspaceApplyPatchEditor
 from studio.agent.fallback_tools import build_fallback_tools
 from studio.agent.openai_tools import _Turn, build_function_tool, convert
 from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
+from studio.agent.sandbox_paths import sensitive_home_dirs
 from studio.agent.shell import LocalShellExecutor
 from studio.agent.shell_sandbox import sandbox_available as _sandbox_available
 from studio.config import Settings
@@ -256,7 +257,11 @@ class OpenAIRuntime:
     ) -> None:
         self._sessions_db = data_dir / SESSIONS_DB
         # Shell sandbox deny-read list, same policy as the Claude Bash sandbox (TD-1/TD-20).
-        self._shell_deny_read = [repo_root if repo_root is not None else _repo_root(), data_dir]
+        self._shell_deny_read = [
+            repo_root if repo_root is not None else _repo_root(),
+            data_dir,
+            *sensitive_home_dirs(),  # TD-27
+        ]
         self._sandbox_available = sandbox_available
         self._history_turns = history_turns
         self._model_factory = model_factory

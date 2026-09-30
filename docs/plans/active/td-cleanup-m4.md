@@ -87,13 +87,13 @@ M5（设置页、风格库、回退建议）开始之前，处理掉会被 M5 �
 - [x] T1（TD-40，L4 待最后统一验证）
 - [x] T2（TD-25）
 - [x] T3（TD-19，L4 待最后统一验证）
-- [ ] T4（TD-27）
+- [x] T4（TD-27）
 - [ ] T5（TD-39、TD-38）
 - [ ] T6（收尾）
 
 ## 下一步
 
-T4（TD-27）：新增 `agent/sandbox_paths.py`，两条沙箱路径追加拒读。T1/T3 的浏览器 L4 留到 T5 之后统一做。基线（2026-09-29，分支创建时）`make check` 全部通过。
+T5（TD-39 + TD-38）：先搬 URL 规则到 `agent/url_source.py`，再加 Claude 侧 hook，最后跑 native 冒烟。T1/T3 的浏览器 L4 留到 T5 之后统一做。基线（2026-09-29，分支创建时）`make check` 全部通过。
 
 ## 决策记录
 
@@ -110,4 +110,4 @@ T4（TD-27）：新增 `agent/sandbox_paths.py`，两条沙箱路径追加拒读
 
 ## 验证记录
 
-（执行中填写）
+- T4：真实 Claude 登录冒烟 `test_claude_login_sandbox_read`（2026-09-29）通过，新增探测 `~/.ssh` 下真实文件被拒读，工作区/ls/python 等普通命令不受影响；OpenAI 路径用真实 Seatbelt 单测（`test_sensitive_home_dir_unreadable`）验证。
