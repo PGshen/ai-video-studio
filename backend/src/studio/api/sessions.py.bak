@@ -59,7 +59,6 @@ from studio.api.schemas import (
     MessageCreate,
     SessionCreate,
     SessionDetailOut,
-    SessionModelUpdate,
     SessionOut,
     TurnAccepted,
     TurnOut,
@@ -222,23 +221,15 @@ async def switch_session_model_endpoint(
     if target.provider != current.provider:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"只能换到同一供应商的模型（{current.provider} → {target.provider}），请新建会话"
-            ),
-        )
-    if current.runtime == "claude" and target.api_key_env != current.api_key_env:
-        # 本机登录 ↔ API key 互换后，SDK 会话（transcript 在 ~/.claude 下）能否续上没有实测过：
-        # 要用 API key 发付费请求才能验证，计划只预先授权了本机登录的冒烟（见 ADR 0012）。
-        raise HTTPException(
-            status_code=400,
-            detail="Claude 会话只能在同一种认证方式内换模型（本机登录 ↔ API key 互换还没有验证），"
-            "请新建会话",
+            detail=f"只能换到同一个供应商的模型（{current.provider} → {target.provider}），请新建会话",
         )
     if not key_configured(target):
         raise HTTPException(status_code=400, detail=f"模型配置 {target.name} 的密钥未配置")
     updated = set_session_model_if_idle(engine, session_id, target.id)
     if updated is None:
-        raise HTTPException(status_code=409, detail="会话正在运行或排队中，等这一轮结束后再换模型")
+        raise HTTPException(
+            status_code=409, detail="会话正在运行或排队中，等这一轮结束后再换模型"
+        )
     return session_out(updated)
 
 

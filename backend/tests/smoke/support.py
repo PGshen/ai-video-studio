@@ -195,17 +195,20 @@ class SmokeHarness:
     def workdir(self) -> Path:
         return project_dir(self.data_dir, self.project_id)
 
-    def profile(self, seed_name: str, **limits: Any) -> str:
+    def profile(
+        self, seed_name: str, *, model: str | None = None, suffix: str = "", **limits: Any
+    ) -> str:
         """Copy a seed profile (real model name, prices) with smoke-test limits;
-        returns the new profile id."""
+        returns the new profile id. `model`/`suffix` (M5 T7) make a second profile of the same
+        provider and auth with another model name, for switching models inside a session."""
         seed = get_model_profile(self.engine, seed_name)
         assert seed is not None, seed_name
-        name = f"smoke-{seed_name}"
+        name = f"smoke-{seed_name}{suffix}"
         with session_scope(self.engine) as db:
             row = ModelProfile(
                 name=name,
                 provider=seed.provider,
-                model=seed.model,
+                model=model or seed.model,
                 runtime=seed.runtime,
                 base_url=seed.base_url,
                 api_key_env=seed.api_key_env,

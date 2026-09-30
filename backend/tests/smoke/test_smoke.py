@@ -821,3 +821,66 @@ async def test_style_claude_login(tmp_path: Path) -> None:
     finally:
         record_evidence("style-claude-login", evidence, M5_EVIDENCE_DIR)
         harness.engine.dispose()
+
+
+# ---- M5 T7: 会话内换模型（本机 Claude 登录，同一登录下的另一个模型）---------------------
+
+# 用一条自然的项目背景，而不是“暗号”：模型会把“请记住这个暗号”当成可疑指令而拒绝（第一次
+# 实测第一轮就拒绝了），那样测的是模型的戒心，不是换模型后会话历史是否还在。
+_SWITCH_FIRST_PROMPT = (
+    "先跟你说一下这条视频的背景：它的目标观众是一群退休的数学老师。"
+    "你先记下，后面我会问你；这一轮只回复“好的”，不要调用任何工具。"
+)
+_SWITCH_SECOND_PROMPT = "我刚才说这条视频的目标观众是谁？只用一句话回答，不要调用任何工具。"
+_SWITCH_SECOND_MODEL = "claude-haiku-4-5-20251001"
+
+
+async def test_model_switch_claude_login(tmp_path: Path) -> None:
+    from studio.agent.turn_events import MODEL_SWITCHED_NOTICE
+    from studio.db.repo.sessions import get_session, set_session_model_if_idle
+
+    from .support import M5_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    harness = build_harness(tmp_path)
+    evidence: dict[str, Any] = {"second_model": _SWITCH_SECOND_MODEL}
+    try:
+        first_profile = harness.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+        second_profile = harness.profile(
+            "claude-login", model=_SWITCH_SECOND_MODEL, suffix="-b", max_steps_per_turn=MAX_STEPS
+        )
+        session_id = harness.session(first_profile, "claude")
+
+        first = await harness.turn(session_id, _SWITCH_FIRST_PROMPT)
+        before = get_session(harness.engine, session_id)
+        assert before is not None
+        evidence["turn1"] = outcome_summary(first)
+        evidence["sdk_ref_before"] = before.sdk_ref
+        assert first.turn.status == "done", (first.turn.status, first.turn.error)
+        assert before.sdk_ref, "第一轮没有拿到 SDK 会话 id"
+
+        switched = set_session_model_if_idle(harness.engine, session_id, second_profile)
+        assert switched is not None
+        assert switched.sdk_ref == before.sdk_ref, "换模型不该改 sdk_ref"
+
+        second = await harness.turn(session_id, _SWITCH_SECOND_PROMPT)
+        after = get_session(harness.engine, session_id)
+        assert after is not None
+        evidence["turn2"] = outcome_summary(second)
+        evidence["turn2_text"] = second.text
+        evidence["sdk_ref_after"] = after.sdk_ref
+        evidence["notices"] = second.notices(MODEL_SWITCHED_NOTICE)
+
+        assert second.turn.status == "done", (second.turn.status, second.turn.error)
+        assert "退休" in second.text and "数学老师" in second.text, (
+            f"换模型后 agent 不记得之前说的背景：{second.text!r}"
+        )
+        assert second.turn.usage is not None
+        assert second.turn.usage["model"] == _SWITCH_SECOND_MODEL
+        assert first.turn.usage is not None
+        assert first.turn.usage["model"] != _SWITCH_SECOND_MODEL
+        assert len(second.notices(MODEL_SWITCHED_NOTICE)) == 1
+        assert not first.notices(MODEL_SWITCHED_NOTICE)
+    finally:
+        record_evidence("model-switch-claude-login", evidence, M5_EVIDENCE_DIR)
+        harness.engine.dispose()

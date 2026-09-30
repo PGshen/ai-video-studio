@@ -90,6 +90,14 @@ class SessionCreate(BaseModel):
     model_profile_id: str
 
 
+class SessionModelUpdate(BaseModel):
+    """`PATCH /sessions/{id}`：把会话换成另一个模型配置（同 runtime、同 provider）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model_profile_id: str
+
+
 class SessionOut(BaseModel):
     id: str
     project_id: str | None

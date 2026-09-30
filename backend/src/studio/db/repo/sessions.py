@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from sqlalchemy import Engine, select, update
 
 from studio.db.engine import session_scope
-from studio.db.models import Session
+from studio.db.models import Session, Turn
+from studio.db.repo.turns import UNFINISHED_TURN_STATUSES
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +70,31 @@ def create_session(
             is_active=True,
         )
         db.add(row)
+        db.flush()
+        return to_session_value(row)
+
+
+def set_session_model_if_idle(
+    engine: Engine, session_id: str, model_profile_id: str
+) -> SessionValue | None:
+    """把会话换成另一个模型配置（M5 T7）；会话有 `queued`/`running` 的 turn 时返回 `None`，
+    什么都不改。检查和更新在同一个事务里，和 `create_turn_if_session_idle` 不会交错。
+
+    只改 `model_profile_id`：`runtime`、`sdk_ref`、`is_active` 和历史都不动——是否允许换（同
+    runtime、同 provider、key 已配置）由调用方检查。会话不存在抛 `LookupError`。
+    """
+    with session_scope(engine) as db:
+        row = db.get(Session, session_id)
+        if row is None:
+            raise LookupError(session_id)
+        busy = db.scalars(
+            select(Turn.id)
+            .where(Turn.session_id == session_id, Turn.status.in_(UNFINISHED_TURN_STATUSES))
+            .limit(1)
+        ).first()
+        if busy is not None:
+            return None
+        row.model_profile_id = model_profile_id
         db.flush()
         return to_session_value(row)
 

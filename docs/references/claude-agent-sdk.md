@@ -33,6 +33,7 @@ T9（2026-09-27）核实时安装的版本：`claude-agent-sdk 0.2.160`，内置
 | ✅ 已验证（2026-09-27，0.2.160） | `verbatim_prompts=True`：发给 CLI 的用户消息不做 `@path` 文件展开、不分派斜杠命令（要求 CLI ≥ 2.1.248，内置 CLI 满足） | 源码 `types.py: ClaudeAgentOptions.verbatim_prompts` |
 | ✅ 已验证（2026-09-30，0.2.160 / 内置 CLI 2.1.283，M4 后清理 T5，本机登录）（TD-39） | 原生 `WebSearch` 的 `PostToolUse` hook 拿到的 `tool_response` 是一段文本：`Web search results for query: "…"` 后跟 `Links: [{"title":…,"url":…},…]`；对序列化后的 `tool_response` 直接提取 URL 就能收集全部结果链接，不依赖具体结构。`PreToolUse` hook 匹配 `WebFetch`，`tool_input.url` 是目标地址；`native` 模式一轮选题里 3 次 `WebFetch` 的目标都在此前 `WebSearch` 的结果里，全部被放行（`agent/claude_web.py`）。被拒绝路径只有单测覆盖，没有在真机上让模型主动触发 | `data/evidence/m4-topic/smoke/20260930T045836Z-topic-claude-login-native-webfetch.json` |
 | ✅ 已验证（2026-09-27） | 官方政策：除非事先获批，Anthropic 不允许第三方开发者在其产品（包括基于 Agent SDK 构建的 agent）中提供 claude.ai 登录或订阅额度，应使用 API key 认证（也支持 Bedrock / Vertex 等云厂商认证） | [Agent SDK Overview](https://docs.claude.com/en/docs/agent-sdk/overview) |
+| ✅ 已验证（2026-09-30，0.2.160 / 内置 CLI 2.1.283，M5 T7，本机登录） | **`resume` 时换模型**：同一个 SDK 会话（`resume=<session_id>`）第二轮把 `ClaudeAgentOptions.model` 从 `claude-sonnet-5` 换成 `claude-haiku-4-5-20251001`（同一个本机登录）能正常续上：`session_id` 不变，第二轮（Haiku）正确复述了第一轮（Sonnet）收到的背景；两个型号名在本机登录下都被接受。**没有验证**本机登录 ↔ API key 互换（要用 API key 付费实测），所以 API 只允许 Claude 会话在同一种认证方式（同 `api_key_env`）内换模型 | `make smoke SMOKE_ARGS="-k model_switch_claude_login"`，证据 `data/evidence/m5-polish/smoke/20260930T132106Z-model-switch-claude-login.json`（更早的 `...132006Z-...` 失败：提示词里的“暗号”被模型当成可疑指令，第一轮就拒绝，与换模型无关） |
 
 ## 本项目的用法（T9）
 

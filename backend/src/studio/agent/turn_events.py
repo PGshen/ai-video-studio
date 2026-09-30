@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from studio.agent import events
 from studio.agent.turn_state import _Job, _State
+from studio.db.repo import turns as turns_repo
 
 if TYPE_CHECKING:
     from studio.agent.runner import TurnRunner
@@ -45,6 +46,32 @@ def _truncate_args(args: dict[str, object]) -> dict[str, object]:
 def _persist_image(runner: TurnRunner, image: events.ImageData) -> dict[str, str]:
     sha256 = runner._blobs.put(base64.b64decode(image.data_base64))
     return {"media_type": image.media_type, "sha256": sha256}
+
+
+MODEL_SWITCHED_NOTICE = "model_switched"
+"""会话换了模型之后的第一轮开头推的 `notice` 的 `kind`（M5 T7）。"""
+
+
+def note_model_switch(runner: TurnRunner, job: _Job) -> None:
+    """本轮用的模型配置和会话上一轮实际用的不同时，发一条 `notice`（落库、可回放）。
+
+    上一轮用什么以 `turns.usage.profile_name` 为准（不是"会话当前配置被改过几次"），所以
+    连续换两次、又换回原来那个，不会提示。找不到上一轮的记录（第一轮、M5 之前的旧 turn）
+    也不提示。
+    """
+    previous = turns_repo.previous_run_profile_name(runner._engine, job.session.id, job.turn_id)
+    if previous is None or previous == job.profile.name:
+        return
+    runner._persist(
+        job,
+        "notice",
+        {
+            "kind": MODEL_SWITCHED_NOTICE,
+            "from": previous,
+            "to": job.profile.name,
+            "message": f"模型已从 {previous} 换为 {job.profile.name}（{job.profile.model}）",
+        },
+    )
 
 
 def handle(runner: TurnRunner, job: _Job, state: _State, event: events.AgentEvent) -> None:

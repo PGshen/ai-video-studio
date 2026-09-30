@@ -291,6 +291,7 @@ class TurnRunner:
             start_id, state.before = latest.id, latest.manifest
         turns_repo.mark_turn_running(engine, job.turn_id, start_snapshot_id=start_id)
         self._publish_status(job, "running")
+        turn_events.note_model_switch(self, job)
 
         state.upstream_ids = stage_flow.upstream_snapshot_ids(engine, project_id, job.stage)
         state.sources = stage_flow.manifests_of(engine, state.upstream_ids)
@@ -343,6 +344,7 @@ class TurnRunner:
         workdir = files.reset_scratch(self._settings.data_dir, job.session.id)
         turns_repo.mark_turn_running(self._engine, job.turn_id, start_snapshot_id=None)
         self._publish_status(job, "running")
+        turn_events.note_model_switch(self, job)
         tools, allow_web = self._tools_and_web(job)
         ctx = TurnContext(
             system_prompt=job.stage.system_prompt(),

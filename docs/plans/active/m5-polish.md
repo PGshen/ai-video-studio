@@ -152,7 +152,7 @@
 - **完成标准**：AC6 通过。
 - **验证命令**：`make check`
 
-### T7：会话内换模型（待开始）
+### T7：会话内换模型（完成）
 
 - **目标**：一个会话可以在同供应商的模型之间切换，对话记忆保留（D3）。
 - **涉及文件**：`api/sessions.py`（`PATCH /sessions/{id}`）、`db/repo/sessions.py`（更新 `model_profile_id`）、`agent/runner.py`（每轮本就重新读配置，补换模型提示与 `usage` 记录实际模型）、`agent/turn_finish.py`（`usage.model`）、`api/schemas.py`；测试 `backend/tests/agent/test_model_switch.py`、`backend/tests/api/test_sessions.py`；冒烟 `backend/tests/smoke/`（`model_switch_claude_login`）；新增 ADR `docs/decisions/0012-会话内同供应商换模型.md`。
@@ -257,11 +257,12 @@
 - 2026-09-30 — T4 完成：`scripts/export_legacy_styles.sh`（`make export-legacy-styles`，只读会话，从旧 compose 文件读库名/用户名）、`db/legacy_styles.py`（`make import-legacy-styles`，幂等、`--overwrite`、报告）；真实导出 9 个模板、34 个组件，导入 9 套预设到 worktree 的 `data/studio.db`，再导入全部跳过、`--overwrite` 覆盖 9 套均验证过，证据 `data/evidence/m5-polish/t4-legacy-import.md`。`make check` 全绿（1160 个后端测试）。
 - 2026-09-30 — T5 完成：narrative/animation/topic 三个提示词改为分层读取（入口每轮先读；叙事动笔前读蓝图和金样本；动画写代码前读配色和动画风格；选题只读入口；文件不存在则跳过；旧字段名/与基础规则冲突时以提示词为准），对应关键词断言；冒烟 `test_style_claude_login`（本机登录，111 秒）真实通过：叙事一轮先读入口和简报、再读蓝图与金样本、之后才 Write，产物通过 `validate_narrative`（2 个镜头，旧字段名没有带偏）；动画一轮先读入口、再读配色与动画风格、之后才 Write，`validate_scenes` 通过；证据 `data/evidence/m5-polish/smoke/20260930T131101Z-style-claude-login.json`。
 - 2026-09-30 — T6 完成：`db/repo/profiles.py`（校验、`create/update/delete_model_profile`、内置保护、被会话或阶段默认引用时不能删、`env_override_fields`）、`api/profiles.py`（`POST/PATCH/DELETE /api/model-profiles`，列表增加 `api_key_env`/`base_url`（打码）/`builtin`/`env_override`）。`make check` 全绿（1237 个后端测试）。
+- 2026-09-30 — T7 完成：`PATCH /api/sessions/{id}`（同 runtime、同 provider、key 已配置、Claude 只在同一种认证方式内；有排队/运行中的 turn 返回 409）、仓储 `set_session_model_if_idle`（同一事务里检查再更新）、每轮 `usage` 记录 `model`/`profile_name`、换了之后第一轮的 `model_switched` `notice`（`turn_events.note_model_switch`，无项目会话同样支持）。真实冒烟 `model_switch_claude_login` 通过：同一 SDK 会话 Sonnet → Haiku，`sdk_ref` 不变，第二轮答出第一轮的背景；ADR 0012、claude-agent-sdk.md、TD-41 已写。`make check` 全绿（1264 个后端测试）。
 
 ## 下一步
 
-- 做 T7（会话内换模型）：先写 `backend/tests/agent/test_model_switch.py`、`backend/tests/api/test_sessions.py`（`PATCH /api/sessions/{id}`）的失败用例。`TurnRunner` 每轮本来就按 `session.model_profile_id` 重读配置（`agent/runner.py` 约 121 行），主要工作是 API 校验（同 runtime 且同 provider、key 已配置、无 queued/running 的 turn）、下一轮开头的 `notice`、`turns.usage.model`/`profile_name`；再写冒烟 `model_switch_claude_login` 实测 Claude `resume` 换模型，以及登录（`claude-login`）↔ key（`claude-sonnet`）互换是否保留记忆，结论写 ADR 0012（`docs/decisions/0012-会话内同供应商换模型.md`）。互换不行就把允许条件收紧到「同 `api_key_env`」。
-- 冒烟里需要第二个 Claude 模型配置：用 T6 的 `create_model_profile` 在测试的临时库里复制 `claude-login`，只改 `model`（例如换成另一个 Claude 型号名，先查 `docs/references/claude-agent-sdk.md` 和官方模型表确认名字）。
+- 做 T8（TTS 音色列表、试听与项目语音设置）。先查证音色中文标签的来源：`docs/references/volcengine-tts.md` 和旧项目音色表（只读 `../ai-video/backend/app/engines/tts/` 与旧 dev DB 里的音色数据），**先查证再写**，不要凭记忆编标签；`engines/tts/voice_map.py` 已有公开的 `DEFAULT_ENGINE/VOICE/SPEED` 和 `voice_aliases()`（T1 加的）。先写 `backend/tests/api/test_tts.py`、`backend/tests/api/test_projects.py`（`PATCH /api/projects/{id}/settings`）、`backend/tests/engines/tts/` 音色列表用例的失败测试，再实现 `api/tts.py`。试听真实调用一次（TTS 费用已获负责人确认），音频与响应头存进 `data/evidence/m5-polish/`。
+- T8 要点回顾（见计划正文）：`POST /api/tts/preview` 示例文本固定在代码里；缓存 `data/tts-preview/<sha256>.mp3`；同一键并发合并；缺 key 503、供应商报错 502、语速越界/未知音色 422；`PATCH /api/projects/{id}/settings` 只接受 `voice`/`speech_rate`，项目忙时 409；创建项目时未给音色/语速就取 `settings.tts_default`（复制）。
 
 ## 决策记录
 
@@ -273,6 +274,7 @@
 - **D4 回退建议只允许向直接上游提**（2026-09-30，起草时）。`suggest_upstream_change` 目前 `to_stage` 是任意字符串。动画只能向叙事提，叙事只能向选题提。理由：直接上游的产物就是本阶段的输入，建议才有明确的处理对象；跨级建议可以让使用者自己去处理。
 - **D5 默认值的复制与活继承**（2026-09-30，起草时）。风格和 TTS 默认值在创建项目时**复制**进项目，之后与设置页脱钩（和设计「创建项目时复制所选风格」一致）；联网模式和阶段默认模型是**运行时读取**的设置，改了下一轮生效。
 - **D8 `style_presets` 新列叫 `reference_files`**（2026-09-30，T2）。计划写的是 `references`，但它是 SQL 保留字；数据库列名用 `reference_files`，对外（仓储值对象、API）仍叫 `references`。预设名字在仓储层强制唯一（去首尾空白后），导入的幂等也靠它。`created_at` 读回来统一补 UTC 时区（SQLite 丢时区信息）。
+- **D11 Claude 会话换模型先限制在同一种认证方式内**（2026-09-30，T7）。计划写的是「同 runtime 且同 provider，登录 ↔ key 互换不行再收紧」；互换要用 API key 付费实测，计划只预先授权了本机登录的冒烟（SOP §6 第 7 条），所以没有先放开再测，而是先按收紧后的规则上线，互换登记为 TD-41，验证后再放宽。OpenAI 及其他运行时不受这条限制（`SQLiteSession` 与模型、key 无关），只有 mock 测试。见 ADR 0012。
 - **D10 模型配置接口现在返回环境变量名和网关地址**（2026-09-30，T6）。M1 T7 时刻意不返回 `api_key_env`；界面要编辑它就必须返回。返回的是环境变量的**名字**和 `base_url`（账号密码打码，写入时也拒绝带账号密码的地址），永远不返回 key 的值，`test_profiles.py` 里原来的「不泄露环境变量名」测试改成「不泄露 key 值」并新增打码断言。`name`/`provider`/`runtime` 建好后不可改（会话按它们判断能否换模型，T7）；环境变量决定的字段界面不让改（422 说明改 `backend/.env`）。
 - **D9 旧字段名的提示不只针对金样本**（2026-09-30，T4）。真实数据显示 8 个叙事蓝图里 6 个（对应 7 个模板）提到旧系统的镜头字段名（`scene_index`、`beat_index`、`estimated_duration_seconds`），所有 5 个金样本都是旧格式。导入仍然不改写正文（D2），但入口 `STYLE.md` 的「旧格式提示」会点名受影响的文件，并写明 `narrative.json` 的字段以叙事阶段系统提示词为准。这条提示是否足够，由 T5 的真实冒烟判断；不够就在叙事提示词里加强，而不是改导入内容。
 - **D7 默认风格的存在性校验推迟到 T2**（2026-09-30，T1）。T1 时风格库仓储还不存在，`default_style_preset_id` 只做形状校验；T2 建好仓储后补引用检查（已写进「下一步」），AC1 里「默认风格存在」这一项在 T2 才算完成。

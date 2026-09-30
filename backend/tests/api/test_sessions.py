@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
+from httpx import Response
+
 from studio.agent import register_fake
 from studio.agent.fake import FakeRuntime, sleep
 from studio.agent.runtime import UserInput
 from studio.db.engine import session_scope
-from studio.db.models import ModelProfile
+from studio.db.models import ModelProfile, Session
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import create_session
 from studio.db.repo.turns import (
@@ -421,3 +424,234 @@ class TestContinueSession:
 
         assert response.status_code == 202
         await api_env.app.state.turn_runner.wait(response.json()["turn_id"])
+
+
+def _add_profile(api_env: ApiEnv, name: str, **fields: object) -> str:
+    """同 runtime（fake）、同 provider（fake）的另一个配置——换模型的合法目标。"""
+    values: dict[str, object] = {"provider": "fake", "model": f"{name}-model", "runtime": "fake"}
+    with session_scope(api_env.app.state.engine) as db:
+        row = ModelProfile(name=name, **{**values, **fields})
+        db.add(row)
+        db.flush()
+        return row.id
+
+
+class TestSwitchModel:
+    async def _session(self, api_env: ApiEnv) -> str:
+        pid = await _project(api_env)
+        return create_session(
+            api_env.app.state.engine,
+            project_id=pid,
+            stage="topic",
+            model_profile_id=_fake_profile_id(api_env),
+            runtime="fake",
+        ).id
+
+    async def _patch(self, api_env: ApiEnv, session_id: str, profile_id: str) -> Response:
+        return await api_env.client.patch(
+            f"/api/sessions/{session_id}", json={"model_profile_id": profile_id}
+        )
+
+    async def test_switches_to_another_profile_of_the_same_runtime_and_provider(
+        self, api_env: ApiEnv
+    ) -> None:
+        session_id = await self._session(api_env)
+        other = _add_profile(api_env, "fake-b")
+
+        response = await self._patch(api_env, session_id, other)
+
+        assert response.status_code == 200, response.text
+        assert response.json()["model_profile_id"] == other
+        fetched = await api_env.client.get(f"/api/sessions/{session_id}")
+        assert fetched.json()["model_profile_id"] == other
+
+    async def test_keeps_sdk_ref_runtime_and_active_flag(self, api_env: ApiEnv) -> None:
+        session_id = await self._session(api_env)
+        engine = api_env.app.state.engine
+        with session_scope(engine) as db:
+            row = db.get(Session, session_id)
+            assert row is not None
+            row.sdk_ref = "sdk-abc"
+        other = _add_profile(api_env, "fake-b")
+
+        body = (await self._patch(api_env, session_id, other)).json()
+
+        assert body["sdk_ref"] == "sdk-abc"
+        assert body["runtime"] == "fake"
+        assert body["is_active"] is True
+
+    async def test_switching_to_the_current_profile_is_a_no_op_200(self, api_env: ApiEnv) -> None:
+        session_id = await self._session(api_env)
+
+        response = await self._patch(api_env, session_id, _fake_profile_id(api_env))
+
+        assert response.status_code == 200
+        assert response.json()["model_profile_id"] == _fake_profile_id(api_env)
+
+    async def test_a_switched_session_runs_its_next_turn_with_the_new_profile(
+        self, api_env: ApiEnv
+    ) -> None:
+        session_id = await self._session(api_env)
+        other = _add_profile(api_env, "fake-b")
+        await self._patch(api_env, session_id, other)
+
+        sent = await api_env.client.post(
+            f"/api/sessions/{session_id}/messages", json={"text": "你好"}
+        )
+        await api_env.app.state.turn_runner.wait(sent.json()["turn_id"])
+
+        detail = (await api_env.client.get(f"/api/sessions/{session_id}")).json()
+        assert detail["turns"][-1]["usage"]["profile_name"] == "fake-b"
+
+    async def test_unknown_session_is_404(self, api_env: ApiEnv) -> None:
+        response = await self._patch(api_env, "nope", _fake_profile_id(api_env))
+
+        assert response.status_code == 404
+
+    async def test_unknown_profile_is_400(self, api_env: ApiEnv) -> None:
+        session_id = await self._session(api_env)
+
+        response = await self._patch(api_env, session_id, "missing")
+
+        assert response.status_code == 400
+        assert "模型配置不存在" in assert_detail(response)
+
+    async def test_different_runtime_is_400(self, api_env: ApiEnv) -> None:
+        session_id = await self._session(api_env)
+        login = get_model_profile(api_env.app.state.engine, "claude-login")
+        assert login is not None
+
+        response = await self._patch(api_env, session_id, login.id)
+
+        assert response.status_code == 400
+        assert "运行时" in assert_detail(response)
+
+    async def test_different_provider_is_400(self, api_env: ApiEnv) -> None:
+        session_id = await self._session(api_env)
+        other = _add_profile(api_env, "fake-other-vendor", provider="other-vendor")
+
+        response = await self._patch(api_env, session_id, other)
+
+        assert response.status_code == 400
+        assert "供应商" in assert_detail(response)
+
+    async def _claude_session(self, api_env: ApiEnv, profile_id: str) -> str:
+        pid = await _project(api_env)
+        return create_session(
+            api_env.app.state.engine,
+            project_id=pid,
+            stage="topic",
+            model_profile_id=profile_id,
+            runtime="claude",
+        ).id
+
+    async def test_claude_sessions_can_switch_within_the_same_auth_mode(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SMOKE_TEST_ANTHROPIC_KEY", "sk-test")
+        claude = {"provider": "anthropic", "runtime": "claude"}
+        login_a = _add_profile(api_env, "login-a", api_key_env=None, **claude)
+        login_b = _add_profile(api_env, "login-b", api_key_env=None, **claude)
+        key_a = _add_profile(api_env, "key-a", api_key_env="SMOKE_TEST_ANTHROPIC_KEY", **claude)
+        key_b = _add_profile(api_env, "key-b", api_key_env="SMOKE_TEST_ANTHROPIC_KEY", **claude)
+
+        for source, target in ((login_a, login_b), (key_a, key_b)):
+            session_id = await self._claude_session(api_env, source)
+            response = await self._patch(api_env, session_id, target)
+            assert response.status_code == 200, response.text
+            assert response.json()["model_profile_id"] == target
+
+    async def test_claude_sessions_cannot_switch_between_login_and_api_key(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """登录 ↔ API key 互换后 SDK 会话能否续上没有验证过（要 API key 付费实测），先不允许。"""
+        monkeypatch.setenv("SMOKE_TEST_ANTHROPIC_KEY", "sk-test")
+        claude = {"provider": "anthropic", "runtime": "claude"}
+        login = _add_profile(api_env, "login-a", api_key_env=None, **claude)
+        key = _add_profile(api_env, "key-a", api_key_env="SMOKE_TEST_ANTHROPIC_KEY", **claude)
+
+        for source, target in ((login, key), (key, login)):
+            session_id = await self._claude_session(api_env, source)
+            response = await self._patch(api_env, session_id, target)
+            assert response.status_code == 400
+            assert "认证方式" in assert_detail(response)
+            fetched = await api_env.client.get(f"/api/sessions/{session_id}")
+            assert fetched.json()["model_profile_id"] == source
+
+    async def test_non_claude_runtimes_are_not_limited_by_the_auth_env(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OpenAI 路径的会话历史（SQLiteSession）与模型和 key 无关，同 provider 内可以互换。"""
+        monkeypatch.setenv("SMOKE_TEST_OTHER_KEY", "sk-test")
+        a = _add_profile(api_env, "oa", api_key_env="OPENAI_API_KEY", provider="openai")
+        b = _add_profile(api_env, "ob", api_key_env="SMOKE_TEST_OTHER_KEY", provider="openai")
+        pid = await _project(api_env)
+        session_id = create_session(
+            api_env.app.state.engine,
+            project_id=pid,
+            stage="topic",
+            model_profile_id=a,
+            runtime="fake",
+        ).id
+        # 两个配置的 runtime 都是 fake（`_add_profile` 默认），所以只受 provider 和 key 限制。
+
+        response = await self._patch(api_env, session_id, b)
+
+        assert response.status_code == 200, response.text
+
+    async def test_profile_without_configured_key_is_400(self, api_env: ApiEnv) -> None:
+        session_id = await self._session(api_env)
+        other = _add_profile(api_env, "fake-nokey", api_key_env="SURELY_UNSET_KEY_ENV_VAR")
+
+        response = await self._patch(api_env, session_id, other)
+
+        assert response.status_code == 400
+        assert "密钥" in assert_detail(response)
+        fetched = await api_env.client.get(f"/api/sessions/{session_id}")
+        assert fetched.json()["model_profile_id"] == _fake_profile_id(api_env)
+
+    async def test_unregistered_runtime_is_400(self, api_env: ApiEnv) -> None:
+        session_id = await self._session(api_env)
+        other = _add_profile(api_env, "fake-b")
+        api_env.app.state.runtime_factory._constructors.pop("fake")
+
+        response = await self._patch(api_env, session_id, other)
+
+        assert response.status_code == 400
+        assert "运行时未启用" in assert_detail(response)
+
+    async def test_running_turn_is_409_and_changes_nothing(self, api_env: ApiEnv) -> None:
+        pid = await _project(api_env)
+        session_id, turn_id = await _make_busy_session(api_env, pid)
+        other = _add_profile(api_env, "fake-b")
+        try:
+            response = await self._patch(api_env, session_id, other)
+
+            assert response.status_code == 409
+            assert "正在运行" in assert_detail(response)
+            fetched = await api_env.client.get(f"/api/sessions/{session_id}")
+            assert fetched.json()["model_profile_id"] == _fake_profile_id(api_env)
+        finally:
+            await _release_busy_session(api_env, turn_id)
+
+    async def test_after_the_turn_ends_the_switch_is_allowed(self, api_env: ApiEnv) -> None:
+        pid = await _project(api_env)
+        session_id, turn_id = await _make_busy_session(api_env, pid)
+        other = _add_profile(api_env, "fake-b")
+        await _release_busy_session(api_env, turn_id)
+
+        response = await self._patch(api_env, session_id, other)
+
+        assert response.status_code == 200
+
+    async def test_brainstorm_sessions_can_switch_too(self, api_env: ApiEnv) -> None:
+        created = await api_env.client.post(
+            "/api/brainstorm/sessions", json={"model_profile_id": _fake_profile_id(api_env)}
+        )
+        assert created.status_code == 201, created.text
+        other = _add_profile(api_env, "fake-b")
+
+        response = await self._patch(api_env, created.json()["id"], other)
+
+        assert response.status_code == 200
+        assert response.json()["project_id"] is None
