@@ -137,7 +137,7 @@
 - **完成标准**：AC5 通过；冒烟证据存进 `data/evidence/m5-polish/`。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k style_claude_login"`（本机登录，不产生 API 费用）
 
-### T6：模型配置增改删（待开始）
+### T6：模型配置增改删（完成）
 
 - **目标**：模型配置可以在界面上维护，而不是只靠种子和环境变量。
 - **涉及文件**：`db/repo/profiles.py`（`create_profile`/`update_profile`/`delete_profile`、内置判断）、`api/profiles.py`、`api/schemas.py`（`ModelProfileIn`/`ModelProfilePatch`，`ModelProfileOut` 增加 `builtin`、`env_override: list[str]`、`api_key_env`）；测试 `backend/tests/db/test_profiles_repo.py`、`backend/tests/api/test_profiles.py`。
@@ -256,11 +256,12 @@
 - 2026-09-30 — T3 完成：`POST /api/projects` 支持 `style_preset_id`（请求指定 → 默认风格 → 占位；id 不存在 404 且无残留），风格文件经 `render_style_files` 写入 `style/` 并进 `init` 快照，`project.settings` 记 `style_preset_id`/`style_name`（客户端传同名键会被丢掉，防伪造）；预设之后被改/删不影响已有项目。`make check` 全绿（1126 个后端测试）。
 - 2026-09-30 — T4 完成：`scripts/export_legacy_styles.sh`（`make export-legacy-styles`，只读会话，从旧 compose 文件读库名/用户名）、`db/legacy_styles.py`（`make import-legacy-styles`，幂等、`--overwrite`、报告）；真实导出 9 个模板、34 个组件，导入 9 套预设到 worktree 的 `data/studio.db`，再导入全部跳过、`--overwrite` 覆盖 9 套均验证过，证据 `data/evidence/m5-polish/t4-legacy-import.md`。`make check` 全绿（1160 个后端测试）。
 - 2026-09-30 — T5 完成：narrative/animation/topic 三个提示词改为分层读取（入口每轮先读；叙事动笔前读蓝图和金样本；动画写代码前读配色和动画风格；选题只读入口；文件不存在则跳过；旧字段名/与基础规则冲突时以提示词为准），对应关键词断言；冒烟 `test_style_claude_login`（本机登录，111 秒）真实通过：叙事一轮先读入口和简报、再读蓝图与金样本、之后才 Write，产物通过 `validate_narrative`（2 个镜头，旧字段名没有带偏）；动画一轮先读入口、再读配色与动画风格、之后才 Write，`validate_scenes` 通过；证据 `data/evidence/m5-polish/smoke/20260930T131101Z-style-claude-login.json`。
+- 2026-09-30 — T6 完成：`db/repo/profiles.py`（校验、`create/update/delete_model_profile`、内置保护、被会话或阶段默认引用时不能删、`env_override_fields`）、`api/profiles.py`（`POST/PATCH/DELETE /api/model-profiles`，列表增加 `api_key_env`/`base_url`（打码）/`builtin`/`env_override`）。`make check` 全绿（1237 个后端测试）。
 
 ## 下一步
 
-- 做 T6 的收尾（代码和测试已写完，见工作区未提交的 `db/repo/profiles.py`、`api/profiles.py`、`api/schemas.py`、`tests/db/test_repo_profiles_crud.py`、`tests/api/test_profiles.py`）：提交。然后做 T7（会话内换模型）。
-- T7：先写 `backend/tests/agent/test_model_switch.py`、`backend/tests/api/test_sessions.py`（`PATCH /api/sessions/{id}`）的失败用例；`TurnRunner` 每轮本来就按 `session.model_profile_id` 重读配置（`agent/runner.py` 约 121 行），主要工作是 API、`notice`、`turns.usage.model`；再写冒烟 `model_switch_claude_login` 实测 Claude `resume` 换模型与登录↔key 互换，结论写 ADR 0012。
+- 做 T7（会话内换模型）：先写 `backend/tests/agent/test_model_switch.py`、`backend/tests/api/test_sessions.py`（`PATCH /api/sessions/{id}`）的失败用例。`TurnRunner` 每轮本来就按 `session.model_profile_id` 重读配置（`agent/runner.py` 约 121 行），主要工作是 API 校验（同 runtime 且同 provider、key 已配置、无 queued/running 的 turn）、下一轮开头的 `notice`、`turns.usage.model`/`profile_name`；再写冒烟 `model_switch_claude_login` 实测 Claude `resume` 换模型，以及登录（`claude-login`）↔ key（`claude-sonnet`）互换是否保留记忆，结论写 ADR 0012（`docs/decisions/0012-会话内同供应商换模型.md`）。互换不行就把允许条件收紧到「同 `api_key_env`」。
+- 冒烟里需要第二个 Claude 模型配置：用 T6 的 `create_model_profile` 在测试的临时库里复制 `claude-login`，只改 `model`（例如换成另一个 Claude 型号名，先查 `docs/references/claude-agent-sdk.md` 和官方模型表确认名字）。
 
 ## 决策记录
 

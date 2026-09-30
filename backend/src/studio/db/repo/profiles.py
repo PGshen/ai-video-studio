@@ -27,18 +27,29 @@ docs/references/openai-agents-sdk.md R2 结论）。种子只插入不存在的�
 误设为 `True` 的 `deepseek` 行不会被这次改动自动更新（不扩展受控更新规则覆盖范围）；
 需要手动 `UPDATE model_profiles SET supports_vision = 0 WHERE name = 'deepseek'`
 或删库重建（见 docs/runbooks/dev-setup.md「已知限制」）。
+
+M5 T6（2026-09-30）：模型配置可以在界面上增改删。名称、`provider`、`runtime` 建好后不可改
+（会话按它们判断能否换模型）；内置配置（种子名和 `fake`）可以编辑但不能删除，否则下次启动
+种子会把它加回来；被会话或阶段默认模型引用的配置不能删除。环境变量网关覆盖（上面说的
+`base_url`/`model`/单价）仍然优先——`env_override_fields` 告诉界面哪些字段由环境变量决定。
+校验是纯函数式的：先把改动合并成完整记录再整体检查，不合法时什么都不写。
 """
 
 from __future__ import annotations
 
+import math
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
+from urllib.parse import urlsplit
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, func, select
 
 from studio.config import Settings
 from studio.db.engine import session_scope
-from studio.db.models import ModelProfile
+from studio.db.models import ModelProfile, Setting
+from studio.db.models import Session as SessionRow
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,3 +203,220 @@ def get_model_profile_by_id(engine: Engine, profile_id: str) -> ModelProfileValu
     with session_scope(engine) as session:
         row = session.get(ModelProfile, profile_id)
         return _to_value(row) if row is not None else None
+
+
+# ---- M5 T6：增改删 ---------------------------------------------------------
+
+USER_RUNTIMES: Final = ("claude", "openai")
+"""界面里可以新建的运行时（`fake` 只用于测试，不能新建）。"""
+_LOGIN_RUNTIMES: Final = ("claude", "fake")
+"""`api_key_env` 可以为空的运行时：claude 用本机登录，fake 不需要 key。"""
+BUILTIN_NAMES: Final = frozenset({str(spec["name"]) for spec in _SEED_PROFILES} | {"fake"})
+_NAME = re.compile(r"^[\w.\-]{1,50}$")
+_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+_EDITABLE_FIELDS: Final = (
+    "model",
+    "base_url",
+    "api_key_env",
+    "supports_vision",
+    "price_input",
+    "price_output",
+    "max_cost_per_turn",
+    "max_steps_per_turn",
+)
+_IMMUTABLE_FIELDS: Final = ("name", "provider", "runtime")
+
+
+class ProfileValidationError(ValueError):
+    """字段不合法（API 映射为 422）；`errors` 逐条列出问题。"""
+
+    def __init__(self, errors: list[str]) -> None:
+        super().__init__("；".join(errors))
+        self.errors = errors
+
+
+class ProfileNotFoundError(LookupError):
+    pass
+
+
+class DuplicateProfileError(RuntimeError):
+    """名称已被占用（API 映射为 409）。"""
+
+
+class BuiltinProfileError(RuntimeError):
+    """内置配置不能删除（API 映射为 409）。"""
+
+
+class ProfileInUseError(RuntimeError):
+    """配置正被会话或阶段默认模型引用，不能删除（API 映射为 409）。"""
+
+    def __init__(self, name: str, session_count: int, stages: list[str]) -> None:
+        reasons = []
+        if session_count:
+            reasons.append(f"被 {session_count} 个会话使用")
+        if stages:
+            reasons.append(f"是 {'、'.join(stages)} 阶段的默认模型")
+        super().__init__(f"配置 {name} {'，'.join(reasons)}，不能删除")
+        self.session_count = session_count
+        self.stages = stages
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _validate_profile(fields: Mapping[str, Any], *, check_identity: bool) -> list[str]:
+    """检查一条完整记录；`check_identity` 为假时不检查 `name`/`provider`/`runtime`
+    （更新时它们不可改）。"""
+    errors: list[str] = []
+    runtime = fields["runtime"]
+    if check_identity:
+        if not isinstance(fields["name"], str) or _NAME.match(fields["name"]) is None:
+            errors.append("名称只允许字母、数字、下划线、点和连字符，1–50 个字符")
+        if not isinstance(fields["provider"], str) or not fields["provider"].strip():
+            errors.append("provider 不能为空")
+        if runtime not in USER_RUNTIMES:
+            errors.append(f"运行时必须是 {' / '.join(USER_RUNTIMES)}")
+    if not isinstance(fields["model"], str) or not fields["model"].strip():
+        errors.append("模型名不能为空")
+    base_url = fields["base_url"]
+    if base_url is not None:
+        parts = urlsplit(base_url) if isinstance(base_url, str) else None
+        if parts is None or parts.scheme not in ("http", "https") or not parts.netloc:
+            errors.append("base_url 必须是 http(s) 地址")
+        elif parts.username or parts.password:
+            errors.append("base_url 不能包含账号密码（密钥请放在环境变量里）")
+    key_env = fields["api_key_env"]
+    if key_env is None:
+        if runtime not in _LOGIN_RUNTIMES:
+            errors.append("只有 claude 运行时可以不填 API key 环境变量（使用本机登录）")
+    elif not isinstance(key_env, str) or _ENV_NAME.match(key_env) is None:
+        errors.append("api_key_env 必须是环境变量的名字（大写字母、数字、下划线），不是 key 本身")
+    if not isinstance(fields["supports_vision"], bool):
+        errors.append("supports_vision 必须是布尔值")
+    for key in ("price_input", "price_output"):
+        value = fields[key]
+        if value is not None and (not _is_number(value) or value < 0):
+            errors.append(f"单价（{key}）必须是非负的有限数字，或留空")
+    cost = fields["max_cost_per_turn"]
+    if cost is not None and (not _is_number(cost) or cost < 0):
+        errors.append("单轮成本上限必须是非负的有限数字，或留空表示不限")
+    steps = fields["max_steps_per_turn"]
+    if steps is not None and (isinstance(steps, bool) or not isinstance(steps, int) or steps < 1):
+        errors.append("单轮步数上限必须是正整数，或留空表示不限")
+    return errors
+
+
+def _row_fields(row: ModelProfile) -> dict[str, Any]:
+    return {
+        "name": row.name,
+        "provider": row.provider,
+        "model": row.model,
+        "runtime": row.runtime,
+        "base_url": row.base_url,
+        "api_key_env": row.api_key_env,
+        "supports_vision": row.supports_vision,
+        "price_input": row.price_input,
+        "price_output": row.price_output,
+        "max_cost_per_turn": row.max_cost_per_turn,
+        "max_steps_per_turn": row.max_steps_per_turn,
+    }
+
+
+def create_model_profile(
+    engine: Engine,
+    *,
+    name: str,
+    provider: str,
+    model: str,
+    runtime: str,
+    base_url: str | None,
+    api_key_env: str | None,
+    supports_vision: bool,
+    price_input: float | None,
+    price_output: float | None,
+    max_cost_per_turn: float | None,
+    max_steps_per_turn: int | None,
+) -> ModelProfileValue:
+    """新建模型配置；不合法抛 `ProfileValidationError`（一次列出全部问题），名称重复抛
+    `DuplicateProfileError`。"""
+    fields: dict[str, Any] = {
+        "name": name,
+        "provider": provider,
+        "model": model,
+        "runtime": runtime,
+        "base_url": base_url,
+        "api_key_env": api_key_env,
+        "supports_vision": supports_vision,
+        "price_input": price_input,
+        "price_output": price_output,
+        "max_cost_per_turn": max_cost_per_turn,
+        "max_steps_per_turn": max_steps_per_turn,
+    }
+    errors = _validate_profile(fields, check_identity=True)
+    if errors:
+        raise ProfileValidationError(errors)
+    with session_scope(engine) as db:
+        if db.scalars(select(ModelProfile).where(ModelProfile.name == name)).first() is not None:
+            raise DuplicateProfileError(f"已有同名的模型配置：{name}")
+        row = ModelProfile(**{**fields, "provider": provider.strip(), "model": model.strip()})
+        db.add(row)
+        db.flush()
+        return _to_value(row)
+
+
+def update_model_profile(
+    engine: Engine, profile_id: str, patch: Mapping[str, Any]
+) -> ModelProfileValue:
+    """按补丁改字段（值为 `None` 表示清空可空字段）；`name`/`provider`/`runtime` 不可改。
+    校验的是合并后的完整记录，不合法时什么都不写。"""
+    errors = [
+        f"不能修改 {key}" if key in _IMMUTABLE_FIELDS or key == "id" else f"未知字段 {key}"
+        for key in patch
+        if key not in _EDITABLE_FIELDS
+    ]
+    if errors:
+        raise ProfileValidationError(errors)
+    with session_scope(engine) as db:
+        row = db.get(ModelProfile, profile_id)
+        if row is None:
+            raise ProfileNotFoundError(profile_id)
+        merged = {**_row_fields(row), **patch}
+        errors = _validate_profile(merged, check_identity=False)
+        if errors:
+            raise ProfileValidationError(errors)
+        for key in patch:
+            value = merged[key]
+            setattr(row, key, value.strip() if key == "model" else value)
+        db.flush()
+        return _to_value(row)
+
+
+def delete_model_profile(engine: Engine, profile_id: str) -> None:
+    """删除自定义配置。内置配置抛 `BuiltinProfileError`；被会话或阶段默认模型引用时抛
+    `ProfileInUseError`（带引用数量），都不删。"""
+    with session_scope(engine) as db:
+        row = db.get(ModelProfile, profile_id)
+        if row is None:
+            raise ProfileNotFoundError(profile_id)
+        if row.name in BUILTIN_NAMES:
+            raise BuiltinProfileError(f"内置配置 {row.name} 不能删除（可以编辑）")
+        sessions = db.scalar(
+            select(func.count())
+            .select_from(SessionRow)
+            .where(SessionRow.model_profile_id == row.id)
+        )
+        defaults = db.get(Setting, "stage_default_profile")
+        stages = [
+            stage
+            for stage, pid in ((defaults.value if defaults else None) or {}).items()
+            if pid == row.id
+        ]
+        if sessions or stages:
+            raise ProfileInUseError(row.name, int(sessions or 0), stages)
+        db.delete(row)
+
+
+def env_override_fields(profile_name: str, settings: Settings | None) -> list[str]:
+    """这条配置里由环境变量（`STUDIO_*`）决定的字段：启动时会覆盖库里的值，所以界面不让改。"""
+    return list(_gateway_overrides(settings).get(profile_name, {}))

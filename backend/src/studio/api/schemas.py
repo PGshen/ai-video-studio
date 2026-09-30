@@ -152,22 +152,58 @@ class JobOut(BaseModel):
 
 
 class ModelProfileOut(BaseModel):
-    """不包含 `api_key_env`（字段名本身不是密钥，但简报要求"不返回 key，
-    只返回 key 是否已配置"）：调用方只需要知道能不能用，不需要知道去哪个
-    环境变量找 key。
-    """
+    """永远不含 key 的**值**，只有 `key_configured`。M5 T6 起返回 `api_key_env`（环境变量的
+    名字，不是密钥，界面要编辑它）和 `base_url`（账号密码打码）。"""
 
     id: str
     name: str
     provider: str
     model: str
     runtime: str
+    base_url: str | None
+    api_key_env: str | None
+    """环境变量名；为空表示使用本机登录（仅 claude 运行时）。"""
     supports_vision: bool
     price_input: float | None
     price_output: float | None
     max_cost_per_turn: float | None
     max_steps_per_turn: int | None
     key_configured: bool
+    builtin: bool
+    """内置配置（种子名和 `fake`）：可以编辑，不能删除。"""
+    env_override: list[str]
+    """当前由环境变量（`STUDIO_*`）决定的字段；启动时会覆盖库里的值，所以界面不让改。"""
+
+
+class ModelProfileCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    provider: str
+    model: str
+    runtime: str
+    base_url: str | None = None
+    api_key_env: str | None = None
+    supports_vision: bool = False
+    price_input: float | None = None
+    price_output: float | None = None
+    max_cost_per_turn: float | None = None
+    max_steps_per_turn: int | None = None
+
+
+class ModelProfilePatch(BaseModel):
+    """只改出现的字段（`null` 清空可空字段）；`name`/`provider`/`runtime` 建好后不可改。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
+    supports_vision: bool | None = None
+    price_input: float | None = None
+    price_output: float | None = None
+    max_cost_per_turn: float | None = None
+    max_steps_per_turn: int | None = None
 
 
 class SceneCheckOut(BaseModel):
