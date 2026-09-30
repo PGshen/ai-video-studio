@@ -20,9 +20,14 @@
  * 也不需要把 `SessionPanel` 已经很紧凑的状态往上提。
  */
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useProjectQuery } from '@/composables/queries'
+import {
+  useApplySuggestionMutation,
+  useProjectQuery,
+  useSuggestionsQuery,
+} from '@/composables/queries'
+import { prefillText } from '@/components/session/suggestionFlow'
 import { useSessionStream } from '@/composables/useSessionStream'
 import StageNav from '@/features/workbench/StageNav.vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
@@ -54,6 +59,33 @@ watch(
 )
 
 const scope = computed(() => projectScope(projectId.value, stage.value))
+
+// 处理回退建议（M5 T13）：卡片的「去处理」跳到 `?suggestion=<id>`，这里把建议内容预填进输入框；
+// 使用者发送后（202）才把建议标为已处理，发送失败则仍是待处理；处理完清掉 query，刷新页面不会重复预填。
+const router = useRouter()
+const { data: suggestions } = useSuggestionsQuery(projectId)
+const applySuggestion = useApplySuggestionMutation()
+const activeSuggestion = computed(() => {
+  const id = route.query.suggestion
+  if (typeof id !== 'string') return null
+  const found = suggestions.value?.find((s) => s.id === id)
+  return found && found.status === 'open' && found.to_stage === stage.value ? found : null
+})
+const prefill = computed(() =>
+  activeSuggestion.value
+    ? { text: prefillText(activeSuggestion.value), key: activeSuggestion.value.id }
+    : null,
+)
+
+async function onMessageSent(): Promise<void> {
+  const current = activeSuggestion.value
+  if (!current) return
+  try {
+    await applySuggestion.mutateAsync(current.id)
+  } finally {
+    await router.replace({ query: { ...route.query, suggestion: undefined } })
+  }
+}
 
 const { turnStatus: canvasTurnStatus } = useSessionStream(sessionId)
 const canvasBusy = computed(() =>
@@ -91,6 +123,8 @@ const canvasBusy = computed(() =>
           <SessionPanel
             :session-id="sessionId"
             :project-id="projectId"
+            :prefill="prefill"
+            @sent="onMessageSent"
           />
         </div>
 

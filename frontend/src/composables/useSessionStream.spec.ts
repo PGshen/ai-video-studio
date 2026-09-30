@@ -262,6 +262,37 @@ describe('useSessionStream', () => {
     expect(invalidateSpy.mock.calls.map((call) => call[0]?.queryKey)).not.toContainEqual(['ideas'])
   })
 
+  it('suggestion 事件成为时间线条目，并让所有建议查询（列表、阶段角标）失效', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail())
+    const { result, queryClient } = await setup('s1')
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+    onEvent(
+      frame('suggestion', {
+        turn_id: 't1',
+        suggestion_id: 'sg1',
+        from_stage: 'animation',
+        to_stage: 'narrative',
+        content: 's-hook 旁白太长',
+        status: 'open',
+        seq: 4,
+      }),
+    )
+    await flushAsync()
+
+    const item = result.items.value.find((i) => i.kind === 'suggestion')
+    expect(item).toEqual({
+      kind: 'suggestion',
+      turnId: 't1',
+      suggestionId: 'sg1',
+      fromStage: 'animation',
+      toStage: 'narrative',
+      content: 's-hook 旁白太长',
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['suggestions'] })
+  })
+
   it('turn_status 更新当前 turn 状态', async () => {
     getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
     const { result } = await setup('s1')

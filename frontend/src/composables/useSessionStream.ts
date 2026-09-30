@@ -57,6 +57,7 @@ import type {
   NoticePayload,
   SnapshotEventPayload,
   StreamEvent,
+  SuggestionEventPayload,
   TextDeltaPayload,
   TextPayload,
   ToolCallPayload,
@@ -101,6 +102,16 @@ export interface NoticeItem {
   paths?: string[]
 }
 
+/** 下游 agent 提的回退建议（M5 T9）；处理状态不放在条目里，由卡片按 `suggestionId` 查最新状态。 */
+export interface SuggestionItem {
+  kind: 'suggestion'
+  turnId: string
+  suggestionId: string
+  fromStage: string
+  toStage: string
+  content: string
+}
+
 export interface ErrorItem {
   kind: 'error'
   turnId: string
@@ -121,6 +132,7 @@ export type TimelineItem =
   | TextItem
   | ToolCallItem
   | NoticeItem
+  | SuggestionItem
   | ErrorItem
   | SnapshotItem
 
@@ -351,6 +363,20 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
           message: payload.message,
           paths: payload.paths,
         })
+        break
+      }
+      case 'suggestion': {
+        const payload = event.payload as SuggestionEventPayload
+        items.value.push({
+          kind: 'suggestion',
+          turnId: payload.turn_id,
+          suggestionId: payload.suggestion_id,
+          fromStage: payload.from_stage,
+          toStage: payload.to_stage,
+          content: payload.content,
+        })
+        // 阶段导航的角标和建议列表要跟上（所有项目的建议查询共用前缀，见 `queryKeys.suggestionsAll`）。
+        void queryClient.invalidateQueries({ queryKey: queryKeys.suggestionsAll() })
         break
       }
       case 'error': {

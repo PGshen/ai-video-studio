@@ -17,7 +17,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { useFinalizeStageMutation, useReopenStageMutation } from '@/composables/queries'
+import {
+  useFinalizeStageMutation,
+  useReopenStageMutation,
+  useSuggestionSummaryQuery,
+} from '@/composables/queries'
+import { badgeCount } from '@/components/session/suggestionFlow'
 import type { StageOut } from '@/types/api'
 import { ApiError } from '@/api/http'
 import ProjectSettingsDialog from './ProjectSettingsDialog.vue'
@@ -38,6 +43,9 @@ const STAGE_TITLES: Record<string, string> = {
 const router = useRouter()
 
 const currentStageInfo = computed(() => props.stages.find((s) => s.stage === props.currentStage))
+
+/** 阶段按钮上的角标：下游提给该阶段、还没处理的回退建议数量（M5 T13）。 */
+const { data: suggestionSummary } = useSuggestionSummaryQuery(() => props.projectId)
 
 const finalizeMutation = useFinalizeStageMutation(() => props.projectId)
 const reopenMutation = useReopenStageMutation(() => props.projectId)
@@ -85,6 +93,12 @@ async function confirmFinalize(): Promise<void> {
           @click="goToStage(stage)"
         >
           {{ STAGE_TITLES[stage.stage] ?? stage.stage }}{{ stageStatusStyle(stage.status).suffix }}
+          <span
+            v-if="badgeCount(suggestionSummary, stage.stage) > 0"
+            class="ml-1 rounded-full bg-sky-600 px-1.5 text-xs text-white"
+            :title="`${badgeCount(suggestionSummary, stage.stage)} 条待处理的回退建议`"
+            :data-testid="`suggestion-badge-${stage.stage}`"
+          >{{ badgeCount(suggestionSummary, stage.stage) }}</span>
         </button>
       </template>
     </nav>

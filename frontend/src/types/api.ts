@@ -145,6 +145,20 @@ export interface SessionOut {
   title: string | null
 }
 
+export type SuggestionStatus = 'open' | 'applied' | 'dismissed'
+
+/** 回退建议（后端 `api/schemas.py::SuggestionOut`）：下游阶段的 agent 对上游产物提出的修改建议。 */
+export interface SuggestionOut {
+  id: string
+  project_id: string
+  from_stage: string
+  to_stage: string
+  content: string
+  status: SuggestionStatus
+  turn_id: string | null
+  created_at: string
+}
+
 /** `GET /api/tts/voices`（后端 `api/tts.py::VoiceOut`）。 */
 export interface VoiceOut {
   alias: string

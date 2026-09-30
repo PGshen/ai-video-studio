@@ -29,10 +29,19 @@ import {
 import { ApiError } from '@/api/http'
 import { computeTurnControls } from './turnControls'
 import { CONTINUE_TEXT, optimisticSend } from './optimisticSend'
+import PromptPrefill from './PromptPrefill.vue'
 import SessionTimelineItem from './SessionTimelineItem.vue'
 
-/** `projectId` 只用于工具结果图片的地址；头脑风暴会话没有项目，传 `null`。 */
-const props = defineProps<{ sessionId: string | null; projectId: string | null }>()
+/**
+ * `projectId` 只用于工具结果图片的地址；头脑风暴会话没有项目，传 `null`。`prefill`（M5 T13）：
+ * 往输入框预填文本（处理回退建议时用），`key` 变化才写入；消息发送成功后发出 `sent`。
+ */
+const props = defineProps<{
+  sessionId: string | null
+  projectId: string | null
+  prefill?: { text: string; key: string } | null
+}>()
+const emit = defineEmits<{ (e: 'sent'): void }>()
 
 const sessionIdRef = toRef(props, 'sessionId')
 const { items, turnStatus, addLocalUserMessage, removeLocalUserMessage } =
@@ -64,6 +73,7 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
   sendError.value = null
   try {
     await optimisticSend(optimisticMessages, text, () => sendMutation.mutateAsync({ text }))
+    emit('sent')
   } catch (error) {
     sendError.value = describeError(error)
   }
@@ -129,6 +139,7 @@ async function onContinue(): Promise<void> {
     </p>
 
     <PromptInput @submit="onSubmit">
+      <PromptPrefill :prefill="prefill" />
       <PromptInputBody>
         <PromptInputTextarea :disabled="!sessionId || controls.inputDisabled" />
       </PromptInputBody>

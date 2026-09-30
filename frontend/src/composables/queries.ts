@@ -57,6 +57,10 @@ export const queryKeys = {
   modelProfiles: () => ['model-profiles'] as const,
   settings: () => ['settings'] as const,
   voices: () => ['tts', 'voices'] as const,
+  /** 所有项目的建议查询的公共前缀：`suggestion` 事件到达或处理建议后整体失效。 */
+  suggestionsAll: () => ['suggestions'] as const,
+  suggestions: (projectId: string) => ['suggestions', projectId, 'list'] as const,
+  suggestionSummary: (projectId: string) => ['suggestions', projectId, 'summary'] as const,
   stylePresets: () => ['style-presets'] as const,
   stylePreset: (presetId: string) => ['style-presets', presetId] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
@@ -332,6 +336,46 @@ export function usePatchSettingsMutation() {
     },
   })
 }
+
+// ---- 回退建议（M5）------------------------------------------------------
+
+export function useSuggestionsQuery(projectId: MaybeRefOrGetter<string | null>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.suggestions(toValue(projectId) ?? '')),
+    queryFn: () => api.listSuggestions(toValue(projectId) as string),
+    enabled: computed(() => toValue(projectId) !== null),
+  })
+}
+
+export function useSuggestionSummaryQuery(projectId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.suggestionSummary(toValue(projectId))),
+    queryFn: () => api.getSuggestionSummary(toValue(projectId)),
+  })
+}
+
+/** 建议的处理（去处理后发送 / 忽略）会改列表和阶段角标。 */
+function invalidateSuggestions(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.suggestionsAll() })
+}
+
+export function useApplySuggestionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (suggestionId: string) => api.applySuggestion(suggestionId),
+    onSuccess: () => invalidateSuggestions(queryClient),
+  })
+}
+
+export function useDismissSuggestionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (suggestionId: string) => api.dismissSuggestion(suggestionId),
+    onSuccess: () => invalidateSuggestions(queryClient),
+  })
+}
+
+export { invalidateSuggestions }
 
 // ---- 会话内换模型、TTS、项目语音设置（M5）------------------------------
 

@@ -18,6 +18,7 @@ export type WireEventType =
   | 'tool_call'
   | 'tool_result'
   | 'snapshot'
+  | 'suggestion'
   | 'notice'
   | 'error'
   | 'workspace_changed'
@@ -67,6 +68,17 @@ export interface SnapshotEventPayload {
   seq: number
 }
 
+/** 下游 agent 提了一条回退建议（M5 T9）；状态以 `GET /suggestions` 为准，事件里的 `status` 只是当时的值。 */
+export interface SuggestionEventPayload {
+  turn_id: string
+  suggestion_id: string
+  from_stage: string
+  to_stage: string
+  content: string
+  status: string
+  seq: number
+}
+
 /** `kind` 已知取值：`cost_unpriced`、`cost_carryover`、`budget_exceeded`、`guard_restored`。 */
 export interface NoticePayload {
   turn_id: string
@@ -102,6 +114,7 @@ export interface WireEventMap {
   tool_call: ToolCallPayload
   tool_result: ToolResultPayload
   snapshot: SnapshotEventPayload
+  suggestion: SuggestionEventPayload
   notice: NoticePayload
   error: ErrorEventPayload
   workspace_changed: WorkspaceChangedPayload

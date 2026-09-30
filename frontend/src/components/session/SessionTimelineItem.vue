@@ -10,6 +10,7 @@ import { Message, MessageContent } from '@/components/ai-elements/message'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import type { TimelineItem } from '@/composables/useSessionStream'
 import { noticeText } from './noticeText'
+import SuggestionCard from './SuggestionCard.vue'
 import { snapshotEventLabel } from './snapshotReason'
 
 const props = defineProps<{ item: TimelineItem; projectId: string | null }>()
@@ -70,6 +71,12 @@ const images = computed(() => {
       </div>
     </ToolContent>
   </Tool>
+
+  <SuggestionCard
+    v-else-if="item.kind === 'suggestion' && projectId !== null"
+    :item="item"
+    :project-id="projectId"
+  />
 
   <div
     v-else-if="item.kind === 'notice'"

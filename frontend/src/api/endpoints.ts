@@ -41,6 +41,8 @@ import type {
   StylePresetOut,
   StylePresetPatch,
   StylePresetSummaryOut,
+  SuggestionOut,
+  SuggestionStatus,
   TopicCheckOut,
   TurnAccepted,
   VoiceOut,
@@ -196,6 +198,28 @@ export function updateModelProfile(
 
 export function deleteModelProfile(profileId: string): Promise<void> {
   return request(`/model-profiles/${encodePathSegment(profileId)}`, { method: 'DELETE' })
+}
+
+// ---- 回退建议（M5，对应 `api/suggestions.py`）---------------------------
+
+export function listSuggestions(
+  projectId: string,
+  status?: SuggestionStatus,
+): Promise<SuggestionOut[]> {
+  return request(`/projects/${encodePathSegment(projectId)}/suggestions`, { query: { status } })
+}
+
+/** `{目标阶段: 待处理数量}`，阶段导航角标用；没有待处理建议的阶段不出现。 */
+export function getSuggestionSummary(projectId: string): Promise<Record<string, number>> {
+  return request(`/projects/${encodePathSegment(projectId)}/suggestions/summary`)
+}
+
+export function applySuggestion(suggestionId: string): Promise<SuggestionOut> {
+  return request(`/suggestions/${encodePathSegment(suggestionId)}/apply`, { method: 'POST' })
+}
+
+export function dismissSuggestion(suggestionId: string): Promise<SuggestionOut> {
+  return request(`/suggestions/${encodePathSegment(suggestionId)}/dismiss`, { method: 'POST' })
 }
 
 // ---- TTS 与项目语音设置（M5，对应 `api/tts.py`、`api/projects.py`）------------
