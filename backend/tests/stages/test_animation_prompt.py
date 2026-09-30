@@ -47,6 +47,22 @@ def test_system_prompt_mentions_style_component_experience() -> None:
         assert keyword in prompt
 
 
+def test_system_prompt_tells_the_agent_which_style_files_to_read_and_when() -> None:
+    prompt = ANIMATION_STAGE.system_prompt()
+    assert "style/STYLE.md" in prompt
+    assert "style/references/color-scheme.md" in prompt
+    assert "style/references/animation-style.md" in prompt
+    assert "写镜头代码之前" in prompt
+    # 金样本是叙事阶段的范例，动画阶段不需要读
+    assert "style/exemplars/" in prompt and "不需要" in prompt
+
+
+def test_system_prompt_handles_missing_style_files_and_code_rule_conflicts() -> None:
+    prompt = ANIMATION_STAGE.system_prompt()
+    assert "这些文件不存在" in prompt
+    assert "以本提示词为准" in prompt
+
+
 def test_element_exit_rules_constant_is_non_empty() -> None:
     assert "画面不重叠" in ELEMENT_EXIT_RULES
     assert ELEMENT_EXIT_RULES.strip() != ""

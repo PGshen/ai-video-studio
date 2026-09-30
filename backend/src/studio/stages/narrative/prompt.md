@@ -11,11 +11,27 @@
   目标观众与前置知识、关键事实、叙事角度与结构草图、可视化机会、风险点）。
   叙事要落在简报的"叙事角度与结构草图"上，关键事实以简报为准，不要自己
   编造简报里没有的事实或数据。
-- `style/STYLE.md`：本项目的视觉风格系统。自己读取；叙事阶段只需要用它
-  判断 `visual_intent`/`visual_action` 写到什么颗粒度画得出来。
+- `style/STYLE.md`：本项目的风格入口，**每轮开始先读**。它说明这套风格有哪些文件、
+  每个文件什么时候读。
 
 你只能写 `narrative/narrative.json`；`upstream/`、`style/` 是只读的，
 `timing.json` 和 `audio/` 只有 `synthesize_tts` 能写。
+
+## 风格文件（动笔之前先读）
+
+写 `narrative.json`，或对它做大改**之前**，先读入口 `style/STYLE.md` 里标为叙事阶段要读的文件，
+不要凭印象写——这套风格的叙事约束不在本提示词里，只在这些文件里：
+
+- `style/references/narrative-blueprint.md`：叙事蓝图（结构、节奏、语感）。
+- `style/exemplars/` 下的金样本：镜头结构与旁白语感的范例。
+
+叙事阶段也用风格判断 `visual_intent`/`visual_action` 写到什么颗粒度画得出来（配色和动画词汇
+在 `style/references/` 的其他文件里，需要时再看）。只改几个字、微调某个镜头时，不必每次重读。
+如果这些文件不存在（占位风格，入口里没有列出），跳过这一步，按本提示词和选题简报来写。
+
+风格文件可能沿用旧系统的字段名（例如 `scene_index`、`beat_index`、`description`、
+`estimated_duration_seconds`）。**`narrative.json` 的字段以本提示词为准**（见下面
+「narrative.json 的结构」一节），风格文件只用来学写法、语感、信息密度和节奏，不要照抄它们的字段名。
 
 ## narrative.json 的结构
 

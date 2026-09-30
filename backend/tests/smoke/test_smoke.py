@@ -684,3 +684,140 @@ async def test_topic_claude_login_native_web(tmp_path: Path) -> None:
     )
     for fetch in fetches:
         assert not (fetch["denied_by_hook"] and fetch["url_in_search_results"]), fetch
+
+
+# ---- M5 T5: 风格目录按需读取（本机 Claude 登录，不产生 API 费用）-------------------------
+
+_STYLE_EXPORT = REPO_ROOT / "data" / "legacy-export" / "styles.json"
+_STYLE_NAME = "概念传记·纸上溯源"
+_ANIMATION_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "animation"
+_WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch")
+
+_NARRATIVE_STYLE_PROMPT = (
+    "这是自动化测试。上游选题简报已定稿（upstream/topic/brief.md）。请写叙事产物 "
+    "narrative/narrative.json：只写 2 个镜头，每个镜头旁白 40–70 字，每镜 2–3 个 beat；"
+    "写完用 validate_narrative 检查到没有错误。不要调用 synthesize_tts，不要写其他文件。"
+)
+_ANIMATION_STYLE_PROMPT = (
+    "这是自动化测试。只为第一个镜头（s-hook）写代码 animation/scenes/s-hook.py，保持简短"
+    "（不超过 40 行）；用 validate_scenes 检查，通过即可。不要调用 render_preview，"
+    "不要写其他镜头，不要改 style/。"
+)
+
+
+def _args_text(event: Any) -> str:
+    return json.dumps(event.payload.get("args", {}), ensure_ascii=False)
+
+
+def _first_touch(outcome: TurnOutcome, needle: str) -> int | None:
+    """第一次在工具调用参数里出现 `needle` 的位置（读、搜、Bash 里 cat 都算）。"""
+    for index, event in enumerate(outcome.events):
+        if event.type == "tool_call" and needle in _args_text(event):
+            return index
+    return None
+
+
+def _first_write(outcome: TurnOutcome, needle: str) -> int | None:
+    for index, event in enumerate(outcome.events):
+        name = str(event.payload.get("name", ""))
+        if (
+            event.type == "tool_call"
+            and name.rsplit("__", 1)[-1] in _WRITE_TOOLS
+            and needle in _args_text(event)
+        ):
+            return index
+    return None
+
+
+def _style_touches(outcome: TurnOutcome) -> list[dict[str, Any]]:
+    return [
+        {"index": i, "tool": e.payload["name"], "args": _args_text(e)[:200]}
+        for i, e in enumerate(outcome.events)
+        if e.type == "tool_call" and "style/" in _args_text(e)
+    ]
+
+
+async def test_style_claude_login(tmp_path: Path) -> None:
+    from studio.db.legacy_styles import import_export, load_export
+    from studio.db.repo.style_presets import list_style_presets
+    from studio.stages.narrative.schema import validate_and_normalize
+    from studio.workspace import create_snapshot, init_workspace
+    from studio.workspace.style_files import render_style_files
+
+    from .support import M5_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    if not _STYLE_EXPORT.is_file():
+        pytest.skip("没有旧风格导出（先 make export-legacy-styles），跳过")
+    harness = build_harness(tmp_path, real_stages=True)
+    evidence: dict[str, Any] = {"style": _STYLE_NAME}
+    try:
+        import_export(harness.engine, load_export(_STYLE_EXPORT))
+        preset = next(p for p in list_style_presets(harness.engine) if p.name == _STYLE_NAME)
+        init_workspace(harness.data_dir, harness.project_id, render_style_files(preset))
+        create_snapshot(harness.engine, harness.blobs, harness.project_id, reason="user_edit")
+        profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
+
+        # 叙事：上游简报定稿 → 叙事一轮，动笔之前应读入口、叙事蓝图和金样本。
+        brief = harness.workdir / "topic" / "brief.md"
+        brief.parent.mkdir(parents=True, exist_ok=True)
+        brief.write_text(
+            (Path(__file__).resolve().parents[1] / "fixtures" / "narrative" / "brief.md").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "topic")
+        narrative_session = harness.session(profile, "claude", stage="narrative")
+        narrative = await harness.turn(narrative_session, _NARRATIVE_STYLE_PROMPT)
+        evidence["narrative"] = {
+            **outcome_summary(narrative),
+            "style_touches": _style_touches(narrative),
+        }
+
+        assert narrative.turn.status == "done", (narrative.turn.status, narrative.turn.error)
+        first_write = _first_write(narrative, "narrative/narrative.json")
+        assert first_write is not None, "没有写出 narrative/narrative.json"
+        for needle in (
+            "style/STYLE.md",
+            "style/references/narrative-blueprint.md",
+            "style/exemplars/",
+        ):
+            touched = _first_touch(narrative, needle)
+            assert touched is not None, f"叙事一轮没有读 {needle}：{narrative.tool_names}"
+            assert touched < first_write, f"{needle} 在动笔之后才读"
+        assert _first_write(narrative, "style/") is None, "叙事阶段不该写 style/"
+        doc = json.loads((harness.workdir / "narrative" / "narrative.json").read_text("utf-8"))
+        parsed = validate_and_normalize(doc)  # 旧字段名不能把产物带偏
+        evidence["narrative"]["scene_ids"] = [s.id for s in parsed.scenes]
+        assert narrative.used_tool("validate_narrative")
+
+        # 动画：换成固定的叙事 fixture（含 timing）定稿，动画一轮写第一个镜头。
+        for name in ("narrative.json", "timing.json"):
+            (harness.workdir / "narrative" / name).write_bytes(
+                (_ANIMATION_FIXTURES / name).read_bytes()
+            )
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "narrative")
+        animation_session = harness.session(profile, "claude", stage="animation")
+        animation = await harness.turn(animation_session, _ANIMATION_STYLE_PROMPT)
+        evidence["animation"] = {
+            **outcome_summary(animation),
+            "style_touches": _style_touches(animation),
+        }
+
+        assert animation.turn.status == "done", (animation.turn.status, animation.turn.error)
+        first_write = _first_write(animation, "animation/scenes/")
+        assert first_write is not None, "没有写出镜头代码"
+        for needle in (
+            "style/STYLE.md",
+            "style/references/color-scheme.md",
+            "style/references/animation-style.md",
+        ):
+            touched = _first_touch(animation, needle)
+            assert touched is not None, f"动画一轮没有读 {needle}：{animation.tool_names}"
+            assert touched < first_write, f"{needle} 在写代码之后才读"
+        assert _first_write(animation, "style/") is None, "动画阶段不该写 style/"
+        assert animation.used_tool("validate_scenes")
+    finally:
+        record_evidence("style-claude-login", evidence, M5_EVIDENCE_DIR)
+        harness.engine.dispose()

@@ -49,6 +49,7 @@ EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1" / "smoke"
 M1X_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1x" / "smoke"
 M3_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m3-narrative" / "smoke"
 M4_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m4-topic" / "smoke"
+M5_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m5-polish" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}

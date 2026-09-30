@@ -20,6 +20,23 @@ def test_system_prompt_mentions_artifact_fields() -> None:
         assert keyword in prompt
 
 
+def test_system_prompt_tells_the_agent_which_style_files_to_read_and_when() -> None:
+    prompt = NARRATIVE_STAGE.system_prompt()
+    assert "style/STYLE.md" in prompt
+    assert "style/references/narrative-blueprint.md" in prompt
+    assert "style/exemplars/" in prompt
+    assert "动笔" in prompt
+
+
+def test_system_prompt_handles_missing_style_files_and_old_field_names() -> None:
+    prompt = NARRATIVE_STAGE.system_prompt()
+    assert "这些文件不存在" in prompt
+    # 导入的旧风格可能沿用旧字段名，产物字段必须以本提示词为准
+    for old_field in ("scene_index", "beat_index", "estimated_duration_seconds"):
+        assert old_field in prompt
+    assert "以本提示词为准" in prompt
+
+
 def test_system_prompt_lists_every_transition_value() -> None:
     prompt = NARRATIVE_STAGE.system_prompt()
     for value in ("continue", "transform", "reveal", "replace", "exit"):

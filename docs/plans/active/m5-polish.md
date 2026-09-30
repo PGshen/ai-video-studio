@@ -124,7 +124,7 @@
 - **完成标准**：AC4 通过；真实导出的 JSON 和导入报告存进 `data/evidence/m5-polish/`；风格库里有导入的预设。
 - **验证命令**：`make check`；真实导入：`make import-legacy-styles FILE=data/legacy-export/styles.json`
 
-### T5：三个阶段提示词按需读取风格目录 + 真实冒烟（待开始）
+### T5：三个阶段提示词按需读取风格目录 + 真实冒烟（完成）
 
 - **目标**：agent 在正确的时机读正确的风格文件，而不是每轮把整套风格塞进上下文或完全不读。
 - **涉及文件**：`stages/narrative/prompt.md`、`stages/animation/prompt.md`、`stages/topic/prompt.md`；`backend/tests/stages/` 下对应的提示词关键词断言；`backend/tests/smoke/`（新增 `style_claude_login` 用例，沿用现有冒烟的写法）；`docs/runbooks/verification.md` 补用例说明。
@@ -255,12 +255,12 @@
 - 2026-09-30 — T2 完成：迁移 0004（`description`、`reference_files` 两列）、`db/repo/style_presets.py`（校验 + CRUD + 复制）、`workspace/style_files.py::render_style_files`、`api/styles.py`（`/api/style-presets*`）；`PATCH /api/settings` 补上默认风格存在性检查，删除默认风格时清掉设置（T1 留下的一项）。`make check` 全绿（1117 个后端测试）。
 - 2026-09-30 — T3 完成：`POST /api/projects` 支持 `style_preset_id`（请求指定 → 默认风格 → 占位；id 不存在 404 且无残留），风格文件经 `render_style_files` 写入 `style/` 并进 `init` 快照，`project.settings` 记 `style_preset_id`/`style_name`（客户端传同名键会被丢掉，防伪造）；预设之后被改/删不影响已有项目。`make check` 全绿（1126 个后端测试）。
 - 2026-09-30 — T4 完成：`scripts/export_legacy_styles.sh`（`make export-legacy-styles`，只读会话，从旧 compose 文件读库名/用户名）、`db/legacy_styles.py`（`make import-legacy-styles`，幂等、`--overwrite`、报告）；真实导出 9 个模板、34 个组件，导入 9 套预设到 worktree 的 `data/studio.db`，再导入全部跳过、`--overwrite` 覆盖 9 套均验证过，证据 `data/evidence/m5-polish/t4-legacy-import.md`。`make check` 全绿（1160 个后端测试）。
+- 2026-09-30 — T5 完成：narrative/animation/topic 三个提示词改为分层读取（入口每轮先读；叙事动笔前读蓝图和金样本；动画写代码前读配色和动画风格；选题只读入口；文件不存在则跳过；旧字段名/与基础规则冲突时以提示词为准），对应关键词断言；冒烟 `test_style_claude_login`（本机登录，111 秒）真实通过：叙事一轮先读入口和简报、再读蓝图与金样本、之后才 Write，产物通过 `validate_narrative`（2 个镜头，旧字段名没有带偏）；动画一轮先读入口、再读配色与动画风格、之后才 Write，`validate_scenes` 通过；证据 `data/evidence/m5-polish/smoke/20260930T131101Z-style-claude-login.json`。
 
 ## 下一步
 
-- 做 T5（三个阶段提示词按需读取风格目录 + 真实冒烟）。先读 `stages/{narrative,animation,topic}/prompt.md` 里现有的 `style/STYLE.md` 说明和对应的关键词断言测试，先改测试（提示词里要有各阶段应读的文件路径：narrative → `style/references/narrative-blueprint.md`、`style/exemplars/`；animation → `style/references/color-scheme.md`、`style/references/animation-style.md`；topic → 只读入口；且要有「没有这些文件时跳过」的措辞），确认失败，再改提示词。入口 `STYLE.md` 里已写明「什么时候读」（T4 生成），提示词与它保持一致。
-- 冒烟用例 `style_claude_login`（`backend/tests/smoke/`，沿用现有冒烟写法）：用 worktree 数据库里已导入的预设创建项目（例如「概念传记·纸上溯源」），让 narrative、animation 各跑一轮，检查 `turn_events` 里对相应 `style/references/*`、`style/exemplars/*` 的读取；本机 Claude 登录，不产生 API 费用。冒烟要用**测试自己的临时数据目录**，从导出 JSON（`data/legacy-export/styles.json`）导入，不要碰 worktree 的开发数据库。
-- 关注（见「意外与发现」）：导入的叙事蓝图 7/9 提到旧字段名，冒烟里要确认 agent 产出的 `narrative.json` 仍能通过 `validate_narrative`。
+- 做 T6 的收尾（代码和测试已写完，见工作区未提交的 `db/repo/profiles.py`、`api/profiles.py`、`api/schemas.py`、`tests/db/test_repo_profiles_crud.py`、`tests/api/test_profiles.py`）：提交。然后做 T7（会话内换模型）。
+- T7：先写 `backend/tests/agent/test_model_switch.py`、`backend/tests/api/test_sessions.py`（`PATCH /api/sessions/{id}`）的失败用例；`TurnRunner` 每轮本来就按 `session.model_profile_id` 重读配置（`agent/runner.py` 约 121 行），主要工作是 API、`notice`、`turns.usage.model`；再写冒烟 `model_switch_claude_login` 实测 Claude `resume` 换模型与登录↔key 互换，结论写 ADR 0012。
 
 ## 决策记录
 
@@ -272,6 +272,7 @@
 - **D4 回退建议只允许向直接上游提**（2026-09-30，起草时）。`suggest_upstream_change` 目前 `to_stage` 是任意字符串。动画只能向叙事提，叙事只能向选题提。理由：直接上游的产物就是本阶段的输入，建议才有明确的处理对象；跨级建议可以让使用者自己去处理。
 - **D5 默认值的复制与活继承**（2026-09-30，起草时）。风格和 TTS 默认值在创建项目时**复制**进项目，之后与设置页脱钩（和设计「创建项目时复制所选风格」一致）；联网模式和阶段默认模型是**运行时读取**的设置，改了下一轮生效。
 - **D8 `style_presets` 新列叫 `reference_files`**（2026-09-30，T2）。计划写的是 `references`，但它是 SQL 保留字；数据库列名用 `reference_files`，对外（仓储值对象、API）仍叫 `references`。预设名字在仓储层强制唯一（去首尾空白后），导入的幂等也靠它。`created_at` 读回来统一补 UTC 时区（SQLite 丢时区信息）。
+- **D10 模型配置接口现在返回环境变量名和网关地址**（2026-09-30，T6）。M1 T7 时刻意不返回 `api_key_env`；界面要编辑它就必须返回。返回的是环境变量的**名字**和 `base_url`（账号密码打码，写入时也拒绝带账号密码的地址），永远不返回 key 的值，`test_profiles.py` 里原来的「不泄露环境变量名」测试改成「不泄露 key 值」并新增打码断言。`name`/`provider`/`runtime` 建好后不可改（会话按它们判断能否换模型，T7）；环境变量决定的字段界面不让改（422 说明改 `backend/.env`）。
 - **D9 旧字段名的提示不只针对金样本**（2026-09-30，T4）。真实数据显示 8 个叙事蓝图里 6 个（对应 7 个模板）提到旧系统的镜头字段名（`scene_index`、`beat_index`、`estimated_duration_seconds`），所有 5 个金样本都是旧格式。导入仍然不改写正文（D2），但入口 `STYLE.md` 的「旧格式提示」会点名受影响的文件，并写明 `narrative.json` 的字段以叙事阶段系统提示词为准。这条提示是否足够，由 T5 的真实冒烟判断；不够就在叙事提示词里加强，而不是改导入内容。
 - **D7 默认风格的存在性校验推迟到 T2**（2026-09-30，T1）。T1 时风格库仓储还不存在，`default_style_preset_id` 只做形状校验；T2 建好仓储后补引用检查（已写进「下一步」），AC1 里「默认风格存在」这一项在 T2 才算完成。
 - **D6 环境变量网关覆盖保持优先**（2026-09-30，起草时）。`seed_model_profiles` 对 `claude-sonnet`/`gpt` 的 `base_url`/`model`/单价，在环境变量非空时每次启动都会覆盖库里的值。本计划不改这个行为，界面把这些字段标只读并说明；如果以后想让界面覆盖环境变量，是独立的改动。
