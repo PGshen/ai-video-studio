@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -56,6 +57,24 @@ def create_project(
         session.add(project)
         session.flush()
         return _to_value(project)
+
+
+def update_project_settings(
+    engine: Engine, project_id: str, patch: Mapping[str, Any]
+) -> ProjectValue:
+    """把补丁合并进 `projects.settings`；值为 `None` 的键被移除。项目不存在抛 `LookupError`。
+
+    JSON 列里的 dict 是可变对象，就地改不会被 SQLAlchemy 发现，所以整体替换成新 dict。
+    哪些键允许改由调用方决定（M5 T8：API 只放行 `voice`/`speech_rate`）。
+    """
+    with session_scope(engine) as session:
+        row = session.get(Project, project_id)
+        if row is None:
+            raise LookupError(project_id)
+        merged = {**(row.settings or {}), **patch}
+        row.settings = {key: value for key, value in merged.items() if value is not None}
+        session.flush()
+        return _to_value(row)
 
 
 def get_project(engine: Engine, project_id: str) -> ProjectValue | None:

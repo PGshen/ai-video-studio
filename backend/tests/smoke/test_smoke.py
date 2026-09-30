@@ -884,3 +884,67 @@ async def test_model_switch_claude_login(tmp_path: Path) -> None:
     finally:
         record_evidence("model-switch-claude-login", evidence, M5_EVIDENCE_DIR)
         harness.engine.dispose()
+
+
+# ---- M5 T8: TTS 试听（真实合成，产生少量费用；负责人已确认可以接受）-------------------------
+
+_PREVIEW_CASES = (("zizi", 1.0), ("zizi", 0.5), ("zizi", 2.0), ("xiaohe", 1.2), ("yunzhou", 1.0))
+
+
+async def test_tts_preview_real(tmp_path: Path) -> None:
+    """经真实 API 试听：状态、类型、mp3 时长；边界语速 0.5/2.0 供应商接受，且速度确实生效
+    （0.5 比 1.0 长、2.0 比 1.0 短）；同一组合第二次命中缓存，不再合成。"""
+    from io import BytesIO
+
+    from httpx import ASGITransport, AsyncClient
+    from mutagen.mp3 import MP3
+
+    from studio.config import Settings
+    from studio.main import create_app
+
+    from .support import M5_EVIDENCE_DIR
+
+    _require_env("VOLCENGINE_TTS_API_KEY")
+    app = create_app(Settings(data_dir=tmp_path / "data"))
+    evidence: dict[str, Any] = {"cases": []}
+    durations: dict[tuple[str, float], float] = {}
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+                for voice, speed in _PREVIEW_CASES:
+                    response = await client.post(
+                        "/api/tts/preview", json={"voice": voice, "speed": speed}
+                    )
+                    row: dict[str, Any] = {
+                        "voice": voice,
+                        "speed": speed,
+                        "status": response.status_code,
+                        "content_type": response.headers.get("content-type"),
+                        "bytes": len(response.content),
+                    }
+                    evidence["cases"].append(row)
+                    assert response.status_code == 200, (voice, speed, response.text)
+                    assert response.headers["content-type"] == "audio/mpeg"
+                    duration = MP3(BytesIO(response.content)).info.length
+                    row["duration_seconds"] = duration
+                    durations[(voice, speed)] = duration
+                    assert 1.0 <= duration <= 30.0, (voice, speed, duration)
+                    M5_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+                    (M5_EVIDENCE_DIR / f"tts-preview-{voice}-{speed}.mp3").write_bytes(
+                        response.content
+                    )
+
+                cached = await client.post("/api/tts/preview", json={"voice": "zizi", "speed": 1.0})
+                evidence["cache_hit_status"] = cached.status_code
+                cache_files = sorted(p.name for p in (tmp_path / "data" / "tts-preview").iterdir())
+                evidence["cache_files"] = len(cache_files)
+                assert cached.status_code == 200
+                assert len(cache_files) == len(_PREVIEW_CASES), "重复请求不该多出缓存文件"
+
+        assert durations[("zizi", 0.5)] > durations[("zizi", 1.0)] > durations[("zizi", 2.0)], (
+            durations
+        )
+    finally:
+        evidence["durations"] = {f"{v}@{s}": d for (v, s), d in durations.items()}
+        record_evidence("tts-preview-real", evidence, M5_EVIDENCE_DIR)

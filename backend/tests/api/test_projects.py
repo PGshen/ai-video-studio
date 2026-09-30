@@ -5,9 +5,11 @@ from __future__ import annotations
 from uuid import UUID
 
 import pytest
+from httpx import Response
 
 from brief_builder import make_brief
 from studio.db.repo.ideas import IdeaStateError
+from studio.db.repo.projects import get_project
 from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.stages import list_stages
 from studio.workspace import files
@@ -441,3 +443,137 @@ class TestCreateProjectWithStyle:
         assert response.status_code == 201
         assert "style_name" not in response.json()["settings"]
         assert "style_preset_id" not in response.json()["settings"]
+
+
+class TestProjectVoiceSettings:
+    async def _patch(self, api_env: ApiEnv, project_id: str, body: dict) -> Response:
+        return await api_env.client.patch(f"/api/projects/{project_id}/settings", json=body)
+
+    async def test_sets_voice_and_speech_rate_using_the_keys_synthesize_tts_reads(
+        self, api_env: ApiEnv
+    ) -> None:
+        project = await api_env.create_project()
+
+        response = await self._patch(
+            api_env, project["id"], {"voice": "xiaohe", "speech_rate": 1.3}
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["settings"]["voice"] == "xiaohe"
+        assert response.json()["settings"]["speech_rate"] == 1.3
+        stored = get_project(api_env.app.state.engine, project["id"])
+        assert stored is not None
+        assert (stored.settings["voice"], stored.settings["speech_rate"]) == ("xiaohe", 1.3)
+
+    async def test_merges_with_existing_settings_and_partial_updates_keep_the_rest(
+        self, api_env: ApiEnv
+    ) -> None:
+        preset = (
+            await api_env.client.post(
+                "/api/style-presets",
+                json={
+                    "name": "S",
+                    "content": "---\nname: S\ndescription: d\n---\n",
+                },
+            )
+        ).json()
+        project = (
+            await api_env.client.post(
+                "/api/projects", json={"title": "P", "style_preset_id": preset["id"]}
+            )
+        ).json()
+        await self._patch(api_env, project["id"], {"voice": "xiaohe", "speech_rate": 1.3})
+
+        response = await self._patch(api_env, project["id"], {"speech_rate": 0.9})
+
+        settings = response.json()["settings"]
+        assert settings["style_name"] == "S"
+        assert (settings["voice"], settings["speech_rate"]) == ("xiaohe", 0.9)
+
+    async def test_null_clears_a_key(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        await self._patch(api_env, project["id"], {"voice": "xiaohe", "speech_rate": 1.3})
+
+        response = await self._patch(api_env, project["id"], {"voice": None})
+
+        settings = response.json()["settings"]
+        assert "voice" not in settings
+        assert settings["speech_rate"] == 1.3
+
+    @pytest.mark.parametrize(
+        ("body", "needle"),
+        [
+            ({"voice": "not-a-voice"}, "音色"),
+            ({"speech_rate": 0.2}, "语速"),
+            ({"speech_rate": 3}, "语速"),
+            ({"speech_rate": "fast"}, "speech_rate"),
+            ({"style_name": "x"}, "style_name"),
+            ({"anything": 1}, "anything"),
+        ],
+    )
+    async def test_invalid_or_unsupported_keys_are_422_and_change_nothing(
+        self, api_env: ApiEnv, body: dict, needle: str
+    ) -> None:
+        project = await api_env.create_project()
+
+        response = await self._patch(api_env, project["id"], {"voice": "xiaohe", **body})
+
+        assert response.status_code == 422
+        assert needle in str(response.json()["detail"])
+        stored = get_project(api_env.app.state.engine, project["id"])
+        assert stored is not None and "voice" not in stored.settings
+
+    async def test_unknown_project_is_404(self, api_env: ApiEnv) -> None:
+        response = await self._patch(api_env, "nope", {"voice": "zizi"})
+
+        assert response.status_code == 404
+
+    async def test_busy_project_is_409(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        turn_id = await api_env.make_busy(project["id"])
+        try:
+            response = await self._patch(api_env, project["id"], {"voice": "xiaohe"})
+
+            assert response.status_code == 409
+        finally:
+            await api_env.release_busy(turn_id)
+
+    async def test_new_projects_copy_the_default_voice_and_rate_from_settings(
+        self, api_env: ApiEnv
+    ) -> None:
+        await api_env.client.patch(
+            "/api/settings", json={"tts_default": {"voice": "xiaohe", "speech_rate": 1.2}}
+        )
+
+        project = await api_env.create_project()
+
+        assert project["settings"]["voice"] == "xiaohe"
+        assert project["settings"]["speech_rate"] == 1.2
+
+    async def test_a_later_change_of_the_default_does_not_touch_existing_projects(
+        self, api_env: ApiEnv
+    ) -> None:
+        await api_env.client.patch("/api/settings", json={"tts_default": {"voice": "xiaohe"}})
+        project = await api_env.create_project()
+
+        await api_env.client.patch("/api/settings", json={"tts_default": {"voice": "yunzhou"}})
+
+        stored = get_project(api_env.app.state.engine, project["id"])
+        assert stored is not None and stored.settings["voice"] == "xiaohe"
+
+    async def test_explicit_values_at_creation_beat_the_defaults(self, api_env: ApiEnv) -> None:
+        await api_env.client.patch(
+            "/api/settings", json={"tts_default": {"voice": "xiaohe", "speech_rate": 1.2}}
+        )
+
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "settings": {"voice": "yunzhou"}}
+        )
+
+        settings = response.json()["settings"]
+        assert (settings["voice"], settings["speech_rate"]) == ("yunzhou", 1.2)
+
+    async def test_without_stored_defaults_the_keys_are_absent(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+
+        assert "voice" not in project["settings"] and "speech_rate" not in project["settings"]

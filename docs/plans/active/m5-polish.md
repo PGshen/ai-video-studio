@@ -165,7 +165,7 @@
 - **完成标准**：AC7 通过；ADR 0012 写明实测结论。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k model_switch_claude_login"`
 
-### T8：TTS 音色列表、试听与项目语音设置（待开始）
+### T8：TTS 音色列表、试听与项目语音设置（完成）
 
 - **目标**：使用者能看到有哪些音色、试听、并给项目设置音色和语速。
 - **涉及文件**：`engines/tts/voice_map.py`（补中文标签；新增 `list_voices(engine)`，标签来自 `docs/references/volcengine-tts.md` 记录或旧项目音色表，**先查证再写**）、新建 `api/tts.py`、改 `api/projects.py`（`PATCH /projects/{id}/settings`）、`api/schemas.py`；测试 `backend/tests/api/test_tts.py`、`backend/tests/api/test_projects.py`、`backend/tests/engines/tts/` 下音色列表用例。
@@ -258,11 +258,12 @@
 - 2026-09-30 — T5 完成：narrative/animation/topic 三个提示词改为分层读取（入口每轮先读；叙事动笔前读蓝图和金样本；动画写代码前读配色和动画风格；选题只读入口；文件不存在则跳过；旧字段名/与基础规则冲突时以提示词为准），对应关键词断言；冒烟 `test_style_claude_login`（本机登录，111 秒）真实通过：叙事一轮先读入口和简报、再读蓝图与金样本、之后才 Write，产物通过 `validate_narrative`（2 个镜头，旧字段名没有带偏）；动画一轮先读入口、再读配色与动画风格、之后才 Write，`validate_scenes` 通过；证据 `data/evidence/m5-polish/smoke/20260930T131101Z-style-claude-login.json`。
 - 2026-09-30 — T6 完成：`db/repo/profiles.py`（校验、`create/update/delete_model_profile`、内置保护、被会话或阶段默认引用时不能删、`env_override_fields`）、`api/profiles.py`（`POST/PATCH/DELETE /api/model-profiles`，列表增加 `api_key_env`/`base_url`（打码）/`builtin`/`env_override`）。`make check` 全绿（1237 个后端测试）。
 - 2026-09-30 — T7 完成：`PATCH /api/sessions/{id}`（同 runtime、同 provider、key 已配置、Claude 只在同一种认证方式内；有排队/运行中的 turn 返回 409）、仓储 `set_session_model_if_idle`（同一事务里检查再更新）、每轮 `usage` 记录 `model`/`profile_name`、换了之后第一轮的 `model_switched` `notice`（`turn_events.note_model_switch`，无项目会话同样支持）。真实冒烟 `model_switch_claude_login` 通过：同一 SDK 会话 Sonnet → Haiku，`sdk_ref` 不变，第二轮答出第一轮的背景；ADR 0012、claude-agent-sdk.md、TD-41 已写。`make check` 全绿（1264 个后端测试）。
+- 2026-09-30 — T8 完成：`engines/tts/voice_map.py`（`VoiceInfo`/`list_voices`，中文名和性别取自旧库 `tts_voices` 表的只读查证）、`api/tts.py`（`GET /api/tts/voices`、`POST /api/tts/preview`：固定示例文本、磁盘缓存 `data/tts-preview/`、并发合并、失败不缓存、缺 key 503/供应商错误 502/越界或未知音色 422）、`PATCH /api/projects/{id}/settings`（只放行 `voice`/`speech_rate`，项目忙 409，`null` 清除）、`update_project_settings` 仓储、创建项目时复制 `settings.tts_default`。真实试听 `tts_preview_real` 通过：5 段合成，语速 0.5–2.0 两端供应商都接受且真实生效（zizi 0.5/1.0/2.0 → 11.69/6.43/2.95 秒），缓存命中；结论写进 `references/volcengine-tts.md`，证据 `data/evidence/m5-polish/smoke/`。`make check` 全绿（1307 个后端测试）。
 
 ## 下一步
 
-- 做 T8（TTS 音色列表、试听与项目语音设置）。先查证音色中文标签的来源：`docs/references/volcengine-tts.md` 和旧项目音色表（只读 `../ai-video/backend/app/engines/tts/` 与旧 dev DB 里的音色数据），**先查证再写**，不要凭记忆编标签；`engines/tts/voice_map.py` 已有公开的 `DEFAULT_ENGINE/VOICE/SPEED` 和 `voice_aliases()`（T1 加的）。先写 `backend/tests/api/test_tts.py`、`backend/tests/api/test_projects.py`（`PATCH /api/projects/{id}/settings`）、`backend/tests/engines/tts/` 音色列表用例的失败测试，再实现 `api/tts.py`。试听真实调用一次（TTS 费用已获负责人确认），音频与响应头存进 `data/evidence/m5-polish/`。
-- T8 要点回顾（见计划正文）：`POST /api/tts/preview` 示例文本固定在代码里；缓存 `data/tts-preview/<sha256>.mp3`；同一键并发合并；缺 key 503、供应商报错 502、语速越界/未知音色 422；`PATCH /api/projects/{id}/settings` 只接受 `voice`/`speech_rate`，项目忙时 409；创建项目时未给音色/语速就取 `settings.tts_default`（复制）。
+- 做 T9（回退建议后端）：先写 `backend/tests/stages/test_suggest_upstream_change.py`、`backend/tests/api/test_suggestions.py`、`backend/tests/agent/test_runner_suggestion.py` 的失败用例。要点见计划正文 T9：工具校验 `to_stage` 必须是调用方的直接上游（`StageDefinition.upstream_stages()`）、内容去空白后非空且 ≤ 2000 字、写入 `turn_id=ctx.turn_id`（`ToolContext` 目前没有 `turn_id`，要加，见 `agent/tools.py`）；`suggestion` 事件落库并加进 `api/sessions.py::WIRE_EVENT_TYPES`；`GET /api/projects/{id}/suggestions?status=`、`.../suggestions/summary`、`POST /api/suggestions/{id}/apply|dismiss`（只能从 `open` 转出，重复 409）。
+- 现有代码里 `suggest_upstream_change` 目前把 `turn_id` 写成 `None`；`agent/bus.py` 的注释已经把 `suggestion` 列为持久事件类型，但没有任何地方发它。
 
 ## 决策记录
 

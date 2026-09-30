@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import Engine
 
 from studio.db.repo.projects import (
@@ -7,6 +8,7 @@ from studio.db.repo.projects import (
     delete_project,
     get_project,
     list_projects,
+    update_project_settings,
 )
 
 
@@ -76,3 +78,32 @@ def test_delete_project_removes_row_and_is_idempotent(migrated_engine: Engine) -
     # deleting again (or an id that never existed) is a no-op, not an error.
     delete_project(migrated_engine, created.id)
     delete_project(migrated_engine, "never-existed")
+
+
+def test_update_project_settings_merges_and_none_removes_a_key(migrated_engine: Engine) -> None:
+    created = create_project(migrated_engine, title="P", settings={"style_name": "S", "voice": "a"})
+
+    updated = update_project_settings(
+        migrated_engine, created.id, {"voice": "b", "speech_rate": 1.2}
+    )
+    assert updated.settings == {"style_name": "S", "voice": "b", "speech_rate": 1.2}
+
+    updated = update_project_settings(migrated_engine, created.id, {"voice": None})
+    assert updated.settings == {"style_name": "S", "speech_rate": 1.2}
+    assert get_project(migrated_engine, created.id) == updated
+
+
+def test_update_project_settings_persists_across_reads(migrated_engine: Engine) -> None:
+    """JSON 列是可变对象：就地修改不会被 SQLAlchemy 发现，必须整体替换才落库。"""
+    created = create_project(migrated_engine, title="P")
+
+    update_project_settings(migrated_engine, created.id, {"voice": "x"})
+    update_project_settings(migrated_engine, created.id, {"speech_rate": 0.8})
+
+    fetched = get_project(migrated_engine, created.id)
+    assert fetched is not None and fetched.settings == {"voice": "x", "speech_rate": 0.8}
+
+
+def test_update_project_settings_unknown_project(migrated_engine: Engine) -> None:
+    with pytest.raises(LookupError):
+        update_project_settings(migrated_engine, "nope", {"voice": "x"})

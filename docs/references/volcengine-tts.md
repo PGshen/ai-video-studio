@@ -26,4 +26,24 @@
 
 - **带标点的文本**：这次输入没有标点，所以没有观察到 TTS 是否为标点返回时间戳、`beat_aligner` 对"时间戳里没有标点字符"的处理是否在真实数据上成立（单测用的是逐字含标点的替身数据）。叙事阶段的 `cue_text` 必须带标点（见计划 M3「意外与发现」），真实叙事跑第一遍时留意 `synthesize_tts` 返回的对齐覆盖率。
 - **长文本**（一个镜头几十到上百字）下的时间戳精度、分片顺序、重试行为没有测过。
-- **其它音色/语速**：只测了 `zizi` / 1.0。
+- **其它音色/语速下的逐字时间戳与 beat 对齐**：M5 T8 的试听（见下一节）只验证了合成成功和时长，没有验证 `synthesize_tts` 依赖的逐字时间戳、对齐覆盖率在其它音色/语速下的表现。
+
+## ✅ 已验证：音色与语速范围（M5 T8 试听）
+
+日期：2026-09-30。来源：实测，`make smoke SMOKE_ARGS="-k tts_preview_real"`（`backend/tests/smoke/test_smoke.py::test_tts_preview_real`，经 `POST /api/tts/preview`，引擎 `doubao_2.0`），证据 `data/evidence/m5-polish/smoke/20260930T132651Z-tts-preview-real.json` 和同目录的五个 mp3。
+
+固定示例文本（`api/tts.py::PREVIEW_TEXT`，约 30 个汉字）：
+
+| 音色 | 倍速 | 结果 | mp3 时长 |
+|---|---|---|---|
+| `zizi`（清澈梓梓） | 1.0 | 成功 | 6.43 秒 |
+| `zizi` | **0.5** | 成功 | 11.69 秒 |
+| `zizi` | **2.0** | 成功 | 2.95 秒 |
+| `xiaohe`（小禾） | 1.2 | 成功 | 4.92 秒 |
+| `yunzhou`（云舟，男声） | 1.0 | 成功 | 7.06 秒 |
+
+**含义**：
+
+- 项目倍速 0.5–2.0（对应火山引擎相对值 -50 至 100，`engines/tts/volcengine.py`）两端都被供应商接受，并且真实生效：同一段话 0.5 倍速约是 1.0 倍速的 1.8 倍长，2.0 倍速约一半。`db/repo/settings.py` 的 `SPEECH_RATE_MIN/MAX` 就是这个范围。
+- `xiaohe`、`yunzhou` 和之前验证过的 `zizi` 都能合成；`xiaozhupeiqi`、`xiaoxinjiejie` 没有实际合成过（旧库里 `xiaozhupeiqi`（小猪佩奇）标为未启用）。
+- 音色的中文名和性别取自旧项目 dev DB 的 `tts_voices` 表（2026-09-30 只读查证，`speaker_id` 与 `engines/tts/voice_map.py` 一一对应）。

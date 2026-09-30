@@ -21,6 +21,16 @@ class ProjectCreate(BaseModel):
     """风格库里的预设 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。"""
 
 
+class ProjectSettingsPatch(BaseModel):
+    """`PATCH /projects/{id}/settings`：只放行 `voice`/`speech_rate`（M5 T8）；`null` 清除该键，
+    清除后合成时回落到内置默认。语速范围和音色是否可用由端点检查，错误信息更好读。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    voice: str | None = None
+    speech_rate: float | None = None
+
+
 class StageOut(BaseModel):
     stage: str
     status: str

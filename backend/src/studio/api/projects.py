@@ -30,7 +30,13 @@ from studio.agent.runner import TurnRunner
 from studio.agent.stage import StageDefinition, StageRegistry
 from studio.agent.stage_flow import StageFlowError, finalize, reopen
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
-from studio.api.schemas import ProjectCreate, ProjectDetailOut, ProjectOut, StageOut
+from studio.api.schemas import (
+    ProjectCreate,
+    ProjectDetailOut,
+    ProjectOut,
+    ProjectSettingsPatch,
+    StageOut,
+)
 from studio.config import Settings
 from studio.db.repo.ideas import (
     IdeaStateError,
@@ -45,11 +51,13 @@ from studio.db.repo.projects import (
     delete_project,
     get_project,
     list_projects,
+    update_project_settings,
 )
-from studio.db.repo.settings import get_all_settings
+from studio.db.repo.settings import SPEECH_RATE_MAX, SPEECH_RATE_MIN, get_all_settings
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
 from studio.db.repo.style_presets import get_style_preset
+from studio.engines.tts.voice_map import voice_aliases
 from studio.workspace import (
     BlobStore,
     create_snapshot,
@@ -177,6 +185,13 @@ def create_project_endpoint(
     client_settings = {
         key: value for key, value in (body.settings or {}).items() if key not in _STYLE_SETTING_KEYS
     }
+    # 新项目的默认音色/语速是复制进项目的（决策 D5）：之后改设置页不影响已有项目。
+    stored = get_all_settings(engine)
+    tts_defaults = {
+        key: value
+        for key, value in (("voice", stored.tts_voice), ("speech_rate", stored.tts_speech_rate))
+        if value is not None
+    }
     project_id = uuid4().hex
     try:
         _init_workspace(
@@ -194,7 +209,7 @@ def create_project_endpoint(
             id=project_id,
             title=body.title,
             idea_id=body.idea_id,
-            settings={**client_settings, **style_settings},
+            settings={**tts_defaults, **client_settings, **style_settings},
         )
         for stage, status in _INITIAL_STAGES:
             create_stage(engine, project_id=project_id, stage=stage, status=status)
@@ -208,6 +223,29 @@ def create_project_endpoint(
         _cleanup_failed_project(engine, settings, project_id)
         raise HTTPException(status_code=500, detail=f"创建项目失败：{exc}") from exc
     return _project_out(project)
+
+
+@router.patch("/projects/{project_id}/settings", response_model=ProjectOut)
+async def patch_project_settings_endpoint(
+    project_id: str,
+    body: ProjectSettingsPatch,
+    engine: Engine = Depends(get_engine),
+    turn_runner: TurnRunner = Depends(get_turn_runner),
+) -> ProjectOut:
+    """改项目的音色/语速（M5 T8）。键名与 `synthesize_tts` 读取的 `voice`/`speech_rate` 一致；
+    改完后已合成的镜头在叙事画布上显示「配音已过期」（TD-36）。项目有 turn 在跑时拒绝
+    （写成 `async def`，理由同 I4）。"""
+    _require_project(engine, project_id)
+    _require_not_busy(turn_runner, project_id)
+    patch = body.model_dump(exclude_unset=True)
+    voice, rate = patch.get("voice"), patch.get("speech_rate")
+    if voice is not None and voice not in voice_aliases():
+        raise HTTPException(status_code=422, detail=f"音色不可用：{voice}")
+    if rate is not None and not SPEECH_RATE_MIN <= rate <= SPEECH_RATE_MAX:
+        raise HTTPException(
+            status_code=422, detail=f"语速必须在 {SPEECH_RATE_MIN}–{SPEECH_RATE_MAX} 之间"
+        )
+    return _project_out(update_project_settings(engine, project_id, patch))
 
 
 @router.get("/projects", response_model=list[ProjectOut])
