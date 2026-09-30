@@ -12,6 +12,14 @@ def test_prompt_lists_every_section() -> None:
         assert name in prompt
 
 
+def test_prompt_only_asks_for_the_style_entry_file() -> None:
+    prompt = STAGE.system_prompt()
+    assert "style/STYLE.md" in prompt
+    assert "其余文件不用读" in prompt
+    assert "style/references/" not in prompt
+    assert "style/exemplars/" not in prompt
+
+
 def test_prompt_documents_fact_format_and_tools() -> None:
     prompt = STAGE.system_prompt()
     for keyword in ("出处", "把握程度", "check_brief", "topic/notes", "idea-card.md"):

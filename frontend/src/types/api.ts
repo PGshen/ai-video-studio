@@ -9,6 +9,58 @@ export interface ProjectCreate {
   settings?: Record<string, unknown> | null
   /** 从选题池的想法卡片创建（卡片须为 `idea` 状态，成功后变为 `picked`）。 */
   idea_id?: string | null
+  /** 风格库里的预设 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。 */
+  style_preset_id?: string | null
+}
+
+/** 风格预设里的一个文件（`references/*` 或 `exemplars/*`）。 */
+export interface StyleFile {
+  name: string
+  text: string
+}
+
+/** `GET /api/style-presets` 的一项（不含文件内容）。 */
+export interface StylePresetSummaryOut {
+  id: string
+  name: string
+  category: string
+  description: string | null
+  reference_count: number
+  exemplar_count: number
+  is_default: boolean
+}
+
+/** 一套风格 = skill 形态的目录：入口 `STYLE.md` + `references/` + `exemplars/`（ADR 0011）。 */
+export interface StylePresetOut {
+  id: string
+  name: string
+  category: string
+  description: string | null
+  /** 入口 `STYLE.md` 全文。 */
+  content: string
+  references: StyleFile[]
+  exemplars: StyleFile[]
+  is_default: boolean
+  created_at: string
+}
+
+export interface StylePresetCreate {
+  name: string
+  category: string
+  description?: string | null
+  content: string
+  references: StyleFile[]
+  exemplars: StyleFile[]
+}
+
+/** 只含要改的字段；`references`/`exemplars` 给了就整体替换。 */
+export interface StylePresetPatch {
+  name?: string
+  category?: string
+  description?: string | null
+  content?: string
+  references?: StyleFile[]
+  exemplars?: StyleFile[]
 }
 
 export interface StageOut {
@@ -93,6 +145,35 @@ export interface SessionOut {
   title: string | null
 }
 
+export type SuggestionStatus = 'open' | 'applied' | 'dismissed'
+
+/** 回退建议（后端 `api/schemas.py::SuggestionOut`）：下游阶段的 agent 对上游产物提出的修改建议。 */
+export interface SuggestionOut {
+  id: string
+  project_id: string
+  from_stage: string
+  to_stage: string
+  content: string
+  status: SuggestionStatus
+  turn_id: string | null
+  created_at: string
+}
+
+/** `GET /api/tts/voices`（后端 `api/tts.py::VoiceOut`）。 */
+export interface VoiceOut {
+  alias: string
+  /** 中文名，取自旧项目的音色表。 */
+  label: string
+  gender: string
+  engine: string
+}
+
+/** `PATCH /api/projects/{id}/settings`：只放行 `voice`/`speech_rate`，`null` 清除该键。 */
+export interface ProjectSettingsPatch {
+  voice?: string | null
+  speech_rate?: number | null
+}
+
 export interface TurnOut {
   id: string
   session_id: string
@@ -145,12 +226,77 @@ export interface ModelProfileOut {
   provider: string
   model: string
   runtime: string
+  /** 账号密码已被后端打码（`https://***@host/v1`）。 */
+  base_url: string | null
+  /** 环境变量的**名字**（不是 key 的值）；`null` 表示使用本机登录（仅 claude）。 */
+  api_key_env: string | null
   supports_vision: boolean
   price_input: number | null
   price_output: number | null
   max_cost_per_turn: number | null
   max_steps_per_turn: number | null
   key_configured: boolean
+  /** 内置配置（种子名和 `fake`）：可以编辑，不能删除。 */
+  builtin: boolean
+  /** 当前由环境变量（`STUDIO_*`）决定的字段；后端拒绝在界面里改它们。 */
+  env_override: string[]
+}
+
+export interface ModelProfileCreate {
+  name: string
+  provider: string
+  model: string
+  runtime: string
+  base_url: string | null
+  api_key_env: string | null
+  supports_vision: boolean
+  price_input: number | null
+  price_output: number | null
+  max_cost_per_turn: number | null
+  max_steps_per_turn: number | null
+}
+
+/** 只含要改的字段；`null` 清空可空字段。`name`/`provider`/`runtime` 建好后不可改。 */
+export type ModelProfilePatch = Partial<
+  Pick<
+    ModelProfileCreate,
+    | 'model'
+    | 'base_url'
+    | 'api_key_env'
+    | 'supports_vision'
+    | 'price_input'
+    | 'price_output'
+    | 'max_cost_per_turn'
+    | 'max_steps_per_turn'
+  >
+>
+
+export type WebMode = 'tools' | 'native'
+
+export interface TtsDefaultOut {
+  voice: string
+  speech_rate: number
+}
+
+/** `GET /api/settings`（后端 `api/schemas.py::SettingsOut`）。 */
+export interface SettingsOut {
+  /** `{阶段: 模型配置 id}`，新建会话时预选；没设置的阶段不出现。 */
+  stage_default_profile: Record<string, string>
+  /** 有效的联网模式：界面覆盖优先，否则是环境变量 `STUDIO_WEB_MODE`。 */
+  web_mode: WebMode
+  web_mode_source: 'ui' | 'env'
+  /** 环境变量给出的默认值，「清除覆盖」后回落到它。 */
+  web_mode_env: WebMode
+  tts_default: TtsDefaultOut
+  default_style_preset_id: string | null
+}
+
+/** `PATCH /api/settings`：只改出现的字段，`null` 清除。 */
+export interface SettingsPatch {
+  stage_default_profile?: Record<string, string | null>
+  web_mode?: WebMode | null
+  tts_default?: { voice?: string | null; speech_rate?: number | null }
+  default_style_preset_id?: string | null
 }
 
 /**

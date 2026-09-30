@@ -32,8 +32,12 @@ from studio.api.jobs import router as jobs_router
 from studio.api.profiles import router as profiles_router
 from studio.api.projects import router as projects_router
 from studio.api.sessions import router as sessions_router
+from studio.api.settings import router as settings_router
 from studio.api.snapshots import router as snapshots_router
+from studio.api.styles import router as styles_router
+from studio.api.suggestions import router as suggestions_router
 from studio.api.topic import router as topic_router
+from studio.api.tts import router as tts_router
 from studio.config import Settings, get_settings
 from studio.db.engine import make_engine, migrate
 from studio.db.repo.profiles import seed_model_profiles
@@ -107,6 +111,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ideas_router)
     app.include_router(brainstorm_router)
     app.include_router(topic_router)
+    app.include_router(settings_router)
+    app.include_router(styles_router)
+    app.include_router(tts_router)
+    app.include_router(suggestions_router)
 
     return app
 

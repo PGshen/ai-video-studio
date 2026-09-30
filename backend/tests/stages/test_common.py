@@ -25,6 +25,7 @@ def ctx(workdir: Path, migrated_engine: Engine) -> ToolContext:
         workdir=workdir,
         record_tool_write=lambda relpath, sha256: None,
         engine=migrated_engine,
+        upstream_stages=("narrative",),
     )
 
 

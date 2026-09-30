@@ -88,6 +88,10 @@ class TurnContext:
     """透传给 `ToolContext.engine`（TD-32），供需要写数据库的工具使用。"""
     session_id: str | None = None
     """透传给 `ToolContext.session_id`。"""
+    turn_id: str | None = None
+    """透传给 `ToolContext.turn_id`（M5 T9）。"""
+    upstream_stages: tuple[str, ...] = ()
+    """透传给 `ToolContext.upstream_stages`（M5 T9）：当前阶段的直接上游。"""
 
     def tool_context(self) -> ToolContext:
         """业务工具 handler 的上下文；三个运行时都从这里取，不各自构造（TD-17）。"""
@@ -98,6 +102,8 @@ class TurnContext:
             record_tool_write=self.record_tool_write,
             engine=self.engine,
             session_id=self.session_id,
+            turn_id=self.turn_id,
+            upstream_stages=self.upstream_stages,
         )
 
 

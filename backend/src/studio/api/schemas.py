@@ -7,9 +7,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ProjectCreate(BaseModel):
@@ -17,6 +17,18 @@ class ProjectCreate(BaseModel):
     settings: dict[str, Any] | None = None
     idea_id: str | None = None
     """从选题池的想法卡片创建（卡片须为 `idea` 状态；成功后卡片变为 `picked`）。"""
+    style_preset_id: str | None = None
+    """风格库里的预设 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。"""
+
+
+class ProjectSettingsPatch(BaseModel):
+    """`PATCH /projects/{id}/settings`：只放行 `voice`/`speech_rate`（M5 T8）；`null` 清除该键，
+    清除后合成时回落到内置默认。语速范围和音色是否可用由端点检查，错误信息更好读。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    voice: str | None = None
+    speech_rate: float | None = None
 
 
 class StageOut(BaseModel):
@@ -88,6 +100,14 @@ class SessionCreate(BaseModel):
     model_profile_id: str
 
 
+class SessionModelUpdate(BaseModel):
+    """`PATCH /sessions/{id}`：把会话换成另一个模型配置（同 runtime、同 provider）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model_profile_id: str
+
+
 class SessionOut(BaseModel):
     id: str
     project_id: str | None
@@ -120,6 +140,20 @@ class SessionDetailOut(SessionOut):
     turns: list[TurnOut]
 
 
+class SuggestionOut(BaseModel):
+    """回退建议（M5 T9）：下游阶段的 agent 对上游产物提出的修改建议。"""
+
+    id: str
+    project_id: str
+    from_stage: str
+    to_stage: str
+    content: str
+    status: str
+    """`open`（待处理）/`applied`（已处理）/`dismissed`（已忽略）。"""
+    turn_id: str | None
+    created_at: datetime
+
+
 class MessageCreate(BaseModel):
     text: str
 
@@ -150,22 +184,58 @@ class JobOut(BaseModel):
 
 
 class ModelProfileOut(BaseModel):
-    """不包含 `api_key_env`（字段名本身不是密钥，但简报要求"不返回 key，
-    只返回 key 是否已配置"）：调用方只需要知道能不能用，不需要知道去哪个
-    环境变量找 key。
-    """
+    """永远不含 key 的**值**，只有 `key_configured`。M5 T6 起返回 `api_key_env`（环境变量的
+    名字，不是密钥，界面要编辑它）和 `base_url`（账号密码打码）。"""
 
     id: str
     name: str
     provider: str
     model: str
     runtime: str
+    base_url: str | None
+    api_key_env: str | None
+    """环境变量名；为空表示使用本机登录（仅 claude 运行时）。"""
     supports_vision: bool
     price_input: float | None
     price_output: float | None
     max_cost_per_turn: float | None
     max_steps_per_turn: int | None
     key_configured: bool
+    builtin: bool
+    """内置配置（种子名和 `fake`）：可以编辑，不能删除。"""
+    env_override: list[str]
+    """当前由环境变量（`STUDIO_*`）决定的字段；启动时会覆盖库里的值，所以界面不让改。"""
+
+
+class ModelProfileCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    provider: str
+    model: str
+    runtime: str
+    base_url: str | None = None
+    api_key_env: str | None = None
+    supports_vision: bool = False
+    price_input: float | None = None
+    price_output: float | None = None
+    max_cost_per_turn: float | None = None
+    max_steps_per_turn: int | None = None
+
+
+class ModelProfilePatch(BaseModel):
+    """只改出现的字段（`null` 清空可空字段）；`name`/`provider`/`runtime` 建好后不可改。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
+    supports_vision: bool | None = None
+    price_input: float | None = None
+    price_output: float | None = None
+    max_cost_per_turn: float | None = None
+    max_steps_per_turn: int | None = None
 
 
 class SceneCheckOut(BaseModel):
@@ -224,3 +294,84 @@ class IdeaUpdate(BaseModel):
     tags: list[str] | None = None
     scores: dict[str, Any] | None = None
     status: str | None = None
+
+
+class TtsDefaultOut(BaseModel):
+    voice: str
+    speech_rate: float
+
+
+class SettingsOut(BaseModel):
+    stage_default_profile: dict[str, str]
+    """`{阶段: 模型配置 id}`，新建会话时预选；没设置的阶段不出现。"""
+    web_mode: Literal["tools", "native"]
+    """有效的联网模式：界面覆盖优先，否则是环境变量 `STUDIO_WEB_MODE`。"""
+    web_mode_source: Literal["ui", "env"]
+    web_mode_env: Literal["tools", "native"]
+    """环境变量给出的默认值，界面「清除覆盖」后回落到它。"""
+    tts_default: TtsDefaultOut
+    """新项目的默认音色/语速；没设置时是内置默认值。"""
+    default_style_preset_id: str | None
+
+
+class SettingsPatch(BaseModel):
+    """补丁语义：只改出现的字段（`model_fields_set`）；值为 `null` 表示清除。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage_default_profile: dict[str, str | None] | None = None
+    web_mode: Literal["tools", "native"] | None = None
+    tts_default: dict[str, Any] | None = None
+    default_style_preset_id: str | None = None
+
+
+class StyleFileBody(BaseModel):
+    name: str
+    text: str
+
+
+class StylePresetSummaryOut(BaseModel):
+    id: str
+    name: str
+    category: str
+    description: str | None
+    reference_count: int
+    exemplar_count: int
+    is_default: bool
+
+
+class StylePresetOut(BaseModel):
+    id: str
+    name: str
+    category: str
+    description: str | None
+    content: str
+    """入口 `STYLE.md` 全文。"""
+    references: list[StyleFileBody]
+    exemplars: list[StyleFileBody]
+    is_default: bool
+    created_at: datetime
+
+
+class StylePresetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    category: str = "未分类"
+    description: str | None = None
+    content: str
+    references: list[StyleFileBody] = []
+    exemplars: list[StyleFileBody] = []
+
+
+class StylePresetPatch(BaseModel):
+    """给了哪些字段就改哪些；`references`/`exemplars` 给了就整体替换。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    category: str | None = None
+    description: str | None = None
+    content: str | None = None
+    references: list[StyleFileBody] | None = None
+    exemplars: list[StyleFileBody] | None = None

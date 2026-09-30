@@ -10,7 +10,8 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 <template>
   <SidebarProvider style="--sidebar-width: calc(var(--spacing) * 72); --header-height: calc(var(--spacing) * 12)">
     <AppSidebar />
-    <SidebarInset>
+    <!-- min-w-0：内容（例如设置页里的代码编辑器）比可用宽度宽时让内容区收缩，而不是把整页撑出横向滚动条。 -->
+    <SidebarInset class="min-w-0">
       <SiteHeader />
       <div class="flex flex-1 flex-col gap-4 p-4">
         <router-view />

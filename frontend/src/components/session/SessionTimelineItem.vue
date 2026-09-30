@@ -9,15 +9,11 @@ import { blobUrl } from '@/api/endpoints'
 import { Message, MessageContent } from '@/components/ai-elements/message'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import type { TimelineItem } from '@/composables/useSessionStream'
+import { noticeText } from './noticeText'
+import SuggestionCard from './SuggestionCard.vue'
 import { snapshotEventLabel } from './snapshotReason'
 
 const props = defineProps<{ item: TimelineItem; projectId: string | null }>()
-
-const NOTICE_LABELS: Record<string, string> = {
-  guard_restored: '越界写入已被还原',
-  cost_unpriced: '本轮成本未计价（模型配置缺单价）',
-  cost_carryover: '本轮成本含上一轮被中断时的残余花费，未参与成本预算判断',
-}
 
 const toolState = computed(() => {
   if (props.item.kind !== 'tool_call') return 'input-available' as const
@@ -76,12 +72,17 @@ const images = computed(() => {
     </ToolContent>
   </Tool>
 
+  <SuggestionCard
+    v-else-if="item.kind === 'suggestion' && projectId !== null"
+    :item="item"
+    :project-id="projectId"
+  />
+
   <div
     v-else-if="item.kind === 'notice'"
     class="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900"
   >
-    {{ NOTICE_LABELS[item.noticeKind] ?? item.noticeKind }}
-    <span v-if="item.message">：{{ item.message }}</span>
+    {{ noticeText(item.noticeKind, item.message) }}
     <span v-if="item.paths?.length">（{{ item.paths.join('、') }}）</span>
   </div>
 

@@ -16,7 +16,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useCreateProjectMutation } from '@/composables/queries'
+import StyleSelect from '@/components/StyleSelect.vue'
+import { useCreateProjectMutation, useStylePresetsQuery } from '@/composables/queries'
+import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
 import type { IdeaOut } from '@/types/api'
 
 const props = defineProps<{ idea: IdeaOut | null }>()
@@ -24,11 +26,14 @@ const open = defineModel<boolean>('open', { default: false })
 
 const router = useRouter()
 const mutation = useCreateProjectMutation()
+const { data: stylePresets } = useStylePresetsQuery()
 const title = ref('')
+const styleId = ref('')
 
 watch(open, (isOpen) => {
   if (isOpen) {
     title.value = props.idea?.title ?? ''
+    styleId.value = initialStyleId(stylePresets.value ?? [])
     mutation.reset()
   }
 })
@@ -36,7 +41,11 @@ watch(open, (isOpen) => {
 async function submit(): Promise<void> {
   const trimmed = title.value.trim()
   if (!trimmed || !props.idea) return
-  const project = await mutation.mutateAsync({ title: trimmed, idea_id: props.idea.id })
+  const project = await mutation.mutateAsync({
+    title: trimmed,
+    idea_id: props.idea.id,
+    style_preset_id: styleIdForRequest(styleId.value),
+  })
   open.value = false
   await router.push(`/projects/${project.id}/topic`)
 }
@@ -57,6 +66,12 @@ async function submit(): Promise<void> {
           id="create-project-title"
           v-model="title"
           @keydown.enter="submit"
+        />
+        <StyleSelect
+          id="create-project-style"
+          v-model="styleId"
+          class="mt-2"
+          :presets="stylePresets ?? []"
         />
         <p
           v-if="mutation.isError.value"

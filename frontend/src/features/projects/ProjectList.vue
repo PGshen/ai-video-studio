@@ -17,17 +17,26 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useCreateProjectMutation, useProjectsQuery } from '@/composables/queries'
+import StyleSelect from '@/components/StyleSelect.vue'
+import {
+  useCreateProjectMutation,
+  useProjectsQuery,
+  useStylePresetsQuery,
+} from '@/composables/queries'
+import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
 
 const router = useRouter()
 const { data: projects, isPending, isError } = useProjectsQuery()
+const { data: stylePresets } = useStylePresetsQuery()
 
 const dialogOpen = ref(false)
 const title = ref('')
+const styleId = ref('')
 const createMutation = useCreateProjectMutation()
 
 function openDialog(): void {
   title.value = ''
+  styleId.value = initialStyleId(stylePresets.value ?? [])
   createMutation.reset()
   dialogOpen.value = true
 }
@@ -35,7 +44,10 @@ function openDialog(): void {
 async function submit(): Promise<void> {
   const trimmed = title.value.trim()
   if (!trimmed) return
-  const project = await createMutation.mutateAsync({ title: trimmed })
+  const project = await createMutation.mutateAsync({
+    title: trimmed,
+    style_preset_id: styleIdForRequest(styleId.value),
+  })
   dialogOpen.value = false
   await router.push(`/projects/${project.id}/topic`)
 }
@@ -63,6 +75,12 @@ async function submit(): Promise<void> {
               v-model="title"
               placeholder="例如：AI 视频工作台介绍"
               @keydown.enter="submit"
+            />
+            <StyleSelect
+              id="project-style"
+              v-model="styleId"
+              class="mt-2"
+              :presets="stylePresets ?? []"
             />
             <p
               v-if="createMutation.isError.value"

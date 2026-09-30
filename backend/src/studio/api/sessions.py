@@ -54,10 +54,12 @@ from studio.agent.runner import SessionBusyError, TurnRunner
 from studio.agent.runtime import RuntimeFactory, UserInput
 from studio.agent.stage import StageRegistry
 from studio.api.deps import get_bus, get_engine, get_registry, get_runtime_factory, get_turn_runner
+from studio.api.profiles import key_configured
 from studio.api.schemas import (
     MessageCreate,
     SessionCreate,
     SessionDetailOut,
+    SessionModelUpdate,
     SessionOut,
     TurnAccepted,
     TurnOut,
@@ -65,7 +67,13 @@ from studio.api.schemas import (
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.profiles import get_model_profile_by_id
 from studio.db.repo.projects import get_project
-from studio.db.repo.sessions import SessionValue, create_session, get_session, list_sessions
+from studio.db.repo.sessions import (
+    SessionValue,
+    create_session,
+    get_session,
+    list_sessions,
+    set_session_model_if_idle,
+)
 from studio.db.repo.turns import TurnValue
 
 logger = logging.getLogger(__name__)
@@ -82,13 +90,14 @@ WIRE_EVENT_TYPES = frozenset(
         "tool_call",
         "tool_result",
         "snapshot",
+        "suggestion",
         "notice",
         "error",
         "workspace_changed",
         "turn_status",
     }
 )
-"""SSE 上实际会出现的全部事件名（任务简报列出的 9 种），在一个地方统一定义
+"""SSE 上实际会出现的全部事件名（任务简报列出的 9 种，M5 T9 增加 `suggestion`），在一个地方统一定义
 （控制者裁定 6）。`_stream_events` 用它过滤——出现列表之外的 `type` 只在
 `TurnRunner`/`SessionBus` 出现新 bug 时才可能发生，属于防御性检查，不是
 正常路径。
@@ -180,6 +189,58 @@ def create_session_endpoint(
         runtime=profile.runtime,
     )
     return session_out(session)
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionOut)
+async def switch_session_model_endpoint(
+    session_id: str,
+    body: SessionModelUpdate,
+    engine: Engine = Depends(get_engine),
+    runtime_factory: RuntimeFactory = Depends(get_runtime_factory),
+) -> SessionOut:
+    """会话内换模型（M5 T7，决策 D3）：只允许换成同 runtime 且同 provider 的配置。
+
+    写成 `async def`：检查和写入之间没有 `await`，与 `TurnRunner.start_turn` 在同一个事件循环上
+    串行；仓储函数 `set_session_model_if_idle` 另外在一个事务里再检查一次有没有排队/运行中的 turn。
+    换的是下一轮起用的配置，`sdk_ref`、历史、`is_active` 都不动；下一轮开头会有一条 `notice`。
+    """
+    session = _require_session(engine, session_id)
+    target = get_model_profile_by_id(engine, body.model_profile_id)
+    if target is None:
+        raise HTTPException(status_code=400, detail=f"模型配置不存在：{body.model_profile_id}")
+    if not runtime_factory.has(target.runtime):
+        raise HTTPException(status_code=400, detail=f"运行时未启用：{target.runtime}")
+    current = get_model_profile_by_id(engine, session.model_profile_id)
+    if current is None:
+        raise HTTPException(status_code=400, detail="会话当前的模型配置已不存在，请新建会话")
+    if target.id == current.id:
+        return session_out(session)
+    if target.runtime != current.runtime:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不能换到另一种运行时（{current.runtime} → {target.runtime}），请新建会话",
+        )
+    if target.provider != current.provider:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"只能换到同一供应商的模型（{current.provider} → {target.provider}），请新建会话"
+            ),
+        )
+    if current.runtime == "claude" and target.api_key_env != current.api_key_env:
+        # 本机登录 ↔ API key 互换后，SDK 会话（transcript 在 ~/.claude 下）能否续上没有实测过：
+        # 要用 API key 发付费请求才能验证，计划只预先授权了本机登录的冒烟（见 ADR 0012）。
+        raise HTTPException(
+            status_code=400,
+            detail="Claude 会话只能在同一种认证方式内换模型（本机登录 ↔ API key 互换还没有验证），"
+            "请新建会话",
+        )
+    if not key_configured(target):
+        raise HTTPException(status_code=400, detail=f"模型配置 {target.name} 的密钥未配置")
+    updated = set_session_model_if_idle(engine, session_id, target.id)
+    if updated is None:
+        raise HTTPException(status_code=409, detail="会话正在运行或排队中，等这一轮结束后再换模型")
+    return session_out(updated)
 
 
 @router.get("/projects/{project_id}/stages/{stage}/sessions", response_model=list[SessionOut])

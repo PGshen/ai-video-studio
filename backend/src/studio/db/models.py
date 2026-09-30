@@ -201,6 +201,9 @@ class StylePreset(Base):
     category: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(String, nullable=False)
     exemplars: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    reference_files: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    """`[{name, text}]`，落盘到 `style/references/<name>`（列名避开 SQL 保留字 `references`）。"""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

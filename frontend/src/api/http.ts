@@ -21,6 +21,29 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 把请求错误转成给人看的中文文案：后端的 `detail` 通常是字符串；FastAPI 校验失败（422）时
+ * 可能是 `[{loc, msg}]` 列表，逐条拼起来。
+ */
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (typeof error.detail === 'string') return error.detail
+    if (Array.isArray(error.detail)) {
+      const parts = error.detail.map((item: unknown) => {
+        if (item && typeof item === 'object' && 'msg' in item) {
+          const { loc, msg } = item as { loc?: unknown[]; msg: unknown }
+          const where = Array.isArray(loc) ? loc.filter((p) => p !== 'body').join('.') : ''
+          return where ? `${where}：${String(msg)}` : String(msg)
+        }
+        return String(item)
+      })
+      if (parts.length > 0) return parts.join('；')
+    }
+    return error.message
+  }
+  return error instanceof Error ? error.message : '未知错误'
+}
+
 async function parseErrorDetail(response: Response): Promise<unknown> {
   const text = await response.text()
   if (!text) return null

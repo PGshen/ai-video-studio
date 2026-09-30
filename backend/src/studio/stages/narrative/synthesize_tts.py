@@ -17,13 +17,12 @@ from pydantic import BaseModel
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.db.repo.projects import get_project
 from studio.engines.tts import TTSEngine, TTSRequest, align_scene_beats, build_tts_engine
+from studio.engines.tts.voice_map import DEFAULT_SPEED, DEFAULT_VOICE
 from studio.stages.narrative.schema import NarrativeValidationError, validate_and_normalize
 from studio.workspace import files
 
 _NARRATIVE_PATH = "narrative/narrative.json"
 _TIMING_PATH = "narrative/timing.json"
-_DEFAULT_VOICE = "zizi"
-_DEFAULT_SPEED = 1.0
 
 _ENGINE_FACTORY: Callable[[], TTSEngine] = build_tts_engine
 
@@ -72,8 +71,8 @@ def _project_voice_and_speed(ctx: ToolContext) -> tuple[str, float]:
     project = get_project(ctx.engine, ctx.require_project()) if ctx.engine is not None else None
     settings = project.settings if project is not None else {}
     return (
-        settings.get("voice", _DEFAULT_VOICE),
-        settings.get("speech_rate", _DEFAULT_SPEED),
+        settings.get("voice", DEFAULT_VOICE),
+        settings.get("speech_rate", DEFAULT_SPEED),
     )
 
 

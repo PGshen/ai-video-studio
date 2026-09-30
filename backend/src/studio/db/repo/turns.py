@@ -118,6 +118,43 @@ def list_turns(engine: Engine, session_id: str) -> list[TurnValue]:
         return [_turn_value(row) for row in rows]
 
 
+def record_run_profile(engine: Engine, turn_id: str, *, profile_name: str, model: str) -> None:
+    """turn 开跑时记下它用的模型配置（`usage.profile_name`/`usage.model`）。
+
+    收尾时 `finish_turn` 会用完整的 usage 覆盖。这里先写一份，是因为崩溃/重启恢复
+    （`interrupt_turn`）不写 usage：不先记，被中断的一轮就成了"没用过任何配置"，
+    换模型提示会回溯到更早的一轮。
+    """
+    with session_scope(engine) as db:
+        turn = db.get(Turn, turn_id)
+        if turn is None:
+            raise KeyError(turn_id)
+        turn.usage = {**(turn.usage or {}), "profile_name": profile_name, "model": model}
+
+
+def previous_run_profile_name(engine: Engine, session_id: str, before_turn_id: str) -> str | None:
+    """`before_turn_id` 之前最近一个记录了模型配置名（`usage.profile_name`）的 turn 所用的配置名。
+
+    换模型提示（M5 T7）用它判断"这一轮和上一轮用的是不是同一个配置"。不看 `start_snapshot_id`
+    （无项目的头脑风暴会话没有快照）；开跑前就被取消的 turn 没有 `usage`，会被跳过；M5 之前
+    的旧 turn 没有 `profile_name`，同样跳过——都找不到时返回 `None`，不发提示。
+    """
+    with session_scope(engine) as db:
+        created_at = db.scalar(select(Turn.created_at).where(Turn.id == before_turn_id))
+        if created_at is None:
+            return None
+        # 只取 usage 一列、按时间倒序逐行读，找到第一个有配置名的就停。
+        for usage in db.scalars(
+            select(Turn.usage)
+            .where(Turn.session_id == session_id, Turn.created_at < created_at)
+            .order_by(Turn.created_at.desc())
+        ):
+            name = (usage or {}).get("profile_name")
+            if name:
+                return str(name)
+    return None
+
+
 def previous_turn(engine: Engine, session_id: str, before_turn_id: str) -> TurnValue | None:
     """会话中 `before_turn_id` 之前最近一个真正运行过（有 `start_snapshot_id`）且已结束的 turn。
 

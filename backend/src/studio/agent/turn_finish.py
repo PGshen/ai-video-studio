@@ -59,6 +59,9 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
         "output_tokens": state.output_tokens,
         "steps": state.steps,
         "includes_carryover": state.cost_carryover,
+        # M5 T7: 会话可以中途换模型，所以每一轮记下实际用的配置；下一轮据此判断要不要提示。
+        "model": job.profile.model,
+        "profile_name": job.profile.name,
     }
     finish_turn_row(
         runner,

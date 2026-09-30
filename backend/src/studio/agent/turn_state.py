@@ -61,6 +61,8 @@ class _State:
     cost_carryover: bool = False
     """收到过 `Usage.includes_carryover`：`cost_usd` 含上一轮被打断时的残余花费（TD-25）。"""
     budget_exceeded: bool = False
+    announced_suggestions: set[str] = field(default_factory=set)
+    """已经给会话发过 `suggestion` 事件的回退建议 id（M5 T9），避免同一条发两次。"""
     end: events.TurnEnd | None = None
     status: str | None = None
     """异常路径强制的最终状态（`failed`/`cancelled`），优先于 `end.status`。"""

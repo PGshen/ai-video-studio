@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import Engine
 
 from studio.db.repo.suggestions import (
+    SuggestionStateError,
+    count_open_by_target_stage,
     create_suggestion,
     get_suggestion,
     list_suggestions,
+    list_turn_suggestions,
+    resolve_suggestion,
     update_suggestion_status,
 )
 
@@ -90,3 +95,75 @@ def test_update_suggestion_status_changes_status_and_persists(migrated_engine: E
     fetched = get_suggestion(migrated_engine, suggestion.id)
     assert fetched is not None
     assert fetched.status == "applied"
+
+
+def _new(
+    engine: Engine, *, project: str = "p", to_stage: str = "narrative", turn: str | None = "t1"
+):
+    return create_suggestion(
+        engine,
+        project_id=project,
+        from_stage="animation",
+        to_stage=to_stage,
+        content="x",
+        turn_id=turn,
+    )
+
+
+class TestResolve:
+    def test_open_can_be_applied_or_dismissed(self, migrated_engine: Engine) -> None:
+        a, b = _new(migrated_engine), _new(migrated_engine)
+
+        assert resolve_suggestion(migrated_engine, a.id, "applied").status == "applied"
+        assert resolve_suggestion(migrated_engine, b.id, "dismissed").status == "dismissed"
+        fetched = get_suggestion(migrated_engine, a.id)
+        assert fetched is not None and fetched.status == "applied"
+
+    @pytest.mark.parametrize("first", ["applied", "dismissed"])
+    @pytest.mark.parametrize("second", ["applied", "dismissed"])
+    def test_a_resolved_suggestion_cannot_be_resolved_again(
+        self, migrated_engine: Engine, first: str, second: str
+    ) -> None:
+        suggestion = _new(migrated_engine)
+        resolve_suggestion(migrated_engine, suggestion.id, first)
+
+        with pytest.raises(SuggestionStateError):
+            resolve_suggestion(migrated_engine, suggestion.id, second)
+
+        fetched = get_suggestion(migrated_engine, suggestion.id)
+        assert fetched is not None and fetched.status == first
+
+    def test_only_applied_and_dismissed_are_valid_targets(self, migrated_engine: Engine) -> None:
+        suggestion = _new(migrated_engine)
+
+        for bad in ("open", "done", ""):
+            with pytest.raises(ValueError):
+                resolve_suggestion(migrated_engine, suggestion.id, bad)
+
+    def test_unknown_id(self, migrated_engine: Engine) -> None:
+        with pytest.raises(KeyError):
+            resolve_suggestion(migrated_engine, "nope", "applied")
+
+
+def test_list_turn_suggestions_returns_only_that_turns_in_creation_order(
+    migrated_engine: Engine,
+) -> None:
+    first = _new(migrated_engine, turn="t1")
+    _new(migrated_engine, turn="t2")
+    second = _new(migrated_engine, turn="t1")
+
+    assert [s.id for s in list_turn_suggestions(migrated_engine, "t1")] == [first.id, second.id]
+    assert list_turn_suggestions(migrated_engine, "nope") == []
+
+
+def test_count_open_by_target_stage_counts_only_open_ones_of_that_project(
+    migrated_engine: Engine,
+) -> None:
+    a = _new(migrated_engine, to_stage="narrative")
+    _new(migrated_engine, to_stage="narrative")
+    _new(migrated_engine, to_stage="topic")
+    _new(migrated_engine, project="other", to_stage="topic")
+    resolve_suggestion(migrated_engine, a.id, "applied")
+
+    assert count_open_by_target_stage(migrated_engine, "p") == {"narrative": 1, "topic": 1}
+    assert count_open_by_target_stage(migrated_engine, "nothing") == {}

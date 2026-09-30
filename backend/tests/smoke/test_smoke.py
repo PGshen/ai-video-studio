@@ -684,3 +684,327 @@ async def test_topic_claude_login_native_web(tmp_path: Path) -> None:
     )
     for fetch in fetches:
         assert not (fetch["denied_by_hook"] and fetch["url_in_search_results"]), fetch
+
+
+# ---- M5 T5: 风格目录按需读取（本机 Claude 登录，不产生 API 费用）-------------------------
+
+_STYLE_EXPORT = REPO_ROOT / "data" / "legacy-export" / "styles.json"
+_STYLE_NAME = "概念传记·纸上溯源"
+_ANIMATION_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "animation"
+_WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch")
+
+_NARRATIVE_STYLE_PROMPT = (
+    "这是自动化测试。上游选题简报已定稿（upstream/topic/brief.md）。请写叙事产物 "
+    "narrative/narrative.json：只写 2 个镜头，每个镜头旁白 40–70 字，每镜 2–3 个 beat；"
+    "写完用 validate_narrative 检查到没有错误。不要调用 synthesize_tts，不要写其他文件。"
+)
+_ANIMATION_STYLE_PROMPT = (
+    "这是自动化测试。只为第一个镜头（s-hook）写代码 animation/scenes/s-hook.py，保持简短"
+    "（不超过 40 行）；用 validate_scenes 检查，通过即可。不要调用 render_preview，"
+    "不要写其他镜头，不要改 style/。"
+)
+
+
+def _args_text(event: Any) -> str:
+    return json.dumps(event.payload.get("args", {}), ensure_ascii=False)
+
+
+def _first_touch(outcome: TurnOutcome, needle: str) -> int | None:
+    """第一次在工具调用参数里出现 `needle` 的位置（读、搜、Bash 里 cat 都算）。"""
+    for index, event in enumerate(outcome.events):
+        if event.type == "tool_call" and needle in _args_text(event):
+            return index
+    return None
+
+
+def _first_write(outcome: TurnOutcome, needle: str) -> int | None:
+    for index, event in enumerate(outcome.events):
+        name = str(event.payload.get("name", ""))
+        if (
+            event.type == "tool_call"
+            and name.rsplit("__", 1)[-1] in _WRITE_TOOLS
+            and needle in _args_text(event)
+        ):
+            return index
+    return None
+
+
+def _style_touches(outcome: TurnOutcome) -> list[dict[str, Any]]:
+    return [
+        {"index": i, "tool": e.payload["name"], "args": _args_text(e)[:200]}
+        for i, e in enumerate(outcome.events)
+        if e.type == "tool_call" and "style/" in _args_text(e)
+    ]
+
+
+async def test_style_claude_login(tmp_path: Path) -> None:
+    from studio.db.legacy_styles import import_export, load_export
+    from studio.db.repo.style_presets import list_style_presets
+    from studio.stages.narrative.schema import validate_and_normalize
+    from studio.workspace import create_snapshot, init_workspace
+    from studio.workspace.style_files import render_style_files
+
+    from .support import M5_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    if not _STYLE_EXPORT.is_file():
+        pytest.skip("没有旧风格导出（先 make export-legacy-styles），跳过")
+    harness = build_harness(tmp_path, real_stages=True)
+    evidence: dict[str, Any] = {"style": _STYLE_NAME}
+    try:
+        import_export(harness.engine, load_export(_STYLE_EXPORT))
+        preset = next(p for p in list_style_presets(harness.engine) if p.name == _STYLE_NAME)
+        init_workspace(harness.data_dir, harness.project_id, render_style_files(preset))
+        create_snapshot(harness.engine, harness.blobs, harness.project_id, reason="user_edit")
+        profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
+
+        # 叙事：上游简报定稿 → 叙事一轮，动笔之前应读入口、叙事蓝图和金样本。
+        brief = harness.workdir / "topic" / "brief.md"
+        brief.parent.mkdir(parents=True, exist_ok=True)
+        brief.write_text(
+            (Path(__file__).resolve().parents[1] / "fixtures" / "narrative" / "brief.md").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "topic")
+        narrative_session = harness.session(profile, "claude", stage="narrative")
+        narrative = await harness.turn(narrative_session, _NARRATIVE_STYLE_PROMPT)
+        evidence["narrative"] = {
+            **outcome_summary(narrative),
+            "style_touches": _style_touches(narrative),
+        }
+
+        assert narrative.turn.status == "done", (narrative.turn.status, narrative.turn.error)
+        first_write = _first_write(narrative, "narrative/narrative.json")
+        assert first_write is not None, "没有写出 narrative/narrative.json"
+        for needle in (
+            "style/STYLE.md",
+            "style/references/narrative-blueprint.md",
+            "style/exemplars/",
+        ):
+            touched = _first_touch(narrative, needle)
+            assert touched is not None, f"叙事一轮没有读 {needle}：{narrative.tool_names}"
+            assert touched < first_write, f"{needle} 在动笔之后才读"
+        assert _first_write(narrative, "style/") is None, "叙事阶段不该写 style/"
+        doc = json.loads((harness.workdir / "narrative" / "narrative.json").read_text("utf-8"))
+        parsed = validate_and_normalize(doc)  # 旧字段名不能把产物带偏
+        evidence["narrative"]["scene_ids"] = [s.id for s in parsed.scenes]
+        assert narrative.used_tool("validate_narrative")
+
+        # 动画：换成固定的叙事 fixture（含 timing）定稿，动画一轮写第一个镜头。
+        for name in ("narrative.json", "timing.json"):
+            (harness.workdir / "narrative" / name).write_bytes(
+                (_ANIMATION_FIXTURES / name).read_bytes()
+            )
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "narrative")
+        animation_session = harness.session(profile, "claude", stage="animation")
+        animation = await harness.turn(animation_session, _ANIMATION_STYLE_PROMPT)
+        evidence["animation"] = {
+            **outcome_summary(animation),
+            "style_touches": _style_touches(animation),
+        }
+
+        assert animation.turn.status == "done", (animation.turn.status, animation.turn.error)
+        first_write = _first_write(animation, "animation/scenes/")
+        assert first_write is not None, "没有写出镜头代码"
+        for needle in (
+            "style/STYLE.md",
+            "style/references/color-scheme.md",
+            "style/references/animation-style.md",
+        ):
+            touched = _first_touch(animation, needle)
+            assert touched is not None, f"动画一轮没有读 {needle}：{animation.tool_names}"
+            assert touched < first_write, f"{needle} 在写代码之后才读"
+        assert _first_write(animation, "style/") is None, "动画阶段不该写 style/"
+        assert animation.used_tool("validate_scenes")
+    finally:
+        record_evidence("style-claude-login", evidence, M5_EVIDENCE_DIR)
+        harness.engine.dispose()
+
+
+# ---- M5 T7: 会话内换模型（本机 Claude 登录，同一登录下的另一个模型）---------------------
+
+# 用一条自然的项目背景，而不是“暗号”：模型会把“请记住这个暗号”当成可疑指令而拒绝（第一次
+# 实测第一轮就拒绝了），那样测的是模型的戒心，不是换模型后会话历史是否还在。
+_SWITCH_FIRST_PROMPT = (
+    "先跟你说一下这条视频的背景：它的目标观众是一群退休的数学老师。"
+    "你先记下，后面我会问你；这一轮只回复“好的”，不要调用任何工具。"
+)
+_SWITCH_SECOND_PROMPT = "我刚才说这条视频的目标观众是谁？只用一句话回答，不要调用任何工具。"
+_SWITCH_SECOND_MODEL = "claude-haiku-4-5-20251001"
+
+
+async def test_model_switch_claude_login(tmp_path: Path) -> None:
+    from studio.agent.turn_events import MODEL_SWITCHED_NOTICE
+    from studio.db.repo.sessions import get_session, set_session_model_if_idle
+
+    from .support import M5_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    harness = build_harness(tmp_path)
+    evidence: dict[str, Any] = {"second_model": _SWITCH_SECOND_MODEL}
+    try:
+        first_profile = harness.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+        second_profile = harness.profile(
+            "claude-login", model=_SWITCH_SECOND_MODEL, suffix="-b", max_steps_per_turn=MAX_STEPS
+        )
+        session_id = harness.session(first_profile, "claude")
+
+        first = await harness.turn(session_id, _SWITCH_FIRST_PROMPT)
+        before = get_session(harness.engine, session_id)
+        assert before is not None
+        evidence["turn1"] = outcome_summary(first)
+        evidence["sdk_ref_before"] = before.sdk_ref
+        assert first.turn.status == "done", (first.turn.status, first.turn.error)
+        assert before.sdk_ref, "第一轮没有拿到 SDK 会话 id"
+
+        switched = set_session_model_if_idle(harness.engine, session_id, second_profile)
+        assert switched is not None
+        assert switched.sdk_ref == before.sdk_ref, "换模型不该改 sdk_ref"
+
+        second = await harness.turn(session_id, _SWITCH_SECOND_PROMPT)
+        after = get_session(harness.engine, session_id)
+        assert after is not None
+        evidence["turn2"] = outcome_summary(second)
+        evidence["turn2_text"] = second.text
+        evidence["sdk_ref_after"] = after.sdk_ref
+        evidence["notices"] = second.notices(MODEL_SWITCHED_NOTICE)
+
+        assert second.turn.status == "done", (second.turn.status, second.turn.error)
+        assert "退休" in second.text and "数学老师" in second.text, (
+            f"换模型后 agent 不记得之前说的背景：{second.text!r}"
+        )
+        assert second.turn.usage is not None
+        assert second.turn.usage["model"] == _SWITCH_SECOND_MODEL
+        assert first.turn.usage is not None
+        assert first.turn.usage["model"] != _SWITCH_SECOND_MODEL
+        assert len(second.notices(MODEL_SWITCHED_NOTICE)) == 1
+        assert not first.notices(MODEL_SWITCHED_NOTICE)
+    finally:
+        record_evidence("model-switch-claude-login", evidence, M5_EVIDENCE_DIR)
+        harness.engine.dispose()
+
+
+# ---- M5 T8: TTS 试听（真实合成，产生少量费用；负责人已确认可以接受）-------------------------
+
+_PREVIEW_CASES = (("zizi", 1.0), ("zizi", 0.5), ("zizi", 2.0), ("xiaohe", 1.2), ("yunzhou", 1.0))
+
+
+async def test_tts_preview_real(tmp_path: Path) -> None:
+    """经真实 API 试听：状态、类型、mp3 时长；边界语速 0.5/2.0 供应商接受，且速度确实生效
+    （0.5 比 1.0 长、2.0 比 1.0 短）；同一组合第二次命中缓存，不再合成。"""
+    from io import BytesIO
+
+    from httpx import ASGITransport, AsyncClient
+    from mutagen.mp3 import MP3
+
+    from studio.config import Settings
+    from studio.main import create_app
+
+    from .support import M5_EVIDENCE_DIR
+
+    _require_env("VOLCENGINE_TTS_API_KEY")
+    app = create_app(Settings(data_dir=tmp_path / "data"))
+    evidence: dict[str, Any] = {"cases": []}
+    durations: dict[tuple[str, float], float] = {}
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+                for voice, speed in _PREVIEW_CASES:
+                    response = await client.post(
+                        "/api/tts/preview", json={"voice": voice, "speed": speed}
+                    )
+                    row: dict[str, Any] = {
+                        "voice": voice,
+                        "speed": speed,
+                        "status": response.status_code,
+                        "content_type": response.headers.get("content-type"),
+                        "bytes": len(response.content),
+                    }
+                    evidence["cases"].append(row)
+                    assert response.status_code == 200, (voice, speed, response.text)
+                    assert response.headers["content-type"] == "audio/mpeg"
+                    duration = MP3(BytesIO(response.content)).info.length
+                    row["duration_seconds"] = duration
+                    durations[(voice, speed)] = duration
+                    assert 1.0 <= duration <= 30.0, (voice, speed, duration)
+                    M5_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+                    (M5_EVIDENCE_DIR / f"tts-preview-{voice}-{speed}.mp3").write_bytes(
+                        response.content
+                    )
+
+                cached = await client.post("/api/tts/preview", json={"voice": "zizi", "speed": 1.0})
+                evidence["cache_hit_status"] = cached.status_code
+                cache_files = sorted(p.name for p in (tmp_path / "data" / "tts-preview").iterdir())
+                evidence["cache_files"] = len(cache_files)
+                assert cached.status_code == 200
+                assert len(cache_files) == len(_PREVIEW_CASES), "重复请求不该多出缓存文件"
+
+        assert durations[("zizi", 0.5)] > durations[("zizi", 1.0)] > durations[("zizi", 2.0)], (
+            durations
+        )
+    finally:
+        evidence["durations"] = {f"{v}@{s}": d for (v, s), d in durations.items()}
+        record_evidence("tts-preview-real", evidence, M5_EVIDENCE_DIR)
+
+
+# ---- M5 T9/T13: 回退建议经真实 Claude 的完整路径（本机登录）----------------------------------
+
+_SUGGESTION_PROMPT = (
+    "这是自动化测试。假设上游选题简报里的第一条关键事实缺少可靠出处。请调用一次 "
+    "suggest_upstream_change 工具，to_stage 填 topic，content 用一句话说明这条事实需要补充出处。"
+    "除此之外不要做任何事，不要写文件，不要调用其他工具。"
+)
+
+
+async def test_suggestion_claude_login(tmp_path: Path) -> None:
+    """Claude 侧业务工具带 `mcp__studio__` 前缀：确认去掉前缀后 TurnRunner 仍然认出
+    `suggest_upstream_change`，并给会话发了持久的 `suggestion` 事件、建议记录了 `turn_id`。"""
+    from studio.db.repo.suggestions import list_suggestions
+
+    from .support import M5_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    harness = build_harness(tmp_path, real_stages=True)
+    evidence: dict[str, Any] = {}
+    try:
+        brief = harness.workdir / "topic" / "brief.md"
+        brief.parent.mkdir(parents=True, exist_ok=True)
+        brief.write_text(
+            (Path(__file__).resolve().parents[1] / "fixtures" / "narrative" / "brief.md").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "topic")
+        profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
+        session_id = harness.session(profile, "claude", stage="narrative")
+
+        outcome = await harness.turn(session_id, _SUGGESTION_PROMPT)
+        rows = list_suggestions(harness.engine, harness.project_id)
+        suggestion_events = [e for e in outcome.events if e.type == "suggestion"]
+        evidence.update(
+            {
+                **outcome_summary(outcome),
+                "suggestions": [
+                    {"to_stage": r.to_stage, "status": r.status, "turn_id": r.turn_id} for r in rows
+                ],
+            }
+        )
+
+        assert outcome.turn.status == "done", (outcome.turn.status, outcome.turn.error)
+        assert outcome.used_tool("suggest_upstream_change"), outcome.tool_names
+        assert len(rows) == 1, rows
+        assert (rows[0].from_stage, rows[0].to_stage, rows[0].status) == (
+            "narrative",
+            "topic",
+            "open",
+        )
+        assert rows[0].turn_id == outcome.turn.id
+        assert len(suggestion_events) == 1, "工具成功后应该恰好发一条 suggestion 事件"
+        assert suggestion_events[0].payload["suggestion_id"] == rows[0].id
+    finally:
+        record_evidence("suggestion-claude-login", evidence, M5_EVIDENCE_DIR)
+        harness.engine.dispose()

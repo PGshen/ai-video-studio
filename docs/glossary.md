@@ -31,7 +31,12 @@
 | 上游只读副本 | upstream copy | `upstream/<stage>/`，上游定稿版本的只读副本，每轮开始前刷新 |
 | 越界检查 | scope guard | 每轮结束时，还原本阶段可写范围之外的改动 |
 | 工具托管文件 | tool-managed file | 只能由工具写入的文件，例如 `narrative/timing.json` |
-| 回退建议 | upstream suggestion | 下游 agent 对上游产物提出的修改建议 |
+| 回退建议 | upstream suggestion | 下游 agent 对上游产物提出的修改建议；只能向直接上游提；状态 `open`/`applied`/`dismissed`，在对话流里显示为卡片，阶段导航上有待处理数量的角标 |
+| 风格预设 | style preset | 风格库里的一套风格，创建项目时复制进项目的 `style/` 目录；见 skill 形态目录 |
+| skill 形态目录 | skill-shaped style directory | 一套风格的目录结构：入口 `STYLE.md`（frontmatter + 文件索引，每轮先读）+ `references/`（叙事蓝图、配色、动画风格）+ `exemplars/`（金样本）；各阶段提示词说明动笔前读哪些（ADR 0011） |
+| 金样本 | exemplar | 一套风格附带的范例（镜头结构与旁白语感），放在 `style/exemplars/` |
+| 会话内换模型 | model switch | 会话中途换成同 runtime、同 provider 的另一个模型配置，对话记忆保留；换后第一轮有 `model_switched` 提示（ADR 0012） |
+| 有效联网模式 | effective web mode | 界面设置（`settings.web_mode`）优先，没设置时用环境变量 `STUDIO_WEB_MODE`；`TurnRunner` 每轮读一次 |
 | 镜头 | scene | 视频的最小内容单元，有稳定的 `id`（slug），对应一个旁白段落和一个代码文件 |
 | 节拍 | beat | 镜头内的一个动画时间点，由 `cue_text` 锚定在旁白中 |
 | 预览渲染 | preview render | 低清渲染单个镜头并抽取关键帧，供视觉自检使用 |

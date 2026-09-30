@@ -30,7 +30,13 @@ from studio.agent.runner import TurnRunner
 from studio.agent.stage import StageDefinition, StageRegistry
 from studio.agent.stage_flow import StageFlowError, finalize, reopen
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
-from studio.api.schemas import ProjectCreate, ProjectDetailOut, ProjectOut, StageOut
+from studio.api.schemas import (
+    ProjectCreate,
+    ProjectDetailOut,
+    ProjectOut,
+    ProjectSettingsPatch,
+    StageOut,
+)
 from studio.config import Settings
 from studio.db.repo.ideas import (
     IdeaStateError,
@@ -45,9 +51,13 @@ from studio.db.repo.projects import (
     delete_project,
     get_project,
     list_projects,
+    update_project_settings,
 )
+from studio.db.repo.settings import SPEECH_RATE_MAX, SPEECH_RATE_MIN, get_all_settings
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
+from studio.db.repo.style_presets import get_style_preset
+from studio.engines.tts.voice_map import voice_aliases
 from studio.workspace import (
     BlobStore,
     create_snapshot,
@@ -55,6 +65,7 @@ from studio.workspace import (
     project_dir,
     remove_workspace,
 )
+from studio.workspace.style_files import render_style_files
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -108,16 +119,39 @@ def _idea_card_markdown(idea: IdeaValue) -> str:
     return "\n".join(lines)
 
 
+_STYLE_SETTING_KEYS = ("style_preset_id", "style_name")
+"""`project.settings` 里由服务端记录的风格信息；客户端传来的同名键会被丢掉。"""
+
+
+def _style_for_new_project(
+    engine: Engine, requested_id: str | None, title: str
+) -> tuple[dict[str, str], dict[str, str]]:
+    """新项目的 `style/` 文件和要记进 `project.settings` 的风格信息。
+
+    顺序：请求指定的风格（不存在 → 404）→ 设置里的默认风格 → 占位 `STYLE.md`（风格库里没有
+    可用的预设时不报错）。风格是复制进工作区的，之后与风格库脱钩（决策 D5）。
+    """
+    if requested_id is not None:
+        preset = get_style_preset(engine, requested_id)
+        if preset is None:
+            raise HTTPException(status_code=404, detail=f"风格不存在：{requested_id}")
+    else:
+        default_id = get_all_settings(engine).default_style_preset_id
+        preset = get_style_preset(engine, default_id) if default_id is not None else None
+    if preset is None:
+        placeholder = f"# {title}\n\n（未选择风格：风格库里没有可用的预设，这是一份占位。）\n"
+        return {"style/STYLE.md": placeholder}, {}
+    return render_style_files(preset), {"style_preset_id": preset.id, "style_name": preset.name}
+
+
 def _init_workspace(
     engine: Engine,
     blobs: BlobStore,
     settings: Settings,
     project_id: str,
-    title: str,
-    extra_files: dict[str, str] | None = None,
+    initial_files: dict[str, str],
 ) -> None:
-    style = f"# {title}\n\n（风格占位，风格库在 M5 实现）\n"
-    init_workspace(settings.data_dir, project_id, {"style/STYLE.md": style, **(extra_files or {})})
+    init_workspace(settings.data_dir, project_id, initial_files)
     create_snapshot(engine, blobs, project_id, reason="init")
 
 
@@ -147,6 +181,17 @@ def create_project_endpoint(
     settings: Settings = Depends(get_settings),
 ) -> ProjectOut:
     idea = _require_pickable_idea(engine, body.idea_id) if body.idea_id is not None else None
+    style_files, style_settings = _style_for_new_project(engine, body.style_preset_id, body.title)
+    client_settings = {
+        key: value for key, value in (body.settings or {}).items() if key not in _STYLE_SETTING_KEYS
+    }
+    # 新项目的默认音色/语速是复制进项目的（决策 D5）：之后改设置页不影响已有项目。
+    stored = get_all_settings(engine)
+    tts_defaults = {
+        key: value
+        for key, value in (("voice", stored.tts_voice), ("speech_rate", stored.tts_speech_rate))
+        if value is not None
+    }
     project_id = uuid4().hex
     try:
         _init_workspace(
@@ -154,15 +199,17 @@ def create_project_endpoint(
             blobs,
             settings,
             project_id,
-            body.title,
-            {IDEA_CARD_PATH: _idea_card_markdown(idea)} if idea is not None else None,
+            {
+                **style_files,
+                **({IDEA_CARD_PATH: _idea_card_markdown(idea)} if idea is not None else {}),
+            },
         )
         project = create_project(
             engine,
             id=project_id,
             title=body.title,
             idea_id=body.idea_id,
-            settings=body.settings,
+            settings={**tts_defaults, **client_settings, **style_settings},
         )
         for stage, status in _INITIAL_STAGES:
             create_stage(engine, project_id=project_id, stage=stage, status=status)
@@ -176,6 +223,29 @@ def create_project_endpoint(
         _cleanup_failed_project(engine, settings, project_id)
         raise HTTPException(status_code=500, detail=f"创建项目失败：{exc}") from exc
     return _project_out(project)
+
+
+@router.patch("/projects/{project_id}/settings", response_model=ProjectOut)
+async def patch_project_settings_endpoint(
+    project_id: str,
+    body: ProjectSettingsPatch,
+    engine: Engine = Depends(get_engine),
+    turn_runner: TurnRunner = Depends(get_turn_runner),
+) -> ProjectOut:
+    """改项目的音色/语速（M5 T8）。键名与 `synthesize_tts` 读取的 `voice`/`speech_rate` 一致；
+    改完后已合成的镜头在叙事画布上显示「配音已过期」（TD-36）。项目有 turn 在跑时拒绝
+    （写成 `async def`，理由同 I4）。"""
+    _require_project(engine, project_id)
+    _require_not_busy(turn_runner, project_id)
+    patch = body.model_dump(exclude_unset=True)
+    voice, rate = patch.get("voice"), patch.get("speech_rate")
+    if voice is not None and voice not in voice_aliases():
+        raise HTTPException(status_code=422, detail=f"音色不可用：{voice}")
+    if rate is not None and not SPEECH_RATE_MIN <= rate <= SPEECH_RATE_MAX:
+        raise HTTPException(
+            status_code=422, detail=f"语速必须在 {SPEECH_RATE_MIN}–{SPEECH_RATE_MAX} 之间"
+        )
+    return _project_out(update_project_settings(engine, project_id, patch))
 
 
 @router.get("/projects", response_model=list[ProjectOut])

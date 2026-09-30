@@ -51,6 +51,11 @@ class ToolContext:
     session_id: str | None = None
     """当前会话 id；头脑风暴工具用它记 `source_session_id`，联网工具用它按会话
     记搜索结果（M4）。"""
+    turn_id: str | None = None
+    """当前这一轮的 id（M5 T9）：`suggest_upstream_change` 用它记录建议是哪一轮产生的。"""
+    upstream_stages: tuple[str, ...] = ()
+    """当前阶段的**直接上游**阶段名（`StageDefinition.upstream_stages()`，M5 T9）：
+    `suggest_upstream_change` 只允许向它们提建议。"""
 
     def require_project(self) -> str:
         """项目阶段的工具用：没有项目（无项目会话）时抛 `RuntimeError`，

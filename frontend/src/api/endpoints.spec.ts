@@ -2,20 +2,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createBrainstormSession,
   createIdea,
+  createModelProfile,
   createProject,
   createRenderJob,
   createSession,
+  deleteModelProfile,
   finalizeRender,
   finalVideoUrl,
   getFileContent,
   getJob,
   getProject,
   getSession,
+  getSettings,
   getTopicCheck,
   listBrainstormSessions,
   listIdeas,
+  patchSettings,
   sessionStreamUrl,
   updateIdea,
+  updateModelProfile,
   workspaceFileUrl,
   writeFileContent,
 } from '@/api/endpoints'
@@ -179,5 +184,58 @@ describe('endpoints：动态路径段会被正确编码', () => {
     expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/brainstorm/sessions')
     expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/brainstorm/sessions')
     expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('模型配置：POST 新建、PATCH/DELETE 对 id 编码，DELETE 返回 undefined（204）', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 201 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createModelProfile({
+      name: 'a',
+      provider: 'openai',
+      model: 'm',
+      runtime: 'openai',
+      base_url: null,
+      api_key_env: 'K',
+      supports_vision: false,
+      price_input: null,
+      price_output: null,
+      max_cost_per_turn: null,
+      max_steps_per_turn: null,
+    })
+    await updateModelProfile('p#1', { model: 'x', max_steps_per_turn: null })
+    const deleted = await deleteModelProfile('p#1')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/model-profiles')
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' })
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/model-profiles/p%231')
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ model: 'x', max_steps_per_turn: null }),
+    })
+    expect(String(fetchMock.mock.calls[2]![0])).toBe('/api/model-profiles/p%231')
+    expect(fetchMock.mock.calls[2]![1]).toMatchObject({ method: 'DELETE' })
+    expect(deleted).toBeUndefined()
+  })
+
+  it('设置：GET /settings，PATCH 把 null 原样发出去（清除）', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getSettings()
+    await patchSettings({ web_mode: null, stage_default_profile: { topic: null } })
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/settings')
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/settings')
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ web_mode: null, stage_default_profile: { topic: null } }),
+    })
   })
 })
