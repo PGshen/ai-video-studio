@@ -13,9 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useCreateSessionMutation, useModelProfilesQuery, useSessionsQuery } from '@/composables/queries'
+import {
+  useCreateSessionMutation,
+  useModelProfilesQuery,
+  useSessionsQuery,
+  useSettingsQuery,
+} from '@/composables/queries'
 import { ApiError } from '@/api/http'
 import type { SessionScope } from '@/composables/sessionScope'
+import ModelSwitcher from './ModelSwitcher.vue'
+import { preselectProfileId } from './modelChoice'
 
 const props = defineProps<{
   scope: SessionScope
@@ -24,19 +31,38 @@ const props = defineProps<{
 const sessionId = defineModel<string | null>('sessionId', { default: null })
 
 const { data: profiles } = useModelProfilesQuery()
+const { data: settings } = useSettingsQuery()
 const { data: sessions } = useSessionsQuery(() => props.scope)
 const createSessionMutation = useCreateSessionMutation(() => props.scope)
 
+/** 默认模型按阶段取：头脑风暴是 `brainstorm`，项目阶段是它自己的阶段名。 */
+const stageKey = computed(() => (props.scope.kind === 'brainstorm' ? 'brainstorm' : props.scope.stage))
+
+// 预选（M5 T12）：该阶段的默认模型（设置页里设的）→ 第一个已配置的。使用者手动选过之后不再
+// 覆盖；切换阶段时重新预选。
 const selectedProfileId = ref<string>('')
+let userPicked = false
+watch(stageKey, () => {
+  userPicked = false
+})
 watch(
-  profiles,
-  (list) => {
-    if (!list || selectedProfileId.value) return
-    const configured = list.find((p) => p.key_configured)
-    selectedProfileId.value = (configured ?? list[0])?.id ?? ''
+  [profiles, settings, stageKey],
+  () => {
+    if (!profiles.value || !settings.value || userPicked) return
+    selectedProfileId.value = preselectProfileId(
+      profiles.value,
+      settings.value.stage_default_profile,
+      stageKey.value,
+    )
   },
   { immediate: true },
 )
+function onProfilePicked(value: unknown): void {
+  userPicked = true
+  selectedProfileId.value = String(value)
+}
+
+const currentSession = computed(() => sessions.value?.find((s) => s.id === sessionId.value))
 
 // 默认选中当前阶段已有会话里标记为 active 的那个，其次是列表第一个；只在
 // 还没有选中任何会话、且列表刚加载出来时做一次，不覆盖用户后续手动切换。
@@ -69,7 +95,10 @@ const createError = computed(() => {
 <template>
   <div class="flex flex-col gap-2 border-b pb-3">
     <div class="flex items-center gap-2">
-      <Select v-model="selectedProfileId">
+      <Select
+        :model-value="selectedProfileId"
+        @update:model-value="onProfilePicked"
+      >
         <SelectTrigger class="w-48">
           <SelectValue placeholder="选择模型配置" />
         </SelectTrigger>
@@ -118,5 +147,13 @@ const createError = computed(() => {
         {{ session.title ?? session.id.slice(0, 8) }}
       </button>
     </div>
+
+    <ModelSwitcher
+      v-if="currentSession && profiles"
+      :key="currentSession.id"
+      :session="currentSession"
+      :profiles="profiles"
+      :scope="scope"
+    />
   </div>
 </template>

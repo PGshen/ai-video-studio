@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { useFinalizeStageMutation, useReopenStageMutation } from '@/composables/queries'
 import type { StageOut } from '@/types/api'
 import { ApiError } from '@/api/http'
+import ProjectSettingsDialog from './ProjectSettingsDialog.vue'
 import { stageStatusStyle } from './stageStatus'
 
 const props = defineProps<{
@@ -41,6 +42,7 @@ const currentStageInfo = computed(() => props.stages.find((s) => s.stage === pro
 const finalizeMutation = useFinalizeStageMutation(() => props.projectId)
 const reopenMutation = useReopenStageMutation(() => props.projectId)
 const finalizeDialogOpen = ref(false)
+const settingsDialogOpen = ref(false)
 
 function goToStage(stage: StageOut): void {
   if (stageStatusStyle(stage.status).disabled) return
@@ -104,6 +106,13 @@ async function confirmFinalize(): Promise<void> {
         重新打开失败：{{ errorDetail(reopenMutation.error.value) }}
       </p>
       <Button
+        variant="ghost"
+        data-testid="open-project-settings"
+        @click="settingsDialogOpen = true"
+      >
+        项目设置
+      </Button>
+      <Button
         v-if="currentStageInfo.status === 'finalized' || currentStageInfo.status === 'stale'"
         variant="outline"
         :disabled="reopenMutation.isPending.value"
@@ -119,6 +128,11 @@ async function confirmFinalize(): Promise<void> {
         定稿
       </Button>
     </div>
+
+    <ProjectSettingsDialog
+      v-model:open="settingsDialogOpen"
+      :project-id="projectId"
+    />
 
     <AlertDialog v-model:open="finalizeDialogOpen">
       <AlertDialogContent>

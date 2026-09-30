@@ -21,6 +21,7 @@ import type {
   ModelProfilePatch,
   ProjectCreate,
   ProjectOut,
+  ProjectSettingsPatch,
   SessionCreate,
   SettingsOut,
   SettingsPatch,
@@ -55,6 +56,7 @@ export const queryKeys = {
       : queryKeys.sessions(scope.projectId, scope.stage),
   modelProfiles: () => ['model-profiles'] as const,
   settings: () => ['settings'] as const,
+  voices: () => ['tts', 'voices'] as const,
   stylePresets: () => ['style-presets'] as const,
   stylePreset: (presetId: string) => ['style-presets', presetId] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
@@ -327,6 +329,40 @@ export function usePatchSettingsMutation() {
     onSuccess: (settings: SettingsOut) => {
       queryClient.setQueryData(queryKeys.settings(), settings)
       void queryClient.invalidateQueries({ queryKey: queryKeys.stylePresets() })
+    },
+  })
+}
+
+// ---- 会话内换模型、TTS、项目语音设置（M5）------------------------------
+
+/** 换模型后会话列表里的 `model_profile_id` 变了，让列表失效。 */
+export function useSwitchSessionModelMutation(scope: MaybeRefOrGetter<SessionScope>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: { sessionId: string; modelProfileId: string }) =>
+      api.switchSessionModel(args.sessionId, args.modelProfileId),
+    onSuccess: (session) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsFor(toValue(scope)) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.session(session.id) })
+    },
+  })
+}
+
+export function useVoicesQuery() {
+  return useQuery({ queryKey: queryKeys.voices(), queryFn: api.listVoices, staleTime: Infinity })
+}
+
+/** 改音色/语速：项目里的设置变了，配音是否过期由叙事画布按 timing 里记录的音色/语速比较。 */
+export function usePatchProjectSettingsMutation(projectId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: ProjectSettingsPatch) => api.patchProjectSettings(toValue(projectId), patch),
+    onSuccess: (project: ProjectOut) => {
+      queryClient.setQueryData(queryKeys.project(project.id), (old: unknown) =>
+        old && typeof old === 'object' ? { ...old, ...project } : project,
+      )
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
 }

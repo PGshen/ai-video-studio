@@ -4,7 +4,14 @@
  * sessions,profiles}.py` 一一对应。
  */
 
-import { encodeFilePath, encodePathSegment, request, requestText } from '@/api/http'
+import {
+  ApiError,
+  BASE_URL,
+  encodeFilePath,
+  encodePathSegment,
+  request,
+  requestText,
+} from '@/api/http'
 import type {
   FileTreeOut,
   FileWriteResult,
@@ -20,6 +27,7 @@ import type {
   ProjectCreate,
   ProjectDetailOut,
   ProjectOut,
+  ProjectSettingsPatch,
   SceneChecksResponse,
   SessionCreate,
   SettingsOut,
@@ -35,6 +43,7 @@ import type {
   StylePresetSummaryOut,
   TopicCheckOut,
   TurnAccepted,
+  VoiceOut,
 } from '@/types/api'
 
 // ---- projects ---------------------------------------------------------
@@ -113,6 +122,14 @@ export function rollbackSnapshot(projectId: string, snapshotId: string): Promise
 
 // ---- sessions -------------------------------------------------------------
 
+/** 会话内换模型（同 runtime、同 provider；有排队/运行中的 turn 时 409）。 */
+export function switchSessionModel(sessionId: string, modelProfileId: string): Promise<SessionOut> {
+  return request(`/sessions/${encodePathSegment(sessionId)}`, {
+    method: 'PATCH',
+    body: { model_profile_id: modelProfileId },
+  })
+}
+
 export function createSession(
   projectId: string,
   stage: string,
@@ -179,6 +196,42 @@ export function updateModelProfile(
 
 export function deleteModelProfile(profileId: string): Promise<void> {
   return request(`/model-profiles/${encodePathSegment(profileId)}`, { method: 'DELETE' })
+}
+
+// ---- TTS 与项目语音设置（M5，对应 `api/tts.py`、`api/projects.py`）------------
+
+export function listVoices(): Promise<VoiceOut[]> {
+  return request('/tts/voices')
+}
+
+/**
+ * 试听：真实合成（可能产生费用，后端按音色+语速缓存，同一组合只合成一次）。返回 mp3 的 Blob；
+ * 失败时抛 `ApiError`（503 缺 key、502 供应商出错、422 参数不合法）。
+ */
+export async function previewVoice(voice: string, speed: number): Promise<Blob> {
+  const response = await fetch(`${BASE_URL}/tts/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ voice, speed }),
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    let detail: unknown = text
+    try {
+      detail = (JSON.parse(text) as { detail?: unknown }).detail ?? text
+    } catch {
+      // 不是 JSON：原样当文本
+    }
+    throw new ApiError(response.status, detail)
+  }
+  return response.blob()
+}
+
+export function patchProjectSettings(
+  projectId: string,
+  body: ProjectSettingsPatch,
+): Promise<ProjectOut> {
+  return request(`/projects/${encodePathSegment(projectId)}/settings`, { method: 'PATCH', body })
 }
 
 // ---- style presets（M5，对应 `api/styles.py`）--------------------------

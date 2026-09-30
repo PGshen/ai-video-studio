@@ -145,6 +145,21 @@ export interface SessionOut {
   title: string | null
 }
 
+/** `GET /api/tts/voices`（后端 `api/tts.py::VoiceOut`）。 */
+export interface VoiceOut {
+  alias: string
+  /** 中文名，取自旧项目的音色表。 */
+  label: string
+  gender: string
+  engine: string
+}
+
+/** `PATCH /api/projects/{id}/settings`：只放行 `voice`/`speech_rate`，`null` 清除该键。 */
+export interface ProjectSettingsPatch {
+  voice?: string | null
+  speech_rate?: number | null
+}
+
 export interface TurnOut {
   id: string
   session_id: string
