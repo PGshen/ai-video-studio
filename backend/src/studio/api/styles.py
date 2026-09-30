@@ -29,14 +29,14 @@ def _files(files: list[StyleFileBody]) -> list[StyleFile]:
     return [StyleFile(name=f.name, text=f.text) for f in files]
 
 
-def _summary(value: StylePresetValue, default_id: str | None) -> StylePresetSummaryOut:
+def _summary(value: repo.StylePresetSummary, default_id: str | None) -> StylePresetSummaryOut:
     return StylePresetSummaryOut(
         id=value.id,
         name=value.name,
         category=value.category,
         description=value.description,
-        reference_count=len(value.references),
-        exemplar_count=len(value.exemplars),
+        reference_count=value.reference_count,
+        exemplar_count=value.exemplar_count,
         is_default=value.id == default_id,
     )
 
@@ -72,7 +72,7 @@ def list_style_presets_endpoint(
     engine: Engine = Depends(get_engine),
 ) -> list[StylePresetSummaryOut]:
     default_id = _default_id(engine)
-    return [_summary(v, default_id) for v in repo.list_style_presets(engine)]
+    return [_summary(v, default_id) for v in repo.list_style_preset_summaries(engine)]
 
 
 @router.post("/style-presets", response_model=StylePresetOut, status_code=201)
@@ -114,7 +114,8 @@ def update_style_preset_endpoint(
             preset_id,
             name=body.name,
             category=body.category,
-            description=body.description,
+            # 只有请求里真的带了 description 才改；带 null 表示清空。
+            description=body.description if "description" in body.model_fields_set else repo.UNSET,
             content=body.content,
             references=_files(body.references) if body.references is not None else None,
             exemplars=_files(body.exemplars) if body.exemplars is not None else None,

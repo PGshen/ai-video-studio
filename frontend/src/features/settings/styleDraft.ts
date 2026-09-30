@@ -162,7 +162,8 @@ export function validateDraft(draft: StyleDraft): string[] {
   const reported = new Set<string>()
   for (const match of draft.content.matchAll(ENTRY_REFERENCE)) {
     const dir = match[1] as StyleDir
-    const fileName = match[2]!
+    // 句末的标点（`references/x.md.`、`x.md-`）不是文件名的一部分。
+    const fileName = match[2]!.replace(/[.-]+$/, '')
     const path = `${dir}/${fileName}`
     if (!existing[dir].has(fileName) && !reported.has(path)) {
       reported.add(path)

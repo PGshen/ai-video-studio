@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from studio.db.engine import session_scope
@@ -58,6 +58,15 @@ class StyleFile:
     text: str
 
 
+class _Unset:
+    """`update_style_preset` 里区分「没给这个字段」和「给了 None（清空）」。"""
+
+    __slots__ = ()
+
+
+UNSET: Final = _Unset()
+
+
 @dataclass(frozen=True, slots=True)
 class StylePresetValue:
     id: str
@@ -67,6 +76,19 @@ class StylePresetValue:
     content: str
     references: list[StyleFile]
     exemplars: list[StyleFile]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StylePresetSummary:
+    """列表用：不含正文和文件内容。"""
+
+    id: str
+    name: str
+    category: str
+    description: str | None
+    reference_count: int
+    exemplar_count: int
     created_at: datetime
 
 
@@ -156,7 +178,9 @@ def validate_style_preset(
         "exemplars": {f.name for f in exemplars},
     }
     reported: set[str] = set()
-    for directory, file_name in _ENTRY_REFERENCE.findall(content):
+    for directory, raw_name in _ENTRY_REFERENCE.findall(content):
+        # 句末的标点（`references/x.md.`、`x.md-`）不是文件名的一部分。
+        file_name = raw_name.rstrip(".-")
         path = f"{directory}/{file_name}"
         if file_name not in existing[directory] and path not in reported:
             reported.add(path)
@@ -199,9 +223,14 @@ def _check(
         raise StylePresetValidationError(errors)
 
 
+def _names(db: Session) -> list[tuple[str, str]]:
+    """只取 (id, name)，不加载正文和文件内容。"""
+    return [(row.id, row.name) for row in db.execute(select(StylePreset.id, StylePreset.name))]
+
+
 def _ensure_unique_name(db: Session, name: str, *, except_id: str | None = None) -> None:
-    for row in db.scalars(select(StylePreset)):
-        if row.id != except_id and row.name.strip() == name:
+    for preset_id, existing in _names(db):
+        if preset_id != except_id and existing.strip() == name:
             raise DuplicateStylePresetError(f"已有同名的风格：{name}")
 
 
@@ -249,18 +278,48 @@ def list_style_presets(engine: Engine) -> list[StylePresetValue]:
         return sorted((_to_value(r) for r in rows), key=lambda v: (v.category, v.name))
 
 
+def list_style_preset_summaries(engine: Engine) -> list[StylePresetSummary]:
+    """按分类、名称排序；只查列表要用的列，文件数量在库里数，不把正文读出来。"""
+    with session_scope(engine) as db:
+        rows = db.execute(
+            select(
+                StylePreset.id,
+                StylePreset.name,
+                StylePreset.category,
+                StylePreset.description,
+                StylePreset.created_at,
+                func.coalesce(func.json_array_length(StylePreset.reference_files), 0),
+                func.coalesce(func.json_array_length(StylePreset.exemplars), 0),
+            )
+        ).all()
+        summaries = [
+            StylePresetSummary(
+                id=r[0],
+                name=r[1],
+                category=r[2],
+                description=r[3],
+                reference_count=r[5],
+                exemplar_count=r[6],
+                created_at=r[4] if r[4].tzinfo else r[4].replace(tzinfo=UTC),
+            )
+            for r in rows
+        ]
+        return sorted(summaries, key=lambda v: (v.category, v.name))
+
+
 def update_style_preset(
     engine: Engine,
     preset_id: str,
     *,
     name: str | None = None,
     category: str | None = None,
-    description: str | None = None,
+    description: str | None | _Unset = UNSET,
     content: str | None = None,
     references: list[StyleFile] | None = None,
     exemplars: list[StyleFile] | None = None,
 ) -> StylePresetValue:
-    """只改给了值的字段；列表字段整体替换。校验的是合并后的结果，不合法时什么都不写。"""
+    """只改给了值的字段；列表字段整体替换。校验的是合并后的结果，不合法时什么都不写。
+    `description` 传 `None` 表示清空，不传（`UNSET`）表示不动。"""
     with session_scope(engine) as db:
         row = db.get(StylePreset, preset_id)
         if row is None:
@@ -277,7 +336,7 @@ def update_style_preset(
         row.exemplars = _raw(new_exemplars)
         if category is not None:
             row.category = category.strip()
-        if description is not None:
+        if not isinstance(description, _Unset):
             row.description = description
         db.flush()
         return _to_value(row)
@@ -296,7 +355,8 @@ def duplicate_style_preset(engine: Engine, preset_id: str) -> StylePresetValue:
     source = get_style_preset(engine, preset_id)
     if source is None:
         raise StylePresetNotFoundError(preset_id)
-    taken = {p.name.strip() for p in list_style_presets(engine)}
+    with session_scope(engine) as db:
+        taken = {name.strip() for _, name in _names(db)}
     candidate, n = f"{source.name}（副本）", 1
     while candidate in taken:
         n += 1

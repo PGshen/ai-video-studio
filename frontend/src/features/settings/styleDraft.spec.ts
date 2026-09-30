@@ -137,6 +137,16 @@ describe('validateDraft（与后端 validate_style_preset 一致）', () => {
     expect(errors).toEqual(['STYLE.md 引用了不存在的文件：references/color-scheme.md'])
   })
 
+  it('句末的句号不算文件名的一部分', () => {
+    const content =
+      '---\nname: n\ndescription: d\n---\n先读 references/a.md. 再看 exemplars/e.json，最后 references/a.md-。'
+    const files = { references: [{ name: 'a.md', text: 'x' }], exemplars: [{ name: 'e.json', text: '{}' }] }
+    expect(validateDraft(draft({ content, ...files }))).toEqual([])
+    expect(validateDraft(draft({ content, references: [], exemplars: files.exemplars }))).toEqual([
+      'STYLE.md 引用了不存在的文件：references/a.md',
+    ])
+  })
+
   it('只提到目录（没有文件名）不算引用', () => {
     const content = '---\nname: n\ndescription: d\n---\n详见 references/ 目录和 exemplars/*.json。'
     expect(validateDraft(draft({ content, references: [], exemplars: [] }))).toEqual([])

@@ -265,9 +265,12 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def _validate_profile(fields: Mapping[str, Any], *, check_identity: bool) -> list[str]:
+def _validate_profile(
+    fields: Mapping[str, Any], *, check_identity: bool, check_base_url: bool = True
+) -> list[str]:
     """检查一条完整记录；`check_identity` 为假时不检查 `name`/`provider`/`runtime`
-    （更新时它们不可改）。"""
+    （更新时它们不可改）；`check_base_url` 为假时不检查 `base_url`（更新时没改它：
+    环境变量灌进库里的地址可能带账号密码，不能因此拒绝对其他字段的修改）。"""
     errors: list[str] = []
     runtime = fields["runtime"]
     if check_identity:
@@ -280,7 +283,7 @@ def _validate_profile(fields: Mapping[str, Any], *, check_identity: bool) -> lis
     if not isinstance(fields["model"], str) or not fields["model"].strip():
         errors.append("模型名不能为空")
     base_url = fields["base_url"]
-    if base_url is not None:
+    if check_base_url and base_url is not None:
         parts = urlsplit(base_url) if isinstance(base_url, str) else None
         if parts is None or parts.scheme not in ("http", "https") or not parts.netloc:
             errors.append("base_url 必须是 http(s) 地址")
@@ -382,7 +385,7 @@ def update_model_profile(
         if row is None:
             raise ProfileNotFoundError(profile_id)
         merged = {**_row_fields(row), **patch}
-        errors = _validate_profile(merged, check_identity=False)
+        errors = _validate_profile(merged, check_identity=False, check_base_url="base_url" in patch)
         if errors:
             raise ProfileValidationError(errors)
         for key in patch:

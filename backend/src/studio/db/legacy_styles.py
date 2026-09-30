@@ -37,7 +37,7 @@ from studio.db.repo.style_presets import (
     StyleFile,
     StylePresetValidationError,
     create_style_preset,
-    list_style_presets,
+    list_style_preset_summaries,
     update_style_preset,
 )
 
@@ -282,7 +282,7 @@ def import_export(
     """把导出内容写进风格库，返回报告。同名预设默认跳过，`overwrite` 时覆盖它的内容和文件。"""
     report = ImportReport()
     components = {str(c.get("id")): c for c in export["components"] if isinstance(c, dict)}
-    existing = {p.name.strip(): p.id for p in list_style_presets(engine)}
+    existing = {p.name.strip(): p.id for p in list_style_preset_summaries(engine)}
     used_ids: set[str] = set()
     handled: set[str] = set()
 

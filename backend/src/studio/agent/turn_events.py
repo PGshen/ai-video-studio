@@ -61,6 +61,10 @@ def note_model_switch(runner: TurnRunner, job: _Job) -> None:
     也不提示。
     """
     previous = turns_repo.previous_run_profile_name(runner._engine, job.session.id, job.turn_id)
+    # 开跑就记下本轮用的配置：这一轮若被崩溃中断（不写 usage），下一轮还能据此比较。
+    turns_repo.record_run_profile(
+        runner._engine, job.turn_id, profile_name=job.profile.name, model=job.profile.model
+    )
     if previous is None or previous == job.profile.name:
         return
     runner._persist(

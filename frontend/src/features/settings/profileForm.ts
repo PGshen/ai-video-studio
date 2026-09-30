@@ -91,11 +91,13 @@ function validBaseUrl(value: string): 'ok' | 'scheme' | 'credentials' {
 
 /**
  * `mode === 'edit'` 时不检查 `name`/`provider`/`runtime`（建好后不可改）。
- * 返回 `{字段: 中文错误}`，没有错误返回 `{}`。
+ * 编辑时传入 `original`：没改的 `base_url` 不再校验（环境变量灌进库里的地址可能带账号密码，
+ * 不能因此连改预算都被拒）。返回 `{字段: 中文错误}`，没有错误返回 `{}`。
  */
 export function validateProfileForm(
   values: ProfileFormValues,
   mode: 'create' | 'edit',
+  original?: ModelProfileOut,
 ): ProfileFormErrors {
   const errors: ProfileFormErrors = {}
   if (mode === 'create') {
@@ -110,7 +112,8 @@ export function validateProfileForm(
   if (!values.model.trim()) errors.model = '模型名不能为空'
 
   const baseUrl = values.base_url.trim()
-  if (baseUrl) {
+  const baseUrlUnchanged = original !== undefined && baseUrl === (original.base_url ?? '')
+  if (baseUrl && !baseUrlUnchanged) {
     const result = validBaseUrl(baseUrl)
     if (result === 'scheme') errors.base_url = 'base_url 必须是 http(s) 地址'
     if (result === 'credentials') {

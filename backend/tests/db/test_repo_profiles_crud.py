@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, update
 
 from studio.config import Settings
+from studio.db.engine import session_scope
+from studio.db.models import ModelProfile
 from studio.db.repo.profiles import (
     BuiltinProfileError,
     DuplicateProfileError,
@@ -142,6 +144,29 @@ class TestUpdate:
         assert updated.price_output == 2.0
         assert updated.base_url == "https://gw.example.com/v1"
         assert updated.name == "my-gpt"
+
+    def test_untouched_base_url_with_credentials_does_not_block_other_edits(
+        self, migrated_engine: Engine
+    ) -> None:
+        """环境变量灌进库里的 base_url 可能带账号密码；只改预算时不该被它拒绝，改它自己仍要校验。"""
+        seed_model_profiles(migrated_engine, enable_fake_runtime=False)
+        gpt = get_model_profile(migrated_engine, "gpt")
+        assert gpt is not None
+        with session_scope(migrated_engine) as db:
+            db.execute(
+                update(ModelProfile)
+                .where(ModelProfile.id == gpt.id)
+                .values(base_url="https://user:key@gw.example.com/v1")
+            )
+
+        updated = update_model_profile(migrated_engine, gpt.id, {"max_steps_per_turn": 12})
+
+        assert updated.max_steps_per_turn == 12
+        assert updated.base_url == "https://user:key@gw.example.com/v1"
+        with pytest.raises(ProfileValidationError, match="账号密码"):
+            update_model_profile(
+                migrated_engine, gpt.id, {"base_url": "https://a:b@other.example.com"}
+            )
 
     def test_none_clears_nullable_fields(self, migrated_engine: Engine) -> None:
         created = self._created(migrated_engine)

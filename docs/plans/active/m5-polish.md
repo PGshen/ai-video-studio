@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | M5 |
 | 设计依据 | [架构设计 §3.1（`model_profiles`/`style_presets`/`settings`）、§5.4、§5.5、§6.2、§10](../../design/2026-09-26-architecture.md) |
 | 分支 | `m5-polish` |
@@ -41,17 +41,17 @@
 
 ## 验收标准
 
-- [ ] AC1：`settings` 仓储与 `/api/settings`：读取带默认值；写入校验（阶段名、模型配置存在且 key 已配置、联网模式只接受 `tools`/`native`、语速范围、音色在可用列表内、默认风格存在）；非法值 422，不落库；「联网模式」清除后回落环境变量；`TurnRunner` 下一轮生效且两种运行时行为一致（验证：`pytest backend/tests/db/test_settings_repo.py backend/tests/api/test_settings.py backend/tests/agent/test_web_mode.py`）
-- [ ] AC2：风格库后端：迁移 0004 在旧库上升级成功；预设的创建/编辑/删除/复制；校验（`STYLE.md` 必须有 `name`/`description` frontmatter；文件名不允许 `..`、绝对路径、重复；引用的文件必须存在）；`render_style_files` 把预设渲染成 `style/` 下的文件映射（验证：`pytest backend/tests/db/test_style_presets_repo.py backend/tests/workspace/test_style_files.py backend/tests/api/test_styles.py`）
-- [ ] AC3：创建项目选风格：`POST /api/projects` 带 `style_preset_id` 时 `style/` 目录按预设落盘且进入 `init` 快照，`project.settings` 记录风格 id 和名称；不带时用默认风格；库里没有任何预设时回退占位 `STYLE.md` 且不报错；预设之后被改或删不影响已有项目；风格 id 不存在返回 4xx 且不留半成品项目（验证：`pytest backend/tests/api/test_projects.py`）
-- [ ] AC4：旧风格导入：导出脚本对旧 Postgres 只执行 SELECT；导入把每个 `style_template` 转成一条预设（三类文本 → `references/` 三个文件，金样本 → `exemplars/`，入口 `STYLE.md` 生成）；重复导入幂等（同名跳过并报告，`--overwrite` 才覆盖）；缺类别、空文本、组件 id 悬空时给出点名的报告而不是崩溃（验证：`pytest backend/tests/db/test_legacy_styles.py`；真实导出证据在 `data/evidence/m5-polish/`）
-- [ ] AC5：三个阶段提示词在有 `style/` 目录时按阶段说明该读哪些文件（narrative：蓝图 + 金样本；animation：配色 + 动画风格；topic：只读入口），没有 `references/` 的占位风格不受影响；用本机 Claude 登录带导入的风格各跑一轮叙事、动画，确认 agent 确实读了对应文件（验证：提示词关键词断言 + `make smoke SMOKE_ARGS="-k style_claude_login"`，`turn_events` 中能看到对 `style/references/*` 的读取）
-- [ ] AC6：模型配置 CRUD：新增/编辑/删除；内置配置（种子名）不能删除；被任何会话引用的配置不能删除（409）；`runtime` 只接受已注册且非 `fake` 的运行时；单价/预算校验（非负；空表示不限）；环境变量网关覆盖的字段在响应里标 `env_override`；响应永不含 key 值（验证：`pytest backend/tests/db/test_profiles_repo.py backend/tests/api/test_profiles.py`）
-- [ ] AC7：会话内换模型：`PATCH /api/sessions/{id}` 换成同 runtime 且同 provider 的配置成功，下一轮 `TurnContext.model_profile` 是新配置，`turns.usage` 记录实际模型，时间线有换模型提示；有 `queued`/`running` 的 turn 时 409；跨 runtime/provider、key 未配置、配置不存在分别给出明确的 400；换模型后 `sdk_ref`、`is_active` 不变（验证：`pytest backend/tests/agent/test_model_switch.py backend/tests/api/test_sessions.py`；真实验证：`make smoke SMOKE_ARGS="-k model_switch_claude_login"`：第一轮告诉 agent 一个事实，换模型后第二轮 agent 仍记得）
-- [ ] AC8：TTS：`GET /api/tts/voices` 返回 `doubao_2.0` 音色的别名和中文标签；`POST /api/tts/preview` 真实合成固定示例文本，同一（音色、语速）第二次命中磁盘缓存不发请求；缺 `VOLCENGINE_TTS_API_KEY`、供应商报错、语速越界、未知音色各自返回可读错误；`PATCH /api/projects/{id}/settings` 只接受 `voice`/`speech_rate`，改后叙事画布按 TD-36 显示「配音已过期」（验证：`pytest backend/tests/api/test_tts.py backend/tests/api/test_projects.py`；真实试听一次，证据在 `data/evidence/m5-polish/`）
-- [ ] AC9：回退建议后端：`suggest_upstream_change` 记录 `turn_id`、校验 `to_stage` 是调用方的直接上游（否则工具返回错误说明可选阶段）、内容去空白后非空且有长度上限；`suggestion` 事件落库并出现在 SSE（回放与实时）；`GET /api/projects/{id}/suggestions?status=`、`POST /api/suggestions/{id}/apply|dismiss`（只能从 `open` 转出，重复操作返回 409）（验证：`pytest backend/tests/stages/test_suggest_upstream_change.py backend/tests/api/test_suggestions.py backend/tests/agent/test_runner_suggestion.py`）
-- [ ] AC10：设置页前端：四个子页可达；模型配置列表/编辑/新增/删除，未配置 key 的有提示，环境变量覆盖的字段只读并说明；通用页设置各阶段默认模型、联网模式（OpenAI 路径旁标注托管搜索未验证）、新项目默认音色/语速；语音页列出音色、设置默认值、试听按钮旁写明「会调用 TTS，可能产生费用」；风格库页列表、新建/复制/删除、编辑入口与引用文件与金样本、设默认（验证：vitest 纯逻辑用例 + L4 走查，截图见「验证记录」）
-- [ ] AC11：工作台前端：创建项目对话框有风格选择器（预选默认风格）；会话头部可换同供应商的其他模型，运行中禁用；新建会话的模型预选取该阶段默认；项目设置对话框改音色/语速并试听；回退建议在对话流里显示卡片（去处理/忽略），上游阶段在导航上有待处理数量角标；点「去处理」跳到上游阶段并把内容预填进输入框，目标阶段已定稿时先确认并重新打开，发送后建议标为 `applied`（验证：vitest + L4 走查，含真实 Fake 运行时走完「动画提建议 → 去叙事处理 → 建议变已处理」）
+- [x] AC1：`settings` 仓储与 `/api/settings`：读取带默认值；写入校验（阶段名、模型配置存在且 key 已配置、联网模式只接受 `tools`/`native`、语速范围、音色在可用列表内、默认风格存在）；非法值 422，不落库；「联网模式」清除后回落环境变量；`TurnRunner` 下一轮生效且两种运行时行为一致（验证：`pytest backend/tests/db/test_settings_repo.py backend/tests/api/test_settings.py backend/tests/agent/test_web_mode.py`）
+- [x] AC2：风格库后端：迁移 0004 在旧库上升级成功；预设的创建/编辑/删除/复制；校验（`STYLE.md` 必须有 `name`/`description` frontmatter；文件名不允许 `..`、绝对路径、重复；引用的文件必须存在）；`render_style_files` 把预设渲染成 `style/` 下的文件映射（验证：`pytest backend/tests/db/test_style_presets_repo.py backend/tests/workspace/test_style_files.py backend/tests/api/test_styles.py`）
+- [x] AC3：创建项目选风格：`POST /api/projects` 带 `style_preset_id` 时 `style/` 目录按预设落盘且进入 `init` 快照，`project.settings` 记录风格 id 和名称；不带时用默认风格；库里没有任何预设时回退占位 `STYLE.md` 且不报错；预设之后被改或删不影响已有项目；风格 id 不存在返回 4xx 且不留半成品项目（验证：`pytest backend/tests/api/test_projects.py`）
+- [x] AC4：旧风格导入：导出脚本对旧 Postgres 只执行 SELECT；导入把每个 `style_template` 转成一条预设（三类文本 → `references/` 三个文件，金样本 → `exemplars/`，入口 `STYLE.md` 生成）；重复导入幂等（同名跳过并报告，`--overwrite` 才覆盖）；缺类别、空文本、组件 id 悬空时给出点名的报告而不是崩溃（验证：`pytest backend/tests/db/test_legacy_styles.py`；真实导出证据在 `data/evidence/m5-polish/`）
+- [x] AC5：三个阶段提示词在有 `style/` 目录时按阶段说明该读哪些文件（narrative：蓝图 + 金样本；animation：配色 + 动画风格；topic：只读入口），没有 `references/` 的占位风格不受影响；用本机 Claude 登录带导入的风格各跑一轮叙事、动画，确认 agent 确实读了对应文件（验证：提示词关键词断言 + `make smoke SMOKE_ARGS="-k style_claude_login"`，`turn_events` 中能看到对 `style/references/*` 的读取）
+- [x] AC6：模型配置 CRUD：新增/编辑/删除；内置配置（种子名）不能删除；被任何会话引用的配置不能删除（409）；`runtime` 只接受已注册且非 `fake` 的运行时；单价/预算校验（非负；空表示不限）；环境变量网关覆盖的字段在响应里标 `env_override`；响应永不含 key 值（验证：`pytest backend/tests/db/test_profiles_repo.py backend/tests/api/test_profiles.py`）
+- [x] AC7：会话内换模型：`PATCH /api/sessions/{id}` 换成同 runtime 且同 provider 的配置成功，下一轮 `TurnContext.model_profile` 是新配置，`turns.usage` 记录实际模型，时间线有换模型提示；有 `queued`/`running` 的 turn 时 409；跨 runtime/provider、key 未配置、配置不存在分别给出明确的 400；换模型后 `sdk_ref`、`is_active` 不变（验证：`pytest backend/tests/agent/test_model_switch.py backend/tests/api/test_sessions.py`；真实验证：`make smoke SMOKE_ARGS="-k model_switch_claude_login"`：第一轮告诉 agent 一个事实，换模型后第二轮 agent 仍记得）
+- [x] AC8：TTS：`GET /api/tts/voices` 返回 `doubao_2.0` 音色的别名和中文标签；`POST /api/tts/preview` 真实合成固定示例文本，同一（音色、语速）第二次命中磁盘缓存不发请求；缺 `VOLCENGINE_TTS_API_KEY`、供应商报错、语速越界、未知音色各自返回可读错误；`PATCH /api/projects/{id}/settings` 只接受 `voice`/`speech_rate`，改后叙事画布按 TD-36 显示「配音已过期」（验证：`pytest backend/tests/api/test_tts.py backend/tests/api/test_projects.py`；真实试听一次，证据在 `data/evidence/m5-polish/`）
+- [x] AC9：回退建议后端：`suggest_upstream_change` 记录 `turn_id`、校验 `to_stage` 是调用方的直接上游（否则工具返回错误说明可选阶段）、内容去空白后非空且有长度上限；`suggestion` 事件落库并出现在 SSE（回放与实时）；`GET /api/projects/{id}/suggestions?status=`、`POST /api/suggestions/{id}/apply|dismiss`（只能从 `open` 转出，重复操作返回 409）（验证：`pytest backend/tests/stages/test_suggest_upstream_change.py backend/tests/api/test_suggestions.py backend/tests/agent/test_runner_suggestion.py`）
+- [x] AC10：设置页前端：四个子页可达；模型配置列表/编辑/新增/删除，未配置 key 的有提示，环境变量覆盖的字段只读并说明；通用页设置各阶段默认模型、联网模式（OpenAI 路径旁标注托管搜索未验证）、新项目默认音色/语速；语音页列出音色、设置默认值、试听按钮旁写明「会调用 TTS，可能产生费用」；风格库页列表、新建/复制/删除、编辑入口与引用文件与金样本、设默认（验证：vitest 纯逻辑用例 + L4 走查，截图见「验证记录」）
+- [x] AC11：工作台前端：创建项目对话框有风格选择器（预选默认风格）；会话头部可换同供应商的其他模型，运行中禁用；新建会话的模型预选取该阶段默认；项目设置对话框改音色/语速并试听；回退建议在对话流里显示卡片（去处理/忽略），上游阶段在导航上有待处理数量角标；点「去处理」跳到上游阶段并把内容预填进输入框，目标阶段已定稿时先确认并重新打开，发送后建议标为 `applied`（验证：vitest + L4 走查，含真实 Fake 运行时走完「动画提建议 → 去叙事处理 → 建议变已处理」）
 - [ ] AC12：`make check` 全绿；收尾清单（SOP §7）全部完成
 
 ## 评审关注点
@@ -265,15 +265,15 @@
 - 2026-09-30 — T12 完成：语音页（`VoicePanel`：音色列表、新项目默认音色/语速、试听旁固定写明会产生费用）、共用的试听（`composables/useVoicePreview.ts` + `components/VoicePreviewButton.vue`，缺 key/供应商出错时在按钮下显示后端的中文原因）、项目设置对话框（`features/workbench/ProjectSettingsDialog.vue`，入口在阶段导航条，项目忙时只读）、会话内换模型（`components/session/ModelSwitcher.vue` + `modelChoice.ts`：规则与后端一致，不可选的选项灰掉并写原因）、`SessionPicker` 预选该阶段的默认模型、`noticeText.ts`（`model_switched` 直接显示那句话）；类型/接口/hooks 同步。vitest 增到 360。L4 走查（内置浏览器 + 真实后端）通过：语音页 5 个音色；缺 key 时点试听显示「环境变量 VOLCENGINE_TTS_API_KEY 未设置，请在 backend/.env 中配置」；配好 key 后真实试听 200、音频缓存落盘、界面无报错；项目设置改成 xiaohe/1.3 并落库；把选题阶段默认模型设为 claude-login 后新建会话预选它；换模型下拉里只有 claude-login 和 Haiku 可选，其余灰掉并写明「运行时不同」「认证方式不同」；用本机 Claude 登录真实跑两轮：第一轮 Sonnet 说背景，换成 Haiku，第二轮时间线出现「模型已从 claude-login 换为 claude-login-haiku（claude-haiku-4-5-20251001）」，Haiku 答出「退休的数学老师」；截图 `data/evidence/m5-polish/l4/t12-*.jpg`。`make check` 全绿。
 - 2026-09-30 — T13 完成：`suggestion` 事件进时间线（`useSessionStream` 新增 `SuggestionItem`，同时让所有建议查询失效）、`SuggestionCard`（来源阶段 → 目标阶段、内容、状态徽标、「去处理」「忽略」，目标阶段已定稿先确认并重新打开，未开放时禁用并说明）、`suggestionFlow.ts`（动作、预填、跳转、角标的纯逻辑）、`PromptPrefill`（往 `PromptInput` 预填）、`SessionPanel` 的 `prefill`/`sent`、`StageNav` 阶段按钮角标、`ProjectWorkbenchPage` 读 `?suggestion=` 预填并在发送成功后标为已处理、类型/接口/hooks 同步。vitest 增到 374。L4 走查（内置浏览器；用仓储函数在开发库里造「叙事已定稿、动画进行中」的项目和一条建议，走的是与 `suggest_upstream_change` + TurnRunner 相同的落库路径）通过：动画会话里出现「回退建议：动画 → 叙事 待处理」卡片，叙事阶段按钮有角标 1；点「去处理」弹确认「先重新打开叙事阶段？」，确认后叙事阶段变 `active`、跳到 `narrative?suggestion=…`、输入框预填建议内容；新建会话并发送后建议变 `applied`、角标消失、`?suggestion=` 被清掉、输入框清空；回动画阶段卡片灰显「已处理」且没有按钮；截图 `data/evidence/m5-polish/l4/t13-*.jpg`。`make check` 全绿。前端 T10–T13 全部完成。
 - 2026-09-30 — T14 完成（文档与最终自验证部分）：ADR 0011、ARCHITECTURE（新模块、去掉「（M5）」标注）、QUALITY、tech-debt（TD-42 新登记；TD-39 的设置页提示部分进「已处理」）、glossary、runbooks（dev-setup：设置页/风格库导入/试听所需环境；verification：worktree 里做 L4 的方法、三个新冒烟用例）、AGENTS.md 命令表；新增冒烟 `suggestion_claude_login`（Claude 侧工具名前缀去掉后 `suggestion` 事件仍正确发出）；四个 M5 冒烟（`style_claude_login`、`model_switch_claude_login`、`tts_preview_real`、`suggestion_claude_login`）在最终代码上再跑一遍全部通过（145 秒）。走查用的后台 dev server 已停。
+- 2026-09-30 — 独立评审（`code-review` high）处理完毕：9 条中修 5 条（另有一条修了未在浏览器复验），跳过 3 条（详见「验证记录」），登记 TD-43；`make check` 全绿（后端 1367、前端 376）。状态改为待验收。
 
 ## 下一步
 
-- 做 T14（文档收尾与整体走查），然后进入「自验证 → 评审 → 验收」（SOP §3 第 4–6 步）：
-  1. 文档：写 `docs/decisions/0011-风格库采用skill形态目录.md`（D1：为什么不用 SDK skill 机制、目录结构、`style_presets` 加列；偏离设计 §3.2），补全 ADR 0012 的实测结论（已写，核对即可）；`docs/ARCHITECTURE.md`（新模块：`workspace/style_files`、`db/legacy_styles`、`db/repo/{settings,style_presets}`、`api/{settings,styles,tts,suggestions}`、`features/settings/`、`components/session/{ModelSwitcher,SuggestionCard,PromptPrefill}`、`components/{StyleSelect,VoicePreviewButton}`、`composables/{styleChoice,voiceRules,useVoicePreview}`；设置页子路由直接指向 `features/settings` 面板；去掉「（M5）」标注；`TurnRunner` 的每轮读有效联网模式、`suggestion` 事件）、`docs/quality/QUALITY.md`（相关模块评级）、`docs/quality/tech-debt.md`（TD-39 界面提示部分移到已处理；登记本计划新发现的债，例如 `SessionOut.status` 没有 queued 状态、换模型仅按运行中禁用、风格库无导入界面等，先想清楚哪些真是债）、`docs/glossary.md`（风格预设、skill 形态目录、金样本、会话内换模型、回退建议卡片）、`docs/runbooks/dev-setup.md`（`make export-legacy-styles`/`import-legacy-styles`、`backend/.env` 里 `VOLCENGINE_TTS_API_KEY` 用于试听）、`AGENTS.md` 只在命令有变时改（`make` 新增两个目标，「常用命令」表要补）。
-  2. 在 main 的开发数据库里导入旧风格：合并后在主检出跑 `make import-legacy-styles`（导出 JSON 在 worktree 的 `data/legacy-export/styles.json`，需要复制到主检出的 `data/legacy-export/`，或重新 `make export-legacy-styles`）——这一步在合并、负责人验收之后做。
-  3. 停掉后台 dev server（api 8000、frontend 5173，来自 worktree）。
-  4. 逐条核对验收标准 AC1–AC12，把证据写进「验证记录」；再跑一次 `make check` 全量 + 全部 M5 冒烟（`style_claude_login`、`model_switch_claude_login`、`tts_preview_real`）。
-  5. 独立评审：`code-review`（high）分支全部改动，逐条处理；然后请负责人验收。
+- **等负责人验收**（SOP §3 第 6 步）。验收通过后：
+  1. 计划移到 `docs/plans/completed/m5-polish.md`（状态改「已完成」），ADR 0011/0012 里指向 `../plans/active/m5-polish.md` 的链接改为 `completed/`；勾选 SOP §7 收尾清单（AC12）。
+  2. 把 `m5-polish` 用 `--no-ff` 合并到 `main`，在 main 上再跑一次 `make check`。
+  3. 在主检出导入旧风格：把 worktree 的 `data/legacy-export/styles.json` 复制到主检出的 `data/legacy-export/`（或重新 `make export-legacy-styles`），跑 `make import-legacy-styles`。
+  4. 清理 worktree。
 
 ## 决策记录
 
@@ -310,6 +310,19 @@
 
 ## 验证记录
 
-<!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
+证据目录：`data/evidence/m5-polish/`（不进 git；worktree 的 `data/` 在 `.claude/worktrees/m5-polish/data/`，走查和冒烟证据在主检出的同名目录）。
 
-- 无
+- **整体（AC12 的 `make check` 部分）**：评审修复后最终代码上 `make check` 全绿——后端 1367 passed（29 个冒烟用例默认不跑）、前端 vitest 376 passed，ruff、pyright、import-linter、eslint、vue-tsc、文档检查全部通过。
+- **AC1**：`backend/tests/db/test_settings_repo.py`、`backend/tests/api/test_settings.py`、`backend/tests/agent/test_web_mode.py` 通过（含默认风格存在性校验、联网模式清除后回落环境变量、下一轮生效）。
+- **AC2**：迁移 0004 在旧库上升级（`test_repo_style_presets.py` 里从 0003 升级的旧行用例）、仓储 CRUD 与校验、`workspace/style_files` 渲染、`api/test_styles.py` 通过。评审后追加：句末句号不算文件名、`description=null` 可清空、列表只查摘要列。
+- **AC3**：`backend/tests/api/test_projects.py` 通过；L4：设置页导入 9 套旧风格后，创建项目对话框选风格，新项目 `style/` 下出现 5 个文件（截图 `l4/t11-*.jpg`）。
+- **AC4**：`backend/tests/db/test_legacy_styles.py` 通过；真实导出与导入报告见 `t4-legacy-import.md`（9 个模板、34 个组件，导出连接只读）。
+- **AC5**：提示词关键词断言通过；真实冒烟 `style_claude_login`（本机 Claude 登录，`smoke/20260930T131101Z-style-claude-login.json`）：叙事一轮在写 `narrative.json` 之前读了 `STYLE.md`、`narrative-blueprint.md`、`exemplars/`，动画一轮先读了配色和动画风格，产物都通过校验，都没有写 `style/`。只验证了「概念传记·纸上溯源」一套（TD-42）。
+- **AC6**：`backend/tests/db/test_repo_profiles_crud.py`、`backend/tests/api/test_profiles.py` 通过。评审后追加：没改的 `base_url`（环境变量灌入、可能带账号密码）不再阻止其他字段的修改。
+- **AC7**：`backend/tests/agent/test_model_switch.py`、`backend/tests/api/test_sessions.py` 通过；评审后追加：开跑即记录本轮配置，被崩溃中断的一轮不再让换模型提示重复。真实冒烟 `model_switch_claude_login`（`smoke/20260930T132106Z-*.json`）：Sonnet → Haiku，`sdk_ref` 不变、第二轮答得出第一轮的事实、`usage.model` 是 Haiku、时间线有 `model_switched`。L4 截图 `l4/t12-model-switcher.jpg`、`l4/t12-switch-notice-and-recall.jpg`。Claude 登录 ↔ API key 互换未验证（TD-41）。
+- **AC8**：`backend/tests/api/test_tts.py`、`test_projects.py` 通过；真实试听 `tts_preview_real`（`smoke/20260930T132651Z-*.json` 与 5 个 mp3）：200、`audio/mpeg`、语速 0.5/2.0 被接受且时长方向正确、同组合第二次命中缓存；L4 语音页真实试听（`l4/t12-voice-page.jpg`，缺 key 的报错见 `l4/t12-preview-missing-key.jpg`）。
+- **AC9**：`backend/tests/stages/test_suggest_upstream_change.py`、`backend/tests/api/test_suggestions.py`、`backend/tests/agent/test_runner_suggestion.py` 通过；真实冒烟 `suggestion_claude_login`（`smoke/20260930T140711Z-*.json`）：`suggestions` 表恰好一行（`narrative → topic`、`open`、记录了 `turn_id`）、会话里恰好一条持久的 `suggestion` 事件。
+- **AC10**：vitest（`profileForm`、`settingsView`、`styleDraft`、`voiceRules` 等）通过；L4 走查（内置浏览器 + worktree 的 dev server）：模型配置增改删、环境变量字段只读（`l4/t10-*.jpg`）、通用页联网模式与默认模型、风格库编辑器（`l4/t11-style-editor.jpg`）、语音页。
+- **AC11**：vitest（`suggestionFlow`、`useSessionStream` 归并、`modelChoice` 等）通过；L4：创建项目选风格、会话内换模型（真实 Claude 登录）、项目设置对话框、回退建议卡片 → 角标 → 去处理（确认重新打开）→ 预填 → 发送后标为已处理（`l4/t13-*.jpg`）。
+- **评审（SOP §3 第 5 步）**：`code-review`（high，`main...m5-polish`）报 9 条。已修并加测试：句末句号被当成文件名（后端 + 前端）、被中断的一轮不记配置导致换模型提示重复、没改的带账号密码的 `base_url` 阻止其他字段编辑（后端 + 前端）、风格简介无法清空、风格列表与查重整表加载；已修但**未在浏览器复验**：通用页默认模型下拉在保存被拒后不回退（改动只有一处 `onError`，没有组件测试）。未修：TTS 试听接口无限流（合法组合有限、有缓存与同键合并，单人本地使用，不处理）；风格编辑器离开页面时无未保存提醒（登记 TD-43）；风格冒烟依赖被 gitignore 的导出文件且只覆盖一套（已是 TD-42）。
+- **未验证**：Claude 登录 ↔ API key 互换（TD-41，需要 API 费用）；其余 8 套旧风格与弱模型的真实模型验证（TD-42）；OpenAI 托管搜索经 OpenRouter（TD-39）。

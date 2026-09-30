@@ -61,7 +61,7 @@ function locked(field: string): boolean {
 }
 
 function submit(): void {
-  errors.value = validateProfileForm(values.value, mode.value)
+  errors.value = validateProfileForm(values.value, mode.value, props.profile ?? undefined)
   nothingChanged.value = false
   if (Object.keys(errors.value).length > 0) return
   if (props.profile) {

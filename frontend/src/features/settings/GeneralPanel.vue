@@ -34,8 +34,17 @@ function currentDefault(stage: string): string {
 }
 
 function setStageDefault(stage: string, event: Event): void {
-  const value = (event.target as HTMLSelectElement).value
-  patch.mutate({ stage_default_profile: { [stage]: value === '' ? null : value } })
+  const select = event.target as HTMLSelectElement
+  const value = select.value
+  patch.mutate(
+    { stage_default_profile: { [stage]: value === '' ? null : value } },
+    {
+      // 被拒绝时缓存里的设置没变，Vue 不会重渲染；把下拉手动改回去，免得看起来像已生效。
+      onError: () => {
+        select.value = currentDefault(stage)
+      },
+    },
+  )
 }
 
 function setWebMode(mode: WebMode | null): void {

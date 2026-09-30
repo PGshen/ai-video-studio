@@ -11,15 +11,24 @@ from sqlalchemy import update
 
 from studio.agent import fake
 from studio.agent.fake import FakeRuntime, sleep
+from studio.agent.runtime import UserInput
 from studio.db.engine import session_scope
 from studio.db.models import ModelProfile, Turn
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import create_session, set_session_model_if_idle
-from studio.db.repo.turns import list_events
+from studio.db.repo.turns import (
+    create_turn_if_session_idle,
+    finish_turn,
+    get_turn,
+    list_events,
+    mark_turn_running,
+    previous_run_profile_name,
+    record_run_profile,
+)
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 
 from .conftest import StudioEnv
-from .test_runner import Harness, _make_harness
+from .test_runner import Harness, _make_harness, _never, _until
 
 MODEL_SWITCHED = "model_switched"
 
@@ -169,6 +178,66 @@ async def test_a_failed_turn_still_counts_as_the_last_run(env: StudioEnv) -> Non
     await h.run(session, [fake.say("b")])
 
     assert [(n["from"], n["to"]) for n in _notices(h, session)] == [("fake", "fake-b")]
+
+
+async def test_a_running_turn_already_records_its_profile(env: StudioEnv) -> None:
+    """中断（重启恢复）不写 usage，所以开跑时就要记下用的配置，下一轮才知道上一轮用了谁。"""
+    h = _make_harness(env)
+    session = h.session()
+    h.scripts.append([fake.sleep(5)])
+    turn_id = await h.runner.start_turn(session, UserInput(text="x"))
+    await _until(lambda: (get_turn(env.engine, turn_id) or _never()).status == "running")
+
+    running = get_turn(env.engine, turn_id)
+
+    assert running is not None and running.usage is not None
+    assert (running.usage["profile_name"], running.usage["model"]) == ("fake", "fake")
+    await h.runner.shutdown()
+
+
+async def test_an_interrupted_turn_after_a_switch_still_counts_as_the_last_run(
+    env: StudioEnv,
+) -> None:
+    h = _make_harness(env)
+    session = h.session()
+    await h.run(session, [fake.say("a")])
+    _switch(h, session, _add_profile(env, "fake-b"))
+    second = create_turn_if_session_idle(env.engine, session, "b")
+    assert second is not None
+    mark_turn_running(env.engine, second.id, start_snapshot_id=None)
+    record_run_profile(env.engine, second.id, profile_name="fake-b", model="fake-b-model")
+    h.runner.recover_on_startup()  # 崩溃/重启：turn 变 interrupted，不写 usage
+    interrupted = get_turn(env.engine, second.id)
+    assert interrupted is not None and interrupted.status == "interrupted"
+
+    await h.run(session, [fake.say("c")])
+
+    assert _notices(h, session) == []
+
+
+def test_previous_run_lookup_finds_the_latest_recorded_profile(env: StudioEnv) -> None:
+    """`before_turn_id` 之前最近一个记录了配置名的 turn。"""
+    h = _make_harness(env)
+    session = h.session()
+    turns = []
+    for i in range(3):
+        turn = create_turn_if_session_idle(env.engine, session, str(i))
+        assert turn is not None
+        record_run_profile(env.engine, turn.id, profile_name=f"p{i}", model="m")
+        finish_turn(
+            env.engine,
+            turn.id,
+            status="done",
+            end_snapshot_id=None,
+            usage={"profile_name": f"p{i}", "model": "m"},
+            cost_usd=None,
+            error=None,
+            resume_ref=None,
+        )
+        turns.append(turn)
+
+    assert previous_run_profile_name(env.engine, session, turns[2].id) == "p1"
+    assert previous_run_profile_name(env.engine, session, turns[0].id) is None
 
 
 async def test_switch_notice_is_also_emitted_for_workspaceless_brainstorm_sessions(

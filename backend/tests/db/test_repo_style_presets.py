@@ -19,6 +19,7 @@ from studio.db.repo.style_presets import (
     delete_style_preset,
     duplicate_style_preset,
     get_style_preset,
+    list_style_preset_summaries,
     list_style_presets,
     parse_frontmatter,
     update_style_preset,
@@ -296,3 +297,81 @@ class TestMigration0004:
         assert got.references == []
         assert got.exemplars == []
         assert got.description is None
+
+
+class TestReviewFixes:
+    """M5 评审发现的问题：句末句号、清空简介、列表摘要不读正文。"""
+
+    def test_sentence_final_period_is_not_part_of_a_referenced_file_name(self) -> None:
+        content = (
+            "---\nname: n\ndescription: d\n---\n"
+            "先读 references/color-scheme.md. 再看 exemplars/exemplar-1.json，"
+            "最后是 references/color-scheme.md-。\n"
+        )
+
+        errors = validate_style_preset(
+            name="x",
+            content=content,
+            references=[StyleFile("color-scheme.md", "a")],
+            exemplars=[StyleFile("exemplar-1.json", "{}")],
+        )
+
+        assert errors == []
+
+    def test_a_missing_file_is_still_reported_without_the_trailing_period(self) -> None:
+        content = "---\nname: n\ndescription: d\n---\n先读 references/gone.md.\n"
+
+        errors = validate_style_preset(name="x", content=content, references=[], exemplars=[])
+
+        assert errors == ["STYLE.md 引用了不存在的文件：references/gone.md"]
+
+    def test_update_can_clear_the_description_but_leaves_it_when_not_given(
+        self, migrated_engine: Engine
+    ) -> None:
+        created = _create(migrated_engine, description="自己写的简介")
+
+        untouched = update_style_preset(migrated_engine, created.id, category="新分类")
+        assert untouched.description == "自己写的简介"
+
+        cleared = update_style_preset(migrated_engine, created.id, description=None)
+        assert cleared.description is None
+        got = get_style_preset(migrated_engine, created.id)
+        assert got is not None and got.description is None
+
+    def test_summaries_carry_counts_and_are_sorted_like_the_full_list(
+        self, migrated_engine: Engine
+    ) -> None:
+        _create(migrated_engine, name="b", category="B")
+        _create(
+            migrated_engine,
+            name="a",
+            category="A",
+            content="---\nname: a\ndescription: d\n---\n",
+            references=[StyleFile("color-scheme.md", "x"), StyleFile("extra.md", "y")],
+            exemplars=[],
+        )
+
+        summaries = list_style_preset_summaries(migrated_engine)
+
+        assert [(s.name, s.category) for s in summaries] == [("a", "A"), ("b", "B")]
+        assert (summaries[0].reference_count, summaries[0].exemplar_count) == (2, 0)
+        assert (summaries[1].reference_count, summaries[1].exemplar_count) == (1, 1)
+
+    def test_summaries_of_rows_written_before_migration_0004_count_zero(
+        self, engine: Engine
+    ) -> None:
+        config = _alembic_config()
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "0003")
+            connection.execute(
+                text(
+                    "INSERT INTO style_presets (id, name, category, content, exemplars, created_at)"
+                    " VALUES ('old', '旧预设', '旧', '# 旧内容', NULL, '2026-09-01 00:00:00')"
+                )
+            )
+        migrate(engine)
+
+        [summary] = list_style_preset_summaries(engine)
+
+        assert (summary.reference_count, summary.exemplar_count) == (0, 0)

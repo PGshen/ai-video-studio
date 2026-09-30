@@ -91,6 +91,17 @@ describe('validateProfileForm（与后端 db/repo/profiles.py 同一组规则）
     expect(validateProfileForm(form({ base_url: url }), 'create').base_url).toContain('http')
   })
 
+  it('编辑时没改的 base_url 不再校验（环境变量灌进来的地址可能带账号密码）', () => {
+    const original = profile({ base_url: 'https://user:key@gw.example.com/v1' })
+    const values = formFromProfile(original)
+
+    expect(validateProfileForm(values, 'edit', original)).toEqual({})
+    expect(
+      validateProfileForm({ ...values, base_url: 'https://a:b@other.example.com' }, 'edit', original)
+        .base_url,
+    ).toContain('账号密码')
+  })
+
   it('base_url 不能带账号密码', () => {
     expect(
       validateProfileForm(form({ base_url: 'https://user:secret@example.com/v1' }), 'create')

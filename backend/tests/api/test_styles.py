@@ -107,6 +107,19 @@ class TestUpdate:
         assert body["content"] == ENTRY
         assert body["references"] == created["references"]
 
+    async def test_patch_with_null_description_clears_it_and_omitting_keeps_it(
+        self, api_env: ApiEnv
+    ) -> None:
+        created = await _create(api_env, description="自己写的简介")
+        url = f"/api/style-presets/{created['id']}"
+
+        kept = await api_env.client.patch(url, json={"category": "别的"})
+        assert kept.json()["description"] == "自己写的简介"
+
+        cleared = await api_env.client.patch(url, json={"description": None})
+        assert cleared.status_code == 200
+        assert cleared.json()["description"] is None
+
     async def test_patch_that_breaks_the_entry_is_422_and_changes_nothing(
         self, api_env: ApiEnv
     ) -> None:
