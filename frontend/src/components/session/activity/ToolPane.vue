@@ -6,7 +6,8 @@
 import { ref } from 'vue'
 
 const props = defineProps<{
-  title: string
+  /** 标题栏文字；需要图标/状态点时改用 `title` 插槽。 */
+  title?: string
   language?: string
   /** 给了才显示「复制」按钮。 */
   copyText?: string
@@ -30,12 +31,16 @@ async function copy(): Promise<void> {
 </script>
 
 <template>
-  <div class="bg-muted/30 overflow-hidden rounded-lg border text-xs">
+  <div
+    class="bg-muted/30 overflow-hidden rounded-lg border text-xs"
+    :data-testid="tone === 'error' ? 'tool-pane-error' : 'tool-pane'"
+  >
     <div class="text-muted-foreground flex items-center justify-between gap-3 border-b px-3 py-1.5">
       <span
-        class="truncate font-mono"
+        class="flex min-w-0 items-center gap-2 truncate font-mono"
         :class="tone === 'error' ? 'text-destructive' : ''"
-      >{{ title }}</span>
+        data-testid="tool-pane-title"
+      ><slot name="title">{{ title }}</slot></span>
       <span class="flex shrink-0 items-center gap-3">
         <span v-if="language">{{ language }}</span>
         <button

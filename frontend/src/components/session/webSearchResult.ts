@@ -112,3 +112,13 @@ export function parseWebSearch(text: string): WebSearchResult | null {
   const lines = text.split('\n')
   return parseCustom(lines) ?? parseNative(text, lines)
 }
+
+/** 只有 http(s) 才渲染成可点击的链接（模型或网页给的 `javascript:` 等一律当文本）。 */
+export function isHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}

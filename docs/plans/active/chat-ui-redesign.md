@@ -164,7 +164,7 @@
 - **完成标准**：测试通过；开发服务器下旧工具卡片已被新组件替代、通用样式可用；`make check` 为绿。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/components/session`，然后 `make check`
 
-### T8：七类工具的专属正文（待开始）
+### T8：七类工具的专属正文（完成）
 
 - **目标**：按设计 §5 渲染每类工具的请求 + 结果。
 - **涉及文件**：`activity/tool-bodies/{Read,Write,Glob,Grep,Bash,WebSearch,WebFetch}Body.vue`、`activity/ToolBody.vue`（按 `ToolView.kind` 分发，其余走 `GenericBody`）、各自 spec。先看 `ai-elements/code-block` 能否直接复用做语法高亮；不行就在 `ToolPane` 里直接用 `shiki`（已在依赖里），不新增依赖。
@@ -215,10 +215,11 @@
 - 2026-10-02 — T5 — 前端 `ThinkingItem`、thinking 事件合并、`turns` 暴露（`useSessionStream` 31 个用例通过）
 - 2026-10-02 — T6 — 四个纯函数（`groupTimeline`/`toolPresentation`/`webSearchResult`/`turnMeta`）+ 133 个会话组件用例通过
 - 2026-10-02 — T7 — 活动组骨架：`SessionTimeline`/`ActivityGroup`/`ActivityRow`/`ToolPane`/`ThinkingBody`/`GenericBody`/`useDisclosure`，`SessionPanel` 已接入，旧 `ai-elements/tool` 不再被引用；会话组件 154 个用例通过
+- 2026-10-02 — T8 — 七类工具专属正文（Read/Write/Glob/Grep/Bash/WebSearch/WebFetch）+ `ErrorPane`/`CodeView`/`DiffView`、`codeLanguage`/`readResult`/`isHttpUrl`；会话组件 205 个用例通过
 
 ## 下一步
 
-- 从 T8 开始：先为七类工具正文写组件测试（`activity/tool-bodies/*.spec.ts`，两个运行时各一份真实形状的 `ToolCallItem`，样本见本计划「决策记录」里 T6 的真实结果样本），再建 `{Read,Write,Glob,Grep,Bash,WebSearch,WebFetch}Body.vue` 并在 `activity/ToolBody.vue` 里按 `view.kind` 分发（现在所有种类都走 `GenericBody`）。`ToolPane` 已有（标题栏/语言/复制/限高）；`parseWebSearch` 已有；代码块高亮先看 `ai-elements/code-block` 能否复用，不行就直接用 `shiki`。别用 `../` 相对导入（eslint 禁止），用 `@/components/session/...`。
+- 从 T9 开始：先写失败测试再改 `SessionTimelineItem.vue`（助手文本用 `MessageResponse` 渲染 Markdown、流式光标、用户气泡下的 `HH:mm` + 复制）和新建 `activity/ReplyFooter.vue`（用 `formatTurnMeta(turns.get(turnId))`，`null` 时不渲染），在 `SessionTimeline.vue` 里把 footer 插在每个 turn 最后一个助手文本块之后（仅该 turn 非运行态）。`SessionTimeline` 已经收到 `turns` 和 `runningTurnId`。Markdown 必须用 `<script>`、`<img onerror>` 文本测一遍不产生节点。别用 `../` 相对导入（eslint 禁止）。
 
 ## 决策记录
 
@@ -228,6 +229,9 @@
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
 - 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
+- 2026-10-02 — T8 错误面板不在 `ToolBody` 统一追加，而是新增 `ErrorPane` 由各正文自己放置 — 先实现成统一追加后发现 `Write` 缺参数退回 `GenericBody` 时错误会出现两次（已加失败测试复现再重构）；`bash` 的输出本身就是结果，失败时红色显示、不另出错误面板。
+- 2026-10-02 — T8 Read 结果：每行带 `行号→` 且从 1 开始连续时去掉前缀、交给代码块自己编号；起始行号不是 1（带 offset）时保留原文逐行显示（代码块行号从 1 开始，会对不上） — Claude 的 `Read` 结果实测格式；代价：带 offset 的读取没有语法高亮。
+- 2026-10-02 — T8 的 WebFetch 正文用纯文本 `<pre>`，没有渲染 Markdown — 设计 §5 写的是「正文文本块」；Claude 原生 WebFetch 的结果其实是模型总结的 Markdown，显示成原文也可读；若 L4 看着太糙再改（一行改动）。
 - 2026-10-02 — T7 `ThinkingBody` 用 Markdown 渲染（`MessageResponse`）而不是纯文本 — OpenAI 的 reasoning 摘要带 `**小标题**`，纯文本会把星号原样显示（T4 实测）；Claude 的思考是普通段落，Markdown 渲染无副作用。设计 §4.4 写的是「普通字体、次要色」，这里在保持次要色的前提下加了 Markdown。
 - 2026-10-02 — T7 活动组里 `ToolBody` 暂时对所有种类都分发到 `GenericBody` — 专属正文是 T8；这样 T7 就能独立验收折叠行为。
 - 2026-10-02 — T7 `ToolPane` 的限高用固定的 `max-h-80`（20rem），而不是「超过 40 行才限高」 — 一个类就能保证任何内容都不会撑开页面，行为上等价于设计的意图；代价：很短的内容不受影响，很长的内容在 20rem 处滚动而不是 40 行处。

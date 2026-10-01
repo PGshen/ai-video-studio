@@ -108,6 +108,7 @@ const rows = computed(() =>
           v-else-if="row.view"
           :item="row.entry"
           :view="row.view"
+          :status="row.status"
           :project-id="projectId"
         />
       </ActivityRow>
