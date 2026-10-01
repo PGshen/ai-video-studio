@@ -273,7 +273,11 @@ class TestThinkingConversion:
         assert not _of(out, events.ThinkingBlock)
 
     @pytest.mark.parametrize(
-        "profile", [_OPENAI, dataclasses.replace(_OPENAI, base_url="https://openrouter.ai/api/v1")]
+        "profile",
+        [
+            dataclasses.replace(_OPENAI, model="gpt-5"),
+            dataclasses.replace(_OPENAI, base_url="https://openrouter.ai/api/v1"),
+        ],
     )
     async def test_model_settings_request_reasoning_summary(
         self, workdir: Path, data_dir: Path, profile: ModelProfileValue
@@ -283,6 +287,30 @@ class TestThinkingConversion:
 
         reasoning = models.calls[0].model_settings.reasoning
         assert reasoning is not None and reasoning.summary == "auto"
+
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [
+            ("gpt-5", "auto"),
+            ("gpt-5-mini", "auto"),
+            ("o3", "auto"),
+            ("o4-mini", "auto"),
+            ("gpt-4.1", None),
+            ("gpt-4o", None),
+            ("gpt-4o-mini", None),
+        ],
+    )
+    async def test_official_endpoint_only_asks_reasoning_models_for_a_summary(
+        self, workdir: Path, data_dir: Path, model: str, expected: str | None
+    ) -> None:
+        """api.openai.com rejects `reasoning` for non-reasoning models, which would fail every
+        turn; an unrequested summary only costs the thinking display."""
+        profile = dataclasses.replace(_OPENAI, base_url="https://api.openai.com/v1", model=model)
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=profile))
+
+        reasoning = models.calls[0].model_settings.reasoning
+        assert (reasoning.summary if reasoning else None) == expected
 
     async def test_litellm_settings_do_not_set_reasoning_summary(
         self, workdir: Path, data_dir: Path

@@ -2,16 +2,16 @@
 /**
  * 时间线里「非活动」条目的渲染：用户消息/助手文本用 @ai-elements 的 Message，
  * notice/error/snapshot/suggestion 用简单的提示条。思考和工具调用由 `SessionTimeline` 归成
- * 活动组渲染（`activity/`），不会到这里。助手文本渲染 Markdown，原始 HTML 先转义（`markdownSafe`）。
+ * 活动组渲染（`activity/`），不会到这里。助手文本经 `SafeMarkdown` 渲染 Markdown（原始 HTML 转义 + 渲染层拦截）。
  */
 import { computed } from 'vue'
 import { CheckIcon, CopyIcon } from '@lucide/vue'
-import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
+import { Message, MessageContent } from '@/components/ai-elements/message'
 import type { TurnOut } from '@/types/api'
 import { useCopy } from './activity/useCopy'
 import type { PlainItem } from './groupTimeline'
-import { escapeRawHtml } from './markdownSafe'
 import { noticeText } from './noticeText'
+import SafeMarkdown from './SafeMarkdown.vue'
 import SuggestionCard from './SuggestionCard.vue'
 import { snapshotEventLabel } from './snapshotReason'
 import { formatClock } from './turnMeta'
@@ -69,7 +69,7 @@ const userTime = computed(() => {
     class="max-w-full"
   >
     <MessageContent class="w-full">
-      <MessageResponse :content="escapeRawHtml(item.text)" />
+      <SafeMarkdown :content="item.text" />
       <span
         v-if="item.streaming"
         class="animate-pulse"

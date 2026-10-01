@@ -875,6 +875,42 @@ describe('useSessionStream', () => {
       expect(result.turnStatus.value?.status).toBe('running')
     })
 
+    it('整轮都没收到瞬时事件（连接比发送晚）时，延迟核对会话详情，不会一直卡在排队中', async () => {
+      vi.useFakeTimers()
+      try {
+        getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+        const { result } = await setup('s1')
+        getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turnFixture('done', 't9')] }))
+
+        result.markTurnAccepted('t9', '你好')
+        expect(result.turnStatus.value?.status).toBe('queued')
+        await vi.advanceTimersByTimeAsync(1600)
+        await flushAsync()
+
+        expect(result.turnStatus.value).toMatchObject({ turnId: 't9', status: 'done' })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('延迟核对时这一轮已经结束就不再请求', async () => {
+      vi.useFakeTimers()
+      try {
+        getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+        const { onEvent, result } = await start()
+        result.markTurnAccepted('t9', '你好')
+        onEvent(status('t9', 'done'))
+        await flushAsync()
+        getSessionMock.mockClear()
+
+        await vi.advanceTimersByTimeAsync(10_000)
+
+        expect(getSessionMock).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('上一轮已结束时，新一轮标成 queued', async () => {
       const { result, onEvent } = await start()
       onEvent(status('t1', 'done'))

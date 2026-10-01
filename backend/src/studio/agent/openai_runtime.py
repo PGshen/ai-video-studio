@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
 from pathlib import Path
@@ -143,6 +144,7 @@ def _check_provider(profile: ModelProfileValue) -> None:
 
 
 _REASONING_SUMMARY = Reasoning(summary="auto")
+_REASONING_MODEL = re.compile(r"^(o\d|gpt-[5-9])", re.IGNORECASE)
 """Best effort: reasoning models return a summary (shown as thinking), others return none."""
 
 
@@ -162,7 +164,12 @@ def model_settings(profile: ModelProfileValue) -> ModelSettings:
             reasoning=_REASONING_SUMMARY,
         )
     if profile.provider == "openai":
-        return ModelSettings(include_usage=True, reasoning=_REASONING_SUMMARY)
+        # api.openai.com rejects `reasoning` for non-reasoning models, which would fail every turn,
+        # while an unrequested summary only costs the thinking display; so only ask when the model
+        # name says it reasons. (Gateways above are lenient, verified on OpenRouter.)
+        if _REASONING_MODEL.match(profile.model):
+            return ModelSettings(include_usage=True, reasoning=_REASONING_SUMMARY)
+        return ModelSettings(include_usage=True)
     # LiteLLM (chat completions): the SDK ignores `reasoning.summary` here and warns on
     # every call, so leave it unset; provider-returned reasoning still streams through.
     return ModelSettings(include_usage=True)

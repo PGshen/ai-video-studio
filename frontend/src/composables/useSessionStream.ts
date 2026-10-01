@@ -213,6 +213,9 @@ function findLastStreamingIndex(
   return -1
 }
 
+/** `markTurnAccepted` 之后核对会话详情的时机（毫秒）。 */
+const VERIFY_ACCEPTED_AFTER_MS = [1500, 6000]
+
 export function useSessionStream(sessionId: Ref<string | null>): UseSessionStreamResult {
   const queryClient = useQueryClient()
   const items = ref<TimelineItem[]>([]) as Ref<TimelineItem[]>
@@ -297,6 +300,19 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     if (turnStatus.value?.turnId === turnId) return
     statusVersion += 1 // 进行中的会话详情刷新早于这一轮，不能覆盖它。
     turnStatus.value = { turnId, status: 'queued', error: null, neverStarted: false, userMessage }
+    // 如果整轮的瞬时事件都被错过（连接比发送晚，这一轮又很快结束，例如网关不可达的毫秒级失败，
+    // 或没有快照事件的头脑风暴会话），状态会一直停在 `queued`、输入框一直被禁用。延迟核对
+    // 会话详情兜底；这一轮已经有事件把状态推进到结束时不会请求。
+    const id = sessionId.value
+    if (id === null) return
+    const myGeneration = generation
+    for (const delay of VERIFY_ACCEPTED_AFTER_MS) {
+      setTimeout(() => {
+        if (myGeneration === generation && isBusy(turnStatus.value?.status)) {
+          void refreshTurnStatus(id, myGeneration)
+        }
+      }, delay)
+    }
   }
 
   function removeLocalUserMessage(placeholderId: string): void {

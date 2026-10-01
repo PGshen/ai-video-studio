@@ -218,10 +218,11 @@
 - 2026-10-02 — T8 — 七类工具专属正文（Read/Write/Glob/Grep/Bash/WebSearch/WebFetch）+ `ErrorPane`/`CodeView`/`DiffView`、`codeLanguage`/`readResult`/`isHttpUrl`；会话组件 205 个用例通过
 - 2026-10-02 — T9 — 助手/思考文本渲染 Markdown 并转义原始 HTML（`markdownSafe`）、流式光标、用户气泡时间 + 复制、`ReplyFooter`（用量/用时/时间/复制）、turn 结束后刷新 turn 元数据；前端 306 个相关用例通过
 - 2026-10-02 — T10 — `/demo-activity` 演示脚本；隔离数据目录下 L4 走查（运行中/自动折叠/七类工具/出错行/历史回放折叠/窄屏），修了 L4 发现的 4 个问题（见决策记录）；删除无引用的 `ai-elements/tool/*`；ARCHITECTURE/glossary/QUALITY/tech-debt（TD-44~46）/references 已更新
+- 2026-10-02 — 独立评审（最强模型，全新上下文）+ 修复 — 评审 1 个 Important（Markdown 转义可被绕过）、6 个 Minor；另有 2 个没下结论的风险；已修复：转义器重写 + 渲染层拦截危险标签 + 关闭链接 favicon、`markTurnAccepted` 延迟核对、OpenAI 官方端点推理模型防护；后端 1400 个、前端 592 个用例通过
 
 ## 下一步
 
-- 独立评审：对分支跑一次 `code-review`（SOP §3 步骤 5），逐条处理；然后负责人验收（AC9 的「真实模型走一轮」只做了一半，见验证记录），验收后把本计划移到 `plans/completed/`、状态改「已完成」，分支合并由负责人决定。
+- 负责人验收（AC9 的「真实模型走一轮」只做了一半，见验证记录），验收后把本计划移到 `plans/completed/`、状态改「已完成」，分支合并由负责人决定。
 
 ## 决策记录
 
@@ -231,6 +232,10 @@
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
 - 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
+- 2026-10-02 — 评审修复 F1（Important）：`escapeRawHtml` 能被绕过——反斜杠转义的反引号、信息串带反引号的假围栏、围栏长度不配对、关闭行带信息串，都会让转义器与 Markdown 解析器对「哪里是代码」的判断不一致，原始 `<iframe>`/`<form>`/`<meta refresh>`/带 `style` 的覆盖层渲染成真实元素（库会剥 `on*`/`javascript:`/`srcdoc`，所以没有直接执行脚本，但可以重定向、钓鱼、嵌入第三方页面）。修复：按 CommonMark 规则重写转义器并遇疑从严；新增渲染层第二层防御 `blockedHtml`（经库的 `components` 属性把危险标签换成丢弃全部属性的惰性占位）；新增 `SafeMarkdown` 统一入口；发现并关掉库默认的链接 favicon（模型一提到域名浏览器就请求 `<域名>/favicon.ico`，可编码数据外泄，`linkOptions.favicon=false`）。评审给出的全部绕过输入已写成失败测试（先 RED 后 GREEN）。
+- 2026-10-02 — 评审修复 F2（重新分级为 Important）：评审把「`markTurnAccepted` 可能把面板卡在排队中」定为 Minor；按效果重新分级——卡住时输入框被禁用、只能刷新页面，而改动前这种情况只是状态为空——升为 Important。修复：发送后在 1.5 秒和 6 秒各核对一次会话详情（仍是忙碌状态才请求）。
+- 2026-10-02 — 评审修复 F3：评审没下结论的「官方 OpenAI 端点对非推理模型拒绝 `reasoning`」——若成立每轮都失败，代价远大于少显示一个思考，所以官方端点只对 `^(o\d|gpt-[5-9])` 模型请求摘要（网关不变）；Claude 在 Haiku 4.5 / Sonnet 5 上的 adaptive 已实测都正常。登记 TD-47（官方端点没有真实 key 验证）。
+- 2026-10-02 — 评审 Minor（延后，登记 TD-48）：原生 WebSearch 摘要正文不显示；截断的 Read 可能出现两套行号；中断后展开正文的文案；空白 delta 流式期间丢失段落分隔；多转义的嵌套围栏；`removeLocalUserMessage` 影响 key。
 - 2026-10-02 — T10 L4 发现并修复的问题：① 后端时间戳是没有时区的 UTC，`formatClock` 直接 `new Date()` 在东八区差 8 小时，新增 `parseServerTime`（无时区后缀按 UTC 解析，先写失败测试）；② 思考正文被 Markdown 根节点的前景色盖掉，改 wrapper + `text-inherit!`；③ 代码块内容以换行结尾时多出一个空行号，`CodeView` 去掉末尾一个换行；④ 新建会话的首轮 `turnStatus` 为空（预存在的问题，改动前的前端同样复现），用发送接口返回的 `turn_id` 调新增的 `markTurnAccepted` 缓解（`useSessionStream` 新增导出，`SessionPanel` 的发送/继续两处调用）；根因没查清，登记 TD-44。
 - 2026-10-02 — T10 演示脚本的触发判断是「提示词最后一行等于 `/demo-activity`」而不是整串相等 — `TurnRunner` 在用户消息前拼了上下文前言（L4 里第一次没触发才发现，先加失败测试再改）。
 - 2026-10-02 — T10 删除 `components/ai-elements/tool/*`（生成代码，已无任何引用），并更新 `docs/references/frontend-stack.md` — 计划「不包含」里写的是「最终无引用时才删除」；需要时可用 shadcn-vue CLI 重新生成。
@@ -266,7 +271,7 @@
 
 ## 验证记录
 
-后端 `make check`：1393 个测试通过；前端 vitest：52 个文件、561 个用例通过。证据文件在 `data/evidence/chat-ui-redesign/`（不进 git）：`smoke/`（真实模型冒烟）、`l4/`（浏览器截图）。
+后端 `make check`：1400 个测试通过（评审修复后）；前端 vitest：53 个文件、592 个用例通过（评审修复后）。证据文件在 `data/evidence/chat-ui-redesign/`（不进 git）：`smoke/`（真实模型冒烟）、`l4/`（浏览器截图）。
 
 | AC | 证据 |
 |---|---|

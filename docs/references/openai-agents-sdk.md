@@ -42,6 +42,7 @@
 | ✅ 已验证（2026-10-02，`make smoke`，经 OpenRouter，对话页重做 T4） | **reasoning 摘要**：`ModelSettings(reasoning=Reasoning(summary="auto"))`（`provider=openai`，官方与网关两个分支）被 OpenRouter 接受；流里有 `response.reasoning_summary_text.delta`，并产出 `ReasoningItem`（`raw_item.summary[*].text`）。摘要文本带 markdown 粗体小标题（例如 `**Inspecting tools and files**`），多个 summary 片段之间需要自己拼接（本项目用换行）。任务型提示一轮 2 个 reasoning 块（386 + 1073 字符），delta 总长（1459）与块总长一致 | `make smoke SMOKE_ARGS="-k thinking_openai"`，证据 `data/evidence/chat-ui-redesign/smoke/*thinking-openai-responses*.json`（`usage.model` 为网关上的 OpenAI 模型） |
 | ✅ 已验证（2026-10-02，`make smoke`，经 OpenRouter，对话页重做 T4） | **多轮回放 `reasoning` 条目被接受**（解决上面「部分验证」里的未验证项）：第一轮产生了 reasoning 条目，第二轮经 `SQLiteSession` 回放（`store=False` + `reasoning.encrypted_content`）正常完成，没有 "Item not found" | 同上用例的第二轮（`thinking-openai-responses-turn2.json`，`status=done`） |
 | ✅ 已验证（2026-10-02，源码） | LiteLLM 的 chat-completions 路径会**忽略** `ModelSettings.reasoning.summary` 并在每次调用时打警告，只把 `reasoning.effort` 当 `reasoning_effort` 传；因此本项目在 LiteLLM 路径不设 `reasoning`。provider 自己流出的 reasoning（chatcmpl 流处理器会产出同名的 `response.reasoning_summary_text.delta`）仍会透传。DeepSeek 经 LiteLLM 是否真有 reasoning 流**未实测** | `agents/extensions/models/litellm_model.py: _get_reasoning_effort`、`agents/models/chatcmpl_stream_handler.py` |
+| 未验证（2026-10-02，TD-47） | 官方端点 `api.openai.com` 对非推理模型（如 `gpt-4.1`、`gpt-4o`）是否拒绝 `reasoning.summary` 没有用真实 key 验证；出于谨慎，`model_settings` 只对名字匹配 `^(o\\d|gpt-[5-9])` 的官方端点模型请求摘要，其余不带 `reasoning`（网关路径沿用总是请求，OpenRouter 已实测接受） | 评审指出的风险；未实测 |
 
 ## 本项目的用法（T10）
 
