@@ -1,31 +1,16 @@
 <script setup lang="ts">
 /**
- * 时间线单条渲染（从 `SessionPanel.vue` 拆出来，控制体积在简报建议的 250
- * 行以内）：用户消息/助手文本用 @ai-elements 的 Message，工具调用用 Tool
- * （可折叠，展示名字/参数/结果），notice/error/snapshot 用简单的提示条。
+ * 时间线里「非活动」条目的渲染：用户消息/助手文本用 @ai-elements 的 Message，
+ * notice/error/snapshot/suggestion 用简单的提示条。思考和工具调用由 `SessionTimeline` 归成
+ * 活动组渲染（`activity/`），不会到这里。
  */
-import { computed } from 'vue'
-import { blobUrl } from '@/api/endpoints'
 import { Message, MessageContent } from '@/components/ai-elements/message'
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
-import type { TimelineItem } from '@/composables/useSessionStream'
+import type { PlainItem } from './groupTimeline'
 import { noticeText } from './noticeText'
 import SuggestionCard from './SuggestionCard.vue'
 import { snapshotEventLabel } from './snapshotReason'
 
-const props = defineProps<{ item: TimelineItem; projectId: string | null }>()
-
-const toolState = computed(() => {
-  if (props.item.kind !== 'tool_call') return 'input-available' as const
-  if (!props.item.result) return 'input-available' as const
-  return props.item.result.isError ? ('output-error' as const) : ('output-available' as const)
-})
-
-/** 工具结果里的图片（TD-21 修复后）：每张图带 `sha256`，拼 blob 地址渲染真缩略图。 */
-const images = computed(() => {
-  if (props.item.kind !== 'tool_call') return []
-  return props.item.result?.images ?? []
-})
+defineProps<{ item: PlainItem; projectId: string | null }>()
 </script>
 
 <template>
@@ -44,33 +29,6 @@ const images = computed(() => {
       {{ item.text }}
     </MessageContent>
   </Message>
-
-  <Tool v-else-if="item.kind === 'tool_call'">
-    <ToolHeader
-      type="dynamic-tool"
-      :tool-name="item.name"
-      :state="toolState"
-    />
-    <ToolContent>
-      <ToolInput :input="item.args" />
-      <ToolOutput
-        :output="item.result?.isError ? undefined : item.result?.text"
-        :error-text="item.result?.isError ? item.result.text : undefined"
-      />
-      <div
-        v-if="projectId !== null && images.length > 0"
-        class="flex flex-wrap gap-2 px-4 pb-4"
-      >
-        <img
-          v-for="(image, index) in images"
-          :key="image.sha256"
-          :src="blobUrl(projectId, image.sha256)"
-          :alt="`关键帧 ${index + 1}`"
-          class="h-24 w-auto rounded border object-contain"
-        >
-      </div>
-    </ToolContent>
-  </Tool>
 
   <SuggestionCard
     v-else-if="item.kind === 'suggestion' && projectId !== null"

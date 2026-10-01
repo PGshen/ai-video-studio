@@ -151,7 +151,7 @@
 - **完成标准**：纯函数测试全部通过，覆盖设计 §5 表格每一行；`make check` 为绿。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/components/session`，然后 `make check`
 
-### T7：活动组骨架与折叠（待开始）
+### T7：活动组骨架与折叠（完成）
 
 - **目标**：用新组件替换现有逐条渲染，先让 thinking、通用工具的分组与折叠完整可用。
 - **涉及文件**：新建 `frontend/src/components/session/SessionTimeline.vue`、`activity/ActivityGroup.vue`、`activity/ActivityRow.vue`、`activity/ThinkingBody.vue`、`activity/ToolPane.vue`（标题栏 + 语言 + 「复制」+ 限高内容区）、`activity/tool-bodies/GenericBody.vue`、`activity/useDisclosure.ts`（折叠状态）；改 `SessionPanel.vue`（用 `SessionTimeline`）、`SessionTimelineItem.vue`（移除 `tool_call` 分支，新增 `thinking` 不在此处理）。
@@ -214,10 +214,11 @@
 - 2026-10-02 — T4 — 真实实测通过：Claude 本机登录 6 个 thinking 块、OpenAI（OpenRouter）2 个块且第二轮回放通过；ADR 0013、references、runbook 已写（风险关口通过，无需升级）
 - 2026-10-02 — T5 — 前端 `ThinkingItem`、thinking 事件合并、`turns` 暴露（`useSessionStream` 31 个用例通过）
 - 2026-10-02 — T6 — 四个纯函数（`groupTimeline`/`toolPresentation`/`webSearchResult`/`turnMeta`）+ 133 个会话组件用例通过
+- 2026-10-02 — T7 — 活动组骨架：`SessionTimeline`/`ActivityGroup`/`ActivityRow`/`ToolPane`/`ThinkingBody`/`GenericBody`/`useDisclosure`，`SessionPanel` 已接入，旧 `ai-elements/tool` 不再被引用；会话组件 154 个用例通过
 
 ## 下一步
 
-- 从 T7 开始：先写 `activity/useDisclosure.spec.ts`（折叠规则）和 `ActivityGroup`/`ActivityRow` 的组件测试，再建 `SessionTimeline.vue`、`activity/*`，改 `SessionPanel.vue` 接入。可直接用的纯函数：`groupTimeline(items, runningTurnId)`、`describeTool(item, prefix?)`、`toolStatus(item, turnEnded)`、`formatTurnMeta`/`formatClock`、`parseWebSearch`；`useSessionStream` 已暴露 `turns`。
+- 从 T8 开始：先为七类工具正文写组件测试（`activity/tool-bodies/*.spec.ts`，两个运行时各一份真实形状的 `ToolCallItem`，样本见本计划「决策记录」里 T6 的真实结果样本），再建 `{Read,Write,Glob,Grep,Bash,WebSearch,WebFetch}Body.vue` 并在 `activity/ToolBody.vue` 里按 `view.kind` 分发（现在所有种类都走 `GenericBody`）。`ToolPane` 已有（标题栏/语言/复制/限高）；`parseWebSearch` 已有；代码块高亮先看 `ai-elements/code-block` 能否复用，不行就直接用 `shiki`。别用 `../` 相对导入（eslint 禁止），用 `@/components/session/...`。
 
 ## 决策记录
 
@@ -227,6 +228,9 @@
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
 - 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
+- 2026-10-02 — T7 `ThinkingBody` 用 Markdown 渲染（`MessageResponse`）而不是纯文本 — OpenAI 的 reasoning 摘要带 `**小标题**`，纯文本会把星号原样显示（T4 实测）；Claude 的思考是普通段落，Markdown 渲染无副作用。设计 §4.4 写的是「普通字体、次要色」，这里在保持次要色的前提下加了 Markdown。
+- 2026-10-02 — T7 活动组里 `ToolBody` 暂时对所有种类都分发到 `GenericBody` — 专属正文是 T8；这样 T7 就能独立验收折叠行为。
+- 2026-10-02 — T7 `ToolPane` 的限高用固定的 `max-h-80`（20rem），而不是「超过 40 行才限高」 — 一个类就能保证任何内容都不会撑开页面，行为上等价于设计的意图；代价：很短的内容不受影响，很长的内容在 20rem 处滚动而不是 40 行处。
 - 2026-10-02 — T6 在计划外增加了两个小导出：`relativizePath`（供 `describeTool` 和组件共用）、`toolStatus(item, turnEnded)`（T7 的状态判断，纯函数放这里便于测试），并给 `ActivityGroupBlock` 加了 `key` 字段 — 都是计划 T7 本来就需要的东西，放在 T6 里一起测；代价：无。
 - 2026-10-02 — T6 `describeTool`：`shell` 同时接受 `commands: string[]`（OpenAI 原生）和 `command: string`（FakeRuntime 的 shell 步骤），`list_files` 缺 `dir` 视为空（默认参数） — 两个运行时/测试替身的真实形状。
 - 2026-10-02 — T5 的 `findLastStreamingIndex` 对 `text`/`thinking` 通用：同 turn 里另一种流式条目和用户消息跳过，遇到其它条目停止 — Claude 的终稿事件可能在末尾已有进行中的文本时到达 `thinking`（先 thinking 块后 text 块），旧的「只跳过用户消息」规则会造成思考条目重复；测试固定了这个顺序。
