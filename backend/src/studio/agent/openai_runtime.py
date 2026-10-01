@@ -62,6 +62,7 @@ from agents import (
     WebSearchTool,
 )
 from openai import AsyncOpenAI
+from openai.types.shared import Reasoning
 
 from studio.agent import events
 from studio.agent.apply_patch import WorkspaceApplyPatchEditor
@@ -141,6 +142,10 @@ def _check_provider(profile: ModelProfileValue) -> None:
         )
 
 
+_REASONING_SUMMARY = Reasoning(summary="auto")
+"""Best effort: reasoning models return a summary (shown as thinking), others return none."""
+
+
 def model_settings(profile: ModelProfileValue) -> ModelSettings:
     """每轮的 `ModelSettings`。
 
@@ -154,7 +159,12 @@ def model_settings(profile: ModelProfileValue) -> ModelSettings:
             include_usage=True,
             store=False,
             response_include=["reasoning.encrypted_content"],
+            reasoning=_REASONING_SUMMARY,
         )
+    if profile.provider == "openai":
+        return ModelSettings(include_usage=True, reasoning=_REASONING_SUMMARY)
+    # LiteLLM (chat completions): the SDK ignores `reasoning.summary` here and warns on
+    # every call, so leave it unset; provider-returned reasoning still streams through.
     return ModelSettings(include_usage=True)
 
 

@@ -98,7 +98,7 @@
 - **完成标准**：测试通过；`make check` 为绿。
 - **验证命令**：`cd backend && uv run pytest tests/agent/test_claude_runtime.py -q`，然后 `make check`
 
-### T3：OpenAI 运行时透传 thinking（待开始）
+### T3：OpenAI 运行时透传 thinking（完成）
 
 - **目标**：Responses 路径与 LiteLLM 路径的 reasoning summary 变成 thinking 事件，并请求摘要。
 - **涉及文件**：`backend/src/studio/agent/openai_tools.py`（`convert`）、`agent/openai_runtime.py`（`model_settings`）；测试 `backend/tests/agent/test_openai_runtime.py`。
@@ -210,10 +210,11 @@
 
 - 2026-10-02 — T1 — thinking 事件贯通（events/turn_events/bus/sessions/fake），后端 agent + stream 测试 440 通过
 - 2026-10-02 — T2 — Claude 运行时透传 thinking（`thinking_delta`/`ThinkingBlock` 转换，选项 `thinking=adaptive+summarized`）
+- 2026-10-02 — T3 — OpenAI 运行时透传 thinking（reasoning summary delta + `ReasoningItem`；Responses 路径带 `reasoning.summary="auto"`）
 
 ## 下一步
 
-- 从 T3 开始：在 `backend/tests/agent/test_openai_runtime.py` 先写 reasoning summary delta / `ReasoningItem` / 空摘要 / `model_settings` 带 `reasoning` 的失败测试，再改 `openai_tools.convert` 与 `openai_runtime.model_settings`。
+- 从 T4 开始：先在 `backend/tests/smoke/test_smoke.py` / `support.py` 加 thinking 观测与证据记录，再跑 `make smoke SMOKE_ARGS="-k claude_login"`；OpenAI（OpenRouter）用例缺 key 时记「未验证」；不跑任何经 ccproxy 的用例。
 
 ## 决策记录
 
@@ -222,11 +223,12 @@
 - 2026-10-02 — 计划拆成「后端 → 实测 → 前端纯函数 → 组件 → L4」，且把真实模型实测（T4）放在前端工作之前 — thinking 是否真有内容决定后面是否值得做，失败就在最便宜的时候升级。
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
+- 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
 - 2026-10-02 — 空白 thinking 在 `turn_events.handle` 里统一丢弃（而不是各运行时各自过滤） — 运行时无关、单点保证评审关注点 1；运行时转换层仍会各自跳过明显的空串。
 
 ## 意外与发现
 
-- 无
+- 2026-10-02 — Agents SDK 的 `LitellmModel` 在 chat-completions 路径会忽略 `reasoning.summary` 并每次调用打警告（`litellm_model.py` `_get_reasoning_effort`）；因此 LiteLLM 路径不设 `reasoning`，已有测试固定。
 
 ## 阻塞
 

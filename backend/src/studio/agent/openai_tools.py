@@ -16,6 +16,7 @@ from agents import (
     ItemHelpers,
     MessageOutputItem,
     RawResponsesStreamEvent,
+    ReasoningItem,
     RunItemStreamEvent,
     ToolCallItem,
     ToolCallOutputItem,
@@ -221,6 +222,8 @@ def convert(event: Any, turn: _Turn) -> list[events.AgentEvent]:
         data = event.data
         if data.type == "response.output_text.delta":
             return [events.TextDelta(text=data.delta)]
+        if data.type == "response.reasoning_summary_text.delta" and data.delta.strip():
+            return [events.ThinkingDelta(text=data.delta)]
         return []
     if not isinstance(event, RunItemStreamEvent):
         return []
@@ -228,6 +231,10 @@ def convert(event: Any, turn: _Turn) -> list[events.AgentEvent]:
     if isinstance(item, MessageOutputItem):
         text = ItemHelpers.text_message_output(item)
         return [events.TextBlock(text=text)] if text else []
+    if isinstance(item, ReasoningItem):
+        parts = [str(_get(part, "text") or "") for part in _get(item.raw_item, "summary") or []]
+        text = "\n".join(part for part in parts if part.strip())
+        return [events.ThinkingBlock(text=text)] if text else []
     if isinstance(item, ToolCallItem):
         call = _tool_call(item, turn.workdir)
         if call.name == "web_search":
