@@ -8,12 +8,16 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 </script>
 
 <template>
-  <SidebarProvider style="--sidebar-width: calc(var(--spacing) * 72); --header-height: calc(var(--spacing) * 12)">
-    <AppSidebar />
+  <!-- 外壳固定为一屏高：顶栏常驻，只有下面的内容区滚动（工作台内部再各自滚动，见 ProjectWorkbenchPage）。 -->
+  <SidebarProvider
+    class="h-svh min-h-0"
+    style="--sidebar-width: calc(var(--spacing) * 52); --header-height: calc(var(--spacing) * 12)"
+  >
+    <AppSidebar variant="inset" />
     <!-- min-w-0：内容（例如设置页里的代码编辑器）比可用宽度宽时让内容区收缩，而不是把整页撑出横向滚动条。 -->
-    <SidebarInset class="min-w-0">
+    <SidebarInset class="min-h-0 min-w-0 overflow-hidden">
       <SiteHeader />
-      <div class="flex flex-1 flex-col gap-4 p-4">
+      <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
         <router-view />
       </div>
     </SidebarInset>

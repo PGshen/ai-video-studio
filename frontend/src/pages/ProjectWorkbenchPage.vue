@@ -19,11 +19,16 @@
  * `features/workbench`（ESLint 分层规则禁止 features 互相 import），
  * 也不需要把 `SessionPanel` 已经很紧凑的状态往上提。
  */
+import { useLocalStorage, useMediaQuery } from '@vueuse/core'
+import { PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   useApplySuggestionMutation,
+  useModelProfilesQuery,
+  useSessionsQuery,
   useProjectQuery,
   useSuggestionsQuery,
 } from '@/composables/queries'
@@ -31,7 +36,8 @@ import { prefillText } from '@/components/session/suggestionFlow'
 import { useSessionStream } from '@/composables/useSessionStream'
 import StageNav from '@/features/workbench/StageNav.vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
-import SessionPicker from '@/components/session/SessionPicker.vue'
+import SessionList from '@/components/session/SessionList.vue'
+import ModelSwitcher from '@/components/session/ModelSwitcher.vue'
 import SnapshotTimeline from '@/features/workbench/SnapshotTimeline.vue'
 import { sessionResetKey } from '@/features/workbench/sessionResetKey'
 import { combineBusy } from '@/components/session/turnControls'
@@ -87,6 +93,16 @@ async function onMessageSent(): Promise<void> {
   }
 }
 
+// 输入框工具栏里的换模型下拉要当前会话对象；与 SessionList 共用同一份查询缓存。
+const { data: profiles } = useModelProfilesQuery()
+const { data: sessions } = useSessionsQuery(() => scope.value)
+const currentSession = computed(() => sessions.value?.find((s) => s.id === sessionId.value))
+
+// 左侧竖栏折叠：使用者的选择记在 localStorage；窄屏（< lg）竖栏横排在最上面，固定用折叠样式。
+const userCollapsed = useLocalStorage('workbench-rail-collapsed', false)
+const narrow = useMediaQuery('(max-width: 1023px)')
+const railCollapsed = computed(() => narrow.value || userCollapsed.value)
+
 const { turnStatus: canvasTurnStatus } = useSessionStream(sessionId)
 const canvasBusy = computed(() =>
   combineBusy(project.value?.busy ?? false, canvasTurnStatus.value?.status ?? null),
@@ -108,31 +124,80 @@ const canvasBusy = computed(() =>
       项目加载失败。
     </p>
     <template v-else>
-      <StageNav
-        :project-id="projectId"
-        :stages="project.stages"
-        :current-stage="stage"
-      />
-
-      <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
-        <div class="flex min-h-0 flex-col gap-2">
-          <SessionPicker
-            v-model:session-id="sessionId"
-            :scope="scope"
+      <!-- lg 以上：竖栏（阶段 + 项目操作 + 会话，可折叠成图标）| 对话 | 画布，对话和画布各自滚动；
+           窄屏：竖栏固定为折叠样式并横排在最上面，其余上下堆叠，整页滚动。 -->
+      <div
+        class="grid min-h-0 flex-1 grid-cols-1 gap-4 transition-[grid-template-columns] duration-200 ease-out max-lg:overflow-y-auto lg:grid-rows-[minmax(0,1fr)]"
+        :class="
+          railCollapsed
+            ? 'lg:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)]'
+            : 'lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)]'
+        "
+      >
+        <aside
+          class="flex min-h-0 flex-col gap-3 max-lg:flex-row max-lg:flex-wrap max-lg:items-start max-lg:border-b max-lg:pb-3 lg:overflow-x-hidden lg:overflow-y-auto lg:border-r lg:pr-3"
+          :class="railCollapsed ? 'lg:items-center lg:!pr-2' : ''"
+          data-testid="workbench-rail"
+        >
+          <div
+            class="flex items-center max-lg:hidden"
+            :class="railCollapsed ? 'justify-center' : 'justify-between pl-1'"
+          >
+            <span
+              v-if="!railCollapsed"
+              class="text-sm font-medium whitespace-nowrap"
+            >导航</span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              :title="railCollapsed ? '展开侧栏' : '收起侧栏'"
+              data-testid="toggle-rail"
+              @click="userCollapsed = !userCollapsed"
+            >
+              <PanelLeftOpen v-if="railCollapsed" />
+              <PanelLeftClose v-else />
+            </Button>
+          </div>
+          <StageNav
+            :project-id="projectId"
+            :stages="project.stages"
+            :current-stage="stage"
+            :collapsed="railCollapsed"
           />
+          <SessionList
+            v-model:session-id="sessionId"
+            class="lg:flex-1"
+            :scope="scope"
+            :collapsed="railCollapsed"
+          />
+        </aside>
+
+        <div class="flex min-h-0 gap-3 max-lg:h-[32rem]">
           <SessionPanel
+            class="min-w-0"
             :session-id="sessionId"
             :project-id="projectId"
             :prefill="prefill"
             @sent="onMessageSent"
-          />
+          >
+            <template #tools>
+              <ModelSwitcher
+                v-if="currentSession && profiles"
+                :key="currentSession.id"
+                :session="currentSession"
+                :profiles="profiles"
+                :scope="scope"
+                compact
+              />
+            </template>
+          </SessionPanel>
         </div>
 
-        <Card class="flex min-h-0 flex-col">
-          <CardHeader>
+        <Card class="flex min-h-0 flex-col gap-3 overflow-hidden py-4 max-lg:min-h-[32rem]">
+          <CardHeader class="shrink-0">
             <CardTitle>画布</CardTitle>
           </CardHeader>
-          <CardContent class="flex min-h-0 flex-1 flex-col gap-3">
+          <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
             <AnimationCanvas
               v-if="stage === 'animation'"
               :project-id="projectId"

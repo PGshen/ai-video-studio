@@ -144,6 +144,9 @@ async function onContinue(): Promise<void> {
         <PromptInputTextarea :disabled="!sessionId || controls.inputDisabled" />
       </PromptInputBody>
       <PromptInputFooter>
+        <div class="flex min-w-0 items-center">
+          <slot name="tools" />
+        </div>
         <div class="ml-auto flex items-center gap-2">
           <Button
             v-if="controls.showStop"

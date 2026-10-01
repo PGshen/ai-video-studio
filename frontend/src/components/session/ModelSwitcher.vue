@@ -16,6 +16,8 @@ const props = defineProps<{
   session: SessionOut
   profiles: ModelProfileOut[]
   scope: SessionScope
+  /** 紧凑模式（放在输入框工具栏里）：不显示「当前模型」标签和说明文字，原因放进悬停提示。 */
+  compact?: boolean
 }>()
 
 const mutation = useSwitchSessionModelMutation(() => props.scope)
@@ -33,15 +35,17 @@ function change(event: Event): void {
 </script>
 
 <template>
-  <div class="flex flex-col gap-1">
+  <div class="flex min-w-0 flex-col gap-1">
     <div class="flex items-center gap-2 text-sm">
       <label
+        v-if="!compact"
         for="session-model"
         class="text-muted-foreground shrink-0"
       >当前模型</label>
       <select
         id="session-model"
-        class="border-input bg-background h-8 min-w-0 flex-1 rounded-md border px-2 text-sm disabled:opacity-60"
+        class="border-input bg-background min-w-0 rounded-md border px-2 text-sm disabled:opacity-60"
+        :class="compact ? 'h-7 max-w-56 text-xs' : 'h-8 flex-1'"
         :value="session.model_profile_id"
         :disabled="blocked !== null || mutation.isPending.value"
         :title="blocked ?? '换成同一供应商的另一个模型，对话记忆保留'"
@@ -62,7 +66,7 @@ function change(event: Event): void {
       </select>
     </div>
     <p
-      v-if="blocked"
+      v-if="blocked && !compact"
       class="text-muted-foreground text-xs"
     >
       {{ blocked }}

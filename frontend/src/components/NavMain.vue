@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import { useRoute } from 'vue-router'
 
 import {
   SidebarGroup,
@@ -18,6 +19,13 @@ interface NavItem {
 defineProps<{
   items: NavItem[]
 }>()
+
+const route = useRoute()
+
+// 当前路由落在该菜单项之下（含子路由，例如 /projects/:id/topic 属于「项目」）时高亮。
+function isActive(url: string): boolean {
+  return route.path === url || route.path.startsWith(`${url}/`)
+}
 </script>
 
 <template>
@@ -30,6 +38,7 @@ defineProps<{
         >
           <SidebarMenuButton
             :tooltip="item.title"
+            :is-active="isActive(item.url)"
             as-child
           >
             <router-link :to="item.url">

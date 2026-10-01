@@ -4,6 +4,7 @@
  * 样式/可点性映射交给纯函数 `stageStatusStyle`（见同目录 spec），这里只
  * 负责渲染和路由跳转、发起 finalize/reopen mutation。
  */
+import { CircleAlert, Settings, SquareCheckBig, Undo2 } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -16,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import RailGroup from '@/components/RailGroup.vue'
 import { Button } from '@/components/ui/button'
 import {
   useFinalizeStageMutation,
@@ -32,6 +34,8 @@ const props = defineProps<{
   projectId: string
   stages: StageOut[]
   currentStage: string
+  /** 竖栏折叠：只显示图标，名称和说明放进悬停提示。 */
+  collapsed?: boolean
 }>()
 
 const STAGE_TITLES: Record<string, string> = {
@@ -49,6 +53,11 @@ const { data: suggestionSummary } = useSuggestionSummaryQuery(() => props.projec
 
 const finalizeMutation = useFinalizeStageMutation(() => props.projectId)
 const reopenMutation = useReopenStageMutation(() => props.projectId)
+const actionError = computed(() => {
+  if (finalizeMutation.isError.value) return `定稿失败：${errorDetail(finalizeMutation.error.value)}`
+  if (reopenMutation.isError.value) return `重新打开失败：${errorDetail(reopenMutation.error.value)}`
+  return null
+})
 const finalizeDialogOpen = ref(false)
 const settingsDialogOpen = ref(false)
 
@@ -76,72 +85,110 @@ async function confirmFinalize(): Promise<void> {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-    <nav class="flex items-center gap-2 text-sm">
-      <template
-        v-for="(stage, index) in stages"
-        :key="stage.stage"
+  <!-- 工作台左侧竖栏的上半部分：阶段进度（选题 → 叙事 → 动画）+ 项目设置 / 重新打开 / 定稿。
+       折叠时只剩图标；窄屏横向排列。外框和折叠按钮由 ProjectWorkbenchPage 的竖栏负责。 -->
+  <div class="flex flex-col gap-3">
+    <RailGroup
+      title="进度"
+      :collapsed="collapsed"
+    >
+      <nav
+        class="flex flex-row flex-wrap gap-1 text-sm lg:flex-col"
+        :class="collapsed ? 'lg:items-center' : ''"
+        aria-label="阶段"
       >
-        <span
-          v-if="index > 0"
-          class="text-muted-foreground"
-        >─</span>
         <button
+          v-for="(stage, index) in stages"
+          :key="stage.stage"
           type="button"
-          :class="[stageStatusStyle(stage.status).className, 'rounded px-2 py-1']"
+          :class="[
+            stageStatusStyle(stage.status).className,
+            'relative flex items-center gap-2 rounded-md text-left whitespace-nowrap',
+            collapsed ? 'p-1' : 'px-2 py-1.5',
+            stage.stage === currentStage ? 'bg-muted' : 'hover:bg-muted/60',
+          ]"
+          :title="`${STAGE_TITLES[stage.stage] ?? stage.stage}${stageStatusStyle(stage.status).suffix}`"
+          :aria-current="stage.stage === currentStage ? 'step' : undefined"
           :disabled="stageStatusStyle(stage.status).disabled"
           @click="goToStage(stage)"
         >
-          {{ STAGE_TITLES[stage.stage] ?? stage.stage }}{{ stageStatusStyle(stage.status).suffix }}
+          <span
+            class="flex size-5 shrink-0 items-center justify-center rounded-full border text-xs"
+            :class="stage.stage === currentStage ? 'border-primary bg-primary text-primary-foreground' : ''"
+          >{{ index + 1 }}</span>
+          <span v-if="!collapsed">{{ STAGE_TITLES[stage.stage] ?? stage.stage }}{{ stageStatusStyle(stage.status).suffix }}</span>
           <span
             v-if="badgeCount(suggestionSummary, stage.stage) > 0"
-            class="ml-1 rounded-full bg-sky-600 px-1.5 text-xs text-white"
+            :class="
+              collapsed
+                ? 'absolute -top-0.5 -right-0.5 size-2 rounded-full bg-sky-600'
+                : 'ml-auto rounded-full bg-sky-600 px-1.5 text-xs text-white'
+            "
             :title="`${badgeCount(suggestionSummary, stage.stage)} 条待处理的回退建议`"
             :data-testid="`suggestion-badge-${stage.stage}`"
-          >{{ badgeCount(suggestionSummary, stage.stage) }}</span>
+          >{{ collapsed ? '' : badgeCount(suggestionSummary, stage.stage) }}</span>
         </button>
-      </template>
-    </nav>
+      </nav>
+    </RailGroup>
 
-    <div
+    <RailGroup
       v-if="currentStageInfo"
-      class="flex items-center gap-2"
+      title="操作"
+      :collapsed="collapsed"
     >
-      <p
-        v-if="finalizeMutation.isError.value"
-        class="text-destructive text-sm"
+      <div
+        class="flex flex-col gap-2 max-lg:flex-row max-lg:flex-wrap max-lg:items-center"
+        :class="collapsed ? 'lg:items-center' : ''"
       >
-        定稿失败：{{ errorDetail(finalizeMutation.error.value) }}
-      </p>
-      <p
-        v-if="reopenMutation.isError.value"
-        class="text-destructive text-sm"
-      >
-        重新打开失败：{{ errorDetail(reopenMutation.error.value) }}
-      </p>
-      <Button
-        variant="ghost"
-        data-testid="open-project-settings"
-        @click="settingsDialogOpen = true"
-      >
-        项目设置
-      </Button>
-      <Button
-        v-if="currentStageInfo.status === 'finalized' || currentStageInfo.status === 'stale'"
-        variant="outline"
-        :disabled="reopenMutation.isPending.value"
-        @click="reopenMutation.mutate(currentStage)"
-      >
-        重新打开
-      </Button>
-      <Button
-        v-if="currentStageInfo.status === 'active' || currentStageInfo.status === 'stale'"
-        :disabled="finalizeMutation.isPending.value"
-        @click="finalizeDialogOpen = true"
-      >
-        定稿
-      </Button>
-    </div>
+        <p
+          v-if="actionError && !collapsed"
+          class="text-destructive text-xs"
+        >
+          {{ actionError }}
+        </p>
+        <CircleAlert
+          v-else-if="actionError"
+          class="text-destructive size-4"
+          :title="actionError"
+        />
+        <!-- 三个操作样式一致：无边框按钮 + 图标 + 左对齐；折叠时只剩图标。 -->
+        <Button
+          variant="ghost"
+          :size="collapsed ? 'icon-sm' : 'sm'"
+          :class="collapsed ? '' : 'w-full justify-start'"
+          title="项目设置"
+          data-testid="open-project-settings"
+          @click="settingsDialogOpen = true"
+        >
+          <Settings />
+          <span v-if="!collapsed">项目设置</span>
+        </Button>
+        <Button
+          v-if="currentStageInfo.status === 'finalized' || currentStageInfo.status === 'stale'"
+          variant="ghost"
+          :size="collapsed ? 'icon-sm' : 'sm'"
+          :class="collapsed ? '' : 'w-full justify-start'"
+          title="重新打开"
+          :disabled="reopenMutation.isPending.value"
+          @click="reopenMutation.mutate(currentStage)"
+        >
+          <Undo2 />
+          <span v-if="!collapsed">重新打开</span>
+        </Button>
+        <Button
+          v-if="currentStageInfo.status === 'active' || currentStageInfo.status === 'stale'"
+          variant="ghost"
+          :size="collapsed ? 'icon-sm' : 'sm'"
+          :class="collapsed ? '' : 'w-full justify-start'"
+          title="定稿"
+          :disabled="finalizeMutation.isPending.value"
+          @click="finalizeDialogOpen = true"
+        >
+          <SquareCheckBig />
+          <span v-if="!collapsed">定稿</span>
+        </Button>
+      </div>
+    </RailGroup>
 
     <ProjectSettingsDialog
       v-model:open="settingsDialogOpen"
