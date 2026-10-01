@@ -86,7 +86,7 @@
 - **完成标准**：上述测试通过；`make check` 为绿。
 - **验证命令**：`cd backend && uv run pytest tests/agent tests/api/test_stream.py -q`，然后 `make check`
 
-### T2：Claude 运行时透传 thinking（待开始）
+### T2：Claude 运行时透传 thinking（完成）
 
 - **目标**：Claude SDK 的 thinking 变成 `ThinkingDelta` / `ThinkingBlock`，并在选项里开启。
 - **涉及文件**：`backend/src/studio/agent/claude_messages.py`、`agent/claude_runtime.py`（`ClaudeAgentOptions` 构造处，约 `include_partial_messages=True` 附近）；测试 `backend/tests/agent/test_claude_runtime.py`（`TestEventConversion` 与选项构造相关用例）。
@@ -209,10 +209,11 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-02 — T1 — thinking 事件贯通（events/turn_events/bus/sessions/fake），后端 agent + stream 测试 440 通过
+- 2026-10-02 — T2 — Claude 运行时透传 thinking（`thinking_delta`/`ThinkingBlock` 转换，选项 `thinking=adaptive+summarized`）
 
 ## 下一步
 
-- 从 T2 开始：在 `backend/tests/agent/test_claude_runtime.py` 的 `TestEventConversion` 里先写 `thinking_delta` / `ThinkingBlock` / 空白 / 子 agent 的失败测试，再改 `claude_messages.convert_message` 与 `claude_runtime.py` 的 `ClaudeAgentOptions`。
+- 从 T3 开始：在 `backend/tests/agent/test_openai_runtime.py` 先写 reasoning summary delta / `ReasoningItem` / 空摘要 / `model_settings` 带 `reasoning` 的失败测试，再改 `openai_tools.convert` 与 `openai_runtime.model_settings`。
 
 ## 决策记录
 
