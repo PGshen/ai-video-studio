@@ -45,10 +45,10 @@
 
 ## 验收标准
 
-- [ ] AC1：`ThinkingDelta` 只发布（`thinking_delta`）、`ThinkingBlock` 落库（`thinking`）并出现在 SSE 回放；不计入步数与预算。（验证：`tests/agent/test_runner.py`、`tests/api/test_stream.py` 新增用例）
-- [ ] AC2：Claude 运行时把 `thinking_delta` 流事件和 `ThinkingBlock` 转成 thinking 事件，子 agent 的 thinking 被丢弃，空文本不产生事件；`ClaudeAgentOptions.thinking` 已设置。（验证：`tests/agent/test_claude_runtime.py`）
-- [ ] AC3：OpenAI 运行时把 `response.reasoning_summary_text.delta` 与 `ReasoningItem` 摘要转成 thinking 事件；`model_settings` 带 `reasoning.summary="auto"` 且不破坏既有 `store=False` / `response_include` 断言。（验证：`tests/agent/test_openai_runtime.py`）
-- [ ] AC4：真实模型实测——Claude 本机登录与 OpenAI（OpenRouter）各一轮，记录是否出现 thinking 文本及内容形态；结论写入 references，证据文件在 `data/evidence/`。（验证：`make smoke` 日志）
+- [x] AC1：`ThinkingDelta` 只发布（`thinking_delta`）、`ThinkingBlock` 落库（`thinking`）并出现在 SSE 回放；不计入步数与预算。（验证：`tests/agent/test_runner.py`、`tests/api/test_stream.py` 新增用例）
+- [x] AC2：Claude 运行时把 `thinking_delta` 流事件和 `ThinkingBlock` 转成 thinking 事件，子 agent 的 thinking 被丢弃，空文本不产生事件；`ClaudeAgentOptions.thinking` 已设置。（验证：`tests/agent/test_claude_runtime.py`）
+- [x] AC3：OpenAI 运行时把 `response.reasoning_summary_text.delta` 与 `ReasoningItem` 摘要转成 thinking 事件；`model_settings` 带 `reasoning.summary="auto"` 且不破坏既有 `store=False` / `response_include` 断言。（验证：`tests/agent/test_openai_runtime.py`）
+- [x] AC4：真实模型实测——Claude 本机登录与 OpenAI（OpenRouter）各一轮，记录是否出现 thinking 文本及内容形态；结论写入 references，证据文件在 `data/evidence/`。（验证：`make smoke` 日志）
 - [ ] AC5：`groupTimeline` 按设计 §2 分组（同 turn 连续 thinking/tool_call；遇其它条目断开；末尾组标 `running`）；`toolPresentation` 对 7 类工具、两个运行时的名字与参数给出正确的种类与摘要，未知工具走 `generic`；`webSearchResult` 解析自建与 Claude 原生两种格式，失败回退原文。（验证：对应 `.spec.ts`）
 - [ ] AC6：折叠规则：运行中的末尾组展开、turn 结束或后面出现文本后折叠、历史回放折叠；行默认折叠、出错行展开；用户手动状态优先且不随会话切换串线。（验证：组件测试 + L4）
 - [ ] AC7：Read / Write(Edit/apply_patch) / Glob / Grep / Bash / WebSearch / WebFetch 的展开正文符合设计 §5 表格；运行中转圈、出错变红、被中断显示「已中断」。（验证：组件测试 + L4 截图）
@@ -110,7 +110,7 @@
 - **完成标准**：测试通过；`make check` 为绿。
 - **验证命令**：`cd backend && uv run pytest tests/agent/test_openai_runtime.py -q`，然后 `make check`
 
-### T4：真实模型实测、ADR 与 references（待开始）
+### T4：真实模型实测、ADR 与 references（完成）
 
 - **目标**：确认 thinking 在真实环境里确实有内容；把事实与决策落档。**这是整个计划的风险关口**。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`、`tests/smoke/support.py`（新增 thinking 观测与证据记录）；`docs/references/claude-agent-sdk.md`、`docs/references/openai-agents-sdk.md`；`docs/decisions/0013-thinking事件.md`；`docs/runbooks/verification.md`（补一句如何看 thinking）。
@@ -211,10 +211,11 @@
 - 2026-10-02 — T1 — thinking 事件贯通（events/turn_events/bus/sessions/fake），后端 agent + stream 测试 440 通过
 - 2026-10-02 — T2 — Claude 运行时透传 thinking（`thinking_delta`/`ThinkingBlock` 转换，选项 `thinking=adaptive+summarized`）
 - 2026-10-02 — T3 — OpenAI 运行时透传 thinking（reasoning summary delta + `ReasoningItem`；Responses 路径带 `reasoning.summary="auto"`）
+- 2026-10-02 — T4 — 真实实测通过：Claude 本机登录 6 个 thinking 块、OpenAI（OpenRouter）2 个块且第二轮回放通过；ADR 0013、references、runbook 已写（风险关口通过，无需升级）
 
 ## 下一步
 
-- 从 T4 开始：先在 `backend/tests/smoke/test_smoke.py` / `support.py` 加 thinking 观测与证据记录，再跑 `make smoke SMOKE_ARGS="-k claude_login"`；OpenAI（OpenRouter）用例缺 key 时记「未验证」；不跑任何经 ccproxy 的用例。
+- 从 T5 开始：在 `frontend/src/composables/useSessionStream.spec.ts` 先写 thinking_delta 累积 / `thinking` 替换 / 交替两段 / 重连回放不重复 / 空白 delta / `turns` 暴露的失败测试，再改 `frontend/src/types/events.ts` 与 `useSessionStream.ts`（以及 `src/api/sse.ts` 的事件名白名单，如有）。
 
 ## 决策记录
 
@@ -224,10 +225,13 @@
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
 - 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
+- 2026-10-02 — 冒烟用例只断言「完成/有回答/收到 delta 就必须有落库块」，不断言一定有思考 — 设计是尽力透传，模型是否思考由模型决定；是否达标由人看证据判断（本次已看：两个环境都有思考）。
 - 2026-10-02 — 空白 thinking 在 `turn_events.handle` 里统一丢弃（而不是各运行时各自过滤） — 运行时无关、单点保证评审关注点 1；运行时转换层仍会各自跳过明显的空串。
 
 ## 意外与发现
 
+- 2026-10-02 — Claude 的 `thinking` 必须带 `display: "summarized"`，否则 `thinking_delta`/`ThinkingBlock` 的文本是空串；adaptive 对无关小问题（项目阶段提示下 4/4）不思考，任务型提示会在每次工具调用前思考。已写进 references 与 ADR 0013；冒烟提示因此改成任务型。
+- 2026-10-02 — OpenAI 的 reasoning 摘要带 markdown 粗体小标题（如 `**Inspecting tools and files**`）。T7 的 `ThinkingBody` 展示时要能容忍（见 T7 决策）。
 - 2026-10-02 — Agents SDK 的 `LitellmModel` 在 chat-completions 路径会忽略 `reasoning.summary` 并每次调用打警告（`litellm_model.py` `_get_reasoning_effort`）；因此 LiteLLM 路径不设 `reasoning`，已有测试固定。
 
 ## 阻塞

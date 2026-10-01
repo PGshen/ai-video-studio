@@ -5,17 +5,20 @@ from __future__ import annotations
 import base64
 import struct
 import zlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from studio.agent.tools import ToolContext, invoke_tool
 from studio.db.repo.profiles import get_model_profile_by_id
+from studio.db.repo.turns import TurnEventValue, TurnValue
 from studio.stages.topic import STAGE as TOPIC
 
 from .support import (
     SMOKE_COLOURS,
     SmokeStage,
+    TurnOutcome,
     build_harness,
     make_two_colour_png,
     mentions_colours,
@@ -94,3 +97,47 @@ def test_harness_profiles_use_gateway_settings(
     assert (gpt.base_url, gpt.model) == ("https://openrouter.example/api/v1", "openai/gpt-5")
     assert sonnet.base_url == "https://anthropic-gw.example"
     assert login.base_url is None
+
+
+def _outcome_with(*events: tuple[str, dict[str, object]]) -> TurnOutcome:
+    now = datetime.now(UTC)
+    turn = TurnValue(
+        id="t1",
+        session_id="s1",
+        user_message="hi",
+        status="done",
+        start_snapshot_id=None,
+        end_snapshot_id=None,
+        usage=None,
+        cost_usd=None,
+        error=None,
+        created_at=now,
+        updated_at=now,
+    )
+    rows = [
+        TurnEventValue(
+            id=f"e{i}",
+            turn_id="t1",
+            session_id="s1",
+            seq=i,
+            type=kind,
+            payload=payload,
+            created_at=now,
+        )
+        for i, (kind, payload) in enumerate(events, start=1)
+    ]
+    return TurnOutcome(turn, rows)
+
+
+def test_outcome_thinking_lists_only_thinking_blocks_in_order() -> None:
+    outcome = _outcome_with(
+        ("thinking", {"text": "先想"}),
+        ("text", {"text": "好"}),
+        ("thinking", {"text": "再想"}),
+    )
+
+    assert outcome.thinking == ["先想", "再想"]
+
+
+def test_outcome_without_thinking_has_an_empty_list() -> None:
+    assert _outcome_with(("text", {"text": "好"})).thinking == []
