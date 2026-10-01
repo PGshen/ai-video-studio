@@ -60,6 +60,8 @@ import type {
   SuggestionEventPayload,
   TextDeltaPayload,
   TextPayload,
+  ThinkingDeltaPayload,
+  ThinkingPayload,
   ToolCallPayload,
   ToolResultImage,
   ToolResultPayload,
@@ -77,6 +79,14 @@ export interface TextItem {
   turnId: string
   text: string
   /** 还在通过 `text_delta` 累积、没有收到最终 `text` 事件替换掉。 */
+  streaming: boolean
+}
+
+/** 模型的思考文本（对话页重做；`thinking_delta` 累积、`thinking` 终稿替换，和 `TextItem` 一致）。 */
+export interface ThinkingItem {
+  kind: 'thinking'
+  turnId: string
+  text: string
   streaming: boolean
 }
 
@@ -130,6 +140,7 @@ export interface SnapshotItem {
 export type TimelineItem =
   | UserMessageItem
   | TextItem
+  | ThinkingItem
   | ToolCallItem
   | NoticeItem
   | SuggestionItem
@@ -148,6 +159,8 @@ export interface TurnStatusState {
 export interface UseSessionStreamResult {
   items: Ref<TimelineItem[]>
   turnStatus: Ref<TurnStatusState | null>
+  /** 已知 turn 的元数据（挂载时和每次刷新会话详情时更新），UI 用它显示时间、用量、用时。 */
+  turns: Ref<ReadonlyMap<string, TurnOut>>
   connectionStatus: Ref<SseConnectionStatus | null>
   /**
    * 乐观插入一条用户消息（任务简报 T13，控制者裁定 3；解决上面文档「已知
@@ -170,12 +183,23 @@ export interface UseSessionStreamResult {
   removeLocalUserMessage: (placeholderId: string) => void
 }
 
-function findLastStreamingTextIndex(items: TimelineItem[], turnId: string): number {
+/**
+ * 找本 turn 里最近一条还在流式累积的 `kind` 条目。同一 turn 里另一种流式条目（文本和思考
+ * 的终稿事件可能交错到达）和用户消息直接跳过；遇到其它条目（工具调用、已定稿的内容等）
+ * 说明这段已经被"接住"了，返回 -1。
+ */
+function findLastStreamingIndex(
+  items: TimelineItem[],
+  turnId: string,
+  kind: 'text' | 'thinking',
+): number {
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i]!
     if (item.turnId !== turnId) continue
-    if (item.kind === 'text' && item.streaming) return i
-    if (item.kind !== 'user_message') return -1 // 这个 turn 后来的事件已经把这段文本"接住"了。
+    if (item.kind === kind && item.streaming) return i
+    if (item.kind === 'user_message') continue
+    if ((item.kind === 'text' || item.kind === 'thinking') && item.streaming) continue
+    return -1
   }
   return -1
 }
@@ -188,7 +212,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
 
   let controller: AbortController | null = null
   let projectId: string | null = null
-  const knownTurns = new Map<string, TurnOut>()
+  const turns = ref(new Map<string, TurnOut>()) as Ref<Map<string, TurnOut>>
   const userMessageInserted = new Set<string>()
   const toolCallIndex = new Map<string, number>()
   // 乐观插入、还没被真实 turn 认领的占位（FIFO：先发送的消息先配对）。
@@ -213,7 +237,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     items.value = []
     turnStatus.value = null
     connectionStatus.value = null
-    knownTurns.clear()
+    turns.value.clear()
     userMessageInserted.clear()
     toolCallIndex.clear()
     pendingLocalMessages = [] // 上一个会话遗留的占位不能被下一个会话的 turn 认领。
@@ -245,7 +269,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       return // 下一次重连或 snapshot 事件会再试。
     }
     if (myGeneration !== generation || versionAtRequest !== statusVersion) return
-    for (const turn of detail.turns) knownTurns.set(turn.id, turn)
+    for (const turn of detail.turns) turns.value.set(turn.id, turn)
     const last = detail.turns.at(-1)
     if (last) turnStatus.value = statusOf(last)
     if (projectId) void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
@@ -284,7 +308,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       }
     }
 
-    const turn = knownTurns.get(turnId)
+    const turn = turns.value.get(turnId)
     items.value.push({ kind: 'user_message', turnId, text: turn?.user_message ?? '' })
   }
 
@@ -310,9 +334,42 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       }
       case 'text': {
         const payload = event.payload as TextPayload
-        const idx = findLastStreamingTextIndex(items.value, payload.turn_id)
+        const idx = findLastStreamingIndex(items.value, payload.turn_id, 'text')
         const resolved: TextItem = {
           kind: 'text',
+          turnId: payload.turn_id,
+          text: payload.text,
+          streaming: false,
+        }
+        if (idx !== -1) {
+          items.value[idx] = resolved
+        } else {
+          items.value.push(resolved)
+        }
+        break
+      }
+      case 'thinking_delta': {
+        const payload = event.payload as ThinkingDeltaPayload
+        if (!payload.text.trim()) break
+        const last = items.value.at(-1)
+        if (last && last.kind === 'thinking' && last.turnId === payload.turn_id && last.streaming) {
+          last.text += payload.text
+        } else {
+          items.value.push({
+            kind: 'thinking',
+            turnId: payload.turn_id,
+            text: payload.text,
+            streaming: true,
+          })
+        }
+        break
+      }
+      case 'thinking': {
+        const payload = event.payload as ThinkingPayload
+        if (!payload.text.trim()) break
+        const idx = findLastStreamingIndex(items.value, payload.turn_id, 'thinking')
+        const resolved: ThinkingItem = {
+          kind: 'thinking',
           turnId: payload.turn_id,
           text: payload.text,
           streaming: false,
@@ -407,7 +464,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       case 'turn_status': {
         const payload = event.payload as TurnStatusPayload
         statusVersion += 1
-        const known = knownTurns.get(payload.turn_id)
+        const known = turns.value.get(payload.turn_id)
         turnStatus.value = {
           turnId: payload.turn_id,
           status: payload.status,
@@ -439,7 +496,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   function applyHistory(detail: Awaited<ReturnType<typeof getSession>>): void {
     projectId = detail.project_id
     for (const turn of detail.turns) {
-      knownTurns.set(turn.id, turn)
+      turns.value.set(turn.id, turn)
     }
     const last = detail.turns.at(-1)
     if (last) {
@@ -498,5 +555,5 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     disconnect()
   })
 
-  return { items, turnStatus, connectionStatus, addLocalUserMessage, removeLocalUserMessage }
+  return { items, turnStatus, turns, connectionStatus, addLocalUserMessage, removeLocalUserMessage }
 }

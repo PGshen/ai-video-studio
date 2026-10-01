@@ -124,7 +124,7 @@
 - **完成标准**：证据文件在 `data/evidence/`（不入库）；references 与 ADR 已写，AC4 逐条有结论；`make check` 为绿。
 - **验证命令**：`make smoke SMOKE_ARGS="-k claude_login"`，然后 `make check`
 
-### T5：前端 thinking 条目与会话状态（待开始）
+### T5：前端 thinking 条目与会话状态（完成）
 
 - **目标**：`useSessionStream` 认识 thinking，并把 turn 元数据暴露给 UI。
 - **涉及文件**：`frontend/src/types/events.ts`、`frontend/src/composables/useSessionStream.ts`、`useSessionStream.spec.ts`。
@@ -212,10 +212,11 @@
 - 2026-10-02 — T2 — Claude 运行时透传 thinking（`thinking_delta`/`ThinkingBlock` 转换，选项 `thinking=adaptive+summarized`）
 - 2026-10-02 — T3 — OpenAI 运行时透传 thinking（reasoning summary delta + `ReasoningItem`；Responses 路径带 `reasoning.summary="auto"`）
 - 2026-10-02 — T4 — 真实实测通过：Claude 本机登录 6 个 thinking 块、OpenAI（OpenRouter）2 个块且第二轮回放通过；ADR 0013、references、runbook 已写（风险关口通过，无需升级）
+- 2026-10-02 — T5 — 前端 `ThinkingItem`、thinking 事件合并、`turns` 暴露（`useSessionStream` 31 个用例通过）
 
 ## 下一步
 
-- 从 T5 开始：在 `frontend/src/composables/useSessionStream.spec.ts` 先写 thinking_delta 累积 / `thinking` 替换 / 交替两段 / 重连回放不重复 / 空白 delta / `turns` 暴露的失败测试，再改 `frontend/src/types/events.ts` 与 `useSessionStream.ts`（以及 `src/api/sse.ts` 的事件名白名单，如有）。
+- 从 T6 开始：在 `frontend/src/components/session/` 下为 `groupTimeline` / `toolPresentation` / `webSearchResult` / `turnMeta` 各写 `.spec.ts`（先写，确认失败），再实现对应 `.ts`；接口见本计划 T6 与设计 §2、§5。`TimelineItem` 已含 `ThinkingItem`，`useSessionStream` 已暴露 `turns`。
 
 ## 决策记录
 
@@ -225,6 +226,8 @@
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
 - 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
+- 2026-10-02 — T5 的 `findLastStreamingIndex` 对 `text`/`thinking` 通用：同 turn 里另一种流式条目和用户消息跳过，遇到其它条目停止 — Claude 的终稿事件可能在末尾已有进行中的文本时到达 `thinking`（先 thinking 块后 text 块），旧的「只跳过用户消息」规则会造成思考条目重复；测试固定了这个顺序。
+- 2026-10-02 — T5 没有加「重连回放不重复」的 composable 用例 — 重放去重在 SSE 层按 `seq` 完成（`api/sse.ts`，已有测试），composable 看不到重复；计划里这条的意图由 SSE 层测试覆盖。
 - 2026-10-02 — 冒烟用例只断言「完成/有回答/收到 delta 就必须有落库块」，不断言一定有思考 — 设计是尽力透传，模型是否思考由模型决定；是否达标由人看证据判断（本次已看：两个环境都有思考）。
 - 2026-10-02 — 空白 thinking 在 `turn_events.handle` 里统一丢弃（而不是各运行时各自过滤） — 运行时无关、单点保证评审关注点 1；运行时转换层仍会各自跳过明显的空串。
 

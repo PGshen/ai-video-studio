@@ -15,6 +15,8 @@
 export type WireEventType =
   | 'text_delta'
   | 'text'
+  | 'thinking_delta'
+  | 'thinking'
   | 'tool_call'
   | 'tool_result'
   | 'snapshot'
@@ -31,6 +33,18 @@ export interface TextDeltaPayload {
 }
 
 export interface TextPayload {
+  turn_id: string
+  text: string
+  seq: number
+}
+
+export interface ThinkingDeltaPayload {
+  turn_id: string
+  text: string
+  seq: null
+}
+
+export interface ThinkingPayload {
   turn_id: string
   text: string
   seq: number
@@ -111,6 +125,8 @@ export interface TurnStatusPayload {
 export interface WireEventMap {
   text_delta: TextDeltaPayload
   text: TextPayload
+  thinking_delta: ThinkingDeltaPayload
+  thinking: ThinkingPayload
   tool_call: ToolCallPayload
   tool_result: ToolResultPayload
   snapshot: SnapshotEventPayload

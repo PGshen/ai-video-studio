@@ -36,6 +36,23 @@ function sessionDetail(overrides: Partial<SessionDetailOut> = {}): SessionDetail
   }
 }
 
+function turnFixture(status: string, id = 't1') {
+  return {
+    id,
+    session_id: 's1',
+    user_message: '你好',
+    status,
+    start_snapshot_id: 's0',
+    end_snapshot_id: status === 'running' ? null : 'snap1',
+    usage: null,
+    cost_usd: null,
+    error: null,
+    never_started: false,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  }
+}
+
 /** 挂载一个只调用 `useSessionStream` 的壳组件，返回它暴露的响应式状态和
  * 捕获到的 `openStream` 回调，方便测试直接调用 `onEvent`/`onStatus`。 */
 async function setup(sessionId: string | null) {
@@ -643,5 +660,128 @@ describe('useSessionStream', () => {
 
       expect(getSessionMock).toHaveBeenCalledTimes(1)
     })
+  })
+
+  describe('thinking', () => {
+    async function start() {
+      getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+      const { result } = await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+      return { result, onEvent }
+    }
+    const delta = (text: string, turn = 't1') =>
+      frame('thinking_delta', { turn_id: turn, text, seq: null })
+    const block = (text: string, seq: number, turn = 't1') =>
+      frame('thinking', { turn_id: turn, text, seq })
+
+    it('thinking_delta 累积成进行中的思考条目，thinking 到达时整体替换', async () => {
+      const { result, onEvent } = await start()
+
+      onEvent(delta('先'))
+      onEvent(delta('想想'))
+      expect(result.items.value[1]).toEqual({
+        kind: 'thinking',
+        turnId: 't1',
+        text: '先想想',
+        streaming: true,
+      })
+
+      onEvent(block('先想想看', 1))
+
+      expect(result.items.value).toHaveLength(2) // 用户消息占位 + 一条思考
+      expect(result.items.value[1]).toEqual({
+        kind: 'thinking',
+        turnId: 't1',
+        text: '先想想看',
+        streaming: false,
+      })
+    })
+
+    it('没有先到的 delta（历史回放）时，thinking 直接追加一条', async () => {
+      const { result, onEvent } = await start()
+
+      onEvent(block('回放的思考', 1))
+
+      expect(result.items.value.filter((i) => i.kind === 'thinking')).toEqual([
+        { kind: 'thinking', turnId: 't1', text: '回放的思考', streaming: false },
+      ])
+    })
+
+    it('思考、文本、工具、思考交替出现时各自成条，互不覆盖', async () => {
+      const { result, onEvent } = await start()
+
+      onEvent(block('先想', 1))
+      onEvent(frame('text', { turn_id: 't1', text: '好的', seq: 2 }))
+      onEvent(
+        frame('tool_call', { turn_id: 't1', call_id: 'c1', name: 'Read', args: {}, seq: 3 }),
+      )
+      onEvent(delta('再想'))
+      onEvent(block('再想一下', 4))
+
+      expect(result.items.value.map((i) => i.kind)).toEqual([
+        'user_message',
+        'thinking',
+        'text',
+        'tool_call',
+        'thinking',
+      ])
+      const thinking = result.items.value.filter((i) => i.kind === 'thinking')
+      expect(thinking.map((i) => i.text)).toEqual(['先想', '再想一下'])
+    })
+
+    it('思考终稿到达时末尾已有进行中的文本（Claude 的事件顺序）：原地替换，不重复', async () => {
+      const { result, onEvent } = await start()
+
+      onEvent(delta('想'))
+      onEvent(frame('text_delta', { turn_id: 't1', text: '你', seq: null }))
+      onEvent(block('想好了', 1))
+      onEvent(frame('text', { turn_id: 't1', text: '你好', seq: 2 }))
+
+      expect(result.items.value.map((i) => i.kind)).toEqual(['user_message', 'thinking', 'text'])
+      expect(result.items.value[1]).toMatchObject({ text: '想好了', streaming: false })
+      expect(result.items.value[2]).toMatchObject({ text: '你好', streaming: false })
+    })
+
+    it('只有空白的 delta 和 thinking 不产生条目', async () => {
+      const { result, onEvent } = await start()
+
+      onEvent(delta('  \n'))
+      onEvent(block('   ', 1))
+      onEvent(block('', 2))
+
+      expect(result.items.value.some((i) => i.kind === 'thinking')).toBe(false)
+    })
+  })
+
+  it('turns 暴露挂载时加载的 turn 元数据', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ turns: [turnFixture('done')] }))
+
+    const { result } = await setup('s1')
+
+    expect(result.turns.value.get('t1')).toMatchObject({ id: 't1', status: 'done' })
+    expect(result.turns.value.size).toBe(1)
+  })
+
+  it('刷新会话详情后 turns 包含新出现的 turn', async () => {
+    getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turnFixture('running')] }))
+    const { result } = await setup('s1')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+    getSessionMock.mockResolvedValueOnce(
+      sessionDetail({ turns: [turnFixture('done'), { ...turnFixture('running'), id: 't2' }] }),
+    )
+
+    onEvent(
+      frame('snapshot', {
+        turn_id: 't1',
+        snapshot_id: 'snap1',
+        reason: 'turn',
+        created: true,
+        seq: 3,
+      }),
+    )
+    await flushAsync()
+
+    expect([...result.turns.value.keys()].sort()).toEqual(['t1', 't2'])
+    expect(result.turns.value.get('t1')?.status).toBe('done')
   })
 })
