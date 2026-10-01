@@ -21,13 +21,24 @@ class TestBusEvent:
         assert event.seq is None
         assert event.is_transient is True
 
-    @pytest.mark.parametrize("event_type", ["text_delta", "workspace_changed", "turn_status"])
+    @pytest.mark.parametrize(
+        "event_type", ["text_delta", "thinking_delta", "workspace_changed", "turn_status"]
+    )
     def test_known_transient_types(self, event_type: str) -> None:
         assert BusEvent(type=event_type, payload={}).is_transient is True
 
     @pytest.mark.parametrize(
         "event_type",
-        ["text", "tool_call", "tool_result", "snapshot", "suggestion", "notice", "error"],
+        [
+            "text",
+            "thinking",
+            "tool_call",
+            "tool_result",
+            "snapshot",
+            "suggestion",
+            "notice",
+            "error",
+        ],
     )
     def test_known_persistent_types(self, event_type: str) -> None:
         assert BusEvent(type=event_type, payload={}).is_transient is False

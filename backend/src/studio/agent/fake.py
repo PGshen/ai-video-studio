@@ -1,7 +1,7 @@
 """测试用的可编排运行时（设计 §4.1 表格）。
 
-脚本是一串步骤（`say`/`write`/`shell_write`/`call_tool`/`fail`/`sleep`/
-`use_cost` 构造出来的 dataclass），`FakeRuntime.run_turn` 按顺序执行，逐步
+脚本是一串步骤（`say`/`think`/`emit`/`write`/`shell_write`/`call_tool`/`fail`/
+`sleep`/`use_cost` 构造出来的 dataclass），`FakeRuntime.run_turn` 按顺序执行，逐步
 产出事件：
 
 - `write(path, content)` 模拟一个**原生文件写工具**：先做事前拦截——目标
@@ -46,6 +46,21 @@ class Say:
 
 
 @dataclass(frozen=True, slots=True)
+class Think:
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class Emit:
+    """A tool call + result with scripted content (no real tool runs), for UI demos."""
+
+    name: str
+    args: dict[str, Any] = field(default_factory=dict)
+    result_text: str = ""
+    is_error: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class Write:
     path: str
     content: str
@@ -78,11 +93,25 @@ class UseCost:
     usd: float
 
 
-FakeStep = Say | Write | ShellWrite | CallTool | Fail | Sleep | UseCost
+FakeStep = Say | Think | Emit | Write | ShellWrite | CallTool | Fail | Sleep | UseCost
 
 
 def say(text: str) -> Say:
     return Say(text)
+
+
+def think(text: str) -> Think:
+    return Think(text)
+
+
+def emit(
+    name: str,
+    args: dict[str, Any] | None = None,
+    result_text: str = "",
+    *,
+    is_error: bool = False,
+) -> Emit:
+    return Emit(name, args or {}, result_text, is_error)
 
 
 def write(path: str, content: str) -> Write:
@@ -145,6 +174,20 @@ class FakeRuntime:
 
             if isinstance(step, Say):
                 yield events.TextBlock(text=step.text)
+
+            elif isinstance(step, Think):
+                chunk = 6
+                for start in range(0, len(step.text), chunk):
+                    yield events.ThinkingDelta(text=step.text[start : start + chunk])
+                yield events.ThinkingBlock(text=step.text)
+
+            elif isinstance(step, Emit):
+                call_counter += 1
+                call_id = f"call-{call_counter}"
+                yield events.ToolCall(call_id=call_id, name=step.name, args=step.args)
+                yield events.ToolResult(
+                    call_id=call_id, text=step.result_text, is_error=step.is_error
+                )
 
             elif isinstance(step, Write):
                 call_counter += 1

@@ -87,6 +87,8 @@ WIRE_EVENT_TYPES = frozenset(
     {
         "text_delta",
         "text",
+        "thinking_delta",
+        "thinking",
         "tool_call",
         "tool_result",
         "snapshot",
@@ -97,8 +99,9 @@ WIRE_EVENT_TYPES = frozenset(
         "turn_status",
     }
 )
-"""SSE 上实际会出现的全部事件名（任务简报列出的 9 种，M5 T9 增加 `suggestion`），在一个地方统一定义
-（控制者裁定 6）。`_stream_events` 用它过滤——出现列表之外的 `type` 只在
+"""SSE 上实际会出现的全部事件名（任务简报列出的 9 种，M5 T9 增加 `suggestion`，对话页重做增加
+`thinking_delta`/`thinking`），在一个地方统一定义（控制者裁定 6）。
+`_stream_events` 用它过滤——出现列表之外的 `type` 只在
 `TurnRunner`/`SessionBus` 出现新 bug 时才可能发生，属于防御性检查，不是
 正常路径。
 """

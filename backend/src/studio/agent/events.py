@@ -70,6 +70,20 @@ class TextBlock:
 
 
 @dataclass(frozen=True, slots=True)
+class ThinkingDelta:
+    """token 级思考文本增量，只发布不落库（和 `TextDelta` 一样）。"""
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ThinkingBlock:
+    """一段完整的思考文本（落库为 `turn_events.type == "thinking"`）。"""
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class ToolCall:
     call_id: str
     name: str
@@ -124,4 +138,6 @@ class TurnEnd:
     error: str | None = None
 
 
-AgentEvent = TextDelta | TextBlock | ToolCall | ToolResult | Usage | TurnEnd
+AgentEvent = (
+    TextDelta | TextBlock | ThinkingDelta | ThinkingBlock | ToolCall | ToolResult | Usage | TurnEnd
+)

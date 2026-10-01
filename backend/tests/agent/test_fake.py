@@ -86,6 +86,50 @@ class TestSay:
         assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
 
 
+class TestThink:
+    async def test_think_step_yields_deltas_then_one_block(self, workdir: Path) -> None:
+        from studio.agent import fake
+
+        runtime = FakeRuntime([fake.think("先想一想这个问题")])
+        ctx = _make_ctx(workdir, write_scope=WriteScope(writable=["topic/**"], tool_managed=[]))
+
+        result = await _run(runtime, ctx)
+
+        *middle, end = result
+        assert isinstance(end, events.TurnEnd)
+        *deltas, block = middle
+        assert len(deltas) >= 1
+        assert all(isinstance(d, events.ThinkingDelta) for d in deltas)
+        assert "".join(d.text for d in deltas if isinstance(d, events.ThinkingDelta)) == (
+            "先想一想这个问题"
+        )
+        assert block == events.ThinkingBlock(text="先想一想这个问题")
+
+
+class TestEmit:
+    async def test_emit_step_yields_paired_call_and_result(self, workdir: Path) -> None:
+        from studio.agent import fake
+
+        runtime = FakeRuntime(
+            [
+                fake.emit("Read", {"file_path": "a.md"}, "     1→hi"),
+                fake.emit("Bash", {"command": "false"}, "exit 1", is_error=True),
+            ]
+        )
+        ctx = _make_ctx(workdir, write_scope=WriteScope(writable=["topic/**"], tool_managed=[]))
+
+        result = await _run(runtime, ctx)
+
+        call1, res1, call2, res2, _end = result
+        assert isinstance(call1, events.ToolCall) and isinstance(res1, events.ToolResult)
+        assert (call1.name, call1.args) == ("Read", {"file_path": "a.md"})
+        assert res1.call_id == call1.call_id and res1.text == "     1→hi"
+        assert res1.is_error is False
+        assert isinstance(call2, events.ToolCall) and isinstance(res2, events.ToolResult)
+        assert call2.call_id != call1.call_id
+        assert res2.call_id == call2.call_id and res2.is_error is True
+
+
 class TestWrite:
     async def test_write_within_scope_creates_file_and_success_result(self, workdir: Path) -> None:
         from studio.agent import fake

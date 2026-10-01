@@ -4,13 +4,13 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 执行中 |
 | 里程碑 | M5 之后的独立改动（无里程碑编号） |
 | 设计依据 | [对话页重做设计](../../design/2026-10-02-chat-ui-redesign.md)；事件协议基线见 [架构设计 §3.1、§4](../../design/2026-09-26-architecture.md) |
 | 分支 | `chat-ui-redesign` |
-| 批准记录 | 2026-10-02：负责人批准设计，并说明 ccproxy 网关因所在网络不通暂不测试；计划待批准 |
+| 批准记录 | 2026-10-02：负责人批准设计，并说明 ccproxy 网关因所在网络不通暂不测试；2026-10-02：负责人批准计划，执行方式为当前会话内联 |
 
-> **执行方式**：待负责人在批准计划时指定（subagent-driven / 当前会话内联）。不要默认。
+> **执行方式**：当前会话内联（2026-10-02 负责人指定）。
 
 ## 目标
 
@@ -70,7 +70,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：thinking 事件贯通后端（待开始）
+### T1：thinking 事件贯通后端（完成）
 
 - **目标**：运行时事件、落库、SSE 白名单、总线瞬时集合都认识 thinking；FakeRuntime 能脚本化产出 thinking 和任意工具调用（后续前端 L4 要用）。
 - **涉及文件**：`backend/src/studio/agent/events.py`、`agent/turn_events.py`、`agent/bus.py`、`agent/fake.py`、`api/sessions.py`；测试 `backend/tests/agent/test_runner.py`、`tests/agent/test_fake.py`、`tests/api/test_stream.py`、`tests/agent/test_bus.py`（若涉及瞬时集合断言）。
@@ -208,11 +208,11 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-10-02 — T1 — thinking 事件贯通（events/turn_events/bus/sessions/fake），后端 agent + stream 测试 440 通过
 
 ## 下一步
 
-- 等负责人批准计划并指定执行方式；批准后从 T1 开始：先在 `backend/tests/agent/test_runner.py` 写 thinking 落库/不落库的失败测试，再改 `events.py`。
+- 从 T2 开始：在 `backend/tests/agent/test_claude_runtime.py` 的 `TestEventConversion` 里先写 `thinking_delta` / `ThinkingBlock` / 空白 / 子 agent 的失败测试，再改 `claude_messages.convert_message` 与 `claude_runtime.py` 的 `ClaudeAgentOptions`。
 
 ## 决策记录
 
@@ -220,7 +220,8 @@
 
 - 2026-10-02 — 计划拆成「后端 → 实测 → 前端纯函数 → 组件 → L4」，且把真实模型实测（T4）放在前端工作之前 — thinking 是否真有内容决定后面是否值得做，失败就在最便宜的时候升级。
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
-- 2026-10-02（草稿，待批准时确认）— 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2。
+- 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
+- 2026-10-02 — 空白 thinking 在 `turn_events.handle` 里统一丢弃（而不是各运行时各自过滤） — 运行时无关、单点保证评审关注点 1；运行时转换层仍会各自跳过明显的空串。
 
 ## 意外与发现
 

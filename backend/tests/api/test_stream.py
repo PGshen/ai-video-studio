@@ -105,6 +105,20 @@ class TestStreamEventsReplay:
         await gen.aclose()
         assert bus.subscriber_count(session_id) == 0
 
+    async def test_replays_persisted_thinking_events(self, api_env: ApiEnv) -> None:
+        engine = api_env.app.state.engine
+        session_id = _session_id(engine)
+        append_event(
+            engine, turn_id="t1", session_id=session_id, type="thinking", payload={"text": "想"}
+        )
+        gen = _stream_events(engine, SessionBus(), session_id, after_seq=0)
+
+        replayed = await _next(gen)
+
+        assert replayed["event"] == "thinking"
+        assert replayed["id"] == "1"
+        await gen.aclose()
+
     async def test_reconnect_with_after_seq_has_no_loss_and_no_duplicates(
         self, api_env: ApiEnv
     ) -> None:
@@ -168,6 +182,21 @@ class TestStreamEventsLive:
         assert "id" not in message
         assert _seq_of(message) is None
 
+        await gen.aclose()
+
+    async def test_thinking_delta_is_forwarded_without_id(self, api_env: ApiEnv) -> None:
+        engine = api_env.app.state.engine
+        session_id = _session_id(engine)
+        bus = SessionBus()
+        gen = _stream_events(engine, bus, session_id, after_seq=0)
+
+        task = asyncio.ensure_future(gen.__anext__())
+        await asyncio.sleep(0)
+        bus.publish(session_id, BusEvent(type="thinking_delta", payload={"text": "想"}))
+
+        message = await asyncio.wait_for(task, timeout=1)
+        assert message["event"] == "thinking_delta"
+        assert "id" not in message
         await gen.aclose()
 
     async def test_boundary_dedup_skips_already_replayed_persistent_event(
@@ -240,10 +269,12 @@ class TestWireEventTypesEnforcement:
         await gen.aclose()
 
     def test_wire_event_types_has_exactly_the_documented_names(self) -> None:
-        """T8 简报列出 9 种；M5 T9 增加 `suggestion`（回退建议），共 10 种。"""
+        """T8 简报 9 种；M5 T9 加 `suggestion`；对话页重做加两个 thinking 事件，共 12 种。"""
         assert WIRE_EVENT_TYPES == {
             "text_delta",
             "text",
+            "thinking_delta",
+            "thinking",
             "tool_call",
             "tool_result",
             "snapshot",
@@ -635,7 +666,7 @@ class TestFakeTurnFullEventFlow:
         # 6) 快照事件必须在 turn_end（最后一条 turn_status）之前。
         assert names.index("snapshot") < len(names) - 1
 
-        transient_types = {"text_delta", "workspace_changed", "turn_status"}
+        transient_types = {"text_delta", "thinking_delta", "workspace_changed", "turn_status"}
         persisted_seqs: list[int] = []
         for frame in frames:
             if frame["event"] in transient_types:

@@ -46,7 +46,9 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-TRANSIENT_EVENT_TYPES = frozenset({"text_delta", "workspace_changed", "turn_status"})
+TRANSIENT_EVENT_TYPES = frozenset(
+    {"text_delta", "thinking_delta", "workspace_changed", "turn_status"}
+)
 
 
 @dataclass(frozen=True, slots=True)
