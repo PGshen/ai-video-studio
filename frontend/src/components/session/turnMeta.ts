@@ -14,9 +14,18 @@ export interface TurnMeta {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
+const HAS_ZONE = /(Z|[+-]\d{2}:?\d{2})$/i
+
+/**
+ * 后端（SQLite）返回的时间是**没有时区后缀的 UTC**（如 `2026-10-01T17:00:48.946620`），
+ * `new Date()` 会把它当本地时间，东八区就差 8 小时。没有时区信息时按 UTC 解析。
+ */
+export function parseServerTime(iso: string): Date {
+  return new Date(HAS_ZONE.test(iso) ? iso : `${iso}Z`)
+}
 
 export function formatClock(iso: string): string {
-  const date = new Date(iso)
+  const date = parseServerTime(iso)
   if (Number.isNaN(date.getTime())) return ''
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
@@ -59,7 +68,7 @@ export function formatTurnMeta(turn: TurnOut | undefined): TurnMeta | null {
   const tokens = tokensOf(turn.usage)
   if (tokens !== undefined) meta.tokens = tokens
   const duration = formatDuration(
-    new Date(turn.updated_at).getTime() - new Date(turn.created_at).getTime(),
+    parseServerTime(turn.updated_at).getTime() - parseServerTime(turn.created_at).getTime(),
   )
   if (duration !== undefined) meta.duration = duration
   return meta

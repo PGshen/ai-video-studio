@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { TurnOut } from '@/types/api'
 import { formatClock, formatTurnMeta } from './turnMeta'
 
+const localClock = (date: Date) =>
+  `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+
 function turn(overrides: Partial<TurnOut> = {}): TurnOut {
   const created = new Date(2026, 0, 1, 22, 53, 0)
   return {
@@ -25,6 +28,20 @@ describe('formatClock', () => {
   it('本地时间 HH:mm，补零', () => {
     expect(formatClock(new Date(2026, 0, 1, 7, 5).toISOString())).toBe('07:05')
     expect(formatClock(new Date(2026, 0, 1, 22, 53).toISOString())).toBe('22:53')
+  })
+
+  it('后端返回的时间没有时区后缀时按 UTC 解析（否则东八区会差 8 小时）', () => {
+    const utc = new Date(Date.UTC(2026, 9, 1, 17, 0, 48))
+
+    expect(formatClock('2026-10-01T17:00:48.946620')).toBe(localClock(utc))
+    expect(formatClock('2026-10-01T17:00:48')).toBe(localClock(utc))
+  })
+
+  it('带 Z 或显式偏移的时间按其自身时区解析', () => {
+    const utc = new Date(Date.UTC(2026, 9, 1, 17, 0, 48))
+
+    expect(formatClock('2026-10-01T17:00:48Z')).toBe(localClock(utc))
+    expect(formatClock('2026-10-02T01:00:48+08:00')).toBe(localClock(utc))
   })
 
   it('非法时间返回空串', () => {
@@ -84,6 +101,15 @@ describe('formatTurnMeta', () => {
 
   it('时间非法时没有用时，且整体返回 null（没有可显示的时间）', () => {
     expect(formatTurnMeta(turn({ created_at: 'bad' }))).toBeNull()
+  })
+
+  it('没有时区后缀的时间戳也能算出用时', () => {
+    const meta = formatTurnMeta(
+      turn({ created_at: '2026-10-01T17:00:48.000000', updated_at: '2026-10-01T17:00:54.000000' }),
+    )
+
+    expect(meta?.duration).toBe('6 秒')
+    expect(meta?.time).toBe(localClock(new Date(Date.UTC(2026, 9, 1, 17, 0, 48))))
   })
 
   it('updated_at 早于 created_at 时不显示用时', () => {

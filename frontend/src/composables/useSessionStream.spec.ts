@@ -831,4 +831,57 @@ describe('useSessionStream', () => {
       expect(result.items.value[0]).toMatchObject({ kind: 'user_message', turnId: 't-real', at })
     })
   })
+
+  describe('markTurnAccepted（发送接口返回 turn_id 后立刻标成排队中）', () => {
+    async function start() {
+      getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+      const { result } = await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+      return { result, onEvent }
+    }
+    const status = (turn: string, value: string) =>
+      frame('turn_status', { turn_id: turn, status: value, error: null, seq: null })
+
+    it('还没收到任何 turn_status 时，把这一轮标成 queued（瞬时事件可能被错过）', async () => {
+      const { result } = await start()
+
+      result.markTurnAccepted('t9', '你好')
+
+      expect(result.turnStatus.value).toEqual({
+        turnId: 't9',
+        status: 'queued',
+        error: null,
+        neverStarted: false,
+        userMessage: '你好',
+      })
+    })
+
+    it('之后到达的 turn_status 照常覆盖', async () => {
+      const { result, onEvent } = await start()
+      result.markTurnAccepted('t9', '你好')
+
+      onEvent(status('t9', 'running'))
+      expect(result.turnStatus.value?.status).toBe('running')
+      onEvent(status('t9', 'done'))
+      expect(result.turnStatus.value?.status).toBe('done')
+    })
+
+    it('这一轮的 turn_status 已经先到时，不降级回 queued', async () => {
+      const { result, onEvent } = await start()
+      onEvent(status('t9', 'running'))
+
+      result.markTurnAccepted('t9', '你好')
+
+      expect(result.turnStatus.value?.status).toBe('running')
+    })
+
+    it('上一轮已结束时，新一轮标成 queued', async () => {
+      const { result, onEvent } = await start()
+      onEvent(status('t1', 'done'))
+
+      result.markTurnAccepted('t2', '再来')
+
+      expect(result.turnStatus.value).toMatchObject({ turnId: 't2', status: 'queued' })
+    })
+  })
 })

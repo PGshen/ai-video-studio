@@ -175,6 +175,13 @@ export interface UseSessionStreamResult {
    */
   addLocalUserMessage: (text: string) => string
   /**
+   * 发送接口（`POST .../messages`、`.../continue`）返回 `turn_id` 后调用：先把这一轮标成
+   * `queued`。`turn_status` 是瞬时事件，面板的 SSE 连接在开发环境（vite 代理）里可能比发送
+   * 晚到后端、错过 `queued`/`running`，那样整轮都不知道自己在运行（没有停止按钮、活动组不展开）。
+   * 这一轮的状态事件已经先到时不降级；之后到达的事件照常覆盖。
+   */
+  markTurnAccepted: (turnId: string, userMessage: string) => void
+  /**
    * 撤回一条还没被真实 turn 认领的乐观占位（T13 审查修复：发送失败——
    * 409/网络错误等——如果不撤回，占位会一直留在 `items` 里、并且还占着
    * `pendingLocalMessages` 队首，导致下一次真正发出去的消息在 FIFO 里排到
@@ -284,6 +291,12 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     pendingLocalMessages.push({ placeholderId, text, at })
     items.value.push({ kind: 'user_message', turnId: placeholderId, text, at })
     return placeholderId
+  }
+
+  function markTurnAccepted(turnId: string, userMessage: string): void {
+    if (turnStatus.value?.turnId === turnId) return
+    statusVersion += 1 // 进行中的会话详情刷新早于这一轮，不能覆盖它。
+    turnStatus.value = { turnId, status: 'queued', error: null, neverStarted: false, userMessage }
   }
 
   function removeLocalUserMessage(placeholderId: string): void {
@@ -559,5 +572,13 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     disconnect()
   })
 
-  return { items, turnStatus, turns, connectionStatus, addLocalUserMessage, removeLocalUserMessage }
+  return {
+    items,
+    turnStatus,
+    turns,
+    connectionStatus,
+    addLocalUserMessage,
+    markTurnAccepted,
+    removeLocalUserMessage,
+  }
 }

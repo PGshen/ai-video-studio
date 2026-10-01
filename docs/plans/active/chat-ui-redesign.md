@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | M5 之后的独立改动（无里程碑编号） |
 | 设计依据 | [对话页重做设计](../../design/2026-10-02-chat-ui-redesign.md)；事件协议基线见 [架构设计 §3.1、§4](../../design/2026-09-26-architecture.md) |
 | 分支 | `chat-ui-redesign` |
@@ -50,11 +50,11 @@
 - [x] AC3：OpenAI 运行时把 `response.reasoning_summary_text.delta` 与 `ReasoningItem` 摘要转成 thinking 事件；`model_settings` 带 `reasoning.summary="auto"` 且不破坏既有 `store=False` / `response_include` 断言。（验证：`tests/agent/test_openai_runtime.py`）
 - [x] AC4：真实模型实测——Claude 本机登录与 OpenAI（OpenRouter）各一轮，记录是否出现 thinking 文本及内容形态；结论写入 references，证据文件在 `data/evidence/`。（验证：`make smoke` 日志）
 - [x] AC5：`groupTimeline` 按设计 §2 分组（同 turn 连续 thinking/tool_call；遇其它条目断开；末尾组标 `running`）；`toolPresentation` 对 7 类工具、两个运行时的名字与参数给出正确的种类与摘要，未知工具走 `generic`；`webSearchResult` 解析自建与 Claude 原生两种格式，失败回退原文。（验证：对应 `.spec.ts`）
-- [ ] AC6：折叠规则：运行中的末尾组展开、turn 结束或后面出现文本后折叠、历史回放折叠；行默认折叠、出错行展开；用户手动状态优先且不随会话切换串线。（验证：组件测试 + L4）
-- [ ] AC7：Read / Write(Edit/apply_patch) / Glob / Grep / Bash / WebSearch / WebFetch 的展开正文符合设计 §5 表格；运行中转圈、出错变红、被中断显示「已中断」。（验证：组件测试 + L4 截图）
-- [ ] AC8：助手回复渲染 Markdown 且不执行模型输出里的 HTML；用户气泡下有时间与复制；回复操作栏显示复制、用量、用时、时间，数据缺失时整行不显示。（验证：组件测试 + L4 截图）
+- [x] AC6：折叠规则：运行中的末尾组展开、turn 结束或后面出现文本后折叠、历史回放折叠；行默认折叠、出错行展开；用户手动状态优先且不随会话切换串线。（验证：组件测试 + L4）
+- [x] AC7：Read / Write(Edit/apply_patch) / Glob / Grep / Bash / WebSearch / WebFetch 的展开正文符合设计 §5 表格；运行中转圈、出错变红、被中断显示「已中断」。（验证：组件测试 + L4 截图）
+- [x] AC8：助手回复渲染 Markdown 且不执行模型输出里的 HTML；用户气泡下有时间与复制；回复操作栏显示复制、用量、用时、时间，数据缺失时整行不显示。（验证：组件测试 + L4 截图）
 - [ ] AC9：L4——`make dev` 下用演示脚本跑一轮含 thinking 与 7 类工具的对话，并用本机 Claude 登录真实跑一轮；折叠/展开、运行中、出错行截图存证。
-- [ ] AC10：ADR、references、ARCHITECTURE、glossary、QUALITY 已更新；`make check` 全绿；收尾清单（SOP §7）完成。
+- [x] AC10：ADR、references、ARCHITECTURE、glossary、QUALITY 已更新；`make check` 全绿；收尾清单（SOP §7）完成。
 
 ## 评审关注点
 
@@ -192,7 +192,7 @@
 - **完成标准**：测试通过；`make check` 为绿。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/components/session`，然后 `make check`
 
-### T10：演示脚本、L4 验收与收尾（待开始）
+### T10：演示脚本、L4 验收与收尾（完成，独立评审待做）
 
 - **目标**：端到端确认真实界面效果，完成文档收尾。
 - **涉及文件**：`backend/src/studio/agent/fake.py`（`default_fake_script`：用户消息等于 `/demo-activity` 时返回演示脚本，含 `think`、Read/Glob/Grep/Bash/WebSearch/WebFetch/Write 的 `emit`、一个出错的 `emit`、最后一句带 Markdown 表格的 `say`；加测试）；`docs/ARCHITECTURE.md`（session 组件结构）、`docs/glossary.md`（活动组、thinking）、`docs/quality/QUALITY.md`；删除无引用的旧组件（若 `ai-elements/tool/*` 仍被引用则保留，在 tech-debt 登记）；计划文件的「验证记录」。
@@ -217,10 +217,11 @@
 - 2026-10-02 — T7 — 活动组骨架：`SessionTimeline`/`ActivityGroup`/`ActivityRow`/`ToolPane`/`ThinkingBody`/`GenericBody`/`useDisclosure`，`SessionPanel` 已接入，旧 `ai-elements/tool` 不再被引用；会话组件 154 个用例通过
 - 2026-10-02 — T8 — 七类工具专属正文（Read/Write/Glob/Grep/Bash/WebSearch/WebFetch）+ `ErrorPane`/`CodeView`/`DiffView`、`codeLanguage`/`readResult`/`isHttpUrl`；会话组件 205 个用例通过
 - 2026-10-02 — T9 — 助手/思考文本渲染 Markdown 并转义原始 HTML（`markdownSafe`）、流式光标、用户气泡时间 + 复制、`ReplyFooter`（用量/用时/时间/复制）、turn 结束后刷新 turn 元数据；前端 306 个相关用例通过
+- 2026-10-02 — T10 — `/demo-activity` 演示脚本；隔离数据目录下 L4 走查（运行中/自动折叠/七类工具/出错行/历史回放折叠/窄屏），修了 L4 发现的 4 个问题（见决策记录）；删除无引用的 `ai-elements/tool/*`；ARCHITECTURE/glossary/QUALITY/tech-debt（TD-44~46）/references 已更新
 
 ## 下一步
 
-- 从 T10 开始：先给 `backend/src/studio/agent/fake.py` 的 `default_fake_script` 写失败测试（`tests/agent/test_fake.py`：用户消息等于 `/demo-activity` 时返回演示脚本——`think`、Read/Glob/Grep/Bash/WebSearch/WebFetch/Write 的 `emit`、一个出错的 `emit`、末句带 Markdown 表格的 `say`；其它消息行为不变）；再实现。然后 `make dev` + 内置浏览器做 L4（控制者亲自做，见本计划 T10 与 AC9）：演示脚本一轮 + 本机 Claude 登录真实跑一轮（任务型提示，见 ADR 0013），桌面与窄屏各看一次，截图存证到 `data/evidence/chat-ui-redesign/`；之后独立评审（`code-review`）、文档收尾（ARCHITECTURE/glossary/QUALITY，无引用的旧组件登记 tech-debt）、更新「验证记录」。
+- 独立评审：对分支跑一次 `code-review`（SOP §3 步骤 5），逐条处理；然后负责人验收（AC9 的「真实模型走一轮」只做了一半，见验证记录），验收后把本计划移到 `plans/completed/`、状态改「已完成」，分支合并由负责人决定。
 
 ## 决策记录
 
@@ -230,6 +231,10 @@
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
 - 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
+- 2026-10-02 — T10 L4 发现并修复的问题：① 后端时间戳是没有时区的 UTC，`formatClock` 直接 `new Date()` 在东八区差 8 小时，新增 `parseServerTime`（无时区后缀按 UTC 解析，先写失败测试）；② 思考正文被 Markdown 根节点的前景色盖掉，改 wrapper + `text-inherit!`；③ 代码块内容以换行结尾时多出一个空行号，`CodeView` 去掉末尾一个换行；④ 新建会话的首轮 `turnStatus` 为空（预存在的问题，改动前的前端同样复现），用发送接口返回的 `turn_id` 调新增的 `markTurnAccepted` 缓解（`useSessionStream` 新增导出，`SessionPanel` 的发送/继续两处调用）；根因没查清，登记 TD-44。
+- 2026-10-02 — T10 演示脚本的触发判断是「提示词最后一行等于 `/demo-activity`」而不是整串相等 — `TurnRunner` 在用户消息前拼了上下文前言（L4 里第一次没触发才发现，先加失败测试再改）。
+- 2026-10-02 — T10 删除 `components/ai-elements/tool/*`（生成代码，已无任何引用），并更新 `docs/references/frontend-stack.md` — 计划「不包含」里写的是「最终无引用时才删除」；需要时可用 shadcn-vue CLI 重新生成。
+- 2026-10-02 — T10 L4 在隔离的数据目录（会话临时目录）和 8001/5174 端口上做，临时改了 `.claude/launch.json`（用完 `git checkout` 恢复），没有碰负责人正在运行的 8000/5173 开发实例和真实数据；另用 git worktree 起过一个改动前的前端对照实例（已删除）。
 - 2026-10-02 — T9 原始 HTML 的处理：`vue-stream-markdown` 没有关闭 HTML 的选项且默认会把 `<script>` 渲染进 DOM（探针实测；内容被它拆乱所以不会按原样执行，但不能依赖），所以在交给它之前用 `escapeRawHtml` 转义代码以外的 `<`（围栏/行内代码保持原样）；助手文本和思考正文都走它；代价：Markdown 里合法的 `<https://…>` 自动链接和内联 HTML 标签都变成文本。
 - 2026-10-02 — T9 turn 元数据刷新：`turn_status` 为非运行态（done/failed/cancelled/budget_exceeded/interrupted）时重新 `GET /sessions/{id}`，否则 `turns` 里新 turn 的 usage/updated_at 是 snapshot 时刻的旧值，操作栏拿不到最终用量 — 每个 turn 多一次会话详情请求；`refreshTurnStatus` 的竞态保护（`statusVersion`/`generation`）沿用。
 - 2026-10-02 — T9 `UserMessageItem` 新增可选 `at`（乐观占位的发送时间），被真实 turn 认领后保留 — 真实 turn 元数据到达之前气泡下也有时间；既有 7 个 `toEqual` 用例同步加了 `at: expect.any(String)`。
@@ -248,6 +253,9 @@
 
 ## 意外与发现
 
+- 2026-10-02 — 开发环境（vite 代理）下，空会话的 SSE 响应头要等第一个事件才放出（curl 直连后端立刻有头，经 5174 没有）；新会话首轮因此错过瞬时的 `turn_status`。改动前的前端同样复现，已缓解并登记 TD-44。
+- 2026-10-02 — `uvicorn --reload` 在浏览器连着 SSE 时，改文件触发的重载会卡在「Waiting for connections to close」（与 TD-22 同源），L4 期间重启了一次 API 实例。
+- 2026-10-02 — `vue-stream-markdown` 默认会把 Markdown 里的原始 `<script>` 渲染成真实 DOM 元素（内容被它拆乱所以不会按原样执行），且没有关闭 HTML 的选项；因此在 `markdownSafe.escapeRawHtml` 里转义。
 - 2026-10-02 — Claude 的 `thinking` 必须带 `display: "summarized"`，否则 `thinking_delta`/`ThinkingBlock` 的文本是空串；adaptive 对无关小问题（项目阶段提示下 4/4）不思考，任务型提示会在每次工具调用前思考。已写进 references 与 ADR 0013；冒烟提示因此改成任务型。
 - 2026-10-02 — OpenAI 的 reasoning 摘要带 markdown 粗体小标题（如 `**Inspecting tools and files**`）。T7 的 `ThinkingBody` 展示时要能容忍（见 T7 决策）。
 - 2026-10-02 — Agents SDK 的 `LitellmModel` 在 chat-completions 路径会忽略 `reasoning.summary` 并每次调用打警告（`litellm_model.py` `_get_reasoning_effort`）；因此 LiteLLM 路径不设 `reasoning`，已有测试固定。
@@ -258,4 +266,17 @@
 
 ## 验证记录
 
-- 无
+后端 `make check`：1393 个测试通过；前端 vitest：52 个文件、561 个用例通过。证据文件在 `data/evidence/chat-ui-redesign/`（不进 git）：`smoke/`（真实模型冒烟）、`l4/`（浏览器截图）。
+
+| AC | 证据 |
+|---|---|
+| AC1 | `tests/agent/test_runner.py::TestThinking`（落库/不落库/不计步/空白丢弃）、`tests/api/test_stream.py`（`WIRE_EVENT_TYPES` 共 12 种、`thinking` 回放、`thinking_delta` 无 id）、`tests/agent/test_bus.py` |
+| AC2 | `tests/agent/test_claude_runtime.py::TestThinkingConversion` + `TestOptions::test_core_options`（`thinking={"type": "adaptive", "display": "summarized"}`） |
+| AC3 | `tests/agent/test_openai_runtime.py::TestThinkingConversion`（含 LiteLLM 路径不设 `reasoning`） |
+| AC4 | `make smoke SMOKE_ARGS="-k thinking_claude_login"`：本机 Claude 登录一轮 6 个 thinking 块、181 个 delta（任务型提示）；`-k thinking_openai`：经 OpenRouter 的 OpenAI 一轮 2 个块、281 个 delta，第二轮回放通过；证据 `smoke/*thinking*.json`；**ccproxy 网关未测**（负责人网络不通）；关于 adaptive 的实测事实写进了 references 与 ADR 0013 |
+| AC5 | `groupTimeline.spec.ts`、`toolPresentation.spec.ts`（7 类 × 2 运行时表驱动 + 畸形参数）、`webSearchResult.spec.ts`、`turnMeta.spec.ts`、`codeLanguage.spec.ts`、`readResult.spec.ts` |
+| AC6 | `useDisclosure.spec.ts`、`ActivityGroup.spec.ts`、`SessionTimeline.spec.ts`；L4：`l4/02-running-group-expanded.jpg`（运行中展开）→ `03-finished-collapsed-markdown-footer.jpg`（结束后自动折叠）；`01-history-replay-collapsed.jpg`（历史回放折叠）；手动展开/行展开后状态保持（`04`、`05`） |
+| AC7 | `tool-bodies/toolBodies.spec.ts`（7 类 × 两个运行时、出错/截断/空结果/畸形参数/`javascript:` 链接）；L4：`05-read-expanded`、`06-glob-grep-bash`、`07-write-error-thinking`（含出错行「失败」+ 错误面板）、`08-websearch-webfetch`；「已中断」仅有单测（`ActivityGroup.spec.ts`），L4 未复现 |
+| AC8 | `SessionTimelineItem.spec.ts`（Markdown 表格/行内代码、`<script>`/`<img onerror>`/事件属性不进 DOM、流式光标、用户时间/复制）、`ReplyFooter.spec.ts`、`markdownSafe.spec.ts`；L4：`03-finished-collapsed-markdown-footer.jpg` |
+| AC9 | **部分**。演示脚本（`/demo-activity`，隔离数据目录，1.5 秒假延迟）完整走通：运行中/折叠/七类工具/出错行/窄屏（`l4/` 9 张）；修复首轮状态后用 DOM 采样确认「思考中…」→「运行中 · 第 N 次工具调用」+ 停止按钮。**真实模型（本机 Claude 登录）**：跑了一轮任务型提示，工具数从 2 涨到 3 时组头还是静态「N 次工具调用」（当时首轮状态缺失的预存在问题，之后已缓解），修复后没能再对真实模型截图（浏览器面板被收起，截图超时）；真实模型的 thinking/工具渲染由冒烟事件流（AC4）和演示脚本共同覆盖 |
+| AC10 | ADR 0013、references（claude-agent-sdk / openai-agents-sdk / frontend-stack）、ARCHITECTURE、glossary、QUALITY、tech-debt（TD-44~46）已更新；`make check` 全绿；收尾清单（SOP §7）其余项等验收后做 |

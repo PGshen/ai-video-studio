@@ -44,7 +44,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'sent'): void }>()
 
 const sessionIdRef = toRef(props, 'sessionId')
-const { items, turnStatus, turns, addLocalUserMessage, removeLocalUserMessage } =
+const { items, turnStatus, turns, addLocalUserMessage, markTurnAccepted, removeLocalUserMessage } =
   useSessionStream(sessionIdRef)
 
 /** 正在排队/运行的 turn：活动组据此决定展开与转圈。 */
@@ -78,7 +78,10 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
   if (!text || !props.sessionId) return
   sendError.value = null
   try {
-    await optimisticSend(optimisticMessages, text, () => sendMutation.mutateAsync({ text }))
+    await optimisticSend(optimisticMessages, text, async () => {
+      const accepted = await sendMutation.mutateAsync({ text })
+      markTurnAccepted(accepted.turn_id, text)
+    })
     emit('sent')
   } catch (error) {
     sendError.value = describeError(error)
@@ -100,7 +103,10 @@ async function onContinue(): Promise<void> {
     // original message when the last turn never started (TD-19).
     const state = turnStatus.value
     const text = state?.neverStarted && state.userMessage ? state.userMessage : CONTINUE_TEXT
-    await optimisticSend(optimisticMessages, text, () => continueMutation.mutateAsync())
+    await optimisticSend(optimisticMessages, text, async () => {
+      const accepted = await continueMutation.mutateAsync()
+      markTurnAccepted(accepted.turn_id, text)
+    })
   } catch (error) {
     sendError.value = describeError(error)
   }
