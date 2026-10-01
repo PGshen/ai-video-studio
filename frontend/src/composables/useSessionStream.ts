@@ -72,6 +72,8 @@ export interface UserMessageItem {
   kind: 'user_message'
   turnId: string
   text: string
+  /** 乐观占位的发送时间（ISO）：真实 turn 的元数据到达之前，气泡下的时间用它。 */
+  at?: string
 }
 
 export interface TextItem {
@@ -216,7 +218,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   const userMessageInserted = new Set<string>()
   const toolCallIndex = new Map<string, number>()
   // 乐观插入、还没被真实 turn 认领的占位（FIFO：先发送的消息先配对）。
-  let pendingLocalMessages: { placeholderId: string; text: string }[] = []
+  let pendingLocalMessages: { placeholderId: string; text: string; at: string }[] = []
   let localMessageCounter = 0
 
   // 审查发现的竞态（`sessionId` 在上一次 `watch` 回调还卡在 `await
@@ -278,8 +280,9 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   function addLocalUserMessage(text: string): string {
     const placeholderId = `local-${localMessageCounter}`
     localMessageCounter += 1
-    pendingLocalMessages.push({ placeholderId, text })
-    items.value.push({ kind: 'user_message', turnId: placeholderId, text })
+    const at = new Date().toISOString()
+    pendingLocalMessages.push({ placeholderId, text, at })
+    items.value.push({ kind: 'user_message', turnId: placeholderId, text, at })
     return placeholderId
   }
 
@@ -303,7 +306,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
         (item) => item.kind === 'user_message' && item.turnId === pending.placeholderId,
       )
       if (idx !== -1) {
-        items.value[idx] = { kind: 'user_message', turnId, text: pending.text }
+        items.value[idx] = { kind: 'user_message', turnId, text: pending.text, at: pending.at }
         return
       }
     }
@@ -472,8 +475,9 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
           neverStarted: false,
           userMessage: known?.user_message ?? null,
         }
-        // `never_started` is only computed by the backend's session detail (TD-19).
-        if (payload.status === 'interrupted') void refreshTurnStatus(id, myGeneration)
+        // `never_started` is only computed by the backend's session detail (TD-19); the
+        // final usage/duration of a finished turn (reply footer) also only comes from there.
+        if (!isBusy(payload.status)) void refreshTurnStatus(id, myGeneration)
         // 项目详情（`ProjectDetailOut.busy`）失效：当前会话的 turn 一
         // 开始/结束，画布的只读判断（T14 审查修复：`combineBusy`）应该
         // 立刻反映，不等 `useProjectQuery` 的 3 秒轮询周期。只有

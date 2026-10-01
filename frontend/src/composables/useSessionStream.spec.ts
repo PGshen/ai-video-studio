@@ -405,7 +405,7 @@ describe('useSessionStream', () => {
 
     result.addLocalUserMessage('乐观插入的问题')
     expect(result.items.value).toEqual([
-      { kind: 'user_message', turnId: 'local-0', text: '乐观插入的问题' },
+      { kind: 'user_message', turnId: 'local-0', text: '乐观插入的问题', at: expect.any(String) },
     ])
 
     onEvent(frame('turn_status', { turn_id: 't1', status: 'queued', error: null, seq: null }))
@@ -413,7 +413,7 @@ describe('useSessionStream', () => {
 
     // 占位项被原地替换成真实 turnId，不是额外插入一条、也没有留下空文本占位。
     expect(result.items.value).toEqual([
-      { kind: 'user_message', turnId: 't1', text: '乐观插入的问题' },
+      { kind: 'user_message', turnId: 't1', text: '乐观插入的问题', at: expect.any(String) },
       { kind: 'text', turnId: 't1', text: '好的', streaming: true },
     ])
   })
@@ -429,9 +429,9 @@ describe('useSessionStream', () => {
     onEvent(frame('text', { turn_id: 't2', text: '回复2', seq: 2 }))
 
     expect(result.items.value).toEqual([
-      { kind: 'user_message', turnId: 't1', text: '第一条' },
+      { kind: 'user_message', turnId: 't1', text: '第一条', at: expect.any(String) },
       { kind: 'text', turnId: 't1', text: '回复1', streaming: false },
-      { kind: 'user_message', turnId: 't2', text: '第二条' },
+      { kind: 'user_message', turnId: 't2', text: '第二条', at: expect.any(String) },
       { kind: 'text', turnId: 't2', text: '回复2', streaming: false },
     ])
   })
@@ -464,7 +464,7 @@ describe('useSessionStream', () => {
     // 第一条消息的发送请求本身失败（409/网络错误），从没真正创建 turn。
     const failedId = result.addLocalUserMessage('发送失败的消息')
     expect(result.items.value).toEqual([
-      { kind: 'user_message', turnId: failedId, text: '发送失败的消息' },
+      { kind: 'user_message', turnId: failedId, text: '发送失败的消息', at: expect.any(String) },
     ])
     result.removeLocalUserMessage(failedId)
     expect(result.items.value).toEqual([])
@@ -475,7 +475,7 @@ describe('useSessionStream', () => {
     onEvent(frame('text', { turn_id: 't1', text: '收到', seq: 1 }))
 
     expect(result.items.value).toEqual([
-      { kind: 'user_message', turnId: 't1', text: '真正发出去的消息' },
+      { kind: 'user_message', turnId: 't1', text: '真正发出去的消息', at: expect.any(String) },
       { kind: 'text', turnId: 't1', text: '收到', streaming: false },
     ])
   })
@@ -493,7 +493,7 @@ describe('useSessionStream', () => {
     result.removeLocalUserMessage(placeholderId)
 
     expect(result.items.value).toEqual([
-      { kind: 'user_message', turnId: 't1', text: '已经配对成功的消息' },
+      { kind: 'user_message', turnId: 't1', text: '已经配对成功的消息', at: expect.any(String) },
       { kind: 'text', turnId: 't1', text: '回复', streaming: false },
     ])
   })
@@ -783,5 +783,52 @@ describe('useSessionStream', () => {
 
     expect([...result.turns.value.keys()].sort()).toEqual(['t1', 't2'])
     expect(result.turns.value.get('t1')?.status).toBe('done')
+  })
+
+  describe('turn 元数据与用户消息时间', () => {
+    it('turn 结束（turn_status done）后重新拉取会话详情，turns 拿到最终的用量和时间', async () => {
+      getSessionMock.mockResolvedValueOnce(sessionDetail({ turns: [turnFixture('running')] }))
+      const { result } = await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+      getSessionMock.mockResolvedValueOnce(
+        sessionDetail({
+          turns: [{ ...turnFixture('done'), usage: { input_tokens: 5, output_tokens: 7 } }],
+        }),
+      )
+
+      onEvent(frame('turn_status', { turn_id: 't1', status: 'done', error: null, seq: null }))
+      await flushAsync()
+
+      expect(getSessionMock).toHaveBeenCalledTimes(2)
+      expect(result.turns.value.get('t1')?.usage).toEqual({ input_tokens: 5, output_tokens: 7 })
+    })
+
+    it('运行中的 turn_status 不触发刷新', async () => {
+      getSessionMock.mockResolvedValue(sessionDetail({ turns: [turnFixture('running')] }))
+      await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+      onEvent(frame('turn_status', { turn_id: 't1', status: 'running', error: null, seq: null }))
+      await flushAsync()
+
+      expect(getSessionMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('乐观占位带发送时间，被真实 turn 认领后保留', async () => {
+      getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+      const { result } = await setup('s1')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+      result.addLocalUserMessage('你好')
+      const placeholder = result.items.value[0]
+      expect(placeholder).toMatchObject({ kind: 'user_message', turnId: 'local-0' })
+      const at = (placeholder as { at?: string }).at
+      expect(typeof at).toBe('string')
+      expect(Number.isNaN(new Date(at!).getTime())).toBe(false)
+
+      onEvent(frame('text', { turn_id: 't-real', text: '收到', seq: 1 }))
+
+      expect(result.items.value[0]).toMatchObject({ kind: 'user_message', turnId: 't-real', at })
+    })
   })
 })

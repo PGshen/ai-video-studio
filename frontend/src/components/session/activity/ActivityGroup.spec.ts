@@ -144,4 +144,17 @@ describe('ActivityGroup 行', () => {
     const streaming = await opened(grp([thought('想中', true)], true), false)
     expect(rows(streaming.wrapper)[0]!.text()).toContain('思考中')
   })
+
+  it('思考正文里的原始 HTML 当文本显示，不产生 script / img', async () => {
+    const { wrapper } = await opened(grp([thought('先看<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>')]))
+
+    await rows(wrapper)[0]!.get('button').trigger('click')
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await flushPromises()
+
+    expect(wrapper.find('script').exists()).toBe(false)
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.text()).toContain('<script>alert(1)</script>')
+  })
 })

@@ -3,7 +3,7 @@
  * 工具正文的统一外框（设计 §4.3）：标题栏（左：标题/文件名；右：语言、「复制」）+ 限高可滚动
  * 的内容区。复制失败（无剪贴板权限等）时静默，不影响界面。
  */
-import { ref } from 'vue'
+import { useCopy } from './useCopy'
 
 const props = defineProps<{
   /** 标题栏文字；需要图标/状态点时改用 `title` 插槽。 */
@@ -14,19 +14,10 @@ const props = defineProps<{
   tone?: 'default' | 'error'
 }>()
 
-const copied = ref(false)
+const { copied, copy } = useCopy()
 
-async function copy(): Promise<void> {
-  if (props.copyText === undefined) return
-  try {
-    await navigator.clipboard.writeText(props.copyText)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 1500)
-  } catch {
-    /* clipboard unavailable */
-  }
+function copyAll(): Promise<void> {
+  return props.copyText === undefined ? Promise.resolve() : copy(props.copyText)
 }
 </script>
 
@@ -48,7 +39,7 @@ async function copy(): Promise<void> {
           type="button"
           class="hover:text-foreground"
           data-testid="tool-pane-copy"
-          @click="copy"
+          @click="copyAll"
         >{{ copied ? '已复制' : '复制' }}</button>
       </span>
     </div>

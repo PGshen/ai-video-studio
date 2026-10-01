@@ -179,7 +179,7 @@
 - **完成标准**：测试通过；`make check` 为绿。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/components/session/activity`，然后 `make check`
 
-### T9：消息样式、Markdown 与元信息（待开始）
+### T9：消息样式、Markdown 与元信息（完成）
 
 - **目标**：助手回复渲染 Markdown；用户气泡带时间与复制；回复末尾操作栏。
 - **涉及文件**：`SessionTimelineItem.vue`、新建 `activity/ReplyFooter.vue`、`SessionTimeline.vue`（把 turn 最后一条助手文本后插入 `ReplyFooter`）；复用 `ai-elements/message/MessageResponse.vue`（`vue-stream-markdown`）。
@@ -216,10 +216,11 @@
 - 2026-10-02 — T6 — 四个纯函数（`groupTimeline`/`toolPresentation`/`webSearchResult`/`turnMeta`）+ 133 个会话组件用例通过
 - 2026-10-02 — T7 — 活动组骨架：`SessionTimeline`/`ActivityGroup`/`ActivityRow`/`ToolPane`/`ThinkingBody`/`GenericBody`/`useDisclosure`，`SessionPanel` 已接入，旧 `ai-elements/tool` 不再被引用；会话组件 154 个用例通过
 - 2026-10-02 — T8 — 七类工具专属正文（Read/Write/Glob/Grep/Bash/WebSearch/WebFetch）+ `ErrorPane`/`CodeView`/`DiffView`、`codeLanguage`/`readResult`/`isHttpUrl`；会话组件 205 个用例通过
+- 2026-10-02 — T9 — 助手/思考文本渲染 Markdown 并转义原始 HTML（`markdownSafe`）、流式光标、用户气泡时间 + 复制、`ReplyFooter`（用量/用时/时间/复制）、turn 结束后刷新 turn 元数据；前端 306 个相关用例通过
 
 ## 下一步
 
-- 从 T9 开始：先写失败测试再改 `SessionTimelineItem.vue`（助手文本用 `MessageResponse` 渲染 Markdown、流式光标、用户气泡下的 `HH:mm` + 复制）和新建 `activity/ReplyFooter.vue`（用 `formatTurnMeta(turns.get(turnId))`，`null` 时不渲染），在 `SessionTimeline.vue` 里把 footer 插在每个 turn 最后一个助手文本块之后（仅该 turn 非运行态）。`SessionTimeline` 已经收到 `turns` 和 `runningTurnId`。Markdown 必须用 `<script>`、`<img onerror>` 文本测一遍不产生节点。别用 `../` 相对导入（eslint 禁止）。
+- 从 T10 开始：先给 `backend/src/studio/agent/fake.py` 的 `default_fake_script` 写失败测试（`tests/agent/test_fake.py`：用户消息等于 `/demo-activity` 时返回演示脚本——`think`、Read/Glob/Grep/Bash/WebSearch/WebFetch/Write 的 `emit`、一个出错的 `emit`、末句带 Markdown 表格的 `say`；其它消息行为不变）；再实现。然后 `make dev` + 内置浏览器做 L4（控制者亲自做，见本计划 T10 与 AC9）：演示脚本一轮 + 本机 Claude 登录真实跑一轮（任务型提示，见 ADR 0013），桌面与窄屏各看一次，截图存证到 `data/evidence/chat-ui-redesign/`；之后独立评审（`code-review`）、文档收尾（ARCHITECTURE/glossary/QUALITY，无引用的旧组件登记 tech-debt）、更新「验证记录」。
 
 ## 决策记录
 
@@ -229,6 +230,9 @@
 - 2026-10-02 — ccproxy 网关相关验证整体排除 — 负责人当前网络不通；Claude 侧只用本机登录验证，网关路径留待之后补测（在 QUALITY 里标「未验证」）。
 - 2026-10-02 — 折叠行默认全部折叠、仅出错行展开；运行中的末尾组默认展开 — 见设计 §4.2（负责人批准计划时一并确认）。
 - 2026-10-02 — T3 `model_settings`：只有 `provider=openai`（官方与网关两个分支）带 `reasoning=Reasoning(summary="auto")`，LiteLLM 路径不带（计划原文「两个分支」指这两个 openai 分支） — SDK 在 chat-completions 路径会忽略 summary 并警告；LiteLLM 路径仍会透传 provider 自己流出的 reasoning（chatcmpl 流处理器产出同名事件）；代价：LiteLLM 路径能否出现 thinking 取决于 provider，待 T4 之外的真实 DeepSeek 用例观察（不在本计划验收）。
+- 2026-10-02 — T9 原始 HTML 的处理：`vue-stream-markdown` 没有关闭 HTML 的选项且默认会把 `<script>` 渲染进 DOM（探针实测；内容被它拆乱所以不会按原样执行，但不能依赖），所以在交给它之前用 `escapeRawHtml` 转义代码以外的 `<`（围栏/行内代码保持原样）；助手文本和思考正文都走它；代价：Markdown 里合法的 `<https://…>` 自动链接和内联 HTML 标签都变成文本。
+- 2026-10-02 — T9 turn 元数据刷新：`turn_status` 为非运行态（done/failed/cancelled/budget_exceeded/interrupted）时重新 `GET /sessions/{id}`，否则 `turns` 里新 turn 的 usage/updated_at 是 snapshot 时刻的旧值，操作栏拿不到最终用量 — 每个 turn 多一次会话详情请求；`refreshTurnStatus` 的竞态保护（`statusVersion`/`generation`）沿用。
+- 2026-10-02 — T9 `UserMessageItem` 新增可选 `at`（乐观占位的发送时间），被真实 turn 认领后保留 — 真实 turn 元数据到达之前气泡下也有时间；既有 7 个 `toEqual` 用例同步加了 `at: expect.any(String)`。
 - 2026-10-02 — T8 错误面板不在 `ToolBody` 统一追加，而是新增 `ErrorPane` 由各正文自己放置 — 先实现成统一追加后发现 `Write` 缺参数退回 `GenericBody` 时错误会出现两次（已加失败测试复现再重构）；`bash` 的输出本身就是结果，失败时红色显示、不另出错误面板。
 - 2026-10-02 — T8 Read 结果：每行带 `行号→` 且从 1 开始连续时去掉前缀、交给代码块自己编号；起始行号不是 1（带 offset）时保留原文逐行显示（代码块行号从 1 开始，会对不上） — Claude 的 `Read` 结果实测格式；代价：带 offset 的读取没有语法高亮。
 - 2026-10-02 — T8 的 WebFetch 正文用纯文本 `<pre>`，没有渲染 Markdown — 设计 §5 写的是「正文文本块」；Claude 原生 WebFetch 的结果其实是模型总结的 Markdown，显示成原文也可读；若 L4 看着太糙再改（一行改动）。

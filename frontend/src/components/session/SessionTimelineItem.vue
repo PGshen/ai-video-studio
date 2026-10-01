@@ -2,31 +2,79 @@
 /**
  * 时间线里「非活动」条目的渲染：用户消息/助手文本用 @ai-elements 的 Message，
  * notice/error/snapshot/suggestion 用简单的提示条。思考和工具调用由 `SessionTimeline` 归成
- * 活动组渲染（`activity/`），不会到这里。
+ * 活动组渲染（`activity/`），不会到这里。助手文本渲染 Markdown，原始 HTML 先转义（`markdownSafe`）。
  */
-import { Message, MessageContent } from '@/components/ai-elements/message'
+import { computed } from 'vue'
+import { CheckIcon, CopyIcon } from '@lucide/vue'
+import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
+import type { TurnOut } from '@/types/api'
+import { useCopy } from './activity/useCopy'
 import type { PlainItem } from './groupTimeline'
+import { escapeRawHtml } from './markdownSafe'
 import { noticeText } from './noticeText'
 import SuggestionCard from './SuggestionCard.vue'
 import { snapshotEventLabel } from './snapshotReason'
+import { formatClock } from './turnMeta'
 
-defineProps<{ item: PlainItem; projectId: string | null }>()
+const props = defineProps<{
+  item: PlainItem
+  projectId: string | null
+  turns?: ReadonlyMap<string, TurnOut>
+}>()
+
+const { copied, copy } = useCopy()
+
+/** 用户气泡下的时间：优先用 turn 的创建时间，其次是乐观占位的发送时间；都没有就不显示。 */
+const userTime = computed(() => {
+  if (props.item.kind !== 'user_message') return ''
+  return formatClock(props.turns?.get(props.item.turnId)?.created_at ?? props.item.at ?? '')
+})
 </script>
 
 <template>
-  <Message
+  <div
     v-if="item.kind === 'user_message'"
-    from="user"
+    class="flex flex-col items-end gap-1"
   >
-    <MessageContent>{{ item.text }}</MessageContent>
-  </Message>
+    <Message from="user">
+      <MessageContent>{{ item.text }}</MessageContent>
+    </Message>
+    <div class="text-muted-foreground flex items-center gap-3 text-xs">
+      <span
+        v-if="userTime"
+        data-testid="user-time"
+      >{{ userTime }}</span>
+      <button
+        type="button"
+        class="hover:text-foreground"
+        aria-label="复制消息"
+        data-testid="user-copy"
+        @click="copy(item.text)"
+      >
+        <CheckIcon
+          v-if="copied"
+          class="size-4"
+        />
+        <CopyIcon
+          v-else
+          class="size-4"
+        />
+      </button>
+    </div>
+  </div>
 
   <Message
     v-else-if="item.kind === 'text'"
     from="assistant"
+    class="max-w-full"
   >
-    <MessageContent :class="item.streaming ? 'opacity-70' : ''">
-      {{ item.text }}
+    <MessageContent class="w-full">
+      <MessageResponse :content="escapeRawHtml(item.text)" />
+      <span
+        v-if="item.streaming"
+        class="animate-pulse"
+        data-testid="stream-cursor"
+      >▍</span>
     </MessageContent>
   </Message>
 

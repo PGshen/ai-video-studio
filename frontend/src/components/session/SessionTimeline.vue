@@ -7,6 +7,7 @@ import { computed, toRef } from 'vue'
 import type { TimelineItem } from '@/composables/useSessionStream'
 import type { TurnOut } from '@/types/api'
 import ActivityGroup from './activity/ActivityGroup.vue'
+import ReplyFooter from './activity/ReplyFooter.vue'
 import { useDisclosure } from './activity/useDisclosure'
 import { groupTimeline } from './groupTimeline'
 import SessionTimelineItem from './SessionTimelineItem.vue'
@@ -21,6 +22,22 @@ const props = defineProps<{
 }>()
 
 const blocks = computed(() => groupTimeline(props.items, props.runningTurnId))
+
+/** 每个已结束的 turn 在它最后一段助手文本后放一个操作栏：块下标 → { turnId, 文本 }。 */
+const footers = computed(() => {
+  const lastText = new Map<string, number>()
+  blocks.value.forEach((block, index) => {
+    if (block.kind === 'text' && !block.streaming) lastText.set(block.turnId, index)
+  })
+  const result = new Map<number, { turnId: string; text: string }>()
+  for (const [turnId, index] of lastText) {
+    const block = blocks.value[index]
+    if (turnId !== props.runningTurnId && block?.kind === 'text') {
+      result.set(index, { turnId, text: block.text })
+    }
+  }
+  return result
+})
 const disclosure = useDisclosure(toRef(props, 'sessionId'))
 </script>
 
@@ -40,6 +57,13 @@ const disclosure = useDisclosure(toRef(props, 'sessionId'))
       v-else
       :item="block"
       :project-id="projectId"
+      :turns="turns"
+    />
+    <ReplyFooter
+      v-if="footers.get(index)"
+      :turn-id="footers.get(index)!.turnId"
+      :text="footers.get(index)!.text"
+      :turns="turns"
     />
   </template>
 </template>
