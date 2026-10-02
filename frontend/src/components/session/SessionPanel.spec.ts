@@ -1,0 +1,107 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const state = vi.hoisted(() => ({
+  log: [] as string[],
+  sentWith: [] as Array<{ sessionId: string; text: string }>,
+}))
+
+vi.mock('@/composables/useSessionStream', async () => {
+  const { ref: vueRef } = await import('vue')
+  return {
+    useSessionStream: () => ({
+      items: vueRef([]),
+      turnStatus: vueRef(null),
+      turns: vueRef(new Map()),
+      addLocalUserMessage: (text: string) => {
+        state.log.push(`add:${text}`)
+        return 'local-1'
+      },
+      markTurnAccepted: () => {},
+      removeLocalUserMessage: () => {
+        state.log.push('remove')
+      },
+    }),
+  }
+})
+vi.mock('@/composables/queries', () => ({
+  useSendMessageMutation: (sessionId: () => string) => ({
+    mutateAsync: async (body: { text: string }) => {
+      state.log.push('send')
+      state.sentWith.push({ sessionId: sessionId(), text: body.text })
+      return { turn_id: 't1' }
+    },
+  }),
+  useCancelSessionMutation: () => ({ mutateAsync: async () => {} }),
+  useContinueSessionMutation: () => ({ mutateAsync: async () => {} }),
+}))
+vi.mock('./SessionTimeline.vue', () => ({ default: { name: 'SessionTimeline', render: () => null } }))
+
+import SessionPanel from './SessionPanel.vue'
+
+const textarea = (w: ReturnType<typeof mountPanel>) => w.get('textarea[name="message"]')
+
+function mountPanel(props: Record<string, unknown> = {}) {
+  return mount(SessionPanel, {
+    props: { sessionId: null, projectId: 'p1', ...props },
+    attachTo: document.body,
+  })
+}
+
+async function submit(w: ReturnType<typeof mountPanel>, text: string) {
+  await textarea(w).setValue(text)
+  await w.get('form').trigger('submit')
+  await flushPromises()
+}
+
+describe('SessionPanel：没有会话时发送', () => {
+  beforeEach(() => {
+    state.log = []
+    state.sentWith = []
+    document.body.innerHTML = ''
+  })
+
+  it('没有会话、也没给 createSession：输入框和发送按钮禁用', () => {
+    const w = mountPanel()
+    expect(textarea(w).attributes('disabled')).toBeDefined()
+    expect(w.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('没有会话但给了 createSession：输入框可用', () => {
+    const w = mountPanel({ createSession: vi.fn() })
+    expect(textarea(w).attributes('disabled')).toBeUndefined()
+  })
+
+  it('第一次发送先建会话，等会话 id 传进来后再乐观插入并发送', async () => {
+    const w = mountPanel()
+    const createSession = vi.fn(async () => {
+      state.log.push('create')
+      await w.setProps({ sessionId: 'new-session' })
+      return 'new-session'
+    })
+    await w.setProps({ createSession })
+    await submit(w, '你好')
+    expect(createSession).toHaveBeenCalledTimes(1)
+    expect(state.log).toEqual(['create', 'add:你好', 'send'])
+    expect(state.sentWith).toEqual([{ sessionId: 'new-session', text: '你好' }])
+  })
+
+  it('已有会话时不再建会话', async () => {
+    const createSession = vi.fn()
+    const w = mountPanel({ sessionId: 's1', createSession })
+    await submit(w, '你好')
+    expect(createSession).not.toHaveBeenCalled()
+    expect(state.sentWith).toEqual([{ sessionId: 's1', text: '你好' }])
+  })
+
+  it('建会话失败：显示错误，不发送、不留乐观消息', async () => {
+    const createSession = vi.fn(async () => {
+      throw new Error('没有已配置密钥的模型')
+    })
+    const w = mountPanel({ createSession })
+    await submit(w, '你好')
+    expect(w.text()).toContain('没有已配置密钥的模型')
+    expect(state.log).toEqual([])
+    expect(state.sentWith).toEqual([])
+  })
+})

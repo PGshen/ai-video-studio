@@ -5,7 +5,7 @@
  * 等 SSE 回放才看到自己刚发的消息；[停止]/[继续] 的可用性由纯函数
  * `computeTurnControls` 决定。
  */
-import { computed, ref, toRef } from 'vue'
+import { computed, nextTick, ref, toRef } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
   Conversation,
@@ -35,11 +35,14 @@ import SessionTimeline from './SessionTimeline.vue'
 /**
  * `projectId` 只用于工具结果图片的地址；头脑风暴会话没有项目，传 `null`。`prefill`（M5 T13）：
  * 往输入框预填文本（处理回退建议时用），`key` 变化才写入；消息发送成功后发出 `sent`。
+ * `createSession`：没有会话时第一次发送先用它建会话（它要把新会话 id 写回父组件的 `sessionId`）；
+ * 不传则没有会话时输入框禁用。
  */
 const props = defineProps<{
   sessionId: string | null
   projectId: string | null
   prefill?: { text: string; key: string } | null
+  createSession?: () => Promise<string>
 }>()
 const emit = defineEmits<{ (e: 'sent'): void }>()
 
@@ -62,6 +65,13 @@ const cancelMutation = useCancelSessionMutation(() => props.sessionId ?? '')
 const continueMutation = useContinueSessionMutation(() => props.sessionId ?? '')
 
 const sendError = ref<string | null>(null)
+/** 正在为第一条消息建会话：期间不能再发，免得建出两个会话。 */
+const creatingSession = ref(false)
+
+const inputDisabled = computed(
+  () =>
+    (!props.sessionId && !props.createSession) || creatingSession.value || controls.value.inputDisabled,
+)
 
 function describeError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -75,9 +85,20 @@ const optimisticMessages = { add: addLocalUserMessage, remove: removeLocalUserMe
 
 async function onSubmit(message: PromptInputMessage): Promise<void> {
   const text = message.text.trim()
-  if (!text || !props.sessionId) return
+  if (!text || (!props.sessionId && !props.createSession)) return
   sendError.value = null
   try {
+    if (!props.sessionId && props.createSession) {
+      creatingSession.value = true
+      try {
+        await props.createSession()
+        // 等新会话 id 流到本组件的 props、`useSessionStream` 切到新会话（它会清空占位）之后，
+        // 再乐观插入和发送；否则占位会被切换清掉，发送也会用到旧的空 id。
+        await nextTick()
+      } finally {
+        creatingSession.value = false
+      }
+    }
     await optimisticSend(optimisticMessages, text, async () => {
       const accepted = await sendMutation.mutateAsync({ text })
       markTurnAccepted(accepted.turn_id, text)
@@ -154,7 +175,7 @@ async function onContinue(): Promise<void> {
     <PromptInput @submit="onSubmit">
       <PromptPrefill :prefill="prefill" />
       <PromptInputBody>
-        <PromptInputTextarea :disabled="!sessionId || controls.inputDisabled" />
+        <PromptInputTextarea :disabled="inputDisabled" />
       </PromptInputBody>
       <PromptInputFooter>
         <div class="flex min-w-0 items-center">
@@ -179,7 +200,7 @@ async function onContinue(): Promise<void> {
           >
             {{ controls.continueLabel }}
           </Button>
-          <PromptInputSubmit :disabled="!sessionId || controls.inputDisabled" />
+          <PromptInputSubmit :disabled="inputDisabled" />
         </div>
       </PromptInputFooter>
     </PromptInput>

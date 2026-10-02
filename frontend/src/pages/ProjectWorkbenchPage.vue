@@ -43,6 +43,7 @@ import SnapshotRail from '@/features/workbench/SnapshotRail.vue'
 import WorkbenchSplit from '@/features/workbench/WorkbenchSplit.vue'
 import { sessionResetKey } from '@/features/workbench/sessionResetKey'
 import { combineBusy } from '@/components/session/turnControls'
+import { useEnsureSession } from '@/components/session/useEnsureSession'
 import { projectScope } from '@/composables/sessionScope'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
@@ -67,6 +68,7 @@ watch(
 )
 
 const scope = computed(() => projectScope(projectId.value, stage.value))
+const createSession = useEnsureSession(scope, sessionId)
 
 // 处理回退建议（M5 T13）：卡片的「去处理」跳到 `?suggestion=<id>`，这里把建议内容预填进输入框；
 // 使用者发送后（202）才把建议标为已处理，发送失败则仍是待处理；处理完清掉 query，刷新页面不会重复预填。
@@ -181,6 +183,7 @@ const canvasBusy = computed(() =>
               :session-id="sessionId"
               :project-id="projectId"
               :prefill="prefill"
+              :create-session="createSession"
               @sent="onMessageSent"
             >
               <template #tools>

@@ -8,12 +8,14 @@
 import { ref } from 'vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
 import SessionPicker from '@/components/session/SessionPicker.vue'
+import { useEnsureSession } from '@/components/session/useEnsureSession'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { brainstormScope } from '@/composables/sessionScope'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 const sessionId = ref<string | null>(null)
+const createSession = useEnsureSession(ref(brainstormScope), sessionId)
 </script>
 
 <template>
@@ -39,6 +41,7 @@ const sessionId = ref<string | null>(null)
       <SessionPanel
         :session-id="sessionId"
         :project-id="null"
+        :create-session="createSession"
       />
     </CardContent>
   </Card>
