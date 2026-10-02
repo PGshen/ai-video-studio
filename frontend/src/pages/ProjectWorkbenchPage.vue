@@ -38,6 +38,7 @@ import StageNav from '@/features/workbench/StageNav.vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
 import SessionList from '@/components/session/SessionList.vue'
 import ModelSwitcher from '@/components/session/ModelSwitcher.vue'
+import RailToggleButton from '@/features/workbench/RailToggleButton.vue'
 import SnapshotRail from '@/features/workbench/SnapshotRail.vue'
 import WorkbenchSplit from '@/features/workbench/WorkbenchSplit.vue'
 import { sessionResetKey } from '@/features/workbench/sessionResetKey'
@@ -195,9 +196,19 @@ const canvasBusy = computed(() =>
             </SessionPanel>
           </template>
 
-          <template #canvas>
+          <template #canvas="{ railCollapsed: snapshotsHidden, toggleRail, narrow: stacked }">
             <Card class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4">
               <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+                <!-- 快照栏默认隐藏，开关放在画布右上角；topic 阶段并进标签行（见 TopicCanvas 的 actions 插槽）。 -->
+                <div
+                  v-if="stage !== 'topic' && !stacked"
+                  class="flex shrink-0 justify-end"
+                >
+                  <RailToggleButton
+                    :collapsed="snapshotsHidden"
+                    @toggle="toggleRail"
+                  />
+                </div>
                 <AnimationCanvas
                   v-if="stage === 'animation'"
                   :project-id="projectId"
@@ -212,7 +223,15 @@ const canvasBusy = computed(() =>
                   v-else-if="stage === 'topic'"
                   :project-id="projectId"
                   :busy="canvasBusy"
-                />
+                >
+                  <template #actions>
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </TopicCanvas>
                 <FileCanvas
                   v-else
                   :project-id="projectId"

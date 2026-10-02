@@ -16,7 +16,9 @@ const mountSplit = () =>
   mount(WorkbenchSplit, {
     slots: {
       chat: '<div data-testid="chat">chat</div>',
-      canvas: '<div data-testid="canvas">canvas</div>',
+      canvas: `<template #canvas="{ railCollapsed, toggleRail, narrow }">
+        <button data-testid="canvas" :data-collapsed="railCollapsed" :data-narrow="narrow" @click="toggleRail">canvas</button>
+      </template>`,
       rail: `<template #rail="{ collapsed, toggle }">
         <button data-testid="rail" :data-collapsed="collapsed" @click="toggle">rail</button>
       </template>`,
@@ -77,10 +79,12 @@ describe('WorkbenchSplit', () => {
     expect(second.get('[data-testid="rail"]').attributes('data-collapsed')).toBe('false')
     await second.get('[data-testid="rail"]').trigger('click')
     await flushPromises()
+    // 收起带动画，插槽的 collapsed 等动画结束才变。
+    await new Promise((resolve) => setTimeout(resolve, 300))
     expect(second.get('[data-testid="rail"]').attributes('data-collapsed')).toBe('true')
   })
 
-  it('折叠窄条是固定的像素宽度，不随窗口宽度变（按钮不会被裁）', async () => {
+  it('折叠时快照栏面板宽度为 0（整栏隐藏，不留窄条），且不随窗口宽度变', async () => {
     const panelGrow = async (width: number) => {
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, width, 600))
       localStorage.clear()
@@ -90,8 +94,59 @@ describe('WorkbenchSplit', () => {
       w.unmount()
       return grow
     }
-    expect((await panelGrow(1000) / 100) * 1000).toBeCloseTo(44, 0)
-    expect((await panelGrow(2000) / 100) * 2000).toBeCloseTo(44, 0)
+    expect(await panelGrow(1000)).toBe(0)
+    expect(await panelGrow(2000)).toBe(0)
+  })
+
+  it('折叠时快照栏前面的分隔条隐藏，展开后出现', async () => {
+    const w = mountSplit()
+    await flushPromises()
+    const handles = () => w.findAll('[data-panel-resize-handle-id]')
+    expect(handles()[0]!.classes()).not.toContain('hidden')
+    expect(handles()[1]!.classes()).toContain('hidden')
+    await w.get('[data-testid="rail"]').trigger('click')
+    await flushPromises()
+    expect(handles()[1]!.classes()).not.toContain('hidden')
+  })
+
+  it('canvas 插槽拿到 railCollapsed / toggleRail / narrow，能从画布一侧展开快照栏', async () => {
+    const w = mountSplit()
+    await flushPromises()
+    expect(w.get('[data-testid="canvas"]').attributes('data-collapsed')).toBe('true')
+    expect(w.get('[data-testid="canvas"]').attributes('data-narrow')).toBe('false')
+    await w.get('[data-testid="canvas"]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="rail"]').attributes('data-collapsed')).toBe('false')
+    expect(w.get('[data-testid="canvas"]').attributes('data-collapsed')).toBe('false')
+  })
+
+  it('点开关时三个面板有 flex-grow 过渡，动画结束后去掉（拖动/缩放不带过渡）', async () => {
+    const w = mountSplit()
+    await flushPromises()
+    const transitioning = () =>
+      w.findAll('[data-panel]').map((p) => p.classes().includes('duration-200'))
+    expect(transitioning()).toEqual([false, false, false])
+    await w.get('[data-testid="rail"]').trigger('click')
+    await flushPromises()
+    expect(transitioning()).toEqual([true, true, true])
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(transitioning()).toEqual([false, false, false])
+  })
+
+  it('收起时 rail 插槽的 collapsed 等动画结束才变 true；展开立刻变 false', async () => {
+    const w = mountSplit()
+    await flushPromises()
+    await w.get('[data-testid="rail"]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="rail"]').attributes('data-collapsed')).toBe('false')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await w.get('[data-testid="rail"]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="rail"]').attributes('data-collapsed')).toBe('false')
+    // 画布侧拿到的是真实状态：已经收起。
+    expect(w.get('[data-testid="canvas"]').attributes('data-collapsed')).toBe('true')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(w.get('[data-testid="rail"]').attributes('data-collapsed')).toBe('true')
   })
 
   it('窄屏：分隔条隐藏、快照栏始终展开', async () => {

@@ -32,11 +32,11 @@ describe('SnapshotRail', () => {
     expect(w.get('[data-testid="toggle-snapshots"]').attributes('aria-label')).toBe('收起快照栏')
   })
 
-  it('折叠：只剩图标和快照数，没有时间线，按钮是「展开」', () => {
+  it('折叠：什么都不渲染（整栏隐藏，展开入口在画布右上角）', () => {
     const w = mountRail(true)
+    expect(w.find('[data-testid="snapshot-rail"]').exists()).toBe(false)
     expect(w.find('[data-testid="timeline"]').exists()).toBe(false)
-    expect(w.get('[data-testid="snapshot-count"]').text()).toBe('2')
-    expect(w.get('[data-testid="toggle-snapshots"]').attributes('aria-label')).toBe('展开快照栏')
+    expect(w.find('[data-testid="toggle-snapshots"]').exists()).toBe(false)
   })
 
   it('点按钮发出 toggle', async () => {
@@ -47,6 +47,6 @@ describe('SnapshotRail', () => {
 
   it('没有快照时数量显示 0，不隐藏', () => {
     state.current.snapshots.value = []
-    expect(mountRail(true).get('[data-testid="snapshot-count"]').text()).toBe('0')
+    expect(mountRail(false).get('[data-testid="snapshot-count"]').text()).toBe('0')
   })
 })

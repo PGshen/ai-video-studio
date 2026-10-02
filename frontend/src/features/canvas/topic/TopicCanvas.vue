@@ -2,7 +2,7 @@
 /**
  * 选题打磨阶段画布（计划 M4 T11）：一行标签——「简报」（`topic/brief.md` 的渲染视图，可切换编辑）
  * 和「笔记」（`topic/notes/` 下的调研笔记，含项目创建时种进来的想法卡片 `idea-card.md`），
- * 标签行右侧是 `check_brief` 检查结果的状态图标和渲染/编辑切换（canvas-layout）。状态都从通用文件
+ * 标签行右侧是 `check_brief` 检查结果的状态图标、渲染/编辑切换和宿主塞进来的 `actions` 插槽（工作台放快照栏开关，canvas-layout）。状态都从通用文件
  * 端点读，检查结果来自 `GET /projects/{id}/topic/check`（和 `check_brief` 工具同一份逻辑）；
  * 文件变化时 `invalidateWorkspace` 会让检查查询一并失效。渲染/编辑模式由这里持有，
  * 简报和当前笔记共用；换标签、换笔记时回到渲染。
@@ -49,12 +49,12 @@ watch([tab, selectedNote], () => {
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
     <div
-      class="flex items-center gap-1 text-sm"
+      class="flex flex-wrap items-center gap-1 text-sm"
       data-testid="topic-tabbar"
     >
       <button
         type="button"
-        class="rounded px-3 py-1"
+        class="rounded px-3 py-1 whitespace-nowrap"
         :class="tab === 'brief' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
         data-testid="tab-brief"
         @click="tab = 'brief'"
@@ -63,7 +63,7 @@ watch([tab, selectedNote], () => {
       </button>
       <button
         type="button"
-        class="rounded px-3 py-1"
+        class="rounded px-3 py-1 whitespace-nowrap"
         :class="tab === 'notes' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
         data-testid="tab-notes"
         @click="tab = 'notes'"
@@ -77,6 +77,7 @@ watch([tab, selectedNote], () => {
           v-model:mode="mode"
           :busy="busy"
         />
+        <slot name="actions" />
       </div>
     </div>
 

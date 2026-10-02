@@ -26,7 +26,11 @@ vi.mock('@/components/ai-elements/message/MessageResponse.vue', () => ({
 import TopicCanvas from './TopicCanvas.vue'
 
 const mountCanvas = (busy = false) =>
-  mount(TopicCanvas, { props: { projectId: 'p1', busy }, attachTo: document.body })
+  mount(TopicCanvas, {
+    props: { projectId: 'p1', busy },
+    slots: { actions: '<button data-testid="extra-action">x</button>' },
+    attachTo: document.body,
+  })
 
 describe('TopicCanvas', () => {
   beforeEach(() => {
@@ -43,6 +47,13 @@ describe('TopicCanvas', () => {
     expect(bar.text()).toContain('笔记（2）')
     expect(bar.find('[data-testid="brief-status"]').exists()).toBe(true)
     expect(bar.find('[data-testid="mode-edit"]').exists()).toBe(true)
+  })
+
+  it('actions 插槽渲染在渲染/编辑切换右边', () => {
+    const w = mountCanvas()
+    const tools = w.get('[data-testid="topic-tabbar"]').get('.ml-auto')
+    const ids = tools.findAll('[data-testid]').map((n) => n.attributes('data-testid'))
+    expect(ids.indexOf('extra-action')).toBeGreaterThan(ids.indexOf('mode-edit'))
   })
 
   it('文件内容区不再有自己的渲染/编辑切换条和「只读」提示行', () => {
