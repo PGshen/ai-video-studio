@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import re
 import struct
@@ -50,6 +51,7 @@ M1X_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m1x" / "smoke"
 M3_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m3-narrative" / "smoke"
 M4_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m4-topic" / "smoke"
 M5_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m5-polish" / "smoke"
+THINKING_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "chat-ui-redesign" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}
@@ -162,6 +164,11 @@ class TurnOutcome:
     def text(self) -> str:
         return "\n".join(str(e.payload["text"]) for e in self.events if e.type == "text")
 
+    @property
+    def thinking(self) -> list[str]:
+        """Persisted `thinking` blocks of the turn, in order (deltas are not persisted)."""
+        return [str(e.payload["text"]) for e in self.events if e.type == "thinking"]
+
     def tool_results(self, name: str) -> list[dict[str, Any]]:
         ids = {
             e.payload["call_id"]
@@ -190,6 +197,7 @@ class SmokeHarness:
     registry: StageRegistry
     runner: TurnRunner
     project_id: str
+    bus: SessionBus
 
     @property
     def workdir(self) -> Path:
@@ -244,6 +252,28 @@ class SmokeHarness:
         turn_id = await self.runner.start_turn(session_id, UserInput(text=text))
         await asyncio.wait_for(self.runner.wait(turn_id), timeout=TURN_TIMEOUT_SECONDS)
         return self._outcome(session_id, turn_id)
+
+    async def turn_watching_thinking(
+        self, session_id: str, text: str
+    ) -> tuple[TurnOutcome, list[str]]:
+        """Run a turn while collecting the transient `thinking_delta` texts from the bus."""
+        deltas: list[str] = []
+        stream = self.bus.subscribe(session_id)
+
+        async def pump() -> None:
+            async for event in stream:
+                if event.type == "thinking_delta":
+                    deltas.append(str(event.payload["text"]))
+
+        task = asyncio.ensure_future(pump())
+        try:
+            outcome = await self.turn(session_id, text)
+            await asyncio.sleep(0.2)  # let the pump drain what the turn just published
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        return outcome, deltas
 
     async def turn_cancelled_at_tool_call(self, session_id: str, text: str) -> TurnOutcome:
         """Start a turn and cancel it (like the UI's stop button) as soon as its
@@ -300,12 +330,13 @@ def build_harness(
     register_claude(factory, settings)
     register_openai(factory, settings)
     blobs = BlobStore(data_dir / "blobs")
+    bus = SessionBus()
     runner = TurnRunner(
         engine,
         blobs,
         registry,
         factory,
-        SessionBus(),
+        bus,
         settings,
         cancel_grace_seconds=cancel_grace_seconds,
     )
@@ -317,7 +348,7 @@ def build_harness(
     style.parent.mkdir(parents=True, exist_ok=True)
     style.write_text("# 风格\n", encoding="utf-8")
     create_snapshot(engine, blobs, project.id, reason="init")
-    return SmokeHarness(data_dir, engine, blobs, registry, runner, project.id)
+    return SmokeHarness(data_dir, engine, blobs, registry, runner, project.id, bus)
 
 
 # ---- evidence ----------------------------------------------------------------

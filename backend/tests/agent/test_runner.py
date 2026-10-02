@@ -201,6 +201,55 @@ class TestNormalTurn:
         assert seqs == list(range(1, len(seqs) + 1))
 
 
+class TestThinking:
+    async def test_block_is_persisted_and_delta_is_published_only(self, h: Harness) -> None:
+        session_id = h.session()
+        received, pump = _collect(h.bus, session_id)
+
+        turn = await h.run(session_id, [fake.think("先想一想"), fake.say("好")])
+        await _drain(pump)
+
+        rows = list_events(h.env.engine, session_id)
+        row_types = [r.type for r in rows]
+        assert type_counts(row_types)["thinking"] == 1
+        assert "thinking_delta" not in row_types
+        assert_in_order(row_types, "thinking", "text")
+        thinking = next(r for r in rows if r.type == "thinking")
+        assert thinking.payload == {"turn_id": turn.id, "text": "先想一想"}
+        deltas = [e for e in received if e.type == "thinking_delta"]
+        assert deltas and all(e.is_transient and e.seq is None for e in deltas)
+        assert "".join(e.payload["text"] for e in deltas) == "先想一想"
+
+    async def test_thinking_does_not_count_as_a_step(self, env: StudioEnv) -> None:
+        _set_profile_limits(env, max_steps_per_turn=1)
+        h = _make_harness(env)
+        session_id = h.session(profile="limited")
+
+        turn = await h.run(
+            session_id, [fake.think("想"), fake.think("再想"), fake.write("topic/a.md", "a")]
+        )
+
+        assert turn.status == "done"
+
+    async def test_blank_thinking_is_dropped(self, h: Harness) -> None:
+        class BlankThinking:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                yield events.ThinkingDelta(text="  \n")
+                yield events.ThinkingBlock(text="   ")
+                yield events.ThinkingBlock(text="")
+                yield events.TextBlock(text="好")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        received, pump = _collect(h.bus, session_id)
+
+        await h.run(session_id, BlankThinking)
+        await _drain(pump)
+
+        assert "thinking" not in [r.type for r in list_events(h.env.engine, session_id)]
+        assert not [e for e in received if e.type == "thinking_delta"]
+
+
 class TestFailureAndCancel:
     async def test_failed_turn_takes_partial_snapshot(self, h: Harness) -> None:
         session_id = h.session()

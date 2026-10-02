@@ -36,6 +36,7 @@ from openai.types.responses.response_function_web_search import (
     ActionSearch,
     ResponseFunctionWebSearch,
 )
+from openai.types.responses.response_reasoning_item import ResponseReasoningItem, Summary
 from pydantic import BaseModel
 
 from studio.agent import events
@@ -230,6 +231,97 @@ def _streamed_item(call: Any) -> ModelStep:
             ResponseCompletedEvent(type="response.completed", response=response, sequence_number=1),
         ]
     )
+
+
+def _reasoning(*texts: str) -> ResponseReasoningItem:
+    return ResponseReasoningItem(
+        id="rs-1",
+        type="reasoning",
+        summary=[Summary(text=text, type="summary_text") for text in texts],
+    )
+
+
+class TestThinkingConversion:
+    async def test_reasoning_summary_becomes_thinking_events(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        models = Models([[_reasoning("先看文件", "再动手"), assistant_message("好")]])
+        out = await _run(_runtime(data_dir, models), _ctx(workdir))
+
+        assert "".join(e.text for e in _of(out, events.ThinkingDelta)) == "先看文件再动手"
+        assert _of(out, events.ThinkingBlock) == [events.ThinkingBlock(text="先看文件\n再动手")]
+        kinds = [type(e) for e in out if isinstance(e, events.ThinkingBlock | events.TextBlock)]
+        assert kinds == [events.ThinkingBlock, events.TextBlock]
+        assert _end(out).status == "done"
+
+    async def test_empty_reasoning_summary_produces_no_thinking(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        models = Models([[_reasoning(), assistant_message("好")]])
+        out = await _run(_runtime(data_dir, models), _ctx(workdir))
+
+        assert not _of(out, events.ThinkingBlock)
+        assert not _of(out, events.ThinkingDelta)
+        assert [e.text for e in _of(out, events.TextBlock)] == ["好"]
+
+    async def test_blank_reasoning_summary_produces_no_block(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        models = Models([[_reasoning("  ", ""), assistant_message("好")]])
+        out = await _run(_runtime(data_dir, models), _ctx(workdir))
+
+        assert not _of(out, events.ThinkingBlock)
+
+    @pytest.mark.parametrize(
+        "profile",
+        [
+            dataclasses.replace(_OPENAI, model="gpt-5"),
+            dataclasses.replace(_OPENAI, base_url="https://openrouter.ai/api/v1"),
+        ],
+    )
+    async def test_model_settings_request_reasoning_summary(
+        self, workdir: Path, data_dir: Path, profile: ModelProfileValue
+    ) -> None:
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=profile))
+
+        reasoning = models.calls[0].model_settings.reasoning
+        assert reasoning is not None and reasoning.summary == "auto"
+
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [
+            ("gpt-5", "auto"),
+            ("gpt-5-mini", "auto"),
+            ("o3", "auto"),
+            ("o4-mini", "auto"),
+            ("gpt-4.1", None),
+            ("gpt-4o", None),
+            ("gpt-4o-mini", None),
+        ],
+    )
+    async def test_official_endpoint_only_asks_reasoning_models_for_a_summary(
+        self, workdir: Path, data_dir: Path, model: str, expected: str | None
+    ) -> None:
+        """api.openai.com rejects `reasoning` for non-reasoning models, which would fail every
+        turn; an unrequested summary only costs the thinking display."""
+        profile = dataclasses.replace(_OPENAI, base_url="https://api.openai.com/v1", model=model)
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=profile))
+
+        reasoning = models.calls[0].model_settings.reasoning
+        assert (reasoning.summary if reasoning else None) == expected
+
+    async def test_litellm_settings_do_not_set_reasoning_summary(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """The SDK ignores `reasoning.summary` on the chat-completions path and warns on every
+        call, so the LiteLLM path leaves `reasoning` unset (it still streams whatever
+        reasoning the provider returns)."""
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=_LITELLM))
+
+        assert models.calls[0].model_settings.reasoning is None
 
 
 class TestEventConversion:

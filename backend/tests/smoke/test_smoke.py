@@ -32,6 +32,7 @@ from .support import (
     M3_EVIDENCE_DIR,
     M4_EVIDENCE_DIR,
     REPO_ROOT,
+    THINKING_EVIDENCE_DIR,
     SmokeHarness,
     TurnOutcome,
     build_harness,
@@ -406,6 +407,71 @@ async def test_openai_responses(harness: SmokeHarness) -> None:
         assert outcome.turn.cost_usd is not None and outcome.turn.cost_usd <= limit
     finally:
         record_evidence("openai-responses", evidence)
+
+
+# ---- Thinking events（对话页重做 T4）----------------------------------------------
+# 设计要求「尽力透传」：模型这一轮不思考不算失败，所以只断言一致性，并把有没有思考、
+# 长什么样记进证据（data/evidence/chat-ui-redesign/smoke/），由人判断是否达到预期。
+
+THINKING_PROMPT = (
+    "我想做一期知识视频，主题是「为什么冰箱门刚关上就很难再拉开」。"
+    "请先仔细想想这个选题最有意思的切入角度和可能的坑，再把结论写进 topic/brief.md（几行即可）。"
+)
+"""Adaptive thinking is model-decided: it skipped both a trivial puzzle and an off-task puzzle
+inside the stage prompt (4/4 runs without thinking), but on a task that needs planning before
+tool calls it thought before every call (2/2 runs, 2026-10-02)."""
+
+
+def _thinking_evidence(outcome: TurnOutcome, deltas: list[str]) -> dict[str, Any]:
+    return {
+        "has_thinking": bool(outcome.thinking),
+        "block_count": len(outcome.thinking),
+        "block_chars": [len(t) for t in outcome.thinking],
+        "first_block_head": outcome.thinking[0][:200] if outcome.thinking else None,
+        "delta_count": len(deltas),
+        "delta_chars": sum(len(d) for d in deltas),
+        "answer_head": outcome.text[:200],
+    }
+
+
+async def test_thinking_claude_login(harness: SmokeHarness) -> None:
+    if os.environ.get("STUDIO_SMOKE_SKIP_LOGIN") == "1":
+        pytest.skip("STUDIO_SMOKE_SKIP_LOGIN=1，跳过本机登录用例")
+    if _claude_cli() is None:
+        pytest.skip("未找到 claude CLI（本机未安装/未登录 Claude Code），跳过本机登录用例")
+    profile = harness.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+    session_id = harness.session(profile, "claude")
+
+    outcome, deltas = await harness.turn_watching_thinking(session_id, THINKING_PROMPT)
+
+    evidence = {"turn": outcome_summary(outcome), **_thinking_evidence(outcome, deltas)}
+    record_evidence("thinking-claude-login", evidence, THINKING_EVIDENCE_DIR)
+    assert outcome.turn.status == "done", (outcome.turn.status, outcome.turn.error)
+    assert outcome.text.strip()
+    if deltas:
+        assert outcome.thinking, "收到了 thinking_delta 却没有落库的 thinking 事件"
+
+
+async def test_thinking_openai_responses(harness: SmokeHarness) -> None:
+    _require_env("OPENAI_API_KEY")
+    limit = COST_LIMITS["gpt"]
+    profile = harness.profile("gpt", max_cost_per_turn=limit, max_steps_per_turn=MAX_STEPS)
+    session_id = harness.session(profile, "openai")
+
+    outcome, deltas = await harness.turn_watching_thinking(session_id, THINKING_PROMPT)
+
+    evidence = {"turn": outcome_summary(outcome), **_thinking_evidence(outcome, deltas)}
+    record_evidence("thinking-openai-responses", evidence, THINKING_EVIDENCE_DIR)
+    assert outcome.turn.status == "done", (outcome.turn.status, outcome.turn.error)
+    assert outcome.text.strip()
+    if deltas:
+        assert outcome.thinking, "收到了 thinking_delta 却没有落库的 thinking 事件"
+    # Multi-turn replay with `store=False` + encrypted reasoning must still be accepted.
+    second = await harness.turn(session_id, RECALL_PROMPT)
+    record_evidence(
+        "thinking-openai-responses-turn2", {"turn": outcome_summary(second)}, THINKING_EVIDENCE_DIR
+    )
+    assert second.turn.status == "done", second.turn.error
 
 
 # ---- DeepSeek via LiteLLM --------------------------------------------------------

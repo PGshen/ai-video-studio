@@ -84,7 +84,7 @@ const lineNumberClasses = cn(
       ><template v-for="line in keyedLines" :key="line.key"><!-- Line rendering component --><span :class="showLineNumbers ? lineNumberClasses : 'block'"><template v-if="line.tokens.length === 0">{{ '\n' }}</template><template v-else><!-- Token rendering component --><span
                 v-for="tokenObj in line.tokens"
                 :key="tokenObj.key"
-                class="dark:bg-(--shiki-dark-bg)! dark:text-(--shiki-dark)!"
+                class="dark:bg-(--shiki-dark-bg)! dark:text-(--shiki-dark)! [font-weight:var(--shiki-light-font-weight)] [text-decoration:var(--shiki-light-text-decoration)] dark:[font-weight:var(--shiki-dark-font-weight)] dark:[text-decoration:var(--shiki-dark-text-decoration)]"
                 :style="{
                   color: tokenObj.token.color,
                   backgroundColor: tokenObj.token.bgColor,

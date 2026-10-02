@@ -20,6 +20,7 @@ from claude_agent_sdk import (
     StreamEvent,
     SystemMessage,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -130,13 +131,19 @@ def convert_message(message: Message, turn: SdkTurn) -> list[events.AgentEvent]:
     if isinstance(message, StreamEvent):
         event = message.event
         delta = event.get("delta") or {}
-        if event.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
-            return [events.TextDelta(text=delta.get("text", ""))]
+        if event.get("type") == "content_block_delta":
+            if delta.get("type") == "text_delta":
+                return [events.TextDelta(text=delta.get("text", ""))]
+            if delta.get("type") == "thinking_delta" and delta.get("thinking"):
+                return [events.ThinkingDelta(text=delta["thinking"])]
         return []
     converted: list[events.AgentEvent] = []
     if isinstance(message, AssistantMessage):
         for block in message.content:
-            if isinstance(block, TextBlock) and block.text:
+            if isinstance(block, ThinkingBlock):
+                if block.thinking.strip():  # `signature` is for replay only, never forwarded
+                    converted.append(events.ThinkingBlock(text=block.thinking))
+            elif isinstance(block, TextBlock) and block.text:
                 converted.append(events.TextBlock(text=block.text))
             elif isinstance(block, ToolUseBlock):
                 name = block.name.removeprefix(MCP_PREFIX)

@@ -60,6 +60,8 @@ import type {
   SuggestionEventPayload,
   TextDeltaPayload,
   TextPayload,
+  ThinkingDeltaPayload,
+  ThinkingPayload,
   ToolCallPayload,
   ToolResultImage,
   ToolResultPayload,
@@ -70,6 +72,8 @@ export interface UserMessageItem {
   kind: 'user_message'
   turnId: string
   text: string
+  /** 乐观占位的发送时间（ISO）：真实 turn 的元数据到达之前，气泡下的时间用它。 */
+  at?: string
 }
 
 export interface TextItem {
@@ -77,6 +81,14 @@ export interface TextItem {
   turnId: string
   text: string
   /** 还在通过 `text_delta` 累积、没有收到最终 `text` 事件替换掉。 */
+  streaming: boolean
+}
+
+/** 模型的思考文本（对话页重做；`thinking_delta` 累积、`thinking` 终稿替换，和 `TextItem` 一致）。 */
+export interface ThinkingItem {
+  kind: 'thinking'
+  turnId: string
+  text: string
   streaming: boolean
 }
 
@@ -130,6 +142,7 @@ export interface SnapshotItem {
 export type TimelineItem =
   | UserMessageItem
   | TextItem
+  | ThinkingItem
   | ToolCallItem
   | NoticeItem
   | SuggestionItem
@@ -148,6 +161,8 @@ export interface TurnStatusState {
 export interface UseSessionStreamResult {
   items: Ref<TimelineItem[]>
   turnStatus: Ref<TurnStatusState | null>
+  /** 已知 turn 的元数据（挂载时和每次刷新会话详情时更新），UI 用它显示时间、用量、用时。 */
+  turns: Ref<ReadonlyMap<string, TurnOut>>
   connectionStatus: Ref<SseConnectionStatus | null>
   /**
    * 乐观插入一条用户消息（任务简报 T13，控制者裁定 3；解决上面文档「已知
@@ -160,6 +175,13 @@ export interface UseSessionStreamResult {
    */
   addLocalUserMessage: (text: string) => string
   /**
+   * 发送接口（`POST .../messages`、`.../continue`）返回 `turn_id` 后调用：先把这一轮标成
+   * `queued`。`turn_status` 是瞬时事件，面板的 SSE 连接在开发环境（vite 代理）里可能比发送
+   * 晚到后端、错过 `queued`/`running`，那样整轮都不知道自己在运行（没有停止按钮、活动组不展开）。
+   * 这一轮的状态事件已经先到时不降级；之后到达的事件照常覆盖。
+   */
+  markTurnAccepted: (turnId: string, userMessage: string) => void
+  /**
    * 撤回一条还没被真实 turn 认领的乐观占位（T13 审查修复：发送失败——
    * 409/网络错误等——如果不撤回，占位会一直留在 `items` 里、并且还占着
    * `pendingLocalMessages` 队首，导致下一次真正发出去的消息在 FIFO 里排到
@@ -170,15 +192,29 @@ export interface UseSessionStreamResult {
   removeLocalUserMessage: (placeholderId: string) => void
 }
 
-function findLastStreamingTextIndex(items: TimelineItem[], turnId: string): number {
+/**
+ * 找本 turn 里最近一条还在流式累积的 `kind` 条目。同一 turn 里另一种流式条目（文本和思考
+ * 的终稿事件可能交错到达）和用户消息直接跳过；遇到其它条目（工具调用、已定稿的内容等）
+ * 说明这段已经被"接住"了，返回 -1。
+ */
+function findLastStreamingIndex(
+  items: TimelineItem[],
+  turnId: string,
+  kind: 'text' | 'thinking',
+): number {
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i]!
     if (item.turnId !== turnId) continue
-    if (item.kind === 'text' && item.streaming) return i
-    if (item.kind !== 'user_message') return -1 // 这个 turn 后来的事件已经把这段文本"接住"了。
+    if (item.kind === kind && item.streaming) return i
+    if (item.kind === 'user_message') continue
+    if ((item.kind === 'text' || item.kind === 'thinking') && item.streaming) continue
+    return -1
   }
   return -1
 }
+
+/** `markTurnAccepted` 之后核对会话详情的时机（毫秒）。 */
+const VERIFY_ACCEPTED_AFTER_MS = [1500, 6000]
 
 export function useSessionStream(sessionId: Ref<string | null>): UseSessionStreamResult {
   const queryClient = useQueryClient()
@@ -188,11 +224,11 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
 
   let controller: AbortController | null = null
   let projectId: string | null = null
-  const knownTurns = new Map<string, TurnOut>()
+  const turns = ref(new Map<string, TurnOut>()) as Ref<Map<string, TurnOut>>
   const userMessageInserted = new Set<string>()
   const toolCallIndex = new Map<string, number>()
   // 乐观插入、还没被真实 turn 认领的占位（FIFO：先发送的消息先配对）。
-  let pendingLocalMessages: { placeholderId: string; text: string }[] = []
+  let pendingLocalMessages: { placeholderId: string; text: string; at: string }[] = []
   let localMessageCounter = 0
 
   // 审查发现的竞态（`sessionId` 在上一次 `watch` 回调还卡在 `await
@@ -213,7 +249,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     items.value = []
     turnStatus.value = null
     connectionStatus.value = null
-    knownTurns.clear()
+    turns.value.clear()
     userMessageInserted.clear()
     toolCallIndex.clear()
     pendingLocalMessages = [] // 上一个会话遗留的占位不能被下一个会话的 turn 认领。
@@ -245,7 +281,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       return // 下一次重连或 snapshot 事件会再试。
     }
     if (myGeneration !== generation || versionAtRequest !== statusVersion) return
-    for (const turn of detail.turns) knownTurns.set(turn.id, turn)
+    for (const turn of detail.turns) turns.value.set(turn.id, turn)
     const last = detail.turns.at(-1)
     if (last) turnStatus.value = statusOf(last)
     if (projectId) void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
@@ -254,9 +290,29 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   function addLocalUserMessage(text: string): string {
     const placeholderId = `local-${localMessageCounter}`
     localMessageCounter += 1
-    pendingLocalMessages.push({ placeholderId, text })
-    items.value.push({ kind: 'user_message', turnId: placeholderId, text })
+    const at = new Date().toISOString()
+    pendingLocalMessages.push({ placeholderId, text, at })
+    items.value.push({ kind: 'user_message', turnId: placeholderId, text, at })
     return placeholderId
+  }
+
+  function markTurnAccepted(turnId: string, userMessage: string): void {
+    if (turnStatus.value?.turnId === turnId) return
+    statusVersion += 1 // 进行中的会话详情刷新早于这一轮，不能覆盖它。
+    turnStatus.value = { turnId, status: 'queued', error: null, neverStarted: false, userMessage }
+    // 如果整轮的瞬时事件都被错过（连接比发送晚，这一轮又很快结束，例如网关不可达的毫秒级失败，
+    // 或没有快照事件的头脑风暴会话），状态会一直停在 `queued`、输入框一直被禁用。延迟核对
+    // 会话详情兜底；这一轮已经有事件把状态推进到结束时不会请求。
+    const id = sessionId.value
+    if (id === null) return
+    const myGeneration = generation
+    for (const delay of VERIFY_ACCEPTED_AFTER_MS) {
+      setTimeout(() => {
+        if (myGeneration === generation && isBusy(turnStatus.value?.status)) {
+          void refreshTurnStatus(id, myGeneration)
+        }
+      }, delay)
+    }
   }
 
   function removeLocalUserMessage(placeholderId: string): void {
@@ -279,12 +335,12 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
         (item) => item.kind === 'user_message' && item.turnId === pending.placeholderId,
       )
       if (idx !== -1) {
-        items.value[idx] = { kind: 'user_message', turnId, text: pending.text }
+        items.value[idx] = { kind: 'user_message', turnId, text: pending.text, at: pending.at }
         return
       }
     }
 
-    const turn = knownTurns.get(turnId)
+    const turn = turns.value.get(turnId)
     items.value.push({ kind: 'user_message', turnId, text: turn?.user_message ?? '' })
   }
 
@@ -310,9 +366,42 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       }
       case 'text': {
         const payload = event.payload as TextPayload
-        const idx = findLastStreamingTextIndex(items.value, payload.turn_id)
+        const idx = findLastStreamingIndex(items.value, payload.turn_id, 'text')
         const resolved: TextItem = {
           kind: 'text',
+          turnId: payload.turn_id,
+          text: payload.text,
+          streaming: false,
+        }
+        if (idx !== -1) {
+          items.value[idx] = resolved
+        } else {
+          items.value.push(resolved)
+        }
+        break
+      }
+      case 'thinking_delta': {
+        const payload = event.payload as ThinkingDeltaPayload
+        if (!payload.text.trim()) break
+        const last = items.value.at(-1)
+        if (last && last.kind === 'thinking' && last.turnId === payload.turn_id && last.streaming) {
+          last.text += payload.text
+        } else {
+          items.value.push({
+            kind: 'thinking',
+            turnId: payload.turn_id,
+            text: payload.text,
+            streaming: true,
+          })
+        }
+        break
+      }
+      case 'thinking': {
+        const payload = event.payload as ThinkingPayload
+        if (!payload.text.trim()) break
+        const idx = findLastStreamingIndex(items.value, payload.turn_id, 'thinking')
+        const resolved: ThinkingItem = {
+          kind: 'thinking',
           turnId: payload.turn_id,
           text: payload.text,
           streaming: false,
@@ -407,7 +496,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       case 'turn_status': {
         const payload = event.payload as TurnStatusPayload
         statusVersion += 1
-        const known = knownTurns.get(payload.turn_id)
+        const known = turns.value.get(payload.turn_id)
         turnStatus.value = {
           turnId: payload.turn_id,
           status: payload.status,
@@ -415,8 +504,9 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
           neverStarted: false,
           userMessage: known?.user_message ?? null,
         }
-        // `never_started` is only computed by the backend's session detail (TD-19).
-        if (payload.status === 'interrupted') void refreshTurnStatus(id, myGeneration)
+        // `never_started` is only computed by the backend's session detail (TD-19); the
+        // final usage/duration of a finished turn (reply footer) also only comes from there.
+        if (!isBusy(payload.status)) void refreshTurnStatus(id, myGeneration)
         // 项目详情（`ProjectDetailOut.busy`）失效：当前会话的 turn 一
         // 开始/结束，画布的只读判断（T14 审查修复：`combineBusy`）应该
         // 立刻反映，不等 `useProjectQuery` 的 3 秒轮询周期。只有
@@ -439,7 +529,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   function applyHistory(detail: Awaited<ReturnType<typeof getSession>>): void {
     projectId = detail.project_id
     for (const turn of detail.turns) {
-      knownTurns.set(turn.id, turn)
+      turns.value.set(turn.id, turn)
     }
     const last = detail.turns.at(-1)
     if (last) {
@@ -498,5 +588,13 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     disconnect()
   })
 
-  return { items, turnStatus, connectionStatus, addLocalUserMessage, removeLocalUserMessage }
+  return {
+    items,
+    turnStatus,
+    turns,
+    connectionStatus,
+    addLocalUserMessage,
+    markTurnAccepted,
+    removeLocalUserMessage,
+  }
 }

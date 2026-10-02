@@ -84,6 +84,13 @@ def handle(runner: TurnRunner, job: _Job, state: _State, event: events.AgentEven
         runner._publish(job, "text_delta", {"text": event.text})
     elif isinstance(event, events.TextBlock):
         runner._persist(job, "text", {"text": event.text})
+    elif isinstance(event, events.ThinkingDelta):
+        # Thinking never counts as a step and is dropped when blank (nothing to show).
+        if event.text.strip():
+            runner._publish(job, "thinking_delta", {"text": event.text})
+    elif isinstance(event, events.ThinkingBlock):
+        if event.text.strip():
+            runner._persist(job, "thinking", {"text": event.text})
     elif isinstance(event, events.ToolCall):
         state.steps += 1
         state.calls[event.call_id] = event

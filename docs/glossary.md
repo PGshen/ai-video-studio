@@ -20,6 +20,8 @@
 | 会话 | session | 某个阶段中的一段对话，绑定一个模型配置；一个阶段可以有多个会话，同一时刻只有一个处于活动状态 |
 | 轮次 | turn | 用户发一条消息，到 agent 完成回复，这是一轮 |
 | 轮次事件 | turn event | 一轮中持久化的事件：文本块、工具调用、工具结果、快照、回退建议等 |
+| 活动组 | activity group | 对话页里同一 turn 连续的思考与工具调用，渲染成一个可折叠的整体，组内每一行还能单独折叠（`groupTimeline`、`ActivityGroup`） |
+| 思考事件 | thinking event | 模型的推理文本：`thinking_delta`（瞬时、流式）与 `thinking`（落库、可回放），尽力透传、模型不给就没有，见 ADR 0013 |
 | 上下文前言 | turn preamble | 每轮附在用户消息之前的现状说明：用户编辑、上游变更、被还原的越界改动等 |
 | 运行时 | runtime | agent SDK 的适配器：`claude`、`openai`，以及测试用的 `fake` |
 | 模型配置 | model profile | 模型、接入方式、价格、预算上限，决定使用哪种运行时 |

@@ -18,6 +18,7 @@ from claude_agent_sdk import (
     StreamEvent,
     SystemMessage,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -262,6 +263,7 @@ class TestOptions:
         assert options.permission_mode == "acceptEdits"
         assert options.resume == SESSION
         assert options.include_partial_messages is True
+        assert options.thinking == {"type": "adaptive", "display": "summarized"}
         assert options.tools == ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
         assert options.sandbox is not None and options.sandbox.get("enabled") is True
         assert options.hooks is not None and "PreToolUse" in options.hooks
@@ -450,6 +452,67 @@ class TestBuildEnv:
     def test_clean_environment_adds_only_what_is_needed(self, tmp_path: Path) -> None:
         _auth, env = build_env(None, None, {"HOME": "/Users/me"}, tmp_path)
         assert env == dict.fromkeys(LOGIN_BLANKED_ENV, "")
+
+
+def _thinking_delta(text: str, *, parent: str | None = None) -> StreamEvent:
+    return StreamEvent(
+        uuid="u-think",
+        session_id=SESSION,
+        event={
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": text},
+        },
+        parent_tool_use_id=parent,
+    )
+
+
+class TestThinkingConversion:
+    async def test_thinking_delta_and_block_become_thinking_events(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        messages: list[Message] = [
+            _thinking_delta("先"),
+            _thinking_delta("想想"),
+            _assistant(
+                ThinkingBlock(thinking="先想想", signature="sig"),
+                TextBlock(text="好的"),
+            ),
+            _result(0.0),
+        ]
+        result = await _run(_runtime(data_dir, Clients(messages)), _ctx(workdir))
+
+        assert result[:4] == [
+            events.ThinkingDelta(text="先"),
+            events.ThinkingDelta(text="想想"),
+            events.ThinkingBlock(text="先想想"),
+            events.TextBlock(text="好的"),
+        ]
+
+    async def test_blank_thinking_is_skipped(self, workdir: Path, data_dir: Path) -> None:
+        messages: list[Message] = [
+            _thinking_delta(""),
+            _assistant(ThinkingBlock(thinking="  \n", signature="sig"), TextBlock(text="好")),
+            _result(0.0),
+        ]
+        result = await _run(_runtime(data_dir, Clients(messages)), _ctx(workdir))
+
+        assert result[0] == events.TextBlock(text="好")
+
+    async def test_subagent_thinking_is_dropped(self, workdir: Path, data_dir: Path) -> None:
+        messages: list[Message] = [
+            _thinking_delta("子代理在想", parent="toolu_1"),
+            AssistantMessage(
+                content=[ThinkingBlock(thinking="子代理的思考", signature="s")],
+                model="claude-sonnet-5",
+                parent_tool_use_id="toolu_1",
+                session_id=SESSION,
+            ),
+            _result(0.0),
+        ]
+        result = await _run(_runtime(data_dir, Clients(messages)), _ctx(workdir))
+
+        assert not [e for e in result if isinstance(e, events.ThinkingDelta | events.ThinkingBlock)]
 
 
 class TestEventConversion:

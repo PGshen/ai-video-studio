@@ -52,10 +52,11 @@ def _make_ctx(
     project_id: str = "proj-1",
     stage: str = "topic",
     record_tool_write: Callable[[str, str], None] | None = None,
+    user_input: UserInput | None = None,
 ) -> TurnContext:
     return TurnContext(
         system_prompt="占位提示词",
-        user_input=UserInput(text="你好"),
+        user_input=user_input or UserInput(text="你好"),
         tools=tools or [],
         workdir=workdir,
         model_profile=_FAKE_PROFILE,
@@ -84,6 +85,50 @@ class TestSay:
 
         assert result[0] == events.TextBlock(text="你好，世界")
         assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
+
+
+class TestThink:
+    async def test_think_step_yields_deltas_then_one_block(self, workdir: Path) -> None:
+        from studio.agent import fake
+
+        runtime = FakeRuntime([fake.think("先想一想这个问题")])
+        ctx = _make_ctx(workdir, write_scope=WriteScope(writable=["topic/**"], tool_managed=[]))
+
+        result = await _run(runtime, ctx)
+
+        *middle, end = result
+        assert isinstance(end, events.TurnEnd)
+        *deltas, block = middle
+        assert len(deltas) >= 1
+        assert all(isinstance(d, events.ThinkingDelta) for d in deltas)
+        assert "".join(d.text for d in deltas if isinstance(d, events.ThinkingDelta)) == (
+            "先想一想这个问题"
+        )
+        assert block == events.ThinkingBlock(text="先想一想这个问题")
+
+
+class TestEmit:
+    async def test_emit_step_yields_paired_call_and_result(self, workdir: Path) -> None:
+        from studio.agent import fake
+
+        runtime = FakeRuntime(
+            [
+                fake.emit("Read", {"file_path": "a.md"}, "     1→hi"),
+                fake.emit("Bash", {"command": "false"}, "exit 1", is_error=True),
+            ]
+        )
+        ctx = _make_ctx(workdir, write_scope=WriteScope(writable=["topic/**"], tool_managed=[]))
+
+        result = await _run(runtime, ctx)
+
+        call1, res1, call2, res2, _end = result
+        assert isinstance(call1, events.ToolCall) and isinstance(res1, events.ToolResult)
+        assert (call1.name, call1.args) == ("Read", {"file_path": "a.md"})
+        assert res1.call_id == call1.call_id and res1.text == "     1→hi"
+        assert res1.is_error is False
+        assert isinstance(call2, events.ToolCall) and isinstance(res2, events.ToolResult)
+        assert call2.call_id != call1.call_id
+        assert res2.call_id == call2.call_id and res2.is_error is True
 
 
 class TestWrite:
@@ -359,6 +404,86 @@ class TestBudget:
 
         assert result[-1] == events.TurnEnd(resume_ref=None, status="budget_exceeded")
         assert events.TextBlock(text="不应该出现") not in result
+
+
+class TestDemoActivityScript:
+    scope = WriteScope(writable=["topic/**"], tool_managed=[])
+
+    def test_demo_command_returns_a_script_covering_every_tool_kind(self) -> None:
+        from studio.agent import fake
+
+        script = default_fake_script(self.scope, "/demo-activity")
+
+        emitted = [step for step in script if isinstance(step, fake.Emit)]
+        assert {step.name for step in emitted} >= {
+            "Read",
+            "Glob",
+            "Grep",
+            "Bash",
+            "WebSearch",
+            "fetch_url",
+            "Write",
+        }
+        assert any(step.is_error for step in emitted)
+        thinking = [step for step in script if isinstance(step, fake.Think)]
+        assert len(thinking) >= 2
+        last = script[-1]
+        assert isinstance(last, fake.Say) and "|---" in last.text  # a Markdown table
+
+    def test_demo_command_is_recognised_at_the_end_of_the_prompt(self) -> None:
+        """TurnRunner puts a context preamble before the user's message, so the command is
+        the last line of the prompt, not the whole prompt."""
+        from studio.agent import fake
+
+        prompt = "上下文前言：以下内容由系统生成。\n\n## 当前产物状态\n\n---\n\n/demo-activity\n"
+
+        script = default_fake_script(self.scope, prompt)
+
+        assert [step for step in script if isinstance(step, fake.Emit)]
+
+    def test_command_mentioned_earlier_in_the_prompt_does_not_trigger_the_demo(self) -> None:
+        from studio.agent import fake
+
+        script = default_fake_script(self.scope, "/demo-activity 是什么？\n\n请解释一下")
+
+        assert not [step for step in script if isinstance(step, fake.Emit)]
+
+    def test_other_messages_keep_the_echo_script(self) -> None:
+        from studio.agent import fake
+
+        script = default_fake_script(self.scope, "demo-activity")
+
+        assert not [step for step in script if isinstance(step, fake.Emit)]
+        assert script[0] == fake.say("收到：demo-activity")
+
+    def test_delay_inserts_sleeps_between_steps_so_running_state_is_observable(self) -> None:
+        from studio.agent import fake
+
+        script = default_fake_script(self.scope, "/demo-activity", delay_seconds=0.5)
+
+        sleeps = [step for step in script if isinstance(step, fake.Sleep)]
+        assert len(sleeps) >= 6
+        assert not [
+            step
+            for step in default_fake_script(self.scope, "/demo-activity")
+            if isinstance(step, fake.Sleep)
+        ]
+
+    async def test_demo_script_runs_end_to_end_with_paired_tool_events(self, workdir: Path) -> None:
+        runtime = FakeRuntime()
+        ctx = _make_ctx(
+            workdir,
+            write_scope=self.scope,
+            user_input=UserInput(text="/demo-activity"),
+        )
+
+        result = await _run(runtime, ctx)
+
+        calls = [e for e in result if isinstance(e, events.ToolCall)]
+        results = [e for e in result if isinstance(e, events.ToolResult)]
+        assert len(calls) >= 7
+        assert [c.call_id for c in calls] == [r.call_id for r in results]
+        assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
 
 
 class TestDefaultFakeScript:

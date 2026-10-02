@@ -1,76 +1,82 @@
 <script setup lang="ts">
 /**
- * 时间线单条渲染（从 `SessionPanel.vue` 拆出来，控制体积在简报建议的 250
- * 行以内）：用户消息/助手文本用 @ai-elements 的 Message，工具调用用 Tool
- * （可折叠，展示名字/参数/结果），notice/error/snapshot 用简单的提示条。
+ * 时间线里「非活动」条目的渲染：用户消息/助手文本用 @ai-elements 的 Message，
+ * notice/error/snapshot/suggestion 用简单的提示条。思考和工具调用由 `SessionTimeline` 归成
+ * 活动组渲染（`activity/`），不会到这里。助手文本经 `SafeMarkdown` 渲染 Markdown（原始 HTML 转义 + 渲染层拦截）。
  */
 import { computed } from 'vue'
-import { blobUrl } from '@/api/endpoints'
+import { CheckIcon, CopyIcon } from '@lucide/vue'
 import { Message, MessageContent } from '@/components/ai-elements/message'
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
-import type { TimelineItem } from '@/composables/useSessionStream'
+import type { TurnOut } from '@/types/api'
+import { useCopy } from './activity/useCopy'
+import type { PlainItem } from './groupTimeline'
 import { noticeText } from './noticeText'
+import SafeMarkdown from './SafeMarkdown.vue'
 import SuggestionCard from './SuggestionCard.vue'
 import { snapshotEventLabel } from './snapshotReason'
+import { formatClock } from './turnMeta'
 
-const props = defineProps<{ item: TimelineItem; projectId: string | null }>()
+const props = defineProps<{
+  item: PlainItem
+  projectId: string | null
+  turns?: ReadonlyMap<string, TurnOut>
+}>()
 
-const toolState = computed(() => {
-  if (props.item.kind !== 'tool_call') return 'input-available' as const
-  if (!props.item.result) return 'input-available' as const
-  return props.item.result.isError ? ('output-error' as const) : ('output-available' as const)
-})
+const { copied, copy } = useCopy()
 
-/** 工具结果里的图片（TD-21 修复后）：每张图带 `sha256`，拼 blob 地址渲染真缩略图。 */
-const images = computed(() => {
-  if (props.item.kind !== 'tool_call') return []
-  return props.item.result?.images ?? []
+/** 用户气泡下的时间：优先用 turn 的创建时间，其次是乐观占位的发送时间；都没有就不显示。 */
+const userTime = computed(() => {
+  if (props.item.kind !== 'user_message') return ''
+  return formatClock(props.turns?.get(props.item.turnId)?.created_at ?? props.item.at ?? '')
 })
 </script>
 
 <template>
-  <Message
+  <div
     v-if="item.kind === 'user_message'"
-    from="user"
+    class="flex flex-col items-end gap-1"
   >
-    <MessageContent>{{ item.text }}</MessageContent>
-  </Message>
+    <Message from="user">
+      <MessageContent>{{ item.text }}</MessageContent>
+    </Message>
+    <div class="text-muted-foreground flex items-center gap-3 text-xs">
+      <span
+        v-if="userTime"
+        data-testid="user-time"
+      >{{ userTime }}</span>
+      <button
+        type="button"
+        class="hover:text-foreground"
+        aria-label="复制消息"
+        data-testid="user-copy"
+        @click="copy(item.text)"
+      >
+        <CheckIcon
+          v-if="copied"
+          class="size-4"
+        />
+        <CopyIcon
+          v-else
+          class="size-4"
+        />
+      </button>
+    </div>
+  </div>
 
   <Message
     v-else-if="item.kind === 'text'"
     from="assistant"
+    class="max-w-full"
   >
-    <MessageContent :class="item.streaming ? 'opacity-70' : ''">
-      {{ item.text }}
+    <MessageContent class="w-full">
+      <SafeMarkdown :content="item.text" />
+      <span
+        v-if="item.streaming"
+        class="animate-pulse"
+        data-testid="stream-cursor"
+      >▍</span>
     </MessageContent>
   </Message>
-
-  <Tool v-else-if="item.kind === 'tool_call'">
-    <ToolHeader
-      type="dynamic-tool"
-      :tool-name="item.name"
-      :state="toolState"
-    />
-    <ToolContent>
-      <ToolInput :input="item.args" />
-      <ToolOutput
-        :output="item.result?.isError ? undefined : item.result?.text"
-        :error-text="item.result?.isError ? item.result.text : undefined"
-      />
-      <div
-        v-if="projectId !== null && images.length > 0"
-        class="flex flex-wrap gap-2 px-4 pb-4"
-      >
-        <img
-          v-for="(image, index) in images"
-          :key="image.sha256"
-          :src="blobUrl(projectId, image.sha256)"
-          :alt="`关键帧 ${index + 1}`"
-          class="h-24 w-auto rounded border object-contain"
-        >
-      </div>
-    </ToolContent>
-  </Tool>
 
   <SuggestionCard
     v-else-if="item.kind === 'suggestion' && projectId !== null"
