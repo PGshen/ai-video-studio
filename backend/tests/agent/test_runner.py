@@ -382,6 +382,22 @@ class TestBudget:
         notices = [r.payload for r in list_events(env.engine, session_id) if r.type == "notice"]
         assert [n["kind"] for n in notices] == ["cost_carryover"]
 
+    async def test_turn_usage_records_cache_read_tokens(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+
+        class Cached:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                for _ in range(2):
+                    yield events.Usage(
+                        input_tokens=100, output_tokens=5, cost_usd=0.0, cache_read_tokens=60
+                    )
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        turn = await h.run(h.session(), Cached)
+
+        assert turn.usage is not None
+        assert (turn.usage["input_tokens"], turn.usage["cache_read_tokens"]) == (200, 120)
+
     async def test_usage_without_carryover_has_no_carryover_flag(self, env: StudioEnv) -> None:
         h = _make_harness(env)
         session_id = h.session()

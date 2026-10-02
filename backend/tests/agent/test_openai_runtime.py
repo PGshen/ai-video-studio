@@ -24,7 +24,7 @@ from agents import (
 )
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.testing import ModelCall, ModelStep, ScriptedModel, assistant_message, function_call
-from agents.usage import Usage
+from agents.usage import InputTokensDetails, Usage
 from openai.types.responses import (
     Response,
     ResponseCompletedEvent,
@@ -725,6 +725,21 @@ class TestUsage:
         profile = dataclasses.replace(_OPENAI, price_input=None, price_output=None)
         assert turn_cost(profile, 1000, 500) == 0.0
 
+    async def test_usage_event_carries_cached_input_tokens(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        usage = Usage(
+            requests=1,
+            input_tokens=1000,
+            input_tokens_details=InputTokensDetails(cached_tokens=800, cache_write_tokens=0),
+            output_tokens=500,
+            total_tokens=1500,
+        )
+        models = Models([ModelStep(output=[assistant_message("好")], usage=usage)])
+        out = await _run(_runtime(data_dir, models), _ctx(workdir))
+
+        assert _of(out, events.Usage)[0].cache_read_tokens == 800
+
     async def test_usage_event_per_model_call(self, workdir: Path, data_dir: Path) -> None:
         usage = Usage(requests=1, input_tokens=1000, output_tokens=500, total_tokens=1500)
         models = Models(
@@ -739,6 +754,7 @@ class TestUsage:
         assert len(usages) == 2
         first = usages[0]
         assert (first.input_tokens, first.output_tokens, first.auth) == (1000, 500, "api_key")
+        assert first.cache_read_tokens == 0
         assert first.cost_usd == pytest.approx(0.006)
         # The first call's usage arrives before the tool call it produced finishes the turn.
         assert out.index(usages[0]) < out.index(_of(out, events.ToolResult)[0])

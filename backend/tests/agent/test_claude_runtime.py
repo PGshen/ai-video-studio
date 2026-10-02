@@ -572,7 +572,9 @@ class TestEventConversion:
                     events.ImageData("image/jpeg", "Qg=="),
                 ],
             ),
-            events.Usage(input_tokens=18, output_tokens=7, cost_usd=0.5, auth="api_key"),
+            events.Usage(
+                input_tokens=18, output_tokens=7, cost_usd=0.5, auth="api_key", cache_read_tokens=3
+            ),
             events.TurnEnd(resume_ref=SESSION, status="done"),
         ]
 

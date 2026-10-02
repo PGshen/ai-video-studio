@@ -116,9 +116,13 @@ class Usage:
     """
 
     input_tokens: int
+    """输入总量，含 `cache_read_tokens`（缓存命中的部分）。"""
     output_tokens: int
     cost_usd: float
     auth: AuthMode | None = None
+    cache_read_tokens: int = 0
+    """`input_tokens` 中从提示缓存读取的部分：agent 每次调工具都会重读上下文，缓存读取通常
+    占输入的大头，单独记下才能看出真正新增的输入。"""
     priced: bool = True
     """`False`：模型配置没有单价，`cost_usd` 只是 0 占位、没有统计成本（OpenAIRuntime，
     T10 审查后修复）。TurnRunner 据此每轮发一次 `cost_unpriced` 提示，并把 turn 的

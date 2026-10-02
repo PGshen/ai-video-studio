@@ -35,6 +35,22 @@ describe('ReplyFooter', () => {
     expect(w.text()).toContain('22:53')
   })
 
+  it('有缓存拆分时显示输出和输入，不再只给一个吓人的总数', () => {
+    const w = mountFooter(
+      new Map([
+        [
+          't1',
+          turn({
+            usage: { input_tokens: 229_000, output_tokens: 24_200, cache_read_tokens: 221_000 },
+          }),
+        ],
+      ]),
+    )
+
+    expect(w.text()).toContain('用量 输出 24K · 输入 229K（缓存 221K）')
+    expect(w.text()).not.toContain('253K')
+  })
+
   it('用量缺失时只省略用量', () => {
     const w = mountFooter(new Map([['t1', turn({ usage: null })]]))
 

@@ -365,6 +365,7 @@ class ClaudeRuntime:
         usage_event = events.Usage(
             input_tokens=input_tokens,
             output_tokens=int(usage.get("output_tokens") or 0),
+            cache_read_tokens=int(usage.get("cache_read_input_tokens") or 0),
             cost_usd=cost,
             auth=auth,
             includes_carryover=carryover,
