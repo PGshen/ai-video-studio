@@ -6,7 +6,7 @@
 |---|---|
 | 状态 | 已采纳 |
 | 日期 | 2026-10-02 |
-| 相关 | [对话页重做设计](../design/2026-10-02-chat-ui-redesign.md)、[计划 T1–T4](../plans/active/chat-ui-redesign.md)、[架构设计 §3.1、§4.1](../design/2026-09-26-architecture.md)、[claude-agent-sdk.md](../references/claude-agent-sdk.md)、[openai-agents-sdk.md](../references/openai-agents-sdk.md) |
+| 相关 | [对话页重做设计](../design/2026-10-02-chat-ui-redesign.md)、[计划 T1–T4](../plans/completed/chat-ui-redesign.md)、[架构设计 §3.1、§4.1](../design/2026-09-26-architecture.md)、[claude-agent-sdk.md](../references/claude-agent-sdk.md)、[openai-agents-sdk.md](../references/openai-agents-sdk.md) |
 
 ## 背景
 
