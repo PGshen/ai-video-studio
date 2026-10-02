@@ -47,3 +47,9 @@ def test_system_prompt_mentions_tool_managed_files() -> None:
     prompt = NARRATIVE_STAGE.system_prompt()
     assert "timing.json" in prompt
     assert "scene_ids" in prompt
+
+
+def test_system_prompt_tells_the_agent_not_to_draft_the_script_twice() -> None:
+    prompt = NARRATIVE_STAGE.system_prompt()
+    assert "不要在思考里起草" in prompt
+    assert "直接写进 `narrative/narrative.json`" in prompt
