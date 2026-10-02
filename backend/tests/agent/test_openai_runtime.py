@@ -24,7 +24,7 @@ from agents import (
 )
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.testing import ModelCall, ModelStep, ScriptedModel, assistant_message, function_call
-from agents.usage import InputTokensDetails, Usage
+from agents.usage import Usage
 from openai.types.responses import (
     Response,
     ResponseCompletedEvent,
@@ -37,6 +37,7 @@ from openai.types.responses.response_function_web_search import (
     ResponseFunctionWebSearch,
 )
 from openai.types.responses.response_reasoning_item import ResponseReasoningItem, Summary
+from openai.types.responses.response_usage import InputTokensDetails
 from pydantic import BaseModel
 
 from studio.agent import events
@@ -50,7 +51,14 @@ from studio.agent.openai_runtime import (
     register_openai,
 )
 from studio.agent.openai_tools import build_function_tool, turn_cost
-from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
+from studio.agent.runtime import (
+    Budget,
+    CancelToken,
+    Effort,
+    RuntimeFactory,
+    TurnContext,
+    UserInput,
+)
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import Settings
 from studio.db.repo.profiles import ModelProfileValue
@@ -114,6 +122,7 @@ def _ctx(
     tools: list[ToolSpec] | None = None,
     allow_web: bool = False,
     user_input: UserInput | None = None,
+    effort: Effort | None = None,
 ) -> TurnContext:
     return TurnContext(
         system_prompt="系统提示词",
@@ -129,6 +138,7 @@ def _ctx(
         stage="topic",
         record_tool_write=_noop_record,
         allow_web=allow_web,
+        effort=effort,
     )
 
 
@@ -311,6 +321,37 @@ class TestThinkingConversion:
 
         reasoning = models.calls[0].model_settings.reasoning
         assert (reasoning.summary if reasoning else None) == expected
+
+    async def test_gateway_passes_effort_alongside_the_summary(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        profile = dataclasses.replace(_OPENAI, base_url="https://openrouter.ai/api/v1")
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=profile, effort="low"))
+
+        reasoning = models.calls[0].model_settings.reasoning
+        assert reasoning is not None
+        assert (reasoning.summary, reasoning.effort) == ("auto", "low")
+
+    async def test_official_endpoint_passes_effort_only_for_reasoning_models(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        reasoning_profile = dataclasses.replace(
+            _OPENAI, base_url="https://api.openai.com/v1", model="gpt-5"
+        )
+        models = Models([[assistant_message("ok")]])
+        await _run(
+            _runtime(data_dir, models), _ctx(workdir, profile=reasoning_profile, effort="low")
+        )
+        reasoning = models.calls[0].model_settings.reasoning
+        assert reasoning is not None and reasoning.effort == "low"
+
+        plain_profile = dataclasses.replace(
+            _OPENAI, base_url="https://api.openai.com/v1", model="gpt-4o"
+        )
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, profile=plain_profile, effort="low"))
+        assert models.calls[0].model_settings.reasoning is None
 
     async def test_litellm_settings_do_not_set_reasoning_summary(
         self, workdir: Path, data_dir: Path

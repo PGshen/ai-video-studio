@@ -40,7 +40,13 @@ from studio.agent.preamble import (
     compose_user_text,
     gather_preamble_inputs,
 )
-from studio.agent.runtime import Budget, RuntimeFactory, TurnContext, UserInput
+from studio.agent.runtime import (
+    Budget,
+    RuntimeFactory,
+    TurnContext,
+    UserInput,
+    effort_from_settings,
+)
 from studio.agent.stage import StageRegistry
 from studio.agent.tools import ToolSpec
 from studio.agent.turn_events import TOOL_RESULT_MAX_CHARS
@@ -48,6 +54,7 @@ from studio.agent.turn_state import _Job, _State
 from studio.config import Settings
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
+from studio.db.repo.projects import get_project
 from studio.db.repo.sessions import get_session
 from studio.db.repo.settings import effective_web_mode
 from studio.db.repo.snapshots import latest_snapshot
@@ -316,6 +323,7 @@ class TurnRunner:
             state.pending_tool_paths.append(relpath)
 
         tools, allow_web = self._tools_and_web(job)
+        project = get_project(engine, project_id)
         ctx = TurnContext(
             system_prompt=job.stage.system_prompt(),
             user_input=UserInput(
@@ -337,6 +345,7 @@ class TurnRunner:
             session_id=job.session.id,
             turn_id=job.turn_id,
             upstream_stages=tuple(job.stage.upstream_stages()),
+            effort=effort_from_settings(project.settings if project else None),
         )
         await self._run_stream(job, state, ctx)
 
@@ -366,6 +375,7 @@ class TurnRunner:
             session_id=job.session.id,
             turn_id=job.turn_id,
             upstream_stages=tuple(job.stage.upstream_stages()),
+            effort=effort_from_settings(None),
         )
         await self._run_stream(job, state, ctx)
 

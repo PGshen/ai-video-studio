@@ -69,7 +69,14 @@ from studio.agent import events
 from studio.agent.apply_patch import WorkspaceApplyPatchEditor
 from studio.agent.fallback_tools import build_fallback_tools
 from studio.agent.openai_tools import _Turn, build_function_tool, convert
-from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
+from studio.agent.runtime import (
+    Budget,
+    CancelToken,
+    Effort,
+    RuntimeFactory,
+    TurnContext,
+    UserInput,
+)
 from studio.agent.sandbox_paths import sensitive_home_dirs
 from studio.agent.shell import LocalShellExecutor
 from studio.agent.shell_sandbox import sandbox_available as _sandbox_available
@@ -148,7 +155,11 @@ _REASONING_MODEL = re.compile(r"^(o\d|gpt-[5-9])", re.IGNORECASE)
 """Best effort: reasoning models return a summary (shown as thinking), others return none."""
 
 
-def model_settings(profile: ModelProfileValue) -> ModelSettings:
+def _reasoning(effort: Effort | None) -> Reasoning:
+    return Reasoning(summary="auto", effort=effort) if effort else _REASONING_SUMMARY
+
+
+def model_settings(profile: ModelProfileValue, effort: Effort | None = None) -> ModelSettings:
     """每轮的 `ModelSettings`。
 
     `provider=openai` 且走网关（非官方主机，例如 OpenRouter）时：OpenRouter 的 Responses
@@ -161,14 +172,14 @@ def model_settings(profile: ModelProfileValue) -> ModelSettings:
             include_usage=True,
             store=False,
             response_include=["reasoning.encrypted_content"],
-            reasoning=_REASONING_SUMMARY,
+            reasoning=_reasoning(effort),
         )
     if profile.provider == "openai":
         # api.openai.com rejects `reasoning` for non-reasoning models, which would fail every turn,
         # while an unrequested summary only costs the thinking display; so only ask when the model
         # name says it reasons. (Gateways above are lenient, verified on OpenRouter.)
         if _REASONING_MODEL.match(profile.model):
-            return ModelSettings(include_usage=True, reasoning=_REASONING_SUMMARY)
+            return ModelSettings(include_usage=True, reasoning=_reasoning(effort))
         return ModelSettings(include_usage=True)
     # LiteLLM (chat completions): the SDK ignores `reasoning.summary` here and warns on
     # every call, so leave it unset; provider-returned reasoning still streams through.
@@ -341,7 +352,7 @@ class OpenAIRuntime:
             name="studio",
             instructions=ctx.system_prompt,
             model=model,
-            model_settings=model_settings(ctx.model_profile),
+            model_settings=model_settings(ctx.model_profile, ctx.effort),
             tools=self._tools(ctx, turn),
         )
         self._sessions_db.parent.mkdir(parents=True, exist_ok=True)

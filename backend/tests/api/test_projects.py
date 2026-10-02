@@ -445,6 +445,44 @@ class TestCreateProjectWithStyle:
         assert "style_preset_id" not in response.json()["settings"]
 
 
+class TestProjectEffortSetting:
+    async def test_create_accepts_effort(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "settings": {"effort": "low"}}
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["settings"]["effort"] == "low"
+
+    async def test_create_rejects_unknown_effort(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "settings": {"effort": "max"}}
+        )
+
+        assert response.status_code == 422
+        assert "effort" in response.text
+
+    async def test_patch_sets_and_clears_effort(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        url = f"/api/projects/{project['id']}/settings"
+
+        response = await api_env.client.patch(url, json={"effort": "high"})
+        assert response.status_code == 200, response.text
+        assert response.json()["settings"]["effort"] == "high"
+
+        response = await api_env.client.patch(url, json={"effort": None})
+        assert "effort" not in response.json()["settings"]
+
+    async def test_patch_rejects_unknown_effort(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+
+        response = await api_env.client.patch(
+            f"/api/projects/{project['id']}/settings", json={"effort": "max"}
+        )
+
+        assert response.status_code == 422
+
+
 class TestProjectVoiceSettings:
     async def _patch(self, api_env: ApiEnv, project_id: str, body: dict) -> Response:
         return await api_env.client.patch(f"/api/projects/{project_id}/settings", json=body)

@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
+from studio.agent.runtime import EFFORT_LEVELS
 from studio.agent.stage import StageDefinition, StageRegistry
 from studio.agent.stage_flow import StageFlowError, finalize, reopen
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
@@ -185,6 +186,8 @@ def create_project_endpoint(
     client_settings = {
         key: value for key, value in (body.settings or {}).items() if key not in _STYLE_SETTING_KEYS
     }
+    if "effort" in client_settings and client_settings["effort"] not in EFFORT_LEVELS:
+        raise HTTPException(status_code=422, detail=f"effort 必须是 {'/'.join(EFFORT_LEVELS)} 之一")
     # 新项目的默认音色/语速是复制进项目的（决策 D5）：之后改设置页不影响已有项目。
     stored = get_all_settings(engine)
     tts_defaults = {

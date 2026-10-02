@@ -277,6 +277,7 @@ class ClaudeRuntime:
             include_partial_messages=True,
             # Best effort: models that think return summarized text, others return none.
             thinking={"type": "adaptive", "display": "summarized"},
+            effort=ctx.effort,
             # The prompt embeds workspace-derived text (preamble); never expand @paths in it.
             verbatim_prompts=True,
             max_budget_usd=ctx.budget.max_cost_usd if auth == "api_key" else None,

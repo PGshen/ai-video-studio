@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from sqlalchemy import Engine
 
@@ -24,6 +24,20 @@ class UserInput:
 
     text: str
     images: list[ImageData] = field(default_factory=list)
+
+
+Effort = Literal["low", "medium", "high"]
+"""思考强度：项目设置 `effort`，两个运行时各自映射到 SDK 的 effort 参数。"""
+
+EFFORT_LEVELS: tuple[Effort, ...] = ("low", "medium", "high")
+
+DEFAULT_EFFORT: Effort = "medium"
+"""项目没有设置（或设置值不合法）时用的强度。"""
+
+
+def effort_from_settings(settings: Mapping[str, Any] | None) -> Effort:
+    value = (settings or {}).get("effort")
+    return value if value in EFFORT_LEVELS else DEFAULT_EFFORT
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +106,8 @@ class TurnContext:
     """透传给 `ToolContext.turn_id`（M5 T9）。"""
     upstream_stages: tuple[str, ...] = ()
     """透传给 `ToolContext.upstream_stages`（M5 T9）：当前阶段的直接上游。"""
+    effort: Effort | None = None
+    """思考强度；`None` 表示不指定，用 SDK 默认（测试和无项目会话）。"""
 
     def tool_context(self) -> ToolContext:
         """业务工具 handler 的上下文；三个运行时都从这里取，不各自构造（TD-17）。"""
