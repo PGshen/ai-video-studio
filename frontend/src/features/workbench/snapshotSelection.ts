@@ -35,6 +35,28 @@ export function computeDiffParams(
   return indexA < indexB ? { from: b, to: a } : { from: a, to: b }
 }
 
+export type DiffTarget =
+  | { kind: 'none' }
+  | { kind: 'initial' }
+  | { kind: 'diff'; from: string; to: string }
+
+/**
+ * 详情区要展示什么（`snapshots` 同样是"最新在前"）：选 1 个对比它与上一个（更早的）快照，
+ * 选中最早的快照没有可比的版本（`initial`），选 2 个对比这两个。不在列表里的选中项
+ * （回滚或重新加载后可能出现）直接忽略，免得残留旧的 diff。
+ */
+export function resolveDiffTarget(snapshots: SnapshotLike[], selected: string[]): DiffTarget {
+  const present = selected.filter((id) => snapshots.some((snapshot) => snapshot.id === id))
+  if (present.length === 2) {
+    const params = computeDiffParams(snapshots, present)
+    return params ? { kind: 'diff', ...params } : { kind: 'none' }
+  }
+  if (present.length !== 1) return { kind: 'none' }
+  const index = snapshots.findIndex((snapshot) => snapshot.id === present[0])
+  const previous = snapshots[index + 1]
+  return previous ? { kind: 'diff', from: previous.id, to: present[0]! } : { kind: 'initial' }
+}
+
 /**
  * [回滚到此] 是否可点（T14 审查修复：原来一直可点，即使 agent 正在运行
  * 也能点开二次确认弹窗，后端才会在真正提交时返回 409）。`[对比]`

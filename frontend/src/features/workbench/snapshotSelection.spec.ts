@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { canRollback, computeDiffParams, toggleSnapshotSelection } from './snapshotSelection'
+import {
+  canRollback,
+  computeDiffParams,
+  resolveDiffTarget,
+  toggleSnapshotSelection,
+} from './snapshotSelection'
 
 describe('toggleSnapshotSelection', () => {
   it('从空选中一个', () => {
@@ -35,6 +40,38 @@ describe('computeDiffParams', () => {
   it('按列表顺序算出 from（较早）/to（较晚），与选择顺序无关', () => {
     expect(computeDiffParams(snapshots, ['s1', 's3'])).toEqual({ from: 's1', to: 's3' })
     expect(computeDiffParams(snapshots, ['s3', 's1'])).toEqual({ from: 's1', to: 's3' })
+  })
+})
+
+describe('resolveDiffTarget', () => {
+  // 最新在前的展示顺序。
+  const snapshots = [{ id: 's3' }, { id: 's2' }, { id: 's1' }]
+
+  it('没选：none', () => {
+    expect(resolveDiffTarget(snapshots, [])).toEqual({ kind: 'none' })
+  })
+
+  it('选 1 个：对比它与上一个（更早的）快照', () => {
+    expect(resolveDiffTarget(snapshots, ['s3'])).toEqual({ kind: 'diff', from: 's2', to: 's3' })
+    expect(resolveDiffTarget(snapshots, ['s2'])).toEqual({ kind: 'diff', from: 's1', to: 's2' })
+  })
+
+  it('选中最早的快照：initial（没有更早的版本可比）', () => {
+    expect(resolveDiffTarget(snapshots, ['s1'])).toEqual({ kind: 'initial' })
+  })
+
+  it('选 2 个：对比这两个，与选择顺序无关', () => {
+    expect(resolveDiffTarget(snapshots, ['s3', 's1'])).toEqual({ kind: 'diff', from: 's1', to: 's3' })
+    expect(resolveDiffTarget(snapshots, ['s1', 's3'])).toEqual({ kind: 'diff', from: 's1', to: 's3' })
+  })
+
+  it('选中的 id 已不在列表里（回滚/重载后）：忽略它，不残留', () => {
+    expect(resolveDiffTarget(snapshots, ['gone'])).toEqual({ kind: 'none' })
+    expect(resolveDiffTarget(snapshots, ['gone', 's2'])).toEqual({ kind: 'diff', from: 's1', to: 's2' })
+  })
+
+  it('列表为空：none', () => {
+    expect(resolveDiffTarget([], ['s1'])).toEqual({ kind: 'none' })
   })
 })
 
