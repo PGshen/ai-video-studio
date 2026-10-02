@@ -4,7 +4,8 @@
  *
  * 缓冲区/冲突处理用共享的 `composables/conflictState.ts`：缓冲区干净时直接采用服务器的新内容
  * （agent 写的），脏时进入冲突态让用户选择；`path` 变化时重置。agent 运行时（`busy`）只读，不能切到编辑或保存。渲染视图显示的是缓冲区内容，
- * 所以编辑后不保存也能看到渲染效果。
+ * 所以编辑后不保存也能看到渲染效果。渲染/编辑的切换按钮在父组件的标签行里，`mode` 用 `v-model:mode` 同步；
+ * 这里只负责在换文件、文件被删、agent 开始运行时把它退回渲染。
  */
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
@@ -36,7 +37,7 @@ const props = defineProps<{
   emptyHint: string
 }>()
 
-const mode = ref<'view' | 'edit'>('view')
+const mode = defineModel<'view' | 'edit'>('mode', { default: 'view' })
 const buffer = ref<BufferState | null>(null)
 const saveError = ref<string | null>(null)
 
@@ -155,34 +156,6 @@ async function onSave(): Promise<void> {
             载入最新
           </Button>
         </div>
-      </div>
-
-      <div class="flex items-center justify-between gap-2">
-        <div class="flex gap-1 text-sm">
-          <button
-            type="button"
-            class="rounded px-3 py-1"
-            :class="mode === 'view' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
-            @click="mode = 'view'"
-          >
-            渲染
-          </button>
-          <button
-            type="button"
-            class="rounded px-3 py-1 disabled:opacity-50"
-            :class="mode === 'edit' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
-            :disabled="busy"
-            @click="mode = 'edit'"
-          >
-            编辑
-          </button>
-        </div>
-        <span
-          v-if="busy"
-          class="text-muted-foreground text-xs"
-        >
-          只读：agent 正在运行
-        </span>
       </div>
 
       <div

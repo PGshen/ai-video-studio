@@ -93,7 +93,7 @@
 - **验收标准**：AC4；评审关注点 1。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/workbench`；任务结束 `make check`。
 
-### T2：选题画布——状态图标与编辑切换上移（待开始）
+### T2：选题画布——状态图标与编辑切换上移（完成）
 
 - **目标**：检查条变状态图标，图标与渲染/编辑切换一起右对齐在标签行；模式状态提到 `TopicCanvas`。
 - **涉及文件**：
@@ -132,10 +132,11 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-02 — T1 — `resolveDiffTarget`（单选对比上一个/initial/双选）、`formatSnapshotTime`；`SnapshotTimeline` 改为上时间线下详情，详情与回滚确认拆到 `SnapshotDetail`；前端 `features/workbench` 44 个用例通过
+- 2026-10-02 — T2 — `BriefStatusIcon`（四级图标 + 悬停/聚焦气泡）替换并删除 `BriefCheckBar`；`EditModeToggle` 图标分段按钮；`TopicCanvas` 持有模式并右对齐放进标签行，`MarkdownFilePane` 改 `v-model:mode` 并去掉自带切换条与「只读」提示；新增 `src/test/setup.ts`（`ResizeObserver` 桩）；`features/canvas/topic` 21 个用例通过
 
 ## 下一步
 
-- 从 T2 开始（选题画布状态图标与编辑切换上移）。
+- 从 T3 开始（页面三栏布局、可拖宽与折叠快照栏）。
 
 ## 决策记录
 
@@ -147,6 +148,8 @@
 - 2026-10-02 — 单选对比上一个快照、双选对比两者，保留原有对比能力。
 - 2026-10-02 — T1：「回滚到此」只在详情区、且恰好选中一个快照时出现，选两个（对比模式）时不出现 — 对比模式下回滚目标有歧义；代价：要回滚到某个快照需先单选它（原来每行都有按钮）。
 - 2026-10-02 — T1：时间线每项的时间用新增的 `formatSnapshotTime`（本地 `MM-DD HH:mm`，按 UTC 解析无时区后缀的服务器时间）代替原始 ISO 串 — 窄栏里 26 位时间戳会折行，且原先在东八区差 8 小时（TD-45 同源）；代价：不再显示秒与毫秒。
+- 2026-10-02 — T2：vitest 加 `setupFiles: src/test/setup.ts`，给 jsdom 补一个空的 `ResizeObserver` 桩 — reka-ui 的 Tooltip（以及 T3 的 Splitter）挂载就要用它；只动测试配置，不改被测代码；代价：全局桩可能掩盖将来依赖真实尺寸的测试，那类测试需自己 mock。
+- 2026-10-02 — T2：笔记标签下没有笔记时隐藏渲染/编辑切换 — 无文件可编辑，留着只会是个无效按钮；状态图标仍显示。
 - 2026-10-02 — T1：组件测试没有现成的查询 mock 先例，新增 `snapshotTestSupport.ts`（测试辅助，`vi.mock('@/composables/queries')` 用）— 保持被测组件不为测试而改。
 
 ## 意外与发现

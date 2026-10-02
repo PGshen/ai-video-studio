@@ -1,14 +1,16 @@
 <script setup lang="ts">
 /**
- * 选题打磨阶段画布（计划 M4 T11）：顶部是 `check_brief` 的检查提示条，下面两个标签——
- * 「简报」（`topic/brief.md` 的渲染视图，可切换编辑）和「笔记」（`topic/notes/` 下的调研笔记，
- * 含项目创建时种进来的想法卡片 `idea-card.md`）。状态都从通用文件端点读，检查结果来自
- * `GET /projects/{id}/topic/check`（和 `check_brief` 工具同一份逻辑）；文件变化时
- * `invalidateWorkspace` 会让检查查询一并失效。
+ * 选题打磨阶段画布（计划 M4 T11）：一行标签——「简报」（`topic/brief.md` 的渲染视图，可切换编辑）
+ * 和「笔记」（`topic/notes/` 下的调研笔记，含项目创建时种进来的想法卡片 `idea-card.md`），
+ * 标签行右侧是 `check_brief` 检查结果的状态图标和渲染/编辑切换（canvas-layout）。状态都从通用文件
+ * 端点读，检查结果来自 `GET /projects/{id}/topic/check`（和 `check_brief` 工具同一份逻辑）；
+ * 文件变化时 `invalidateWorkspace` 会让检查查询一并失效。渲染/编辑模式由这里持有，
+ * 简报和当前笔记共用；换标签、换笔记时回到渲染。
  */
 import { computed, ref, watch } from 'vue'
 import { useFileTreeQuery, useTopicCheckQuery } from '@/composables/queries'
-import BriefCheckBar from './BriefCheckBar.vue'
+import BriefStatusIcon from './BriefStatusIcon.vue'
+import EditModeToggle from './EditModeToggle.vue'
 import MarkdownFilePane from './MarkdownFilePane.vue'
 import { BRIEF_PATH, noteFiles } from './briefStatus'
 
@@ -20,6 +22,7 @@ const props = defineProps<{
 
 type Tab = 'brief' | 'notes'
 const tab = ref<Tab>('brief')
+const mode = ref<'view' | 'edit'>('view')
 
 const { data: fileTree } = useFileTreeQuery(() => props.projectId)
 const { data: check } = useTopicCheckQuery(() => props.projectId)
@@ -36,17 +39,24 @@ watch(
   },
   { immediate: true },
 )
+
+// 换标签、换笔记：模式回到渲染，未保存的编辑不带到另一份文件上。
+watch([tab, selectedNote], () => {
+  mode.value = 'view'
+})
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <BriefCheckBar :check="check" />
-
-    <div class="flex gap-1 text-sm">
+    <div
+      class="flex items-center gap-1 text-sm"
+      data-testid="topic-tabbar"
+    >
       <button
         type="button"
         class="rounded px-3 py-1"
         :class="tab === 'brief' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+        data-testid="tab-brief"
         @click="tab = 'brief'"
       >
         简报
@@ -55,14 +65,24 @@ watch(
         type="button"
         class="rounded px-3 py-1"
         :class="tab === 'notes' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+        data-testid="tab-notes"
         @click="tab = 'notes'"
       >
         笔记（{{ notes.length }}）
       </button>
+      <div class="ml-auto flex items-center gap-2">
+        <BriefStatusIcon :check="check" />
+        <EditModeToggle
+          v-if="tab === 'brief' || selectedNote"
+          v-model:mode="mode"
+          :busy="busy"
+        />
+      </div>
     </div>
 
     <MarkdownFilePane
       v-if="tab === 'brief'"
+      v-model:mode="mode"
       :project-id="projectId"
       :path="BRIEF_PATH"
       stage="topic"
@@ -102,6 +122,7 @@ watch(
       <MarkdownFilePane
         v-if="selectedNote"
         :key="selectedNote"
+        v-model:mode="mode"
         :project-id="projectId"
         :path="selectedNote"
         stage="topic"
