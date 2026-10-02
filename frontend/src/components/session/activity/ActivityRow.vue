@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * 活动组里的一行（设计 §4.3）：折叠态 = 图标 + 类型名 + `·` + 一句摘要 + 状态 + chevron；
+ * 活动组里的一行（设计 §4.3）：折叠态 = 图标 + 类型名 + `·` + 一句摘要 + 状态；
  * 展开态在下方显示默认插槽里的正文。展开状态由父组件控制（`open` / `update:open`）。
+ * 折叠箭头和图标共用行首同一个位置：平时显示图标，鼠标悬停该行或展开时图标让位给箭头。
  */
 import type { Component } from 'vue'
 import { ChevronRightIcon, LoaderCircleIcon } from '@lucide/vue'
@@ -21,18 +22,25 @@ defineEmits<{ (e: 'update:open', open: boolean): void }>()
 <template>
   <Collapsible
     :open="open"
-    class="group/row"
     data-testid="activity-row"
     :data-status="status"
     @update:open="$emit('update:open', $event)"
   >
     <CollapsibleTrigger
-      class="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 py-2 text-left text-sm"
+      class="group/trigger text-muted-foreground hover:text-foreground flex w-full items-center gap-2 py-2 text-left text-sm"
     >
-      <component
-        :is="icon"
-        class="size-4 shrink-0"
-      />
+      <span
+        class="flex size-4 shrink-0 items-center justify-center"
+        data-testid="row-lead"
+      >
+        <component
+          :is="icon"
+          class="size-4 group-hover/trigger:hidden group-data-[state=open]/trigger:hidden"
+        />
+        <ChevronRightIcon
+          class="hidden size-4 transition-transform group-hover/trigger:block group-data-[state=open]/trigger:block group-data-[state=open]/trigger:rotate-90"
+        />
+      </span>
       <span class="shrink-0">{{ label }}</span>
       <template v-if="summary">
         <span class="shrink-0">·</span>
@@ -54,9 +62,6 @@ defineEmits<{ (e: 'update:open', open: boolean): void }>()
         v-else-if="status === 'interrupted'"
         class="shrink-0 text-xs"
       >已中断</span>
-      <ChevronRightIcon
-        class="size-4 shrink-0 transition-transform group-data-[state=open]/row:rotate-90"
-      />
     </CollapsibleTrigger>
     <CollapsibleContent class="pb-2 pl-6">
       <slot />

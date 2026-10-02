@@ -237,6 +237,7 @@
 - 2026-10-02 — 评审修复 F3：评审没下结论的「官方 OpenAI 端点对非推理模型拒绝 `reasoning`」——若成立每轮都失败，代价远大于少显示一个思考，所以官方端点只对 `^(o\d|gpt-[5-9])` 模型请求摘要（网关不变）；Claude 在 Haiku 4.5 / Sonnet 5 上的 adaptive 已实测都正常。登记 TD-47（官方端点没有真实 key 验证）。
 - 2026-10-02 — 评审 Minor（延后，登记 TD-48）：原生 WebSearch 摘要正文不显示；截断的 Read 可能出现两套行号；中断后展开正文的文案；空白 delta 流式期间丢失段落分隔；多转义的嵌套围栏；`removeLocalUserMessage` 影响 key。
 - 2026-10-02 — T10 L4 发现并修复的问题：① 后端时间戳是没有时区的 UTC，`formatClock` 直接 `new Date()` 在东八区差 8 小时，新增 `parseServerTime`（无时区后缀按 UTC 解析，先写失败测试）；② 思考正文被 Markdown 根节点的前景色盖掉，改 wrapper + `text-inherit!`；③ 代码块内容以换行结尾时多出一个空行号，`CodeView` 去掉末尾一个换行；④ 新建会话的首轮 `turnStatus` 为空（预存在的问题，改动前的前端同样复现），用发送接口返回的 `turn_id` 调新增的 `markTurnAccepted` 缓解（`useSessionStream` 新增导出，`SessionPanel` 的发送/继续两处调用）；根因没查清，登记 TD-44。
+- 2026-10-02 — 验收后微调：① 行的折叠箭头与图标共用行首同一位置，平时显示图标，悬停该行或展开时换成箭头（`ActivityRow`，行尾不再有箭头）；② 工具内代码块（`CodeView`）字号 `text-xs`、内边距 `p-3`，并让 shiki 主题里的粗体/下划线在浅色主题下也生效（`CodeBlockContent` 原先只映射了深色变量），Markdown 标题加粗、链接带下划线。主题仍用 github-light/dark，没有换成色彩更丰富的主题（会影响其他代码块），如要更多颜色再单独定。
 - 2026-10-02 — T10 演示脚本的触发判断是「提示词最后一行等于 `/demo-activity`」而不是整串相等 — `TurnRunner` 在用户消息前拼了上下文前言（L4 里第一次没触发才发现，先加失败测试再改）。
 - 2026-10-02 — T10 删除 `components/ai-elements/tool/*`（生成代码，已无任何引用），并更新 `docs/references/frontend-stack.md` — 计划「不包含」里写的是「最终无引用时才删除」；需要时可用 shadcn-vue CLI 重新生成。
 - 2026-10-02 — T10 L4 在隔离的数据目录（会话临时目录）和 8001/5174 端口上做，临时改了 `.claude/launch.json`（用完 `git checkout` 恢复），没有碰负责人正在运行的 8000/5173 开发实例和真实数据；另用 git worktree 起过一个改动前的前端对照实例（已删除）。
