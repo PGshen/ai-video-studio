@@ -163,7 +163,10 @@ async function onSave(): Promise<void> {
         class="min-h-0 flex-1 overflow-y-auto pr-1 text-sm"
         data-testid="markdown-view"
       >
-        <MessageResponse :content="buffer.content" />
+        <MessageResponse
+          :content="buffer.content"
+          mode="static"
+        />
       </div>
       <template v-else>
         <CodeEditor

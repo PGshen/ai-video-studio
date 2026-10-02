@@ -51,6 +51,12 @@ describe('TopicCanvas', () => {
     expect(w.text()).not.toContain('只读：agent 正在运行')
   })
 
+  it('文件渲染视图用 static 模式：默认 streaming 模式会给整篇文档的每个文字片段排入场动画，刷新进入时主线程卡十几秒', async () => {
+    const w = mountCanvas()
+    await flushPromises()
+    expect(w.get('[data-testid="rendered"]').attributes('mode')).toBe('static')
+  })
+
   it('切到编辑显示编辑器，切回渲染显示渲染视图', async () => {
     const w = mountCanvas()
     await flushPromises()
