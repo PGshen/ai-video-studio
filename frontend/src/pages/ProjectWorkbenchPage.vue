@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 项目工作台外壳（任务简报 T13/T14，控制者裁定 1；M2 T12 加了按阶段分派
- * 画布组件）：阶段导航 + 左侧会话面板 + 右侧画布/快照时间线。`animation`
+ * 画布组件）：阶段导航 + 会话面板 | 画布 | 快照栏（后三者由 `WorkbenchSplit` 分栏，可拖宽）。`animation`
  * 阶段用专属的 `AnimationCanvas`（镜头列表 + 代码编辑器，见该目录），
  * `narrative` 阶段用 `NarrativeCanvas`（镜头卡片 + 配音播放条 + JSON，M3），
  * 其它阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）。
@@ -24,7 +24,7 @@ import { PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   useApplySuggestionMutation,
   useModelProfilesQuery,
@@ -38,7 +38,8 @@ import StageNav from '@/features/workbench/StageNav.vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
 import SessionList from '@/components/session/SessionList.vue'
 import ModelSwitcher from '@/components/session/ModelSwitcher.vue'
-import SnapshotTimeline from '@/features/workbench/SnapshotTimeline.vue'
+import SnapshotRail from '@/features/workbench/SnapshotRail.vue'
+import WorkbenchSplit from '@/features/workbench/WorkbenchSplit.vue'
 import { sessionResetKey } from '@/features/workbench/sessionResetKey'
 import { combineBusy } from '@/components/session/turnControls'
 import { projectScope } from '@/composables/sessionScope'
@@ -124,18 +125,18 @@ const canvasBusy = computed(() =>
       项目加载失败。
     </p>
     <template v-else>
-      <!-- lg 以上：竖栏（阶段 + 项目操作 + 会话，可折叠成图标）| 对话 | 画布，对话和画布各自滚动；
-           窄屏：竖栏固定为折叠样式并横排在最上面，其余上下堆叠，整页滚动。 -->
+      <!-- lg 以上：竖栏（阶段 + 项目操作 + 会话，可折叠成图标）| 对话 | 画布 | 快照栏（可折叠），
+           后三栏之间的分隔条可拖，各自滚动；窄屏：竖栏固定为折叠样式并横排在最上面，其余上下堆叠，整页滚动。 -->
       <div
         class="grid min-h-0 flex-1 grid-cols-1 gap-4 transition-[grid-template-columns] duration-200 ease-out max-lg:overflow-y-auto lg:grid-rows-[minmax(0,1fr)]"
         :class="
           railCollapsed
-            ? 'lg:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)]'
-            : 'lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)]'
+            ? 'lg:grid-cols-[3rem_minmax(0,1fr)]'
+            : 'lg:grid-cols-[11rem_minmax(0,1fr)]'
         "
       >
         <aside
-          class="flex min-h-0 flex-col gap-3 max-lg:flex-row max-lg:flex-wrap max-lg:items-start max-lg:border-b max-lg:pb-3 lg:overflow-x-hidden lg:overflow-y-auto lg:border-r lg:pr-3"
+          class="flex min-h-0 flex-col gap-3 max-lg:min-h-max max-lg:flex-row max-lg:flex-wrap max-lg:items-start max-lg:border-b max-lg:pb-3 lg:overflow-x-hidden lg:overflow-y-auto lg:border-r lg:pr-3"
           :class="railCollapsed ? 'lg:items-center lg:!pr-2' : ''"
           data-testid="workbench-rail"
         >
@@ -172,59 +173,65 @@ const canvasBusy = computed(() =>
           />
         </aside>
 
-        <div class="flex min-h-0 gap-3 max-lg:h-[32rem]">
-          <SessionPanel
-            class="min-w-0"
-            :session-id="sessionId"
-            :project-id="projectId"
-            :prefill="prefill"
-            @sent="onMessageSent"
-          >
-            <template #tools>
-              <ModelSwitcher
-                v-if="currentSession && profiles"
-                :key="currentSession.id"
-                :session="currentSession"
-                :profiles="profiles"
-                :scope="scope"
-                compact
-              />
-            </template>
-          </SessionPanel>
-        </div>
+        <WorkbenchSplit>
+          <template #chat>
+            <SessionPanel
+              class="min-w-0"
+              :session-id="sessionId"
+              :project-id="projectId"
+              :prefill="prefill"
+              @sent="onMessageSent"
+            >
+              <template #tools>
+                <ModelSwitcher
+                  v-if="currentSession && profiles"
+                  :key="currentSession.id"
+                  :session="currentSession"
+                  :profiles="profiles"
+                  :scope="scope"
+                  compact
+                />
+              </template>
+            </SessionPanel>
+          </template>
 
-        <Card class="flex min-h-0 flex-col gap-3 overflow-hidden py-4 max-lg:min-h-[32rem]">
-          <CardHeader class="shrink-0">
-            <CardTitle>画布</CardTitle>
-          </CardHeader>
-          <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-            <AnimationCanvas
-              v-if="stage === 'animation'"
+          <template #canvas>
+            <Card class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4">
+              <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+                <AnimationCanvas
+                  v-if="stage === 'animation'"
+                  :project-id="projectId"
+                  :busy="canvasBusy"
+                />
+                <NarrativeCanvas
+                  v-else-if="stage === 'narrative'"
+                  :project-id="projectId"
+                  :busy="canvasBusy"
+                />
+                <TopicCanvas
+                  v-else-if="stage === 'topic'"
+                  :project-id="projectId"
+                  :busy="canvasBusy"
+                />
+                <FileCanvas
+                  v-else
+                  :project-id="projectId"
+                  :stage="stage"
+                  :busy="canvasBusy"
+                />
+              </CardContent>
+            </Card>
+          </template>
+
+          <template #rail="{ collapsed, toggle }">
+            <SnapshotRail
               :project-id="projectId"
               :busy="canvasBusy"
+              :collapsed="collapsed"
+              @toggle="toggle"
             />
-            <NarrativeCanvas
-              v-else-if="stage === 'narrative'"
-              :project-id="projectId"
-              :busy="canvasBusy"
-            />
-            <TopicCanvas
-              v-else-if="stage === 'topic'"
-              :project-id="projectId"
-              :busy="canvasBusy"
-            />
-            <FileCanvas
-              v-else
-              :project-id="projectId"
-              :stage="stage"
-              :busy="canvasBusy"
-            />
-            <SnapshotTimeline
-              :project-id="projectId"
-              :busy="canvasBusy"
-            />
-          </CardContent>
-        </Card>
+          </template>
+        </WorkbenchSplit>
       </div>
     </template>
   </div>

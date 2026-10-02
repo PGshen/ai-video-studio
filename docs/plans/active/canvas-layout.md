@@ -59,12 +59,12 @@
 
 ## 验收标准
 
-- [ ] AC1：页面不再有「画布」标题行；lg 以上对话、画布、快照栏三栏由分隔条分开，拖动可改宽度，刷新后保持；设最小宽度。（验证：L4 拖动截图 + 组件测试）
-- [ ] AC2：快照栏是独立的第三张卡片，首次访问默认折叠，折叠后窄条显示图标与快照数；展开/折叠状态与宽度刷新后保持。（验证：组件测试 + L4）
-- [ ] AC3：窄屏（< lg）无分隔条，三块上下堆叠，快照栏展开可用。（验证：L4 窄屏截图）
-- [ ] AC4：快照栏上下布局；单选对比上一个快照、双选对比两者、选最早快照提示「初始快照」、未选有提示；「回滚到此」仍二次确认且 agent 运行中禁用。（验证：`snapshotSelection.spec.ts`、`SnapshotTimeline`/`SnapshotDetail` 组件测试）
-- [ ] AC5：选题画布无检查条；状态图标按 `unknown/ok/warnings/errors` 显示，悬停与键盘聚焦都弹出含 headline + 错误 + 警告的气泡，有 `aria-label`。（验证：`BriefStatusIcon` 组件测试 + L4）
-- [ ] AC6：状态图标与渲染/编辑图标切换右对齐在「简报、笔记」行；简报与笔记共用切换；agent 运行时编辑置灰且气泡说明；换文件/换标签回到渲染。（验证：`TopicCanvas`/`MarkdownFilePane` 组件测试 + L4）
+- [x] AC1：页面不再有「画布」标题行；lg 以上对话、画布、快照栏三栏由分隔条分开，拖动可改宽度，刷新后保持；设最小宽度。（验证：L4 拖动截图 + 组件测试）
+- [x] AC2：快照栏是独立的第三张卡片，首次访问默认折叠，折叠后窄条显示图标与快照数；展开/折叠状态与宽度刷新后保持。（验证：组件测试 + L4）
+- [x] AC3：窄屏（< lg）无分隔条，三块上下堆叠，快照栏展开可用。（验证：L4 窄屏截图）
+- [x] AC4：快照栏上下布局；单选对比上一个快照、双选对比两者、选最早快照提示「初始快照」、未选有提示；「回滚到此」仍二次确认且 agent 运行中禁用。（验证：`snapshotSelection.spec.ts`、`SnapshotTimeline`/`SnapshotDetail` 组件测试）
+- [x] AC5：选题画布无检查条；状态图标按 `unknown/ok/warnings/errors` 显示，悬停与键盘聚焦都弹出含 headline + 错误 + 警告的气泡，有 `aria-label`。（验证：`BriefStatusIcon` 组件测试 + L4）
+- [x] AC6：状态图标与渲染/编辑图标切换右对齐在「简报、笔记」行；简报与笔记共用切换；agent 运行时编辑置灰且气泡说明；换文件/换标签回到渲染。（验证：`TopicCanvas`/`MarkdownFilePane` 组件测试 + L4）
 - [ ] AC7：文档与计划已更新；`make check` 全绿；收尾清单（SOP §7）完成。
 
 ## 评审关注点
@@ -105,7 +105,7 @@
 - **验收标准**：AC5、AC6；评审关注点 3、4。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas/topic`；任务结束 `make check`。
 
-### T3：页面三栏布局、可拖宽与折叠快照栏（待开始）
+### T3：页面三栏布局、可拖宽与折叠快照栏（完成）
 
 - **目标**：`ProjectWorkbenchPage` 改成 对话 | 画布 | 快照栏 三个 `SplitterPanel`，去掉画布标题行，快照栏独立 Card 且默认折叠。
 - **涉及文件**：
@@ -133,10 +133,12 @@
 
 - 2026-10-02 — T1 — `resolveDiffTarget`（单选对比上一个/initial/双选）、`formatSnapshotTime`；`SnapshotTimeline` 改为上时间线下详情，详情与回滚确认拆到 `SnapshotDetail`；前端 `features/workbench` 44 个用例通过
 - 2026-10-02 — T2 — `BriefStatusIcon`（四级图标 + 悬停/聚焦气泡）替换并删除 `BriefCheckBar`；`EditModeToggle` 图标分段按钮；`TopicCanvas` 持有模式并右对齐放进标签行，`MarkdownFilePane` 改 `v-model:mode` 并去掉自带切换条与「只读」提示；新增 `src/test/setup.ts`（`ResizeObserver` 桩）；`features/canvas/topic` 21 个用例通过
+- 2026-10-02 — T3 — `WorkbenchSplit`（`SplitterGroup` 三面板 + 两个分隔条，窄屏堆叠）、`SnapshotRail`（独立卡片，折叠窄条显示图标与快照数）；页面去掉画布标题行；`features/workbench` 51 个用例通过；隔离实例 L4：三栏、拖宽、刷新后宽度与展开状态保持、折叠/展开、详情区、状态图标气泡、窄屏堆叠、动画阶段画布都走查过
+- 2026-10-02 — T4 — 文档（ARCHITECTURE、QUALITY）更新、验证记录填写
 
 ## 下一步
 
-- 从 T3 开始（页面三栏布局、可拖宽与折叠快照栏）。
+- T4 收尾：独立评审（待做）→ 负责人验收 → 归档并合并。
 
 ## 决策记录
 
@@ -148,6 +150,9 @@
 - 2026-10-02 — 单选对比上一个快照、双选对比两者，保留原有对比能力。
 - 2026-10-02 — T1：「回滚到此」只在详情区、且恰好选中一个快照时出现，选两个（对比模式）时不出现 — 对比模式下回滚目标有歧义；代价：要回滚到某个快照需先单选它（原来每行都有按钮）。
 - 2026-10-02 — T1：时间线每项的时间用新增的 `formatSnapshotTime`（本地 `MM-DD HH:mm`，按 UTC 解析无时区后缀的服务器时间）代替原始 ISO 串 — 窄栏里 26 位时间戳会折行，且原先在东八区差 8 小时（TD-45 同源）；代价：不再显示秒与毫秒。
+- 2026-10-02 — T3：折叠状态不另存 `workbench-snapshots-collapsed`，直接用 `SplitterGroup` 的 `autoSaveId` 存下来的布局（快照栏面板尺寸 = 折叠尺寸即折叠）— 一份状态，不会两处不一致；代价：改面板约束（最小宽度等）会让已保存布局失效、回到默认（折叠）。
+- 2026-10-02 — T3：面板尺寸全用百分比（对话 46 / 画布 50 / 快照栏折叠 4、最小 20）而不是像素 — 混用单位的行为没有验证；代价：折叠窄条的像素宽度随窗口变化（1500px 宽约 50px）。
+- 2026-10-02 — T3：窄屏堆叠时给外壳与左侧竖栏加 `min-h-max`（网格行不被 `min-h-0` 压成 13px，L4 窄屏发现重叠）；窄屏/宽屏切换会重新挂载对话面板（SSE 重连）— 跨断点才发生，可接受。
 - 2026-10-02 — T2：vitest 加 `setupFiles: src/test/setup.ts`，给 jsdom 补一个空的 `ResizeObserver` 桩 — reka-ui 的 Tooltip（以及 T3 的 Splitter）挂载就要用它；只动测试配置，不改被测代码；代价：全局桩可能掩盖将来依赖真实尺寸的测试，那类测试需自己 mock。
 - 2026-10-02 — T2：笔记标签下没有笔记时隐藏渲染/编辑切换 — 无文件可编辑，留着只会是个无效按钮；状态图标仍显示。
 - 2026-10-02 — T1：组件测试没有现成的查询 mock 先例，新增 `snapshotTestSupport.ts`（测试辅助，`vi.mock('@/composables/queries')` 用）— 保持被测组件不为测试而改。
@@ -163,3 +168,15 @@
 ## 验证记录
 
 <!-- 每条验收标准对应的命令、输出摘要、截图路径 -->
+
+| AC | 证据 |
+|---|---|
+| AC1 | `WorkbenchSplit.spec.ts`（三面板 + 两个分隔条）；L4：页面无「画布」标题行，拖动分隔条后对话/画布宽度变化（对话被限制在最小 25%），`reka:workbench-split` 写入 localStorage，刷新后宽度恢复 |
+| AC2 | `WorkbenchSplit.spec.ts`（默认折叠）、`SnapshotRail.spec.ts`（折叠窄条显示图标与数量）；L4：首次进入折叠，点击展开，刷新后展开状态与宽度保持 |
+| AC3 | `WorkbenchSplit.spec.ts`（窄屏无分隔条、快照栏展开）；L4 窄屏 800px：导航、对话、画布上下堆叠（发现并修复网格行被压扁的重叠，见决策记录） |
+| AC4 | `snapshotSelection.spec.ts`（`resolveDiffTarget`）、`SnapshotTimeline.spec.ts`、`SnapshotDetail.spec.ts`（单选/双选/初始快照/二次确认回滚/忙时禁用）；L4：选中快照后下半部分显示详情与「回滚到此」 |
+| AC5 | `BriefStatusIcon.spec.ts`（四级、`aria-label`、聚焦弹气泡、`unknown` 无列表）；L4：悬停红叉图标弹出气泡，含结论与 6 条错误 |
+| AC6 | `EditModeToggle.spec.ts`、`TopicCanvas.spec.ts`（同一行、共用切换、换标签/笔记回渲染、运行中退出编辑并置灰）；L4：状态图标与渲染/编辑图标右对齐在标签行 |
+| AC7 | `make check` 全绿（见下）；ARCHITECTURE、QUALITY 已更新；独立评审见进度 |
+
+证据说明：L4 截图是在内置浏览器里逐项查看的（隔离端口 8001/5174），没有另存文件。

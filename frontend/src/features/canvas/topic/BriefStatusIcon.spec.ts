@@ -9,9 +9,9 @@ const mountIcon = (check: TopicCheckOut | undefined) =>
 describe('BriefStatusIcon', () => {
   it.each([
     [undefined, 'unknown', '正在检查简报…'],
-    [{ errors: [], warnings: [] }, 'ok', '可以定稿：简报结构检查通过'],
-    [{ errors: [], warnings: ['w1'] }, 'warnings', '可以定稿（有 1 条警告，不阻止定稿）'],
-    [{ errors: ['e1', 'e2'], warnings: [] }, 'errors', '不能定稿：简报有 2 个错误'],
+    [{ ok: true, errors: [], warnings: [] }, 'ok', '可以定稿：简报结构检查通过'],
+    [{ ok: true, errors: [], warnings: ['w1'] }, 'warnings', '可以定稿（有 1 条警告，不阻止定稿）'],
+    [{ ok: false, errors: ['e1', 'e2'], warnings: [] }, 'errors', '不能定稿：简报有 2 个错误'],
   ] as const)('%j → 图标级别 %s，aria-label 是结论', (check, level, headline) => {
     const button = mountIcon(check as TopicCheckOut | undefined).get('[data-testid="brief-status"]')
     expect(button.attributes('data-level')).toBe(level)
@@ -19,7 +19,7 @@ describe('BriefStatusIcon', () => {
   })
 
   it('键盘聚焦弹出气泡：结论 + 错误 + 警告', async () => {
-    const w = mountIcon({ errors: ['缺少标题'], warnings: ['来源偏少'] })
+    const w = mountIcon({ ok: false, errors: ['缺少标题'], warnings: ['来源偏少'] })
     await w.get('[data-testid="brief-status"]').trigger('focus')
     await new Promise((resolve) => setTimeout(resolve, 0))
     const tip = document.body.querySelector('[data-slot="tooltip-content"]')

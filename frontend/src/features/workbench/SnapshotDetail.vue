@@ -41,10 +41,15 @@ const label = (snapshot: SnapshotOut | undefined): string =>
 const present = computed(() => props.selected.filter((id) => byId(id)))
 /** 恰好选中一个时的那个快照（回滚的目标）。 */
 const single = computed(() => (present.value.length === 1 ? byId(present.value[0]!) : undefined))
-const title = computed(() => {
-  if (single.value) return label(single.value)
-  if (target.value.kind === 'diff') return `对比 ${label(byId(target.value.from))} → ${label(byId(target.value.to))}`
-  return ''
+/** 详情标题：单选 = 原因 + 时间；对比 = 「对比」+ 两端。 */
+const heading = computed(() => {
+  if (single.value) {
+    return { main: snapshotReasonLabel(single.value.reason), sub: formatSnapshotTime(single.value.created_at) }
+  }
+  if (target.value.kind === 'diff') {
+    return { main: '对比', sub: `${label(byId(target.value.from))} → ${label(byId(target.value.to))}` }
+  }
+  return { main: '初始快照', sub: '' }
 })
 
 const { data: diffResult, isPending: diffPending } = useSnapshotDiffQuery(
@@ -121,10 +126,18 @@ async function confirmRollback(): Promise<void> {
       选择一个快照查看详情
     </p>
     <template v-else>
-      <div class="flex items-center justify-between gap-2">
-        <p class="min-w-0 font-medium break-words">
-          {{ title || '初始快照' }}
-        </p>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="min-w-0">
+          <p class="font-medium">
+            {{ heading.main }}
+          </p>
+          <p
+            v-if="heading.sub"
+            class="text-muted-foreground text-xs break-words"
+          >
+            {{ heading.sub }}
+          </p>
+        </div>
         <Button
           v-if="single"
           size="sm"
