@@ -10,6 +10,8 @@ function project(overrides: Partial<ProjectOut> = {}): ProjectOut {
     current_stage: 'topic',
     settings: {},
     completed_at: null,
+    abandoned_at: null,
+    status: 'active',
     ...overrides,
   }
 }
@@ -33,11 +35,16 @@ function idea(overrides: Partial<IdeaOut> = {}): IdeaOut {
 const all = { query: '', stage: null, status: 'all', ideaId: null } as const
 
 describe('projectStatus', () => {
-  it('有完成时间是已完成，否则进行中', () => {
+  it('直接用后端给的状态', () => {
     expect(projectStatus(project())).toBe('active')
-    expect(projectStatus(project({ completed_at: '2026-10-01T00:00:00Z' }))).toBe('done')
+    expect(projectStatus(project({ status: 'completed' }))).toBe('completed')
+    expect(projectStatus(project({ status: 'abandoned' }))).toBe('abandoned')
+  })
+
+  it('状态文案', () => {
     expect(statusText('active')).toBe('进行中')
-    expect(statusText('done')).toBe('已完成')
+    expect(statusText('completed')).toBe('已完成')
+    expect(statusText('abandoned')).toBe('已废弃')
   })
 })
 
@@ -53,18 +60,20 @@ describe('filterProjects', () => {
   const projects = [
     project({ idea_id: 'i1' }),
     project({ id: 'p2', title: '合众无知', current_stage: 'narrative' }),
-    project({ id: 'p3', title: '哈希表', current_stage: 'animation', completed_at: '2026-10-01T00:00:00Z' }),
+    project({ id: 'p3', title: '哈希表', current_stage: 'animation', completed_at: '2026-10-01T00:00:00Z', status: 'completed' }),
+    project({ id: 'p5', title: '废弃的', abandoned_at: '2026-10-02T00:00:00Z', status: 'abandoned' }),
   ]
   const ideaOf = ideasById([idea({ pitch: '结局决定记忆', tags: ['认知偏差'] })])
 
   it('不筛选时全部返回', () => {
-    expect(filterProjects(projects, ideaOf, all)).toHaveLength(3)
+    expect(filterProjects(projects, ideaOf, all)).toHaveLength(4)
   })
   it('按阶段筛选', () => {
     expect(filterProjects(projects, ideaOf, { ...all, stage: 'narrative' }).map((p) => p.id)).toEqual(['p2'])
   })
   it('按状态筛选', () => {
-    expect(filterProjects(projects, ideaOf, { ...all, status: 'done' }).map((p) => p.id)).toEqual(['p3'])
+    expect(filterProjects(projects, ideaOf, { ...all, status: 'completed' }).map((p) => p.id)).toEqual(['p3'])
+    expect(filterProjects(projects, ideaOf, { ...all, status: 'abandoned' }).map((p) => p.id)).toEqual(['p5'])
     expect(filterProjects(projects, ideaOf, { ...all, status: 'active' }).map((p) => p.id)).toEqual(['p1', 'p2'])
   })
   it('关键词匹配标题，也匹配关联选题的卖点和标签，忽略大小写和首尾空白', () => {

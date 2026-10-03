@@ -50,7 +50,15 @@ class ProjectOut(BaseModel):
     current_stage: str
     settings: dict[str, Any]
     completed_at: datetime | None
-    """"成片定稿"（T11）后设为完成时间；`None` 表示项目尚未完成。"""
+    """"成片定稿"（T11）或手动标记已完成后设为完成时间；`None` 表示项目尚未完成。"""
+    abandoned_at: datetime | None
+    """手动标记已废弃的时间；与 `completed_at` 互斥。"""
+    status: Literal["active", "completed", "abandoned"]
+    """由 `completed_at`/`abandoned_at` 推导的项目状态：进行中、已完成、已废弃。"""
+
+
+class ProjectStatusPatch(BaseModel):
+    status: Literal["active", "completed", "abandoned"]
 
 
 class ProjectDetailOut(ProjectOut):

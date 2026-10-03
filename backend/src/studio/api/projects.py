@@ -36,6 +36,7 @@ from studio.api.schemas import (
     ProjectDetailOut,
     ProjectOut,
     ProjectSettingsPatch,
+    ProjectStatusPatch,
     StageOut,
 )
 from studio.config import Settings
@@ -47,6 +48,7 @@ from studio.db.repo.projects import (
     delete_project,
     get_project,
     list_projects,
+    set_project_status,
     update_project_settings,
 )
 from studio.db.repo.settings import SPEECH_RATE_MAX, SPEECH_RATE_MIN, get_all_settings
@@ -80,6 +82,8 @@ def _project_out(value: ProjectValue) -> ProjectOut:
         current_stage=value.current_stage,
         settings=value.settings,
         completed_at=value.completed_at,
+        abandoned_at=value.abandoned_at,
+        status=value.status,
     )
 
 
@@ -238,6 +242,17 @@ async def patch_project_settings_endpoint(
             status_code=422, detail=f"语速必须在 {SPEECH_RATE_MIN}–{SPEECH_RATE_MAX} 之间"
         )
     return _project_out(update_project_settings(engine, project_id, patch))
+
+
+@router.patch("/projects/{project_id}/status", response_model=ProjectOut)
+async def patch_project_status_endpoint(
+    project_id: str,
+    body: ProjectStatusPatch,
+    engine: Engine = Depends(get_engine),
+) -> ProjectOut:
+    """手动把项目标记为进行中/已完成/已废弃。只是项目上的标记，不碰工作区，所以不受项目级串行限制。"""
+    _require_project(engine, project_id)
+    return _project_out(set_project_status(engine, project_id, body.status))
 
 
 @router.get("/projects", response_model=list[ProjectOut])

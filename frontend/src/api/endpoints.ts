@@ -28,6 +28,7 @@ import type {
   ProjectDetailOut,
   ProjectOut,
   ProjectSettingsPatch,
+  ProjectStatus,
   SceneChecksResponse,
   SessionCreate,
   SettingsOut,
@@ -60,6 +61,13 @@ export function listProjects(): Promise<ProjectOut[]> {
 
 export function getProject(projectId: string): Promise<ProjectDetailOut> {
   return request(`/projects/${encodePathSegment(projectId)}`)
+}
+
+export function setProjectStatus(projectId: string, status: ProjectStatus): Promise<ProjectOut> {
+  return request(`/projects/${encodePathSegment(projectId)}/status`, {
+    method: 'PATCH',
+    body: { status },
+  })
 }
 
 export function finalizeStage(projectId: string, stage: string) {

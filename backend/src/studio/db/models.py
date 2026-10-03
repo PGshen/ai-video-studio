@@ -52,7 +52,9 @@ class Project(Base):
     current_stage: Mapped[str] = mapped_column(String, nullable=False, default="topic")
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    """项目"成片定稿"后写入（T11）；`None` 表示尚未完成。"""
+    """项目"成片定稿"后写入（T11），或用户手动标记已完成；`None` 表示尚未完成。"""
+    abandoned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """用户手动标记已废弃的时间；与 `completed_at` 互斥（`repo.projects.set_project_status`）。"""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

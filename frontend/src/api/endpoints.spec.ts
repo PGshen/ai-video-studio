@@ -19,6 +19,7 @@ import {
   listIdeas,
   patchSettings,
   sessionStreamUrl,
+  setProjectStatus,
   updateIdea,
   updateModelProfile,
   workspaceFileUrl,
@@ -37,6 +38,18 @@ describe('endpoints：动态路径段会被正确编码', () => {
     await getProject('proj#1')
 
     expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/proj%231')
+  })
+
+  it('setProjectStatus 对 projectId 编码，PATCH 状态到 .../status', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await setProjectStatus('proj#1', 'abandoned')
+
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
+    expect(String(url)).toBe('/api/projects/proj%231/status')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(String(init.body))).toEqual({ status: 'abandoned' })
   })
 
   it('getFileContent 保留文件路径里的 /，编码每一段里的特殊字符', async () => {

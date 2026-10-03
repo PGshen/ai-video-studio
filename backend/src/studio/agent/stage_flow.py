@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from sqlalchemy import Engine
 
 from studio.agent.stage import StageDefinition, StageRegistry
+from studio.db.repo.projects import set_current_stage
 from studio.db.repo.snapshots import get_snapshot
 from studio.db.repo.stages import StageValue, get_stage, list_stages, update_stage
 from studio.workspace import BlobStore, Manifest, create_snapshot
@@ -61,6 +62,23 @@ def _upstream_artifacts_changed(
     return _artifacts_of(based_on.manifest, upstream) != _artifacts_of(new, upstream)
 
 
+def current_stage_of(stages: list[StageValue]) -> str | None:
+    """项目当前所处的阶段：第一个未定稿的阶段；全部定稿则是最后一个阶段。
+
+    `stages` 按创建顺序（即流程顺序）排列；没有阶段行时返回 `None`。
+    """
+    if not stages:
+        return None
+    return next((s.stage for s in stages if s.status != "finalized"), stages[-1].stage)
+
+
+def _sync_current_stage(engine: Engine, project_id: str) -> None:
+    """把 `projects.current_stage` 对齐到阶段行的状态（定稿/重新打开之后调用）。"""
+    stage = current_stage_of(list_stages(engine, project_id))
+    if stage is not None:
+        set_current_stage(engine, project_id, stage)
+
+
 def finalize(
     engine: Engine, blobs: BlobStore, registry: StageRegistry, project_id: str, stage: str
 ) -> StageValue:
@@ -97,6 +115,7 @@ def finalize(
             elif row.status == "stale":
                 # 上游产物已经改回下游所基于的样子：下游没有过期内容了。
                 update_stage(engine, project_id, row.stage, status="active")
+    _sync_current_stage(engine, project_id)
     return finalized
 
 
@@ -105,7 +124,9 @@ def reopen(engine: Engine, project_id: str, stage: str) -> StageValue:
     current = _require_stage(engine, project_id, stage)
     if current.status != "finalized":
         raise StageFlowError(f"阶段 {stage} 当前为 {current.status}，只有已定稿阶段能重新打开")
-    return update_stage(engine, project_id, stage, status="active")
+    reopened = update_stage(engine, project_id, stage, status="active")
+    _sync_current_stage(engine, project_id)
+    return reopened
 
 
 def after_turn_done(

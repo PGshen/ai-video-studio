@@ -74,3 +74,47 @@ def test_0005_turns_picked_ideas_back_into_ideas_and_drops_project_id(engine: En
         rows = dict(connection.execute(text("SELECT id, status FROM ideas")).all())
     assert rows == {"i1": "idea", "i2": "archived"}
     assert "project_id" not in {col["name"] for col in inspect(engine).get_columns("ideas")}
+
+
+def test_0006_adds_abandoned_at_and_backfills_current_stage(engine: Engine) -> None:
+    config = _alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0005")
+        for pid, stages in {
+            "p-new": ("active", "locked", "locked"),
+            "p-mid": ("finalized", "active", "locked"),
+            "p-done": ("finalized", "finalized", "finalized"),
+            "p-reopened": ("active", "active", "finalized"),
+        }.items():
+            connection.execute(
+                text(
+                    "INSERT INTO projects (id, title, current_stage, settings, created_at, "
+                    "updated_at) VALUES (:id, 't', 'topic', '{}', '2026-10-01', '2026-10-01')"
+                ),
+                {"id": pid},
+            )
+            names = ("topic", "narrative", "animation")
+            for index, (stage, status) in enumerate(zip(names, stages, strict=True)):
+                connection.execute(
+                    text(
+                        "INSERT INTO project_stages (id, project_id, stage, status, created_at, "
+                        "updated_at) VALUES (:id, :pid, :stage, :status, :at, :at)"
+                    ),
+                    {
+                        "id": f"{pid}-{stage}",
+                        "pid": pid,
+                        "stage": stage,
+                        "status": status,
+                        "at": f"2026-10-01 00:00:0{index}",
+                    },
+                )
+        command.upgrade(config, "head")
+        rows = dict(connection.execute(text("SELECT id, current_stage FROM projects")).all())
+    assert rows == {
+        "p-new": "topic",
+        "p-mid": "narrative",
+        "p-done": "animation",
+        "p-reopened": "topic",
+    }
+    assert "abandoned_at" in {col["name"] for col in inspect(engine).get_columns("projects")}

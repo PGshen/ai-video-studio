@@ -4,6 +4,7 @@
  * 所以选题列表和风格文件只在打开时才请求。风格只能展示工作区里的副本（项目没有记录来源预设 id）。
  */
 import { computed } from 'vue'
+import ProjectStatusMenu from '@/components/ProjectStatusMenu.vue'
 import { Badge } from '@/components/ui/badge'
 import {
   useAllIdeasQuery,
@@ -70,9 +71,26 @@ function formatTime(iso: string): string {
           </span>
         </dd>
         <dt class="text-muted-foreground">
-          完成时间
+          项目状态
         </dt>
-        <dd>{{ project.completed_at ? formatTime(project.completed_at) : '尚未完成' }}</dd>
+        <dd class="flex flex-wrap items-center gap-2">
+          <ProjectStatusMenu
+            :project-id="project.id"
+            :status="project.status"
+          />
+          <span
+            v-if="project.status === 'completed' && project.completed_at"
+            class="text-muted-foreground text-xs"
+          >
+            完成于 {{ formatTime(project.completed_at) }}
+          </span>
+          <span
+            v-else-if="project.status === 'abandoned' && project.abandoned_at"
+            class="text-muted-foreground text-xs"
+          >
+            废弃于 {{ formatTime(project.abandoned_at) }}
+          </span>
+        </dd>
       </dl>
     </section>
 

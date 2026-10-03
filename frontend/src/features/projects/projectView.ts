@@ -3,17 +3,17 @@
  * 项目列表接口只给基础字段，选题的卖点/标签/评分靠 `idea_id` 关联过来。
  */
 
-import type { IdeaOut, ProjectOut } from '@/types/api'
+import { STATUS_TEXT } from '@/composables/projectStatus'
+import type { IdeaOut, ProjectOut, ProjectStatus } from '@/types/api'
 
-export type ProjectStatus = 'active' | 'done'
 export type StatusFilter = 'all' | ProjectStatus
 
 export function projectStatus(project: ProjectOut): ProjectStatus {
-  return project.completed_at ? 'done' : 'active'
+  return project.status
 }
 
 export function statusText(status: ProjectStatus): string {
-  return status === 'done' ? '已完成' : '进行中'
+  return STATUS_TEXT[status]
 }
 
 /** 选题 id → 选题；项目靠自己的 `idea_id` 找关联选题（一张选题可以对应多个项目）。 */

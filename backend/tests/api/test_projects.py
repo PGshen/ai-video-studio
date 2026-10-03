@@ -114,6 +114,22 @@ class TestFinalizeAndReopen:
         assert response.status_code == 200
         assert response.json()["status"] == "active"
 
+    async def test_current_stage_follows_finalize_and_reopen(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        pid = project["id"]
+        assert project["current_stage"] == "topic"
+        files.write_text_unscoped(api_env.workdir(pid), "topic/brief.md", make_brief())
+
+        await api_env.client.post(f"/api/projects/{pid}/stages/topic/finalize")
+        detail = (await api_env.client.get(f"/api/projects/{pid}")).json()
+        assert detail["current_stage"] == "narrative"
+        listed = (await api_env.client.get("/api/projects")).json()
+        assert next(p for p in listed if p["id"] == pid)["current_stage"] == "narrative"
+
+        await api_env.client.post(f"/api/projects/{pid}/stages/topic/reopen")
+        detail = (await api_env.client.get(f"/api/projects/{pid}")).json()
+        assert detail["current_stage"] == "topic"
+
     async def test_reopen_not_finalized_stage_is_conflict(self, api_env: ApiEnv) -> None:
         project = await api_env.create_project()
 
@@ -598,3 +614,49 @@ class TestProjectVoiceSettings:
         project = await api_env.create_project()
 
         assert "voice" not in project["settings"] and "speech_rate" not in project["settings"]
+
+
+class TestProjectStatus:
+    async def test_new_project_is_active(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        assert project["status"] == "active"
+        assert project["completed_at"] is None and project["abandoned_at"] is None
+
+    async def test_can_mark_completed_abandoned_and_back_to_active(self, api_env: ApiEnv) -> None:
+        pid = (await api_env.create_project())["id"]
+
+        for status in ("completed", "abandoned", "active"):
+            response = await api_env.client.patch(
+                f"/api/projects/{pid}/status", json={"status": status}
+            )
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["status"] == status
+            assert (body["completed_at"] is not None) == (status == "completed")
+            assert (body["abandoned_at"] is not None) == (status == "abandoned")
+
+        detail = (await api_env.client.get(f"/api/projects/{pid}")).json()
+        assert detail["status"] == "active"
+
+    async def test_unknown_status_is_422(self, api_env: ApiEnv) -> None:
+        pid = (await api_env.create_project())["id"]
+        response = await api_env.client.patch(f"/api/projects/{pid}/status", json={"status": "x"})
+        assert response.status_code == 422
+
+    async def test_unknown_project_is_404(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.patch(
+            "/api/projects/nope/status", json={"status": "completed"}
+        )
+        assert response.status_code == 404
+
+    async def test_status_can_change_while_a_turn_is_running(self, api_env: ApiEnv) -> None:
+        """状态只是项目标记，不碰工作区，所以不受项目级串行限制。"""
+        pid = (await api_env.create_project())["id"]
+        turn_id = await api_env.make_busy(pid)
+        try:
+            response = await api_env.client.patch(
+                f"/api/projects/{pid}/status", json={"status": "abandoned"}
+            )
+            assert response.status_code == 200
+        finally:
+            await api_env.release_busy(turn_id)

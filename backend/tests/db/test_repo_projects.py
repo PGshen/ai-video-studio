@@ -8,6 +8,9 @@ from studio.db.repo.projects import (
     delete_project,
     get_project,
     list_projects,
+    mark_project_completed,
+    set_current_stage,
+    set_project_status,
     update_project_settings,
 )
 
@@ -107,3 +110,44 @@ def test_update_project_settings_persists_across_reads(migrated_engine: Engine) 
 def test_update_project_settings_unknown_project(migrated_engine: Engine) -> None:
     with pytest.raises(LookupError):
         update_project_settings(migrated_engine, "nope", {"voice": "x"})
+
+
+def test_new_project_is_active(migrated_engine: Engine) -> None:
+    project = create_project(migrated_engine, title="A")
+    assert (project.status, project.completed_at, project.abandoned_at) == ("active", None, None)
+
+
+def test_set_project_status_keeps_the_states_mutually_exclusive(migrated_engine: Engine) -> None:
+    project = create_project(migrated_engine, title="A")
+
+    completed = set_project_status(migrated_engine, project.id, "completed")
+    assert completed.status == "completed"
+    assert completed.completed_at is not None and completed.abandoned_at is None
+
+    abandoned = set_project_status(migrated_engine, project.id, "abandoned")
+    assert abandoned.status == "abandoned"
+    assert abandoned.abandoned_at is not None and abandoned.completed_at is None
+
+    active = set_project_status(migrated_engine, project.id, "active")
+    assert (active.status, active.completed_at, active.abandoned_at) == ("active", None, None)
+
+
+def test_set_project_status_unknown_project_raises(migrated_engine: Engine) -> None:
+    with pytest.raises(KeyError):
+        set_project_status(migrated_engine, "nope", "completed")
+
+
+def test_final_render_completion_revives_an_abandoned_project(migrated_engine: Engine) -> None:
+    project = create_project(migrated_engine, title="A")
+    set_project_status(migrated_engine, project.id, "abandoned")
+
+    revived = mark_project_completed(migrated_engine, project.id)
+
+    assert (revived.status, revived.abandoned_at) == ("completed", None)
+
+
+def test_set_current_stage(migrated_engine: Engine) -> None:
+    project = create_project(migrated_engine, title="A")
+    assert set_current_stage(migrated_engine, project.id, "animation").current_stage == "animation"
+    fetched = get_project(migrated_engine, project.id)
+    assert fetched is not None and fetched.current_stage == "animation"

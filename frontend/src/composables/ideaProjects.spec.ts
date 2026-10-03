@@ -3,7 +3,7 @@ import type { ProjectOut } from '@/types/api'
 import { countProjectsByIdea } from './ideaProjects'
 
 function project(id: string, ideaId: string | null): ProjectOut {
-  return { id, title: id, idea_id: ideaId, current_stage: 'topic', settings: {}, completed_at: null }
+  return { id, title: id, idea_id: ideaId, current_stage: 'topic', settings: {}, completed_at: null, abandoned_at: null, status: 'active' }
 }
 
 describe('countProjectsByIdea', () => {

@@ -10,6 +10,7 @@ from studio.agent.stage_flow import (
     upstream_snapshot_ids,
     upstream_sources,
 )
+from studio.db.repo.projects import get_project
 from studio.db.repo.snapshots import get_snapshot
 from studio.db.repo.stages import get_stage
 
@@ -96,6 +97,40 @@ class TestFinalize:
         finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
 
         assert _stage(env, "narrative").status == "active"
+
+
+class TestCurrentStage:
+    """`projects.current_stage` 跟着阶段流转走：第一个未定稿的阶段，全部定稿则是最后一个阶段。"""
+
+    def _current(self, env: StudioEnv) -> str:
+        project = get_project(env.engine, env.project_id)
+        assert project is not None
+        return project.current_stage
+
+    def test_starts_at_topic(self, env: StudioEnv) -> None:
+        assert self._current(env) == "topic"
+
+    def test_follows_finalize_through_to_the_last_stage(self, env: StudioEnv) -> None:
+        env.write("topic/brief.md", "v1")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+        assert self._current(env) == "narrative"
+
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
+        assert self._current(env) == "animation"
+
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "animation")
+        assert self._current(env) == "animation"
+
+    def test_reopen_moves_back_to_the_earliest_unfinalized_stage(self, env: StudioEnv) -> None:
+        env.write("topic/brief.md", "v1")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
+
+        reopen(env.engine, env.project_id, "narrative")
+        assert self._current(env) == "narrative"
+
+        reopen(env.engine, env.project_id, "topic")
+        assert self._current(env) == "topic"
 
 
 class TestReopen:

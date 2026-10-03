@@ -38,7 +38,8 @@ const status = ref<StatusFilter>('all')
 const STATUS_OPTIONS: ReadonlyArray<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: '全部状态' },
   { value: 'active', label: '进行中' },
-  { value: 'done', label: '已完成' },
+  { value: 'completed', label: '已完成' },
+  { value: 'abandoned', label: '已废弃' },
 ]
 const STAGE_OPTIONS = [
   { value: null, label: '全部阶段' },

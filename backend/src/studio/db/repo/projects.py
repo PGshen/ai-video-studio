@@ -5,12 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Engine, select
 
 from studio.db.engine import session_scope
 from studio.db.models import Project
+
+ProjectStatus = Literal["active", "completed", "abandoned"]
+PROJECT_STATUSES: tuple[ProjectStatus, ...] = ("active", "completed", "abandoned")
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +26,14 @@ class ProjectValue:
     current_stage: str
     settings: dict[str, Any]
     completed_at: datetime | None
+    abandoned_at: datetime | None
+
+    @property
+    def status(self) -> ProjectStatus:
+        """由两个时间戳推导：`abandoned_at` → 已废弃，`completed_at` → 已完成，否则进行中。"""
+        if self.abandoned_at is not None:
+            return "abandoned"
+        return "completed" if self.completed_at is not None else "active"
 
 
 def _to_value(row: Project) -> ProjectValue:
@@ -33,6 +44,7 @@ def _to_value(row: Project) -> ProjectValue:
         current_stage=row.current_stage,
         settings=row.settings,
         completed_at=row.completed_at,
+        abandoned_at=row.abandoned_at,
     )
 
 
@@ -110,6 +122,7 @@ def mark_project_completed(engine: Engine, project_id: str) -> ProjectValue:
         if row is None:
             raise KeyError(f"项目不存在：{project_id}")
         row.completed_at = datetime.now(UTC)
+        row.abandoned_at = None
         session.flush()
         return _to_value(row)
 
@@ -126,5 +139,32 @@ def clear_project_completed(engine: Engine, project_id: str) -> ProjectValue:
         if row is None:
             raise KeyError(f"项目不存在：{project_id}")
         row.completed_at = None
+        session.flush()
+        return _to_value(row)
+
+
+def set_project_status(engine: Engine, project_id: str, status: ProjectStatus) -> ProjectValue:
+    """手动设置项目状态；三种状态互斥，切换时清掉另外两个时间戳。
+
+    `active` 把两个标记都清掉；`completed`/`abandoned` 写入当前时间。项目不存在抛 `KeyError`。
+    """
+    with session_scope(engine) as session:
+        row = session.get(Project, project_id)
+        if row is None:
+            raise KeyError(f"项目不存在：{project_id}")
+        now = datetime.now(UTC)
+        row.completed_at = now if status == "completed" else None
+        row.abandoned_at = now if status == "abandoned" else None
+        session.flush()
+        return _to_value(row)
+
+
+def set_current_stage(engine: Engine, project_id: str, stage: str) -> ProjectValue:
+    """更新 `current_stage`（`stage_flow` 在定稿/重新打开后同步）。项目不存在抛 `KeyError`。"""
+    with session_scope(engine) as session:
+        row = session.get(Project, project_id)
+        if row is None:
+            raise KeyError(f"项目不存在：{project_id}")
+        row.current_stage = stage
         session.flush()
         return _to_value(row)

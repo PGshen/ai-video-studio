@@ -71,14 +71,20 @@ export interface StageOut {
   finalized_at: string | null
 }
 
+export type ProjectStatus = 'active' | 'completed' | 'abandoned'
+
 export interface ProjectOut {
   id: string
   title: string
   idea_id: string | null
   current_stage: string
   settings: Record<string, unknown>
-  /** "成片定稿"（T11）后设为完成时间；`null` 表示项目尚未完成（任务 T13）。 */
+  /** "成片定稿"（T11）或手动标记已完成后设为完成时间；`null` 表示项目尚未完成（任务 T13）。 */
   completed_at: string | null
+  /** 手动标记已废弃的时间；与 `completed_at` 互斥。 */
+  abandoned_at: string | null
+  /** 后端由两个时间戳推导的项目状态。 */
+  status: ProjectStatus
 }
 
 export interface ProjectDetailOut extends ProjectOut {

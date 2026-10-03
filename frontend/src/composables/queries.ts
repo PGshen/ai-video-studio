@@ -22,6 +22,7 @@ import type {
   ProjectCreate,
   ProjectOut,
   ProjectSettingsPatch,
+  ProjectStatus,
   SessionCreate,
   SettingsOut,
   SettingsPatch,
@@ -108,6 +109,18 @@ export function useCreateProjectMutation() {
       // 卡片上显示「已创建 N 个项目」，创建后要刷新。
       void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
       queryClient.setQueryData(queryKeys.project(project.id), project)
+    },
+  })
+}
+
+export function useSetProjectStatusMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { projectId: string; status: ProjectStatus }) =>
+      api.setProjectStatus(vars.projectId, vars.status),
+    onSuccess: (project: ProjectOut) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects(), exact: true })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id), exact: true })
     },
   })
 }
