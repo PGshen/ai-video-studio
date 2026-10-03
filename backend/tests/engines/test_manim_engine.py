@@ -7,11 +7,47 @@ import pytest
 from studio.engines.render.base import RenderRequest, RenderResultWithBytes, SceneAudio, SceneInput
 from studio.engines.render.manim import ManimRenderEngine
 from studio.engines.render.manim.script import (
+    SCENE_END_MARKER,
     _build_manim_script,
     _prepare_manim_code,
     _scene_line_ranges,
     _static_check,
+    parse_scene_durations,
 )
+
+
+def _scene(index: int, code: str = "pass") -> SceneInput:
+    return SceneInput(
+        scene_index=index,
+        narration="",
+        description=f"scene {index}",
+        code=code,
+        audio=SceneAudio(scene_index=index, audio_path=f"/tmp/a{index}.wav", duration_seconds=2.0),
+    )
+
+
+def test_build_manim_script_emits_scene_end_markers_only_when_asked():
+    scenes = [_scene(0), _scene(1)]
+
+    plain = _build_manim_script(scenes)
+    marked = _build_manim_script(scenes, emit_scene_markers=True)
+
+    assert SCENE_END_MARKER not in plain
+    assert marked.count(SCENE_END_MARKER) == 2
+    ast.parse(marked)
+
+
+def test_parse_scene_durations_turns_end_times_into_durations():
+    log = f"noise\n{SCENE_END_MARKER} 0 2.500\nmore\n{SCENE_END_MARKER} 1 6.000\n"
+
+    assert parse_scene_durations(log, expected=2) == [2.5, 3.5]
+
+
+def test_parse_scene_durations_returns_none_when_markers_incomplete():
+    log = f"{SCENE_END_MARKER} 0 2.500\n"
+
+    assert parse_scene_durations(log, expected=2) is None
+    assert parse_scene_durations("", expected=1) is None
 
 
 def test_prepare_manim_code_injects_template_into_formula_calls():

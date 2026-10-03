@@ -4,8 +4,9 @@
 主循环：`run_forever` 反复调用 `run_once`；`run_once` 是单次迭代（方便测试），
 流程是 reap 过期心跳 → 领取一条 `final_render` 任务 → 读工作区里的叙事产物
 （`narrative/narrative.json`/`timing.json`，决策记录 D14）和每个镜头的代码
-（`animation/scenes/<id>.py`）→ 逐镜头用 `ManimRenderEngine.render` 全画质渲染
-（命中 `.cache/render_cache/` 里的缓存则跳过，决策记录 D14）→ 拼接 → 按镜头
+（`animation/scenes/<id>.py`）→ 把全部镜头放进同一个 MainScene，用
+`ManimRenderEngine.render` 一次全画质渲染（镜头间元素通过 `self.xxx` 延续，不能
+逐镜头单独渲染；命中 `.cache/render_cache/` 里的缓存则跳过，决策记录 D14）→ 按镜头
 旁白叠加字幕（决策记录 D15：本机 ffmpeg 没有编译 drawtext/subtitles 滤镜，
 改用 Pillow 画字幕图 + `overlay` 滤镜叠加）→ 写 `output/final.mp4` +
 `output/final.json` → `complete`/`fail`。
@@ -24,6 +25,7 @@ import json
 import logging
 import shutil
 import tempfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,12 +38,15 @@ from studio.db.engine import make_engine, migrate
 from studio.engines.render.base import (
     RenderEngine,
     RenderRequest,
+    RenderResult,
     RenderResultWithBytes,
     SceneAudio,
     SceneInput,
 )
 from studio.engines.render.manim import ManimRenderEngine
 from studio.engines.render.manim.keyframes import probe_duration_seconds
+from studio.engines.render.manim.process import failed_scene_index
+from studio.engines.render.manim.script import parse_scene_durations
 from studio.jobs import claim_next, complete, fail, heartbeat, reap_stale_running, update_progress
 from studio.workspace import (
     BlobStore,
@@ -56,13 +61,14 @@ logger = logging.getLogger(__name__)
 
 _JOB_TYPE = "final_render"
 _QUALITY = "final"
-_ENGINE_VERSION = "manim-v1"
+_ENGINE_VERSION = "manim-v2"
 """缓存键的一部分（决策记录 D14）；改动渲染逻辑（脚本拼装/画幅约定等）时要 bump，
 让旧缓存自然失效，不用手动清理 `.cache/render_cache/`。"""
 _DEFAULT_RESOLUTION = (1920, 1080)
 _DEFAULT_FPS = 30
 _HEARTBEAT_TIMEOUT_SECONDS = 120.0
 _POLL_INTERVAL_SECONDS = 2.0
+_TICK_INTERVAL_SECONDS = 15.0
 
 _CJK_FONT_CANDIDATES = (
     "/System/Library/Fonts/STHeiti Medium.ttc",
@@ -157,47 +163,106 @@ def _cache_dir(workdir: Path) -> Path:
     return workdir / ".cache" / "render_cache"
 
 
-def _cache_key(plan: _ScenePlan) -> str:
-    code_hash = hashlib.sha256(plan.code.encode("utf-8")).hexdigest()
-    raw = f"{code_hash}:{plan.audio_hash}:{_QUALITY}:{_ENGINE_VERSION}"
+def _cache_key(plans: list[_ScenePlan]) -> str:
+    """整条成片的缓存键：按顺序包含每个镜头的代码与音频哈希。
+
+    镜头之间会通过 `self.xxx` 延续画面元素，后面镜头的画面依赖前面镜头的代码，
+    所以缓存粒度只能是整条成片，不能按单个镜头缓存。
+    """
+    parts = [
+        f"{hashlib.sha256(plan.code.encode('utf-8')).hexdigest()}:{plan.audio_hash}"
+        for plan in plans
+    ]
+    raw = f"{'|'.join(parts)}:{_QUALITY}:{_ENGINE_VERSION}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-async def _render_and_cache_scene(
+@dataclass(frozen=True, slots=True)
+class _RenderedVideo:
+    video_path: Path
+    scene_durations: list[float]
+    """每个镜头在成片里的实际时长（秒），用于字幕区间。"""
+
+
+async def _render_and_cache(
     render_engine: RenderEngine,
     workdir: Path,
-    plan: _ScenePlan,
+    plans: list[_ScenePlan],
     *,
     resolution: tuple[int, int],
     fps: int,
-) -> Path:
-    """渲染一个镜头（全画质，含音频），命中缓存则直接返回缓存文件路径。"""
-    cache_path = _cache_dir(workdir) / f"{_cache_key(plan)}.mp4"
-    if cache_path.is_file():
-        return cache_path
+    on_tick: Callable[[], None],
+) -> _RenderedVideo:
+    """把全部镜头放进同一个 MainScene 一次渲染（全画质，含音频），命中缓存则直接复用。
 
-    scene_input = SceneInput(
-        scene_index=0,
-        narration=plan.narration,
-        description=plan.description,
-        code=plan.code,
-        audio=SceneAudio(
-            scene_index=0, audio_path=str(plan.audio_path), duration_seconds=plan.duration_seconds
-        ),
-    )
+    不能逐镜头单独渲染：镜头间的画面元素是通过 `self.xxx` 延续的（见动画阶段
+    提示词"元素默认可以跨镜头保留"），单独渲染后面的镜头会因为缺少前面镜头建立
+    的状态而 AttributeError。`on_tick` 在渲染期间被周期性调用（续心跳）。
+    """
+    key = _cache_key(plans)
+    cache_path = _cache_dir(workdir) / f"{key}.mp4"
+    meta_path = cache_path.with_suffix(".json")
+    if cache_path.is_file() and meta_path.is_file():
+        durations = json.loads(meta_path.read_text(encoding="utf-8"))["scene_durations"]
+        return _RenderedVideo(cache_path, [float(d) for d in durations])
+
     request = RenderRequest(
-        scenes=[scene_input], output_format="mp4", resolution=resolution, fps=fps
+        scenes=[
+            SceneInput(
+                scene_index=plan.scene_index,
+                narration=plan.narration,
+                description=plan.description,
+                code=plan.code,
+                audio=SceneAudio(
+                    scene_index=plan.scene_index,
+                    audio_path=str(plan.audio_path),
+                    duration_seconds=plan.duration_seconds,
+                ),
+            )
+            for plan in plans
+        ],
+        output_format="mp4",
+        resolution=resolution,
+        fps=fps,
     )
-    result = await render_engine.render(request)
+    result = await _with_ticks(render_engine.render(request), on_tick)
     if not result.success:
-        raise WorkerRenderError(f"镜头 {plan.scene_id} 渲染失败：{result.error_message}")
+        raise WorkerRenderError(_describe_render_failure(plans, result))
     assert isinstance(result, RenderResultWithBytes)  # success 时 render() 总是带 video_bytes
+
+    durations = parse_scene_durations(result.render_log, expected=len(plans))
+    if durations is None:
+        logger.warning("[worker] 渲染日志里缺少镜头结束标记，字幕区间回退到声明时长")
+        durations = [plan.duration_seconds for plan in plans]
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = cache_path.with_suffix(".mp4.tmp")
     tmp_path.write_bytes(result.video_bytes)
     tmp_path.replace(cache_path)  # 写完再原子改名，中途崩溃不会留下半份缓存文件
-    return cache_path
+    # 元数据最后写：只要它存在，视频文件一定完整。
+    meta_path.write_text(json.dumps({"scene_durations": durations}), encoding="utf-8")
+    return _RenderedVideo(cache_path, durations)
+
+
+def _describe_render_failure(plans: list[_ScenePlan], result: RenderResult) -> str:
+    """失败信息点名具体镜头：从 traceback 的 `_scene_N` 帧反查镜头 id。"""
+    message = result.error_message or ""
+    index = failed_scene_index(f"{message}\n{result.render_log}")
+    if index is not None and index < len(plans):
+        return f"镜头 {plans[index].scene_id} 渲染失败：{message}"
+    return f"成片渲染失败：{message}"
+
+
+async def _with_ticks[T](work: Awaitable[T], on_tick: Callable[[], None]) -> T:
+    """等待 `work` 期间每隔 `_TICK_INTERVAL_SECONDS` 调一次 `on_tick`（单次整片渲染
+    可能远超心跳超时，不续心跳会被 `reap_stale_running` 当成死任务）。
+    """
+    task = asyncio.ensure_future(work)
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=_TICK_INTERVAL_SECONDS)
+        if done:
+            return task.result()
+        on_tick()
 
 
 async def _run_subprocess(cmd: list[str], *, error_prefix: str) -> None:
@@ -207,40 +272,6 @@ async def _run_subprocess(cmd: list[str], *, error_prefix: str) -> None:
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise WorkerRenderError(f"{error_prefix}：{stderr.decode(errors='replace')[-1000:]}")
-
-
-async def _concat_clips(clip_paths: list[Path], workdir: Path) -> Path:
-    """把逐镜头渲染出的小片段按顺序拼成一条视频（音频已经通过 `add_sound` 嵌在
-    每个片段里，拼接不需要单独处理音轨）。只有一个镜头时不用真的拼接。
-    """
-    if len(clip_paths) == 1:
-        return clip_paths[0]
-
-    cache_dir = _cache_dir(workdir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    list_path = cache_dir / "concat_list.txt"
-    list_path.write_text(
-        "".join(f"file '{path.resolve()}'\n" for path in clip_paths), encoding="utf-8"
-    )
-    concat_path = cache_dir / "concat_output.mp4"
-
-    await _run_subprocess(
-        [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(list_path),
-            "-c",
-            "copy",
-            str(concat_path),
-        ],
-        error_prefix="拼接镜头失败",
-    )
-    return concat_path
 
 
 def _find_cjk_font() -> str:
@@ -408,28 +439,27 @@ async def run_once(
     snapshot = create_snapshot(engine, blobs, job.project_id, reason="final_render")
 
     try:
-        clip_paths: list[Path] = []
-        scene_durations: list[float] = []
-        total = len(plans)
-        for index, plan in enumerate(plans):
-            heartbeat(engine, job.id)
-            clip_path = await _render_and_cache_scene(
-                engine_instance, workdir, plan, resolution=resolution, fps=fps
-            )
-            duration = await probe_duration_seconds(str(clip_path))
-            clip_paths.append(clip_path)
-            scene_durations.append(duration)
-            update_progress(engine, job.id, (index + 1) / total)
-            heartbeat(engine, job.id)
-            logger.info("[worker] 镜头 %s 渲染完成（%.2fs）", plan.scene_id, duration)
+        rendered = await _render_and_cache(
+            engine_instance,
+            workdir,
+            plans,
+            resolution=resolution,
+            fps=fps,
+            on_tick=lambda: heartbeat(engine, job.id),
+        )
+        update_progress(engine, job.id, 0.9)
+        heartbeat(engine, job.id)
 
         output_dir = workdir / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
         final_path = output_dir / "final.mp4"
 
-        concatenated = await _concat_clips(clip_paths, workdir)
         await _burn_subtitles(
-            concatenated, plans, scene_durations, final_path, resolution=resolution
+            rendered.video_path,
+            plans,
+            rendered.scene_durations,
+            final_path,
+            resolution=resolution,
         )
     except WorkerRenderError as exc:
         logger.warning("[worker] 任务 %s 失败：%s", job.id, exc)

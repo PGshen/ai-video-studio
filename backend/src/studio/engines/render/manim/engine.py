@@ -52,13 +52,16 @@ class ManimRenderEngine:
         return await run_dry_run(script)
 
     async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:
-        script = _build_manim_script(request.scenes, resolution=request.resolution)
+        script = _build_manim_script(
+            request.scenes, resolution=request.resolution, emit_scene_markers=True
+        )
         settings = get_settings()
         return await run_render(
             script,
             resolution=request.resolution,
             fps=request.fps,
-            timeout_seconds=settings.manim_timeout_seconds,
+            # 所有镜头在同一次渲染里跑完，超时按镜头数放大。
+            timeout_seconds=settings.manim_timeout_seconds * max(len(request.scenes), 1),
             work_dir=work_dir,
         )
 

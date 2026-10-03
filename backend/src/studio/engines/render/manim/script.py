@@ -37,6 +37,12 @@ _TEX_CONSTRUCTORS = {
 }
 _SCENE_METHOD_RE = re.compile(r"^    def _scene_(\d+)\(self\):\s*$")
 
+SCENE_END_MARKER = "__SCENE_END__"
+"""渲染日志里标记"某镜头在视频时间轴上的结束时刻"的行前缀，格式
+`__SCENE_END__ <镜头序号> <秒>`。由 `_build_manim_script(emit_scene_markers=True)`
+写进脚本，`parse_scene_durations` 解析；成片按它切出每个镜头的字幕区间。"""
+_SCENE_END_LINE_RE = re.compile(rf"^{SCENE_END_MARKER} (\d+) ([0-9.]+)\s*$", re.MULTILINE)
+
 
 class _TexStringNormalizer(ast.NodeTransformer):
     """Repair LaTeX commands that were double-escaped by JSON/code generation."""
@@ -544,10 +550,24 @@ def _prepare_manim_code(code: str) -> tuple[str, bool]:
     return ast.unparse(tree), injector.template_injected
 
 
+def parse_scene_durations(render_log: str, expected: int) -> list[float] | None:
+    """从渲染日志里的 `SCENE_END_MARKER` 行还原每个镜头的实际时长；标记缺失或
+    数量不对（比如日志被截断）时返回 `None`，由调用方回退到声明时长。
+    """
+    end_times = {
+        int(m.group(1)): float(m.group(2)) for m in _SCENE_END_LINE_RE.finditer(render_log)
+    }
+    if set(end_times) != set(range(expected)):
+        return None
+    ends = [end_times[i] for i in range(expected)]
+    return [end - start for start, end in zip([0.0, *ends[:-1]], ends, strict=True)]
+
+
 def _build_manim_script(
     scenes: list[SceneInput],
     include_audio: bool = True,
     resolution: tuple[int, int] | None = None,
+    emit_scene_markers: bool = False,
 ) -> str:
     prepared_scenes = []
     needs_chinese_tex_template = False
@@ -620,5 +640,9 @@ def _build_manim_script(
             lines.append(f"        _rem_{i} = {duration:.3f} - (self.renderer.time - _t0_{i})")
             lines.append(f"        if _rem_{i} > 0:")
             lines.append(f"            self.wait(_rem_{i})")
+        if emit_scene_markers:
+            lines.append(
+                f'        print(f"{SCENE_END_MARKER} {i} {{self.renderer.time:.3f}}", flush=True)'
+            )
         lines.append("")
     return "\n".join(lines)

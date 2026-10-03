@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 
 _PROGRESS_BAR_RE = re.compile(r"\d+%\|")
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-_TRACEBACK_SCENE_RE = re.compile(r"\bin _scene_(\d+)\b")
+# rich 的 traceback 面板会在固定宽度处折行，`in _scene_N` 可能被拆成
+# `in │\n│ _scene_N`，所以 `in` 与函数名之间容忍空白和边框字符。
+_TRACEBACK_SCENE_RE = re.compile(r"\bin[\s│]+_scene_(\d+)\b")
 
 # Runs the scene directly instead of going through `manim render`, because the
 # CLI catches exceptions with a rich pretty-printed panel (`error_console.
@@ -51,6 +53,12 @@ sys.exit(0)
 """
 
 _DRY_RUN_TIMEOUT_SECONDS = 120
+
+
+def failed_scene_index(log: str) -> int | None:
+    """渲染/校验日志里 traceback 最内层 `_scene_N` 帧对应的镜头序号（没有则 `None`）。"""
+    matches = _TRACEBACK_SCENE_RE.findall(log)
+    return int(matches[-1]) if matches else None
 
 
 @contextlib.contextmanager

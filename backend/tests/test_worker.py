@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -21,11 +20,13 @@ from studio.engines.render.base import (
     PreviewRequest,
     PreviewResult,
     RenderRequest,
+    RenderResult,
     RenderResultWithBytes,
     SceneInput,
 )
+from studio.engines.render.manim.script import SCENE_END_MARKER
 from studio.jobs import claim_next, create_job, get_job
-from studio.worker import _cache_key, _ScenePlan, run_once
+from studio.worker import _cache_key, _render_and_cache, _ScenePlan, _with_ticks, run_once
 
 
 def _backdate_heartbeat(engine: Engine, job_id: str, seconds_ago: float) -> None:
@@ -110,8 +111,10 @@ class _FakeRenderEngine:
 
     engine_name = "fake"
 
-    def __init__(self) -> None:
+    def __init__(self, *, render_log: str = "", fail_with: str | None = None) -> None:
         self.calls: list[RenderRequest] = []
+        self._render_log = render_log
+        self._fail_with = fail_with
 
     async def validate_code(self, scenes: list[SceneInput]) -> tuple[bool, str]:
         return True, ""
@@ -122,95 +125,179 @@ class _FakeRenderEngine:
     async def health_check(self) -> bool:
         return True
 
-    async def render(
-        self, request: RenderRequest, work_dir: str | None = None
-    ) -> RenderResultWithBytes:
+    async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:
         self.calls.append(request)
+        if self._fail_with is not None:
+            return RenderResult(
+                success=False,
+                output_path=None,
+                duration_seconds=None,
+                error_message=self._fail_with,
+                render_log=self._fail_with,
+            )
         return RenderResultWithBytes(
             success=True,
             output_path="/dev/null",
             duration_seconds=1.0,
             error_message=None,
-            render_log="",
+            render_log=self._render_log,
             video_bytes=b"fake-mp4-bytes",
         )
 
 
-@dataclass
-class _StubPlan:
-    code: str
-    audio_hash: str
+def _plan(
+    scene_id: str,
+    *,
+    index: int = 0,
+    code: str = "self.add(Dot())",
+    audio_hash: str = "sha256:aaa",
+    duration: float = 1.0,
+) -> _ScenePlan:
+    return _ScenePlan(
+        scene_id=scene_id,
+        scene_index=index,
+        code=code,
+        narration="",
+        description="",
+        audio_path=Path(f"/tmp/{scene_id}.wav"),
+        audio_hash=audio_hash,
+        duration_seconds=duration,
+    )
 
 
 class TestCacheKey:
-    def test_cache_key_depends_on_code_and_audio_hash(self) -> None:
-        plan_a = _ScenePlan(
-            scene_id="s-a",
-            scene_index=0,
-            code="self.add(Dot())",
-            narration="",
-            description="",
-            audio_path=Path("/tmp/a.wav"),
-            audio_hash="sha256:aaa",
-            duration_seconds=1.0,
-        )
-        plan_b = _ScenePlan(
-            scene_id="s-a",
-            scene_index=0,
-            code="self.add(Square())",  # 代码不同
-            narration="",
-            description="",
-            audio_path=Path("/tmp/a.wav"),
-            audio_hash="sha256:aaa",
-            duration_seconds=1.0,
-        )
-        plan_c = _ScenePlan(
-            scene_id="s-a",
-            scene_index=0,
-            code="self.add(Dot())",
-            narration="",
-            description="",
-            audio_path=Path("/tmp/a.wav"),
-            audio_hash="sha256:bbb",  # 音频不同
-            duration_seconds=1.0,
-        )
+    def test_cache_key_depends_on_code_audio_and_order(self) -> None:
+        base = [_plan("s-a"), _plan("s-b", index=1, code="self.add(Circle())")]
 
-        assert _cache_key(plan_a) == _cache_key(plan_a)  # 确定性
-        assert _cache_key(plan_a) != _cache_key(plan_b)
-        assert _cache_key(plan_a) != _cache_key(plan_c)
+        assert _cache_key(base) == _cache_key(base)  # 确定性
+        changed_code = [_plan("s-a", code="self.add(Square())"), base[1]]
+        changed_audio = [base[0], _plan("s-b", index=1, audio_hash="sha256:bbb")]
+        reordered = [base[1], base[0]]
+        assert len({_cache_key(base), _cache_key(changed_code)}) == 2
+        assert _cache_key(base) != _cache_key(changed_audio)
+        assert _cache_key(base) != _cache_key(reordered)
+
+    def test_changing_an_earlier_scene_invalidates_cache_of_the_whole_render(self) -> None:
+        # 镜头间元素会跨镜头延续，前面镜头的改动会影响后面镜头的画面，
+        # 所以不能只按单个镜头缓存。
+        later = _plan("s-b", index=1, code="self.play(FadeOut(self.dot))")
+        before = _cache_key([_plan("s-a", code="self.dot = Dot()"), later])
+        after = _cache_key([_plan("s-a", code="self.dot = Square()"), later])
+        assert before != after
 
 
-class TestRenderAndCacheScene:
-    async def test_second_call_with_same_plan_skips_rerender(self, tmp_path: Path) -> None:
-        from studio.worker import _render_and_cache_scene
+class TestWithTicks:
+    async def test_ticks_while_waiting_and_returns_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        monkeypatch.setattr("studio.worker._TICK_INTERVAL_SECONDS", 0.01)
+        ticks: list[int] = []
+
+        async def slow() -> str:
+            await asyncio.sleep(0.08)
+            return "done"
+
+        result = await _with_ticks(slow(), lambda: ticks.append(1))
+
+        assert result == "done"
+        assert len(ticks) >= 2  # 等待期间持续续心跳
+
+
+class TestRenderAndCache:
+    async def test_all_scenes_are_rendered_together_in_one_request(self, tmp_path: Path) -> None:
+        # 回归：逐镜头单独渲染时，后面镜头引用前面镜头的 `self.xxx` 会 AttributeError。
+        workdir = tmp_path / "project"
+        workdir.mkdir()
+        plans = [_plan("s-a"), _plan("s-b", index=1), _plan("s-c", index=2)]
+
+        fake_engine = _FakeRenderEngine()
+        await _render_and_cache(
+            fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
+        )
+
+        assert len(fake_engine.calls) == 1
+        request = fake_engine.calls[0]
+        assert [s.scene_index for s in request.scenes] == [0, 1, 2]
+        assert [s.audio.scene_index for s in request.scenes if s.audio] == [0, 1, 2]
+
+    async def test_second_call_with_same_plans_skips_rerender(self, tmp_path: Path) -> None:
+        workdir = tmp_path / "project"
+        workdir.mkdir()
+        plans = [_plan("s-a", duration=2.0), _plan("s-b", index=1, duration=3.0)]
+
+        fake_engine = _FakeRenderEngine()
+        first = await _render_and_cache(
+            fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
+        )
+        second = await _render_and_cache(
+            fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
+        )
+
+        assert first.video_path == second.video_path
+        assert first.video_path.read_bytes() == b"fake-mp4-bytes"
+        assert len(fake_engine.calls) == 1  # 第二次命中缓存，没有再调用 render()
+        assert second.scene_durations == first.scene_durations
+
+    async def test_scene_durations_come_from_render_markers(self, tmp_path: Path) -> None:
+        workdir = tmp_path / "project"
+        workdir.mkdir()
+        plans = [_plan("s-a", duration=2.0), _plan("s-b", index=1, duration=3.0)]
+        fake_engine = _FakeRenderEngine(
+            render_log=f"{SCENE_END_MARKER} 0 2.500\n{SCENE_END_MARKER} 1 6.000\n"
+        )
+
+        rendered = await _render_and_cache(
+            fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
+        )
+
+        assert rendered.scene_durations == [2.5, 3.5]
+
+    async def test_scene_durations_fall_back_to_declared_when_markers_missing(
+        self, tmp_path: Path
+    ) -> None:
+        workdir = tmp_path / "project"
+        workdir.mkdir()
+        plans = [_plan("s-a", duration=2.0), _plan("s-b", index=1, duration=3.0)]
+
+        rendered = await _render_and_cache(
+            _FakeRenderEngine(), workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
+        )
+
+        assert rendered.scene_durations == [2.0, 3.0]
+
+    async def test_failure_names_the_scene_even_when_rich_wraps_the_frame(
+        self, tmp_path: Path
+    ) -> None:
+        from studio.worker import WorkerRenderError
 
         workdir = tmp_path / "project"
         workdir.mkdir()
-        audio_path = tmp_path / "audio.wav"
-        audio_path.write_bytes(b"RIFF....")
-
-        plan = _ScenePlan(
-            scene_id="s-hook",
-            scene_index=0,
-            code="self.add(Dot())",
-            narration="旁白",
-            description="",
-            audio_path=audio_path,
-            audio_hash="sha256:test",
-            duration_seconds=1.0,
+        plans = [_plan("s-a"), _plan("s-b", index=1)]
+        fake_engine = _FakeRenderEngine(
+            fail_with="│ /tmp/x/scene.py:29 in │\n│ _scene_1 │\nAttributeError: x"
         )
 
-        fake_engine = _FakeRenderEngine()
-        first_path = await _render_and_cache_scene(
-            fake_engine, workdir, plan, resolution=(480, 270), fps=15
-        )
-        second_path = await _render_and_cache_scene(
-            fake_engine, workdir, plan, resolution=(480, 270), fps=15
+        with pytest.raises(WorkerRenderError, match="s-b"):
+            await _render_and_cache(
+                fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
+            )
+
+    async def test_failure_names_the_scene_from_traceback(self, tmp_path: Path) -> None:
+        from studio.worker import WorkerRenderError
+
+        workdir = tmp_path / "project"
+        workdir.mkdir()
+        plans = [_plan("s-a"), _plan("s-b", index=1)]
+        fake_engine = _FakeRenderEngine(
+            fail_with="Manim exited with code 1\n│ scene.py:29 in _scene_1 │\nAttributeError: x"
         )
 
-        assert first_path == second_path
-        assert first_path.read_bytes() == b"fake-mp4-bytes"
-        assert len(fake_engine.calls) == 1  # 第二次命中缓存，没有再调用 render()
+        with pytest.raises(WorkerRenderError, match="s-b"):
+            await _render_and_cache(
+                fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +343,32 @@ class TestRunOnceRendersFinalVideo:
         assert set(final_meta["scene_hashes"]) == {"s-hook", "s-explain"}
         assert final_meta["rendered_at"]
 
+    async def test_scenes_can_share_state_through_self_attributes(
+        self, animation_project: AnimationProjectEnv
+    ) -> None:
+        # 回归：镜头 2 引用镜头 1 里 `self.dot` 定义的元素（跨镜头延续是设计内的写法）。
+        _write_scene_codes(
+            animation_project.workdir,
+            {
+                "s-hook": "self.dot = Dot()\nself.add(self.dot)",
+                "s-explain": "self.play(self.dot.animate.set_color(RED), run_time=0.2)",
+            },
+        )
+        job = create_job(
+            animation_project.engine,
+            type="final_render",
+            project_id=animation_project.project_id,
+            payload={},
+        )
+
+        await run_once(
+            animation_project.engine, animation_project.blobs, data_dir=animation_project.data_dir
+        )
+
+        done = get_job(animation_project.engine, job.id)
+        assert done is not None
+        assert done.status == "done", done.error
+
     async def test_reruns_use_render_cache(self, animation_project: AnimationProjectEnv) -> None:
         _write_scene_codes(animation_project.workdir, _SCENE_CODES)
         first_job = create_job(
@@ -274,7 +387,7 @@ class TestRunOnceRendersFinalVideo:
         cached_files_after_first_run = sorted(
             p for p in cache_dir.glob("*.mp4") if p.name != "concat_output.mp4"
         )
-        assert len(cached_files_after_first_run) == 2  # 两个镜头各一份缓存
+        assert len(cached_files_after_first_run) == 1  # 整条成片只渲染一次，一份缓存
         mtimes_after_first_run = {p: p.stat().st_mtime_ns for p in cached_files_after_first_run}
 
         second_job = create_job(
