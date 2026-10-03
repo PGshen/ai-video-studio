@@ -362,7 +362,7 @@ export function blobUrl(projectId: string, sha256: string): string {
 
 // ---- ideas / 选题池（M4，对应 `api/ideas.py`）---------------------------
 
-/** 不带 `status` 时后端返回 idea + picked（不含归档）；`'all'` 含归档。 */
+/** 不带 `status` 时后端返回未归档的卡片；`'all'` 含归档。 */
 export function listIdeas(status?: IdeaStatus | 'all'): Promise<IdeaOut[]> {
   return request('/ideas', { query: { status } })
 }

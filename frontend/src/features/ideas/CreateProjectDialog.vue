@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 「创建项目」对话框（计划 M4 T9）：标题预填卡片标题，可以改；成功后跳到新项目的选题阶段。
- * 创建成功后 `useCreateProjectMutation` 会让选题池和项目列表的查询失效（卡片变成 `picked`）。
+ * 创建成功后 `useCreateProjectMutation` 会让选题池和项目列表的查询失效（卡片上的项目数 +1）。
  */
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'

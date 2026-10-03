@@ -21,7 +21,6 @@ function idea(overrides: Partial<IdeaOut> = {}): IdeaOut {
     tags: ['算法', '排序'],
     scores: { counterintuitive: 5, visual: 3 },
     status: 'idea',
-    project_id: null,
     source_session_id: null,
     created_at: '2026-09-29T00:00:00Z',
     updated_at: '2026-09-29T00:00:00Z',
@@ -90,8 +89,9 @@ describe('filterIdeas / allTags', () => {
 describe('statusLabel', () => {
   it('给出中文状态', () => {
     expect(statusLabel('idea')).toBe('未使用')
-    expect(statusLabel('picked')).toBe('已创建项目')
-    expect(statusLabel('archived')).toBe('已归档')
+    expect(statusLabel('idea', 0)).toBe('未使用')
+    expect(statusLabel('idea', 3)).toBe('已创建 3 个项目')
+    expect(statusLabel('archived', 2)).toBe('已归档')
     expect(statusLabel('weird')).toBe('weird')
   })
 })

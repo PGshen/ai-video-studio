@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * 新建/编辑想法卡片的对话框（计划 M4 T9）。`idea` 为 `null` 是新建；`picked` 的卡片标题不可改
- * （后端也会拒绝）。表单状态和转换在 `ideaView.ts`，这里只管展示；提交由页面层调接口。
+ * 新建/编辑想法卡片的对话框（计划 M4 T9）。`idea` 为 `null` 是新建。表单状态和转换在 `ideaView.ts`，这里只管展示；提交由页面层调接口。
  */
 import { ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -71,7 +70,6 @@ function submit(): void {
           <Input
             id="idea-title"
             v-model="draft.title"
-            :disabled="idea?.status === 'picked'"
             placeholder="简短具体的选题标题"
           />
         </div>

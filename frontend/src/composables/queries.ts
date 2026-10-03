@@ -105,7 +105,7 @@ export function useCreateProjectMutation() {
     mutationFn: (body: ProjectCreate) => api.createProject(body),
     onSuccess: (project: ProjectOut) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
-      // 从卡片创建项目后，卡片变成 `picked`。
+      // 卡片上显示「已创建 N 个项目」，创建后要刷新。
       void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
       queryClient.setQueryData(queryKeys.project(project.id), project)
     },
@@ -550,7 +550,7 @@ export function useIdeasQuery(view: MaybeRefOrGetter<IdeasView>) {
   })
 }
 
-/** 所有状态的卡片（含已创建项目的 `picked`）；项目「信息」按 `project_id` 从里面找关联选题。 */
+/** 所有状态的卡片（含已归档）；项目列表和项目「信息」按项目的 `idea_id` 从里面找关联选题。 */
 export function useAllIdeasQuery() {
   return useQuery({ queryKey: queryKeys.ideasEvery(), queryFn: () => api.listIdeas('all') })
 }

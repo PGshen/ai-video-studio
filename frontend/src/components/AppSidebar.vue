@@ -22,8 +22,8 @@ const data = {
     avatar: '',
   },
   navMain: [
+    { title: '选题', url: '/ideas', icon: Lightbulb },
     { title: '项目', url: '/projects', icon: FolderKanban },
-    { title: '选题池', url: '/ideas', icon: Lightbulb },
     { title: '设置', url: '/settings', icon: Settings },
   ],
 }

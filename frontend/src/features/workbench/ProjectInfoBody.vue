@@ -22,7 +22,7 @@ const { data: ideas, isPending: ideasPending } = useAllIdeasQuery()
 const { data: tree } = useFileTreeQuery(() => props.projectId)
 const { data: styleText } = useFileContentQuery(() => props.projectId, () => 'style/STYLE.md')
 
-const idea = computed(() => findProjectIdea(ideas.value, props.projectId))
+const idea = computed(() => findProjectIdea(ideas.value, project.value?.idea_id))
 const styleHeader = computed(() => parseStyleHeader(styleText.value))
 const styleFiles = computed(() => styleFileGroups(tree.value?.files))
 const scoreText = computed(() => {

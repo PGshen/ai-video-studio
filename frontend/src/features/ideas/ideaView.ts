@@ -5,29 +5,15 @@
 
 import type { IdeaCreate, IdeaOut, IdeaScoreKey } from '@/types/api'
 
-export { SCORE_DIMENSIONS } from '@/composables/ideaScores'
+export { SCORE_DIMENSIONS, ideaTotal } from '@/composables/ideaScores'
 
 export const MAX_TAGS = 8
 
-export function ideaTotal(scores: Partial<Record<IdeaScoreKey, number>>): {
-  sum: number
-  count: number
-} {
-  const values = Object.values(scores).filter((v): v is number => typeof v === 'number')
-  return { sum: values.reduce((a, b) => a + b, 0), count: values.length }
-}
-
-export function statusLabel(status: string): string {
-  switch (status) {
-    case 'idea':
-      return '未使用'
-    case 'picked':
-      return '已创建项目'
-    case 'archived':
-      return '已归档'
-    default:
-      return status
-  }
+/** 卡片上的状态徽标文字：归档、已创建了几个项目，或还没用过。 */
+export function statusLabel(status: string, projectCount = 0): string {
+  if (status === 'archived') return '已归档'
+  if (status !== 'idea') return status
+  return projectCount > 0 ? `已创建 ${projectCount} 个项目` : '未使用'
 }
 
 /** 按逗号、顿号、空白切分标签，去空、去重，保持出现顺序。 */

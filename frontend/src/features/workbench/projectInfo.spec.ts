@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FileEntry, IdeaOut } from '@/types/api'
 import { findProjectIdea, parseStyleHeader, styleFileGroups } from './projectInfo'
 
-function idea(id: string, projectId: string | null): IdeaOut {
+function idea(id: string): IdeaOut {
   return {
     id,
     title: `选题 ${id}`,
@@ -10,8 +10,7 @@ function idea(id: string, projectId: string | null): IdeaOut {
     counterintuitive: null,
     tags: [],
     scores: {},
-    status: projectId ? 'picked' : 'idea',
-    project_id: projectId,
+    status: 'idea',
     source_session_id: null,
     created_at: '2026-10-01T00:00:00Z',
     updated_at: '2026-10-01T00:00:00Z',
@@ -19,14 +18,15 @@ function idea(id: string, projectId: string | null): IdeaOut {
 }
 
 describe('findProjectIdea', () => {
-  it('按 project_id 找到关联的选题卡片', () => {
-    const ideas = [idea('a', null), idea('b', 'p1'), idea('c', 'p2')]
-    expect(findProjectIdea(ideas, 'p1')?.id).toBe('b')
+  it('按项目的 idea_id 找到关联的选题卡片', () => {
+    const ideas = [idea('a'), idea('b'), idea('c')]
+    expect(findProjectIdea(ideas, 'b')?.id).toBe('b')
   })
 
   it('没有关联卡片或列表未加载时返回 null', () => {
-    expect(findProjectIdea([idea('a', 'p2')], 'p1')).toBeNull()
-    expect(findProjectIdea(undefined, 'p1')).toBeNull()
+    expect(findProjectIdea([idea('a')], 'x')).toBeNull()
+    expect(findProjectIdea([idea('a')], null)).toBeNull()
+    expect(findProjectIdea(undefined, 'a')).toBeNull()
   })
 })
 

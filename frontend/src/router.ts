@@ -18,7 +18,7 @@ export const routes: RouteRecordRaw[] = [
     path: '/ideas',
     name: 'ideas',
     component: () => import('@/pages/IdeasPage.vue'),
-    meta: { title: '选题池' },
+    meta: { title: '选题' },
   },
   {
     // 设置页外壳 + 四个子页（M5 T10）。子页直接是 `features/settings/` 的面板；外壳

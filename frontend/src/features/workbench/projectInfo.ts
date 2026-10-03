@@ -5,11 +5,13 @@
 
 import type { FileEntry, IdeaOut } from '@/types/api'
 
+/** 项目关联的选题：按项目的 `idea_id` 找（一张选题可以对应多个项目）。 */
 export function findProjectIdea(
   ideas: readonly IdeaOut[] | undefined,
-  projectId: string,
+  ideaId: string | null | undefined,
 ): IdeaOut | null {
-  return ideas?.find((idea) => idea.project_id === projectId) ?? null
+  if (!ideaId) return null
+  return ideas?.find((idea) => idea.id === ideaId) ?? null
 }
 
 export interface StyleHeader {

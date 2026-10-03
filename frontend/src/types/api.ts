@@ -7,7 +7,7 @@
 export interface ProjectCreate {
   title: string
   settings?: Record<string, unknown> | null
-  /** 从选题池的想法卡片创建（卡片须为 `idea` 状态，成功后变为 `picked`）。 */
+  /** 从选题池的想法卡片创建（卡片须为 `idea` 状态；同一张卡片可以创建多个项目）。 */
   idea_id?: string | null
   /** 风格库里的预设 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。 */
   style_preset_id?: string | null
@@ -325,7 +325,7 @@ export interface SceneChecksResponse {
 
 // ---- 选题池（M4，对应 `api/ideas.py`）-----------------------------------
 
-export type IdeaStatus = 'idea' | 'picked' | 'archived'
+export type IdeaStatus = 'idea' | 'archived'
 export type IdeaScoreKey = 'counterintuitive' | 'provable' | 'visual' | 'novelty'
 
 export interface IdeaOut {
@@ -336,8 +336,6 @@ export interface IdeaOut {
   tags: string[]
   scores: Partial<Record<IdeaScoreKey, number>>
   status: IdeaStatus
-  /** `picked` 的卡片对应的项目。 */
-  project_id: string | null
   source_session_id: string | null
   created_at: string
   updated_at: string

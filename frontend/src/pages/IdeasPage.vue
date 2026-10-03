@@ -19,24 +19,22 @@ watch(chatOpen, (open) => {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold">
-        选题池
-      </h1>
-      <Button
-        :variant="chatOpen ? 'secondary' : 'default'"
-        size="sm"
-        @click="chatOpen = !chatOpen"
-      >
-        {{ chatOpen ? '收起头脑风暴' : '头脑风暴' }}
-      </Button>
-    </div>
     <div
       class="grid min-h-0 flex-1 gap-4"
       :class="chatOpen ? 'lg:grid-cols-[minmax(0,1fr)_28rem]' : ''"
     >
-      <div class="min-h-0 overflow-y-auto">
-        <IdeaGrid />
+      <div class="min-h-0">
+        <IdeaGrid>
+          <template #actions>
+            <Button
+              :variant="chatOpen ? 'secondary' : 'default'"
+              size="sm"
+              @click="chatOpen = !chatOpen"
+            >
+              {{ chatOpen ? '收起头脑风暴' : '头脑风暴' }}
+            </Button>
+          </template>
+        </IdeaGrid>
       </div>
       <BrainstormDrawer
         v-if="chatMounted"

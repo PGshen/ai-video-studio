@@ -1,149 +1,153 @@
 <script setup lang="ts">
 /**
- * 项目列表 + 新建对话框（任务简报 T13，控制者裁定 6）。创建成功后跳到
- * 新项目的选题阶段工作台。
+ * 项目列表：关键词/阶段/状态/选题筛选 + 卡片网格（分页）。项目只能从选题池的卡片创建，这里没有新建入口。
+ * 筛选栏固定在顶部，只有卡片区滚动；卡片上的选题信息来自全部选题（按项目的 `idea_id` 关联）。
+ * 选题池的「打开项目」带 `?idea=<选题 id>` 跳过来，URL 里的这个参数就是「按选题筛选」的状态。
  */
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import EffortSelect from '@/components/EffortSelect.vue'
-import StyleSelect from '@/components/StyleSelect.vue'
-import {
-  useCreateProjectMutation,
-  useProjectsQuery,
-  useStylePresetsQuery,
-} from '@/composables/queries'
-import { DEFAULT_EFFORT, type Effort } from '@/composables/effortChoice'
-import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
+import ListPager from '@/components/ListPager.vue'
+import { useAllIdeasQuery, useProjectsQuery } from '@/composables/queries'
+import { PAGE_SIZE, pageCount, paginate } from '@/composables/pagination'
+import { STAGE_TITLES } from '@/composables/stageTitles'
+import ProjectCard from './ProjectCard.vue'
+import { filterProjects, ideasById, type StatusFilter } from './projectView'
 
-const router = useRouter()
 const { data: projects, isPending, isError } = useProjectsQuery()
-const { data: stylePresets } = useStylePresetsQuery()
+const { data: ideas } = useAllIdeasQuery()
+const ideaOf = computed(() => ideasById(ideas.value))
 
-const dialogOpen = ref(false)
-const title = ref('')
-const styleId = ref('')
-const effort = ref<Effort>(DEFAULT_EFFORT)
-const createMutation = useCreateProjectMutation()
+const route = useRoute()
+const router = useRouter()
+const ideaId = computed(() => {
+  const value = route.query.idea
+  return typeof value === 'string' && value !== '' ? value : null
+})
+const ideaTitle = computed(() => (ideaId.value ? ideaOf.value.get(ideaId.value)?.title ?? '该选题' : null))
 
-function openDialog(): void {
-  title.value = ''
-  styleId.value = initialStyleId(stylePresets.value ?? [])
-  effort.value = DEFAULT_EFFORT
-  createMutation.reset()
-  dialogOpen.value = true
+function clearIdea(): void {
+  void router.replace({ path: route.path, query: {} })
 }
 
-async function submit(): Promise<void> {
-  const trimmed = title.value.trim()
-  if (!trimmed) return
-  const project = await createMutation.mutateAsync({
-    title: trimmed,
-    style_preset_id: styleIdForRequest(styleId.value),
-    settings: { effort: effort.value },
-  })
-  dialogOpen.value = false
-  await router.push(`/projects/${project.id}/topic`)
-}
+const query = ref('')
+const stage = ref<string | null>(null)
+const status = ref<StatusFilter>('all')
+
+const STATUS_OPTIONS: ReadonlyArray<{ value: StatusFilter; label: string }> = [
+  { value: 'all', label: '全部状态' },
+  { value: 'active', label: '进行中' },
+  { value: 'done', label: '已完成' },
+]
+const STAGE_OPTIONS = [
+  { value: null, label: '全部阶段' },
+  ...Object.entries(STAGE_TITLES).map(([value, label]) => ({ value, label })),
+]
+
+const visible = computed(() =>
+  filterProjects(projects.value ?? [], ideaOf.value, {
+    query: query.value,
+    stage: stage.value,
+    status: status.value,
+    ideaId: ideaId.value,
+  }),
+)
+
+const page = ref(1)
+const totalPages = computed(() => pageCount(visible.value.length, PAGE_SIZE))
+const currentPage = computed(() => Math.min(page.value, totalPages.value))
+const pageItems = computed(() => paginate(visible.value, currentPage.value, PAGE_SIZE))
+watch([query, stage, status, ideaId], () => {
+  page.value = 1
+})
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold">
-        项目
-      </h1>
-      <Button @click="openDialog">
-        新建项目
+  <div class="flex min-h-0 flex-1 flex-col gap-4">
+    <div class="flex shrink-0 flex-wrap items-center gap-2">
+      <Button
+        v-if="ideaTitle"
+        size="sm"
+        variant="secondary"
+        class="max-w-xs"
+        data-testid="idea-filter"
+        title="清除选题筛选"
+        @click="clearIdea"
+      >
+        <span class="truncate">选题：{{ ideaTitle }}</span>
+        <span aria-hidden="true">×</span>
       </Button>
-      <Dialog v-model:open="dialogOpen">
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新建项目</DialogTitle>
-            <DialogDescription>给项目起个标题，创建后会进入选题阶段。</DialogDescription>
-          </DialogHeader>
-          <div class="flex flex-col gap-2">
-            <Label for="project-title">标题</Label>
-            <Input
-              id="project-title"
-              v-model="title"
-              placeholder="例如：AI 视频工作台介绍"
-              @keydown.enter="submit"
-            />
-            <StyleSelect
-              id="project-style"
-              v-model="styleId"
-              class="mt-2"
-              :presets="stylePresets ?? []"
-            />
-            <EffortSelect
-              id="project-effort"
-              v-model="effort"
-              class="mt-2"
-            />
-            <p
-              v-if="createMutation.isError.value"
-              class="text-destructive text-sm"
-            >
-              创建失败：{{ (createMutation.error.value as Error)?.message }}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              :disabled="!title.trim() || createMutation.isPending.value"
-              @click="submit"
-            >
-              {{ createMutation.isPending.value ? '创建中…' : '创建' }}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <div class="flex gap-1">
+        <Button
+          v-for="option in STATUS_OPTIONS"
+          :key="option.value"
+          size="sm"
+          :variant="status === option.value ? 'default' : 'outline'"
+          @click="status = option.value"
+        >
+          {{ option.label }}
+        </Button>
+      </div>
+      <div class="flex gap-1">
+        <Button
+          v-for="option in STAGE_OPTIONS"
+          :key="option.value ?? 'all'"
+          size="sm"
+          :variant="stage === option.value ? 'default' : 'outline'"
+          @click="stage = option.value"
+        >
+          {{ option.label }}
+        </Button>
+      </div>
+      <Input
+        v-model="query"
+        class="max-w-xs"
+        placeholder="搜索标题、卖点、标签"
+      />
     </div>
 
-    <p
-      v-if="isPending"
-      class="text-muted-foreground text-sm"
-    >
-      加载中…
-    </p>
-    <p
-      v-else-if="isError"
-      class="text-destructive text-sm"
-    >
-      项目列表加载失败。
-    </p>
-    <Card v-else-if="projects && projects.length === 0">
-      <CardHeader>
-        <CardTitle>还没有项目</CardTitle>
-        <CardDescription>点击右上角「新建项目」开始。</CardDescription>
-      </CardHeader>
-    </Card>
-    <div
-      v-else
-      class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-    >
-      <Card
-        v-for="project in projects"
-        :key="project.id"
-        class="cursor-pointer transition-colors hover:border-primary"
-        @click="router.push(`/projects/${project.id}/${project.current_stage}`)"
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <p
+        v-if="isPending"
+        class="text-muted-foreground text-sm"
       >
-        <CardHeader>
-          <CardTitle>{{ project.title }}</CardTitle>
-          <CardDescription>当前阶段：{{ project.current_stage }}</CardDescription>
-        </CardHeader>
-      </Card>
+        加载中…
+      </p>
+      <p
+        v-else-if="isError"
+        class="text-destructive text-sm"
+      >
+        项目列表加载失败。
+      </p>
+      <p
+        v-else-if="visible.length === 0"
+        class="text-muted-foreground text-sm"
+      >
+        {{
+          (projects?.length ?? 0) > 0
+            ? '没有符合筛选条件的项目。'
+            : '还没有项目：在「选题」里选一张卡片，点「创建项目」。'
+        }}
+      </p>
+      <div
+        v-else
+        class="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-3"
+      >
+        <ProjectCard
+          v-for="project in pageItems"
+          :key="project.id"
+          :project="project"
+          :idea="(project.idea_id && ideaOf.get(project.idea_id)) || null"
+        />
+      </div>
     </div>
+
+    <ListPager
+      v-model:page="page"
+      :total="visible.length"
+      :total-pages="totalPages"
+      :current="currentPage"
+    />
   </div>
 </template>
