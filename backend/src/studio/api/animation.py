@@ -108,11 +108,13 @@ def get_scene_checks_endpoint(
                     status=checks[sid].validate_scenes.status,
                     stale=checks[sid].validate_scenes.stale,
                     checked_at=checks[sid].validate_scenes.checked_at,
+                    images=list(checks[sid].validate_scenes.images),
                 ),
                 render_preview=SceneCheckOut(
                     status=checks[sid].render_preview.status,
                     stale=checks[sid].render_preview.stale,
                     checked_at=checks[sid].render_preview.checked_at,
+                    images=list(checks[sid].render_preview.images),
                 ),
             )
             for sid in scene_id

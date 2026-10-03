@@ -2,7 +2,7 @@
 /**
  * 成片面板（任务 T13）：渲染成片按钮、任务进度条（轮询 `GET .../jobs/{id}`）、
  * 播放器（`output/final.mp4`）、成片定稿按钮（`POST .../finalize-render`）。
- * 挂在 `AnimationCanvas.vue` 镜头列表/编辑器下方。
+ * 在 `AnimationCanvas.vue` 里是独立的“成片”标签。
  *
  * 本组件自己持有"当前正在跟踪的任务 id"（`currentJobId`），但挂载时会先用
  * `useLatestJobQuery`（TD-34：`GET .../jobs/latest`）问一次"这个项目最近
@@ -95,18 +95,13 @@ const videoUrl = computed(() => finalVideoUrl(props.projectId))
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 border-t pt-3">
-    <div class="flex items-center justify-between">
-      <p class="text-muted-foreground text-xs font-medium">
-        成片
-      </p>
-      <p
-        v-if="project?.completed_at"
-        class="text-xs text-emerald-700"
-      >
-        项目已完成
-      </p>
-    </div>
+  <div class="flex flex-col gap-2">
+    <p
+      v-if="project?.completed_at"
+      class="text-xs text-emerald-700"
+    >
+      项目已完成
+    </p>
 
     <div class="flex items-center gap-2">
       <Button
@@ -150,7 +145,7 @@ const videoUrl = computed(() => finalVideoUrl(props.projectId))
         v-if="job.status === 'done'"
         :src="videoUrl"
         controls
-        class="w-full rounded"
+        class="max-h-[60vh] w-full rounded bg-black"
       />
 
       <div

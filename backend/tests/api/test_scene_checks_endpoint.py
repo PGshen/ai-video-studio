@@ -35,8 +35,18 @@ class TestGetSceneChecks:
 
         assert response.status_code == 200
         assert response.json()["scenes"]["s-hook"] == {
-            "validate_scenes": {"status": "not_checked", "stale": False, "checked_at": None},
-            "render_preview": {"status": "not_checked", "stale": False, "checked_at": None},
+            "validate_scenes": {
+                "status": "not_checked",
+                "stale": False,
+                "checked_at": None,
+                "images": [],
+            },
+            "render_preview": {
+                "status": "not_checked",
+                "stale": False,
+                "checked_at": None,
+                "images": [],
+            },
         }
 
     async def test_passed_preview_is_reported(self, api_env: ApiEnv) -> None:
@@ -69,7 +79,13 @@ class TestGetSceneChecks:
             turn_id=turn.id,
             session_id=session.id,
             type="tool_result",
-            payload={"turn_id": turn.id, "call_id": "c1", "text": "ok", "is_error": False},
+            payload={
+                "turn_id": turn.id,
+                "call_id": "c1",
+                "text": "ok",
+                "is_error": False,
+                "images": [{"media_type": "image/png", "sha256": "abc123"}],
+            },
         )
         snapshot = insert_snapshot(engine, project_id=pid, manifest=manifest, reason="turn")
         finish_turn(
@@ -92,3 +108,4 @@ class TestGetSceneChecks:
         preview = response.json()["scenes"]["s-hook"]["render_preview"]
         assert preview["status"] == "passed"
         assert preview["stale"] is False
+        assert preview["images"] == ["abc123"]

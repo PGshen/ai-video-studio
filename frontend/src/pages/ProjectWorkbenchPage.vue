@@ -203,9 +203,9 @@ const canvasBusy = computed(() =>
           <template #canvas="{ railCollapsed: snapshotsHidden, toggleRail, narrow: stacked }">
             <Card class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4">
               <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative 阶段并进标签行（见两个画布的 actions 插槽）。定稿/重新打开按钮和它并排。 -->
+                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative、animation 阶段并进标签行（见三个画布的 actions 插槽）。定稿/重新打开按钮和它并排。 -->
                 <div
-                  v-if="stage !== 'topic' && stage !== 'narrative'"
+                  v-if="stage !== 'topic' && stage !== 'narrative' && stage !== 'animation'"
                   class="flex shrink-0 items-center justify-end gap-2"
                 >
                   <StageFinalizeButton
@@ -223,7 +223,20 @@ const canvasBusy = computed(() =>
                   v-if="stage === 'animation'"
                   :project-id="projectId"
                   :busy="canvasBusy"
-                />
+                >
+                  <template #actions>
+                    <StageFinalizeButton
+                      :project-id="projectId"
+                      :stages="project.stages"
+                      :current-stage="stage"
+                    />
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </AnimationCanvas>
                 <NarrativeCanvas
                   v-else-if="stage === 'narrative'"
                   :project-id="projectId"

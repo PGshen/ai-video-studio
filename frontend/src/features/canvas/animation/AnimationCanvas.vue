@@ -19,8 +19,10 @@
  * 进同一个 `computeSceneStatuses` 调用。
  *
  * 任务 T13 加了 `FinalRenderPanel`（成片面板：渲染成片/进度/播放器/成片
- * 定稿），挂在镜头列表+编辑器这个 grid 下方，只在镜头列表已知（叙事已
- * 物化且解析无误）时显示——见该组件顶部注释。
+ * 定稿），只在镜头列表已知（叙事已物化且解析无误）时显示——见该组件顶部
+ * 注释。画布布局优化后它和镜头视图分成两个标签（用 `v-show` 切换，成片
+ * 任务的轮询不会因为切到镜头标签而中断）；镜头视图里左列是带预览缩略图的
+ * 镜头卡片，右侧从上到下是预览关键帧条、占满剩余高度的编辑器、保存栏。
  */
 import { computed, ref, watch, watchEffect } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -49,6 +51,9 @@ const props = defineProps<{
 }>()
 
 const SCENE_LANGUAGE: EditorLanguage = 'python'
+
+/** 画布顶部标签：镜头（列表 + 预览 + 代码）/ 成片（渲染、播放、定稿）。 */
+const tab = ref<'scenes' | 'final'>('scenes')
 
 // ---- 镜头列表：narrative.json 解析 + 代码文件是否存在 --------------------
 
@@ -134,6 +139,8 @@ watch(fileMissing, (missing) => {
   }
 })
 
+const selectedPreview = computed(() => selectedScene.value?.renderPreview ?? null)
+
 const readonly = computed(() => props.busy)
 
 const writeMutation = useWriteFileMutation(() => props.projectId)
@@ -192,20 +199,49 @@ function onLoadLatest(): void {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-3">
-      <template v-if="!narrativeMaterialized">
-        <p class="text-muted-foreground col-span-2 text-sm">
-          还没有镜头列表：`upstream/narrative/` 要在这个会话跑过第一轮对话后才会物化。
-          请先在左侧发一条消息开始一轮。
-        </p>
-      </template>
-      <template v-else-if="narrativeParse.error">
-        <p class="text-destructive col-span-2 text-sm">
-          解析 narrative.json 失败：{{ narrativeParse.error }}
-        </p>
-      </template>
-      <template v-else>
+    <template v-if="!narrativeMaterialized">
+      <p class="text-muted-foreground text-sm">
+        还没有镜头列表：`upstream/narrative/` 要在这个会话跑过第一轮对话后才会物化。
+        请先在左侧发一条消息开始一轮。
+      </p>
+    </template>
+    <template v-else-if="narrativeParse.error">
+      <p class="text-destructive text-sm">
+        解析 narrative.json 失败：{{ narrativeParse.error }}
+      </p>
+    </template>
+    <template v-else>
+      <div
+        class="flex flex-wrap items-center gap-1 text-sm"
+        data-testid="animation-tabbar"
+      >
+        <button
+          type="button"
+          class="rounded px-3 py-1 whitespace-nowrap"
+          :class="tab === 'scenes' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+          @click="tab = 'scenes'"
+        >
+          镜头（{{ scenes.length }}）
+        </button>
+        <button
+          type="button"
+          class="rounded px-3 py-1 whitespace-nowrap"
+          :class="tab === 'final' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+          @click="tab = 'final'"
+        >
+          成片
+        </button>
+        <div class="ml-auto flex items-center gap-2">
+          <slot name="actions" />
+        </div>
+      </div>
+
+      <div
+        v-show="tab === 'scenes'"
+        class="grid min-h-0 flex-1 grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-3"
+      >
         <SceneList
+          :project-id="projectId"
           :scenes="scenes"
           :selected-id="selectedSceneId"
           @select="(id) => (selectedSceneId = id)"
@@ -221,11 +257,13 @@ function onLoadLatest(): void {
             <div class="border-destructive bg-destructive/10 rounded border px-3 py-2 text-sm">
               该镜头的代码文件已不存在（可能被回滚或删除）。已保留你未保存的修改，只读展示——不会自动重新创建文件。
             </div>
-            <CodeEditor
-              :content="buffer.content"
-              :language="SCENE_LANGUAGE"
-              readonly
-            />
+            <div class="min-h-0 flex-1">
+              <CodeEditor
+                :content="buffer.content"
+                :language="SCENE_LANGUAGE"
+                readonly
+              />
+            </div>
           </template>
           <template v-else-if="!buffer">
             <p class="text-muted-foreground text-sm">
@@ -233,6 +271,13 @@ function onLoadLatest(): void {
             </p>
           </template>
           <template v-else>
+            <KeyframeStrip
+              :project-id="projectId"
+              :scene-id="selectedSceneId"
+              :images="selectedPreview?.images ?? []"
+              :stale="selectedPreview?.stale ?? false"
+            />
+
             <div
               v-if="buffer.conflict"
               class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
@@ -256,33 +301,34 @@ function onLoadLatest(): void {
               </div>
             </div>
 
-            <p
-              v-if="readonly"
-              class="text-muted-foreground text-xs"
-            >
-              只读：agent 正在运行
-            </p>
-            <p
-              v-else-if="!sceneExists"
-              class="text-muted-foreground text-xs"
-            >
-              这个镜头还没有代码，写完后保存即可创建 {{ selectedScene?.path }}
-            </p>
+            <div class="min-h-0 flex-1">
+              <CodeEditor
+                :content="buffer.content"
+                :language="SCENE_LANGUAGE"
+                :readonly="readonly"
+                @update:content="onEdit"
+              />
+            </div>
 
-            <CodeEditor
-              :content="buffer.content"
-              :language="SCENE_LANGUAGE"
-              :readonly="readonly"
-              @update:content="onEdit"
-            />
-
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2">
               <p
                 v-if="saveError"
                 class="text-destructive text-xs"
               >
                 {{ saveError }}
               </p>
+              <span
+                v-else-if="readonly"
+                class="text-muted-foreground text-xs"
+              >
+                只读：agent 正在运行
+              </span>
+              <span
+                v-else-if="!sceneExists"
+                class="text-muted-foreground truncate text-xs"
+              >
+                这个镜头还没有代码，写完后保存即可创建 {{ selectedScene?.path }}
+              </span>
               <span
                 v-else-if="buffer.dirty"
                 class="text-muted-foreground text-xs"
@@ -298,17 +344,19 @@ function onLoadLatest(): void {
                 保存
               </Button>
             </div>
-
-            <KeyframeStrip :scene-id="selectedSceneId" />
           </template>
         </div>
-      </template>
-    </div>
+      </div>
 
-    <FinalRenderPanel
-      v-if="narrativeMaterialized && !narrativeParse.error"
-      :project-id="projectId"
-      :scene-count="scenes.length"
-    />
+      <div
+        v-show="tab === 'final'"
+        class="min-h-0 flex-1 overflow-y-auto"
+      >
+        <FinalRenderPanel
+          :project-id="projectId"
+          :scene-count="scenes.length"
+        />
+      </div>
+    </template>
   </div>
 </template>

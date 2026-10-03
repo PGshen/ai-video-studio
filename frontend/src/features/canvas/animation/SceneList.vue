@@ -1,60 +1,97 @@
 <script setup lang="ts">
 /**
- * 镜头列表（任务 T12；TD-33 扩展）：纯展示组件，状态计算交给
- * `sceneStatus.ts`。"已有代码/还没有代码"（决策记录 D38）之外，现在还显示
- * 最近一次 `validate_scenes`/`render_preview` 的结果——`stale: true` 时用
- * "（已过期）"标出，提示代码在检查之后又改过。
+ * 镜头列表（任务 T12；TD-33、画布布局优化扩展）：纯展示组件，状态计算交给
+ * `sceneStatus.ts`。每个镜头是一张卡片：最近一次 `render_preview` 的第一张
+ * 关键帧缩略图（没有就是占位）+ 镜头 id + 一排紧凑状态点（代码、校验、预览），
+ * 悬停状态点看文字说明。`stale` 表示检查之后代码又改过。
  */
+import { computed } from 'vue'
+import { ImageIcon } from '@lucide/vue'
+import { blobUrl } from '@/api/endpoints'
 import type { SceneStatus } from './sceneStatus'
-import type { SceneCheckOut } from '@/types/api'
+import { checkLabel, checkTone, type CheckTone } from './checkSummary'
 
-defineProps<{
+const props = defineProps<{
+  projectId: string
   scenes: SceneStatus[]
   selectedId: string | null
 }>()
 
 const emit = defineEmits<{ (e: 'select', id: string): void }>()
 
-function checkLabel(prefix: string, check: SceneCheckOut | null): string | null {
-  if (check === null || check.status === 'not_checked') return null
-  const outcome = check.status === 'passed' ? '通过' : '失败'
-  return `${prefix}${outcome}${check.stale ? '（已过期）' : ''}`
+const TONE_CLASS: Record<CheckTone, string> = {
+  none: 'bg-muted-foreground/30',
+  passed: 'bg-emerald-500',
+  stale: 'bg-amber-500',
+  failed: 'bg-destructive',
 }
+
+interface Dot {
+  key: string
+  label: string
+  tone: CheckTone
+}
+
+const rows = computed(() =>
+  props.scenes.map((scene) => {
+    const thumb = scene.renderPreview?.images[0]
+    const dots: Dot[] = [
+      { key: 'code', label: scene.exists ? '代码：已有' : '代码：待编写', tone: scene.exists ? 'passed' : 'none' },
+      { key: 'validate', label: checkLabel('校验', scene.validateScenes), tone: checkTone(scene.validateScenes) },
+      { key: 'preview', label: checkLabel('预览', scene.renderPreview), tone: checkTone(scene.renderPreview) },
+    ]
+    return {
+      scene,
+      thumbUrl: thumb === undefined ? null : blobUrl(props.projectId, thumb),
+      dots,
+    }
+  }),
+)
 </script>
 
 <template>
   <div class="flex min-h-0 flex-col gap-1 overflow-y-auto text-sm">
-    <p class="text-muted-foreground mb-1 text-xs font-medium">
-      镜头
-    </p>
-    <ul>
+    <ul class="flex flex-col gap-2">
       <li
-        v-for="scene in scenes"
-        :key="scene.id"
+        v-for="row in rows"
+        :key="row.scene.id"
       >
         <button
           type="button"
-          class="flex w-full flex-col gap-0.5 truncate rounded px-2 py-1 text-left"
-          :class="scene.id === selectedId ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
-          @click="emit('select', scene.id)"
+          class="flex w-full flex-col gap-1.5 rounded-md border p-1.5 text-left"
+          :class="row.scene.id === selectedId ? 'border-primary bg-primary/5' : 'hover:bg-muted border-transparent'"
+          :data-testid="`scene-card-${row.scene.id}`"
+          @click="emit('select', row.scene.id)"
         >
-          <span class="flex items-center justify-between gap-2">
-            <span class="truncate">{{ scene.id }}</span>
-            <span
-              class="shrink-0 rounded px-1.5 py-0.5 text-xs"
-              :class="scene.exists ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
+          <div class="bg-muted aspect-video w-full overflow-hidden rounded">
+            <img
+              v-if="row.thumbUrl"
+              :src="row.thumbUrl"
+              :alt="`${row.scene.id} 预览`"
+              class="size-full object-cover"
+              loading="lazy"
             >
-              {{ scene.exists ? '已有代码' : '待编写' }}
+            <div
+              v-else
+              class="text-muted-foreground/60 flex size-full items-center justify-center"
+            >
+              <ImageIcon class="size-5" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-2 px-0.5">
+            <span class="truncate font-medium">{{ row.scene.id }}</span>
+            <span class="flex shrink-0 items-center gap-1">
+              <span
+                v-for="dot in row.dots"
+                :key="dot.key"
+                class="size-2 rounded-full"
+                :class="TONE_CLASS[dot.tone]"
+                :title="dot.label"
+                :aria-label="dot.label"
+                role="img"
+              />
             </span>
-          </span>
-          <span
-            v-if="checkLabel('校验', scene.validateScenes) || checkLabel('预览', scene.renderPreview)"
-            class="text-muted-foreground truncate text-xs"
-          >
-            {{ [checkLabel('校验', scene.validateScenes), checkLabel('预览', scene.renderPreview)]
-              .filter((label) => label !== null)
-              .join(' · ') }}
-          </span>
+          </div>
         </button>
       </li>
       <li

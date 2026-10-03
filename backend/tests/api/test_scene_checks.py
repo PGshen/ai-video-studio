@@ -49,6 +49,7 @@ def _turn_with_check(
     result_text: str,
     is_error: bool,
     end_manifest: dict[str, str],
+    images: list[str] | None = None,
 ) -> None:
     """跑一个只含一次工具调用的最小 turn：`tool_call` + `tool_result` +
     一条 `end_snapshot_id` 指向 `end_manifest` 的快照，模拟一轮真实对话
@@ -76,6 +77,7 @@ def _turn_with_check(
             "call_id": call_id,
             "text": result_text,
             "is_error": is_error,
+            "images": [{"media_type": "image/png", "sha256": sha} for sha in images or []],
         },
     )
     snapshot = insert_snapshot(engine, project_id=project_id, manifest=end_manifest, reason="turn")
@@ -274,6 +276,55 @@ class TestPreview:
         result = compute_scene_checks(engine, project_id, ["s-hook"])
 
         assert result["s-hook"].render_preview.status == "failed"
+
+    def test_preview_exposes_latest_images_in_order(
+        self, animation_project: AnimationProjectEnv
+    ) -> None:
+        engine, project_id = animation_project.engine, animation_project.project_id
+        session_id = _session(engine, project_id)
+        manifest = {"animation/scenes/s-hook.py": "sha-a"}
+        for call_id, shas in (("c1", ["old-1"]), ("c2", ["new-1", "new-2"])):
+            _turn_with_check(
+                engine,
+                session_id=session_id,
+                project_id=project_id,
+                call_id=call_id,
+                name="render_preview",
+                args={"scene_id": "s-hook"},
+                result_text="ok",
+                is_error=False,
+                end_manifest=manifest,
+                images=shas,
+            )
+        _set_current_manifest(engine, project_id, manifest)
+
+        result = compute_scene_checks(engine, project_id, ["s-hook"])
+
+        assert result["s-hook"].render_preview.images == ("new-1", "new-2")
+        assert result["s-hook"].validate_scenes.images == ()
+
+    def test_preview_without_images_has_empty_images(
+        self, animation_project: AnimationProjectEnv
+    ) -> None:
+        engine, project_id = animation_project.engine, animation_project.project_id
+        session_id = _session(engine, project_id)
+        manifest = {"animation/scenes/s-hook.py": "sha-a"}
+        _turn_with_check(
+            engine,
+            session_id=session_id,
+            project_id=project_id,
+            call_id="c1",
+            name="render_preview",
+            args={"scene_id": "s-hook"},
+            result_text="预览渲染失败。",
+            is_error=True,
+            end_manifest=manifest,
+        )
+        _set_current_manifest(engine, project_id, manifest)
+
+        result = compute_scene_checks(engine, project_id, ["s-hook"])
+
+        assert result["s-hook"].render_preview.images == ()
 
 
 class TestStale:

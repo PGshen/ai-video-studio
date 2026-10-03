@@ -310,6 +310,8 @@ export interface SceneCheckOut {
   /** 检查之后镜头代码又改过，需要重新检查。 */
   stale: boolean
   checked_at: string | null
+  /** 该次检查结果里的图片 blob sha256（`render_preview` 关键帧），用 `blobUrl` 取图。 */
+  images: string[]
 }
 
 export interface SceneChecksOut {

@@ -61,6 +61,8 @@ class SceneCheck:
     status: CheckOutcome
     stale: bool
     checked_at: datetime | None
+    images: tuple[str, ...] = ()
+    """该次检查结果里的图片 blob sha256（`render_preview` 的关键帧，按出现顺序）。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,17 @@ def _scene_ids_named_in_validate_failure(text: str) -> set[str]:
     return set(_SCENE_NAME_RE.findall(text))
 
 
+def _image_shas(raw: object) -> tuple[str, ...]:
+    """从 `tool_result.images`（`[{media_type, sha256}]`）取出 sha256 列表；形状不对时忽略。"""
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        item["sha256"]
+        for item in raw
+        if isinstance(item, dict) and isinstance(item.get("sha256"), str)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _RawEvent:
     checked_at: datetime
@@ -87,6 +100,7 @@ class _RawEvent:
     scene_id: str | None
     passed: bool
     turn_id: str
+    images: tuple[str, ...] = ()
 
 
 def _collect_raw_events(engine: Engine, project_id: str) -> list[_RawEvent]:
@@ -112,7 +126,14 @@ def _collect_raw_events(engine: Engine, project_id: str) -> list[_RawEvent]:
                 scene_id = args.get("scene_id") if isinstance(args, dict) else None
                 if isinstance(scene_id, str):
                     events.append(
-                        _RawEvent(event.created_at, "preview", scene_id, not is_error, turn_id)
+                        _RawEvent(
+                            event.created_at,
+                            "preview",
+                            scene_id,
+                            not is_error,
+                            turn_id,
+                            _image_shas(event.payload.get("images")),
+                        )
                     )
             elif is_error:
                 for scene_id in _scene_ids_named_in_validate_failure(str(event.payload["text"])):
@@ -133,7 +154,7 @@ def compute_scene_checks(
 
     latest_all_passed: tuple[datetime, str] | None = None
     latest_validate_failure: dict[str, tuple[datetime, str]] = {}
-    latest_preview: dict[str, tuple[datetime, bool, str]] = {}
+    latest_preview: dict[str, tuple[datetime, bool, str, tuple[str, ...]]] = {}
     for event in events:
         if event.kind == "validate_all_passed":
             latest_all_passed = (event.checked_at, event.turn_id)
@@ -142,7 +163,12 @@ def compute_scene_checks(
             latest_validate_failure[event.scene_id] = (event.checked_at, event.turn_id)
         else:
             assert event.scene_id is not None
-            latest_preview[event.scene_id] = (event.checked_at, event.passed, event.turn_id)
+            latest_preview[event.scene_id] = (
+                event.checked_at,
+                event.passed,
+                event.turn_id,
+                event.images,
+            )
 
     current = latest_snapshot(engine, project_id)
     current_manifest = current.manifest if current is not None else {}
@@ -158,11 +184,20 @@ def compute_scene_checks(
         snapshot = get_snapshot(engine, turn.end_snapshot_id)
         return snapshot.manifest if snapshot is not None else None
 
-    def _check_at(path: str, checked_at: datetime, passed: bool, turn_id: str) -> SceneCheck:
+    def _check_at(
+        path: str,
+        checked_at: datetime,
+        passed: bool,
+        turn_id: str,
+        images: tuple[str, ...] = (),
+    ) -> SceneCheck:
         end_manifest = _end_manifest(turn_id)
         stale = end_manifest is None or end_manifest.get(path) != current_manifest.get(path)
         return SceneCheck(
-            status="passed" if passed else "failed", stale=stale, checked_at=checked_at
+            status="passed" if passed else "failed",
+            stale=stale,
+            checked_at=checked_at,
+            images=images,
         )
 
     def _validate_status(scene_id: str) -> SceneCheck:
@@ -183,9 +218,9 @@ def compute_scene_checks(
         entry = latest_preview.get(scene_id)
         if entry is None:
             return _NOT_CHECKED
-        checked_at, passed, turn_id = entry
+        checked_at, passed, turn_id, images = entry
         path = _SCENE_PATH_TEMPLATE.format(scene_id=scene_id)
-        return _check_at(path, checked_at, passed, turn_id)
+        return _check_at(path, checked_at, passed, turn_id, images)
 
     return {
         scene_id: SceneChecks(

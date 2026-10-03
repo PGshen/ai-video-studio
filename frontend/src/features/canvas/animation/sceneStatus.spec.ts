@@ -3,8 +3,8 @@ import type { SceneChecksOut } from '@/types/api'
 import { computeSceneStatuses, scenePath } from './sceneStatus'
 
 const PASSED: SceneChecksOut = {
-  validate_scenes: { status: 'passed', stale: false, checked_at: '2026-09-29T00:00:00Z' },
-  render_preview: { status: 'not_checked', stale: false, checked_at: null },
+  validate_scenes: { status: 'passed', stale: false, checked_at: '2026-09-29T00:00:00Z', images: [] },
+  render_preview: { status: 'not_checked', stale: false, checked_at: null, images: [] },
 }
 
 describe('scenePath', () => {
