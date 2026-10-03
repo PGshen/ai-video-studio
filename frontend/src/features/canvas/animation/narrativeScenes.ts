@@ -37,3 +37,56 @@ export function parseNarrativeSceneIds(raw: string): string[] {
   }
   return ids
 }
+
+export interface NarrativeBeatInfo {
+  cueText: string
+  visualAction: string
+  emphasis: string
+  transition: string
+}
+
+/** 镜头详情标签里显示的叙事内容（旁白、画面意图、beats）。 */
+export interface NarrativeSceneInfo {
+  id: string
+  narration: string
+  visualIntent: string
+  beats: NarrativeBeatInfo[]
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * 同 `parseNarrativeSceneIds`，但连带取出旁白/画面意图/beats 给“镜头 Beats”标签。
+ * 不 import `features/canvas/narrative/narrativeDoc.ts`（ESLint 规则：`features/*`
+ * 之间互不 import），这里只保留展示需要的字段，缺失的文本字段用空串。
+ */
+export function parseNarrativeScenes(raw: string): NarrativeSceneInfo[] {
+  const parsed: unknown = JSON.parse(raw)
+  if (!isRecord(parsed) || !Array.isArray(parsed.scenes)) return []
+  const scenes: NarrativeSceneInfo[] = []
+  for (const entry of parsed.scenes as unknown[]) {
+    if (!isRecord(entry) || typeof entry.id !== 'string') continue
+    const beats = Array.isArray(entry.beats) ? (entry.beats as unknown[]) : []
+    scenes.push({
+      id: entry.id,
+      narration: asString(entry.narration),
+      visualIntent: asString(entry.visual_intent),
+      beats: beats.map((raw) => {
+        const beat = isRecord(raw) ? raw : {}
+        return {
+          cueText: asString(beat.cue_text),
+          visualAction: asString(beat.visual_action),
+          emphasis: asString(beat.emphasis),
+          transition: asString(beat.transition),
+        }
+      }),
+    })
+  }
+  return scenes
+}

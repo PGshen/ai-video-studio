@@ -22,7 +22,8 @@
  * 定稿），只在镜头列表已知（叙事已物化且解析无误）时显示——见该组件顶部
  * 注释。画布布局优化后它和镜头视图分成两个标签（用 `v-show` 切换，成片
  * 任务的轮询不会因为切到镜头标签而中断）；镜头视图里左列是带预览缩略图的
- * 镜头卡片，右侧从上到下是预览关键帧条、占满剩余高度的编辑器、保存栏。
+ * 镜头卡片，右侧从上到下是参考区（预览关键帧 / 镜头 Beats 两个标签）、占满
+ * 剩余高度的编辑器、保存栏。
  */
 import { computed, ref, watch, watchEffect } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -37,9 +38,9 @@ import {
 import { ApiError } from '@/api/http'
 import type { FileWriteResult } from '@/types/api'
 import SceneList from './SceneList.vue'
-import KeyframeStrip from './KeyframeStrip.vue'
+import SceneReference, { type ReferenceTab } from './SceneReference.vue'
 import FinalRenderPanel from './FinalRenderPanel.vue'
-import { NARRATIVE_JSON_PATH, parseNarrativeSceneIds } from './narrativeScenes'
+import { NARRATIVE_JSON_PATH, parseNarrativeScenes, type NarrativeSceneInfo } from './narrativeScenes'
 import { computeSceneStatuses } from './sceneStatus'
 import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from '@/composables/conflictState'
 import { computeMissingFileAction } from './missingFile'
@@ -67,12 +68,17 @@ const { data: narrativeContent } = useFileContentQuery(
   () => (narrativeMaterialized.value ? NARRATIVE_JSON_PATH : null),
 )
 
-const narrativeParse = computed<{ ids: string[]; error: string | null }>(() => {
-  if (narrativeContent.value === undefined) return { ids: [], error: null }
+const narrativeParse = computed<{
+  ids: string[]
+  infos: NarrativeSceneInfo[]
+  error: string | null
+}>(() => {
+  if (narrativeContent.value === undefined) return { ids: [], infos: [], error: null }
   try {
-    return { ids: parseNarrativeSceneIds(narrativeContent.value), error: null }
+    const infos = parseNarrativeScenes(narrativeContent.value)
+    return { ids: infos.map((info) => info.id), infos, error: null }
   } catch (error) {
-    return { ids: [], error: error instanceof Error ? error.message : String(error) }
+    return { ids: [], infos: [], error: error instanceof Error ? error.message : String(error) }
   }
 })
 
@@ -139,6 +145,11 @@ watch(fileMissing, (missing) => {
   }
 })
 
+const selectedNarrativeScene = computed(
+  () => narrativeParse.value.infos.find((info) => info.id === selectedSceneId.value) ?? null,
+)
+/** 编辑器上方参考区的当前标签；切换镜头时保持。 */
+const referenceTab = ref<ReferenceTab>('preview')
 const selectedPreview = computed(() => selectedScene.value?.renderPreview ?? null)
 
 const readonly = computed(() => props.busy)
@@ -271,11 +282,13 @@ function onLoadLatest(): void {
             </p>
           </template>
           <template v-else>
-            <KeyframeStrip
+            <SceneReference
+              v-model:tab="referenceTab"
               :project-id="projectId"
               :scene-id="selectedSceneId"
               :images="selectedPreview?.images ?? []"
               :stale="selectedPreview?.stale ?? false"
+              :narrative-scene="selectedNarrativeScene"
             />
 
             <div
