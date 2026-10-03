@@ -16,8 +16,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import EffortSelect from '@/components/EffortSelect.vue'
 import StyleSelect from '@/components/StyleSelect.vue'
 import { useCreateProjectMutation, useStylePresetsQuery } from '@/composables/queries'
+import { DEFAULT_EFFORT, type Effort } from '@/composables/effortChoice'
 import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
 import type { IdeaOut } from '@/types/api'
 
@@ -29,11 +31,13 @@ const mutation = useCreateProjectMutation()
 const { data: stylePresets } = useStylePresetsQuery()
 const title = ref('')
 const styleId = ref('')
+const effort = ref<Effort>(DEFAULT_EFFORT)
 
 watch(open, (isOpen) => {
   if (isOpen) {
     title.value = props.idea?.title ?? ''
     styleId.value = initialStyleId(stylePresets.value ?? [])
+    effort.value = DEFAULT_EFFORT
     mutation.reset()
   }
 })
@@ -45,6 +49,7 @@ async function submit(): Promise<void> {
     title: trimmed,
     idea_id: props.idea.id,
     style_preset_id: styleIdForRequest(styleId.value),
+    settings: { effort: effort.value },
   })
   open.value = false
   await router.push(`/projects/${project.id}/topic`)
@@ -72,6 +77,11 @@ async function submit(): Promise<void> {
           v-model="styleId"
           class="mt-2"
           :presets="stylePresets ?? []"
+        />
+        <EffortSelect
+          id="create-project-effort"
+          v-model="effort"
+          class="mt-2"
         />
         <p
           v-if="mutation.isError.value"

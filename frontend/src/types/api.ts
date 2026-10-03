@@ -172,6 +172,8 @@ export interface VoiceOut {
 export interface ProjectSettingsPatch {
   voice?: string | null
   speech_rate?: number | null
+  /** 思考强度：`low` / `medium` / `high`；`null` 清除（回落到后端默认）。 */
+  effort?: 'low' | 'medium' | 'high' | null
 }
 
 export interface TurnOut {

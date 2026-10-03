@@ -277,6 +277,7 @@ class ClaudeRuntime:
             include_partial_messages=True,
             # Best effort: models that think return summarized text, others return none.
             thinking={"type": "adaptive", "display": "summarized"},
+            effort=ctx.effort,
             # The prompt embeds workspace-derived text (preamble); never expand @paths in it.
             verbatim_prompts=True,
             max_budget_usd=ctx.budget.max_cost_usd if auth == "api_key" else None,
@@ -365,6 +366,7 @@ class ClaudeRuntime:
         usage_event = events.Usage(
             input_tokens=input_tokens,
             output_tokens=int(usage.get("output_tokens") or 0),
+            cache_read_tokens=int(usage.get("cache_read_input_tokens") or 0),
             cost_usd=cost,
             auth=auth,
             includes_carryover=carryover,

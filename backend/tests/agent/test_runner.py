@@ -16,13 +16,20 @@ from studio.agent import events, fake
 from studio.agent.bus import BusEvent, SessionBus
 from studio.agent.fake import FakeRuntime, FakeStep
 from studio.agent.runner import TOOL_RESULT_MAX_CHARS, SessionBusyError, TurnRunner
-from studio.agent.runtime import AgentRuntime, RuntimeFactory, TurnContext, UserInput
+from studio.agent.runtime import (
+    DEFAULT_EFFORT,
+    AgentRuntime,
+    RuntimeFactory,
+    TurnContext,
+    UserInput,
+)
 from studio.agent.stage_flow import finalize, reopen
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import Settings
 from studio.db.engine import session_scope
 from studio.db.models import ModelProfile
 from studio.db.repo.profiles import get_model_profile, seed_model_profiles
+from studio.db.repo.projects import update_project_settings
 from studio.db.repo.sessions import create_session, get_session
 from studio.db.repo.snapshots import get_snapshot, latest_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
@@ -382,6 +389,22 @@ class TestBudget:
         notices = [r.payload for r in list_events(env.engine, session_id) if r.type == "notice"]
         assert [n["kind"] for n in notices] == ["cost_carryover"]
 
+    async def test_turn_usage_records_cache_read_tokens(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+
+        class Cached:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                for _ in range(2):
+                    yield events.Usage(
+                        input_tokens=100, output_tokens=5, cost_usd=0.0, cache_read_tokens=60
+                    )
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        turn = await h.run(h.session(), Cached)
+
+        assert turn.usage is not None
+        assert (turn.usage["input_tokens"], turn.usage["cache_read_tokens"]) == (200, 120)
+
     async def test_usage_without_carryover_has_no_carryover_flag(self, env: StudioEnv) -> None:
         h = _make_harness(env)
         session_id = h.session()
@@ -510,6 +533,24 @@ class TestAllowWeb:
         await h.run(h.session(stage="narrative"), [fake.say("b")])
 
         assert [ctx.allow_web for ctx in h.contexts] == [True, False]
+
+
+class TestEffort:
+    async def test_effort_comes_from_project_settings(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+        update_project_settings(env.engine, env.project_id, {"effort": "low"})
+
+        await h.run(h.session(), [fake.say("a")])
+
+        assert [ctx.effort for ctx in h.contexts] == ["low"]
+
+    async def test_missing_or_invalid_effort_falls_back_to_default(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+        await h.run(h.session(), [fake.say("a")])
+        update_project_settings(env.engine, env.project_id, {"effort": "bogus"})
+        await h.run(h.session(), [fake.say("b")])
+
+        assert [ctx.effort for ctx in h.contexts] == [DEFAULT_EFFORT, DEFAULT_EFFORT]
 
 
 class TestResumeAndTruncation:

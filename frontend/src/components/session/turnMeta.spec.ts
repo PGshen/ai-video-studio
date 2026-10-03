@@ -69,6 +69,17 @@ describe('formatTurnMeta', () => {
     expect(partial?.tokens).toBeUndefined()
   })
 
+  it('有缓存读取数据时给出输出 / 输入 / 缓存的拆分，旧数据没有拆分', () => {
+    const withCache = formatTurnMeta(
+      turn({ usage: { input_tokens: 229_000, output_tokens: 24_200, cache_read_tokens: 221_000 } }),
+    )
+    expect(withCache?.tokenBreakdown).toBe('输出 24K · 输入 229K（缓存 221K）')
+    // 总量字段保持不变，旧调用方不受影响
+    expect(withCache?.tokens).toBe('253K')
+
+    expect(formatTurnMeta(turn())?.tokenBreakdown).toBeUndefined()
+  })
+
   it.each([
     [0, '0'],
     [999, '999'],

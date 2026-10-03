@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from studio.agent.runtime import Effort
+
 
 class ProjectCreate(BaseModel):
     title: str
@@ -22,13 +24,15 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectSettingsPatch(BaseModel):
-    """`PATCH /projects/{id}/settings`：只放行 `voice`/`speech_rate`（M5 T8）；`null` 清除该键，
-    清除后合成时回落到内置默认。语速范围和音色是否可用由端点检查，错误信息更好读。"""
+    """`PATCH /projects/{id}/settings`：只放行 `voice`/`speech_rate`（M5 T8）和 `effort`。
+    `null` 清除该键，清除后配音回落到内置默认、思考强度回落到 `DEFAULT_EFFORT`。
+    语速范围和音色是否可用由端点检查，错误信息更好读。"""
 
     model_config = ConfigDict(extra="forbid")
 
     voice: str | None = None
     speech_rate: float | None = None
+    effort: Effort | None = None
 
 
 class StageOut(BaseModel):

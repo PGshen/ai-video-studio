@@ -17,12 +17,14 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import EffortSelect from '@/components/EffortSelect.vue'
 import StyleSelect from '@/components/StyleSelect.vue'
 import {
   useCreateProjectMutation,
   useProjectsQuery,
   useStylePresetsQuery,
 } from '@/composables/queries'
+import { DEFAULT_EFFORT, type Effort } from '@/composables/effortChoice'
 import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
 
 const router = useRouter()
@@ -32,11 +34,13 @@ const { data: stylePresets } = useStylePresetsQuery()
 const dialogOpen = ref(false)
 const title = ref('')
 const styleId = ref('')
+const effort = ref<Effort>(DEFAULT_EFFORT)
 const createMutation = useCreateProjectMutation()
 
 function openDialog(): void {
   title.value = ''
   styleId.value = initialStyleId(stylePresets.value ?? [])
+  effort.value = DEFAULT_EFFORT
   createMutation.reset()
   dialogOpen.value = true
 }
@@ -47,6 +51,7 @@ async function submit(): Promise<void> {
   const project = await createMutation.mutateAsync({
     title: trimmed,
     style_preset_id: styleIdForRequest(styleId.value),
+    settings: { effort: effort.value },
   })
   dialogOpen.value = false
   await router.push(`/projects/${project.id}/topic`)
@@ -81,6 +86,11 @@ async function submit(): Promise<void> {
               v-model="styleId"
               class="mt-2"
               :presets="stylePresets ?? []"
+            />
+            <EffortSelect
+              id="project-effort"
+              v-model="effort"
+              class="mt-2"
             />
             <p
               v-if="createMutation.isError.value"

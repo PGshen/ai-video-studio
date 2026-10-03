@@ -122,6 +122,7 @@ def handle(runner: TurnRunner, job: _Job, state: _State, event: events.AgentEven
         _after_tool_result(runner, job, state, event)
     elif isinstance(event, events.Usage):
         state.input_tokens += event.input_tokens
+        state.cache_read_tokens += event.cache_read_tokens
         state.output_tokens += event.output_tokens
         state.cost_usd += event.cost_usd
         # Subscription (login) auth: cost is informational, only steps are enforced.

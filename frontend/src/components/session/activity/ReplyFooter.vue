@@ -45,7 +45,7 @@ const { copied, copy } = useCopy()
     <span
       v-if="meta.tokens"
       class="flex items-center gap-1"
-    ><DatabaseIcon class="size-4" />用量 {{ meta.tokens }} tok</span>
+    ><DatabaseIcon class="size-4" />用量 {{ meta.tokenBreakdown ?? `${meta.tokens} tok` }}</span>
     <span
       v-if="meta.duration"
       class="flex items-center gap-1"

@@ -57,6 +57,7 @@ class _Turn:
             events.Usage(
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
+                cache_read_tokens=usage.input_tokens_details.cached_tokens,
                 cost_usd=turn_cost(self.profile, usage.input_tokens, usage.output_tokens),
                 auth="api_key",
                 priced=self.priced,

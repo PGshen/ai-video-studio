@@ -7,6 +7,11 @@ import type { TurnOut } from '@/types/api'
 export interface TurnMeta {
   /** 例如 `51K`；`usage` 缺失或无数字时没有。 */
   tokens?: string
+  /**
+   * 例如 `输出 24K · 输入 229K（缓存 221K）`。输入大头通常是 agent 每次调工具重读上下文的缓存命中，
+   * 只给总数会误导；`usage` 没有 `cache_read_tokens`（旧数据）时没有。
+   */
+  tokenBreakdown?: string
   /** 例如 `6 秒`、`1 分 12 秒`；时间不合法或倒挂时没有。 */
   duration?: string
   /** 创建时间的本地 `HH:mm`。 */
@@ -49,6 +54,15 @@ function tokensOf(usage: TurnOut['usage']): string | undefined {
   return parts.length === 0 ? undefined : formatTokens(parts.reduce((a, b) => a + b, 0))
 }
 
+function breakdownOf(usage: TurnOut['usage']): string | undefined {
+  if (!usage) return undefined
+  const { input_tokens: input, output_tokens: output, cache_read_tokens: cached } = usage
+  if (![input, output, cached].every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    return undefined
+  }
+  return `输出 ${formatTokens(output as number)} · 输入 ${formatTokens(input as number)}（缓存 ${formatTokens(cached as number)}）`
+}
+
 function formatDuration(ms: number): string | undefined {
   if (!Number.isFinite(ms) || ms < 0) return undefined
   if (ms < 1000) return '不到 1 秒'
@@ -67,6 +81,8 @@ export function formatTurnMeta(turn: TurnOut | undefined): TurnMeta | null {
   const meta: TurnMeta = { time }
   const tokens = tokensOf(turn.usage)
   if (tokens !== undefined) meta.tokens = tokens
+  const tokenBreakdown = breakdownOf(turn.usage)
+  if (tokenBreakdown !== undefined) meta.tokenBreakdown = tokenBreakdown
   const duration = formatDuration(
     parseServerTime(turn.updated_at).getTime() - parseServerTime(turn.created_at).getTime(),
   )

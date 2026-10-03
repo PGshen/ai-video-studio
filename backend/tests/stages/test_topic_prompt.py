@@ -36,3 +36,10 @@ def test_prompt_is_mode_agnostic_about_web_tools() -> None:
     prompt = STAGE.system_prompt()
     assert "联网" in prompt
     assert "web_search" not in prompt and "WebSearch" not in prompt
+
+
+def test_prompt_keeps_notes_short_and_brief_the_only_write_up() -> None:
+    prompt = STAGE.system_prompt()
+    assert "简报是唯一的整理稿" in prompt
+    assert "不要在思考里起草简报全文" in prompt
+    assert "换一个来源" in prompt

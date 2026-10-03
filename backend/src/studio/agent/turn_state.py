@@ -52,6 +52,7 @@ class _State:
     calls: dict[str, events.ToolCall] = field(default_factory=dict)
     steps: int = 0
     input_tokens: int = 0
+    cache_read_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
     cost_advisory: bool = False

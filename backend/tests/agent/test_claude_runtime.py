@@ -32,7 +32,14 @@ from studio.agent.claude_env import DEFAULT_BASE_URL, LOGIN_BLANKED_ENV, build_e
 from studio.agent.claude_messages import build_sdk_tool
 from studio.agent.claude_runtime import ClaudeRuntime, register_claude
 from studio.agent.claude_scope import sandbox_settings
-from studio.agent.runtime import Budget, CancelToken, RuntimeFactory, TurnContext, UserInput
+from studio.agent.runtime import (
+    Budget,
+    CancelToken,
+    Effort,
+    RuntimeFactory,
+    TurnContext,
+    UserInput,
+)
 from studio.agent.sandbox_paths import sensitive_home_dirs
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import Settings, repo_root
@@ -208,6 +215,7 @@ def _ctx(
     allow_web: bool = False,
     user_input: UserInput | None = None,
     record_tool_write: Callable[[str, str], None] = _noop_record,
+    effort: Effort | None = None,
 ) -> TurnContext:
     return TurnContext(
         system_prompt="系统提示词",
@@ -223,6 +231,7 @@ def _ctx(
         stage="topic",
         record_tool_write=record_tool_write,
         allow_web=allow_web,
+        effort=effort,
     )
 
 
@@ -264,6 +273,7 @@ class TestOptions:
         assert options.resume == SESSION
         assert options.include_partial_messages is True
         assert options.thinking == {"type": "adaptive", "display": "summarized"}
+        assert options.effort is None
         assert options.tools == ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
         assert options.sandbox is not None and options.sandbox.get("enabled") is True
         assert options.hooks is not None and "PreToolUse" in options.hooks
@@ -572,9 +582,17 @@ class TestEventConversion:
                     events.ImageData("image/jpeg", "Qg=="),
                 ],
             ),
-            events.Usage(input_tokens=18, output_tokens=7, cost_usd=0.5, auth="api_key"),
+            events.Usage(
+                input_tokens=18, output_tokens=7, cost_usd=0.5, auth="api_key", cache_read_tokens=3
+            ),
             events.TurnEnd(resume_ref=SESSION, status="done"),
         ]
+
+    async def test_effort_is_passed_to_the_sdk(self, workdir: Path, data_dir: Path) -> None:
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir, effort="low"))
+
+        assert clients.last.options.effort == "low"
 
     async def test_native_write_tools_are_file_tools(self) -> None:
         for name in ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"):
