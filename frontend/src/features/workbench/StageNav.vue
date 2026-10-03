@@ -4,7 +4,7 @@
  * 样式/可点性映射交给纯函数 `stageStatusStyle`（见同目录 spec），这里只
  * 负责渲染和路由跳转。当前阶段的 [定稿]/[重新打开] 在画布右上角，见 `StageFinalizeButton`。
  */
-import { Settings } from '@lucide/vue'
+import { Info, Settings } from '@lucide/vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import RailGroup from '@/components/RailGroup.vue'
@@ -12,8 +12,9 @@ import { Button } from '@/components/ui/button'
 import { useSuggestionSummaryQuery } from '@/composables/queries'
 import { badgeCount } from '@/components/session/suggestionFlow'
 import type { StageOut } from '@/types/api'
+import ProjectInfoDialog from './ProjectInfoDialog.vue'
 import ProjectSettingsDialog from './ProjectSettingsDialog.vue'
-import { stageStatusStyle } from './stageStatus'
+import { STAGE_TITLES, stageStatusStyle } from './stageStatus'
 
 const props = defineProps<{
   projectId: string
@@ -23,18 +24,13 @@ const props = defineProps<{
   collapsed?: boolean
 }>()
 
-const STAGE_TITLES: Record<string, string> = {
-  topic: '选题',
-  narrative: '叙事',
-  animation: '动画',
-}
-
 const router = useRouter()
 
 /** 阶段按钮上的角标：下游提给该阶段、还没处理的回退建议数量（M5 T13）。 */
 const { data: suggestionSummary } = useSuggestionSummaryQuery(() => props.projectId)
 
 const settingsDialogOpen = ref(false)
+const infoDialogOpen = ref(false)
 
 function goToStage(stage: StageOut): void {
   if (stageStatusStyle(stage.status).disabled) return
@@ -43,7 +39,7 @@ function goToStage(stage: StageOut): void {
 </script>
 
 <template>
-  <!-- 工作台左侧竖栏的上半部分：阶段进度（选题 → 叙事 → 动画）+ 项目设置。
+  <!-- 工作台左侧竖栏的上半部分：阶段进度（选题 → 叙事 → 动画）+ 项目（设置、信息）。
        折叠时只剩图标；窄屏横向排列。外框和折叠按钮由 ProjectWorkbenchPage 的竖栏负责。 -->
   <div class="flex flex-col gap-3">
     <RailGroup
@@ -90,7 +86,7 @@ function goToStage(stage: StageOut): void {
     </RailGroup>
 
     <RailGroup
-      title="操作"
+      title="项目"
       :collapsed="collapsed"
     >
       <div
@@ -101,18 +97,33 @@ function goToStage(stage: StageOut): void {
           variant="ghost"
           :size="collapsed ? 'icon-sm' : 'sm'"
           :class="collapsed ? '' : 'w-full justify-start'"
-          title="项目设置"
+          title="设置"
           data-testid="open-project-settings"
           @click="settingsDialogOpen = true"
         >
           <Settings />
-          <span v-if="!collapsed">项目设置</span>
+          <span v-if="!collapsed">设置</span>
+        </Button>
+        <Button
+          variant="ghost"
+          :size="collapsed ? 'icon-sm' : 'sm'"
+          :class="collapsed ? '' : 'w-full justify-start'"
+          title="信息"
+          data-testid="open-project-info"
+          @click="infoDialogOpen = true"
+        >
+          <Info />
+          <span v-if="!collapsed">信息</span>
         </Button>
       </div>
     </RailGroup>
 
     <ProjectSettingsDialog
       v-model:open="settingsDialogOpen"
+      :project-id="projectId"
+    />
+    <ProjectInfoDialog
+      v-model:open="infoDialogOpen"
       :project-id="projectId"
     />
   </div>

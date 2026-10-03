@@ -36,6 +36,7 @@ export const queryKeys = {
   /** 所有选题池列表的公共前缀，卡片变化后整体失效。 */
   ideasAll: () => ['ideas'] as const,
   ideas: (view: IdeasView) => ['ideas', view ?? 'active'] as const,
+  ideasEvery: () => ['ideas', 'every'] as const,
   topicCheck: (projectId: string) => ['projects', projectId, 'topic', 'check'] as const,
   brainstormSessions: () => ['brainstorm', 'sessions'] as const,
   projects: () => ['projects'] as const,
@@ -547,6 +548,11 @@ export function useIdeasQuery(view: MaybeRefOrGetter<IdeasView>) {
     queryKey: computed(() => queryKeys.ideas(toValue(view))),
     queryFn: () => api.listIdeas(toValue(view) ?? undefined),
   })
+}
+
+/** 所有状态的卡片（含已创建项目的 `picked`）；项目「信息」按 `project_id` 从里面找关联选题。 */
+export function useAllIdeasQuery() {
+  return useQuery({ queryKey: queryKeys.ideasEvery(), queryFn: () => api.listIdeas('all') })
 }
 
 export function useCreateIdeaMutation() {

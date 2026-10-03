@@ -26,3 +26,10 @@ const DEFAULT_STYLE: StageStatusStyle = { disabled: false, suffix: '', className
 export function stageStatusStyle(status: string): StageStatusStyle {
   return STYLES[status] ?? DEFAULT_STYLE
 }
+
+/** 阶段 id → 中文名（导航条和项目「信息」共用）。 */
+export const STAGE_TITLES: Record<string, string> = {
+  topic: '选题',
+  narrative: '叙事',
+  animation: '动画',
+}
