@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import Engine, inspect
+from alembic import command
+from sqlalchemy import Engine, inspect, text
 
-from studio.db.engine import make_engine, migrate
+from studio.db.engine import _alembic_config, make_engine, migrate
 
 EXPECTED_TABLES = {
     "ideas",
@@ -55,3 +56,21 @@ def test_migrate_runs_on_fresh_db_file(db_path: Path) -> None:
         assert EXPECTED_TABLES <= tables
     finally:
         engine.dispose()
+
+
+def test_0005_turns_picked_ideas_back_into_ideas_and_drops_project_id(engine: Engine) -> None:
+    config = _alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0004")
+        connection.execute(
+            text(
+                "INSERT INTO ideas (id, title, status, project_id, created_at, updated_at) VALUES "
+                "('i1', 'A', 'picked', 'p1', '2026-10-01', '2026-10-01'), "
+                "('i2', 'B', 'archived', NULL, '2026-10-01', '2026-10-01')"
+            )
+        )
+        command.upgrade(config, "head")
+        rows = dict(connection.execute(text("SELECT id, status FROM ideas")).all())
+    assert rows == {"i1": "idea", "i2": "archived"}
+    assert "project_id" not in {col["name"] for col in inspect(engine).get_columns("ideas")}

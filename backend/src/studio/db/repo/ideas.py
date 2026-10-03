@@ -6,8 +6,8 @@
 - 评分：只接受 `SCORE_KEYS` 里的四个维度，值为 1–5 的整数（`4.0` 这样的整数值浮点
   数按整数收）；缺省的维度不算错。
 - 标签：字符串列表，去空白、去重，最多 `MAX_TAGS` 个。
-- 状态：`idea`/`picked`/`archived`。`picked` 只能由 `mark_picked`（创建项目）设置；
-  `picked` 的卡片不能归档、不能改标题。
+- 状态：`idea`/`archived`。一张卡片可以创建任意多个项目（关联在 `projects.idea_id`），
+  创建项目不改变卡片状态（ADR 0017）。
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
 
-from sqlalchemy import Engine, select, update
+from sqlalchemy import Engine, select
 
 from studio.db.engine import session_scope
 from studio.db.models import Idea
@@ -37,10 +37,6 @@ class IdeaNotFoundError(LookupError):
     pass
 
 
-class IdeaStateError(RuntimeError):
-    """卡片当前状态不允许这个操作（API 映射为 409）。"""
-
-
 class DuplicateIdeaError(RuntimeError):
     """标题与已有卡片重复；`existing` 是那张卡片（API 映射为 409）。"""
 
@@ -52,7 +48,6 @@ class DuplicateIdeaError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class IdeaValue:
     id: str
-    project_id: str | None
     source_session_id: str | None
     title: str
     pitch: str | None
@@ -84,7 +79,6 @@ UNSET: Final = _Unset()
 def _to_value(row: Idea) -> IdeaValue:
     return IdeaValue(
         id=row.id,
-        project_id=row.project_id,
         source_session_id=row.source_session_id,
         title=row.title,
         pitch=row.pitch,
@@ -179,12 +173,12 @@ def get_idea(engine: Engine, idea_id: str) -> IdeaValue | None:
 
 
 def list_ideas(engine: Engine, *, status: str | None = None) -> list[IdeaValue]:
-    """`status=None` 返回 `idea` + `picked`（不含归档）；`"all"` 返回全部；其余按状态精确筛选。
+    """`status=None` 返回未归档（`idea`）；`"all"` 返回全部；其余按状态精确筛选。
     按创建时间倒序。
     """
     stmt = select(Idea).order_by(Idea.created_at.desc(), Idea.id.desc())
     if status is None:
-        stmt = stmt.where(Idea.status.in_(("idea", "picked")))
+        stmt = stmt.where(Idea.status == "idea")
     elif status != "all":
         stmt = stmt.where(Idea.status == status)
     with session_scope(engine) as db:
@@ -240,12 +234,8 @@ def update_idea(
     if not isinstance(status, _Unset):
         if status not in ("idea", "archived"):
             raise IdeaValidationError("状态只能在 idea 和 archived 之间切换")
-        if current.status == "picked":
-            raise IdeaStateError("已创建项目的卡片不能归档")
         changes["status"] = status
     if not isinstance(title, _Unset):
-        if current.status == "picked":
-            raise IdeaStateError("已创建项目的卡片不能改标题")
         cleaned = _clean_title(title)
         duplicate = find_duplicate(engine, cleaned, exclude_id=idea_id)
         if duplicate is not None:
@@ -269,26 +259,3 @@ def update_idea(
             setattr(row, name, value)
         db.flush()
         return _to_value(row)
-
-
-def mark_picked(engine: Engine, idea_id: str, project_id: str) -> IdeaValue:
-    """创建项目的最后一步：卡片置为 `picked` 并记录项目。
-
-    条件更新（`WHERE status='idea'`），并发下两个项目不会抢同一张卡片；
-    卡片不存在抛 `IdeaNotFoundError`，不是 `idea` 状态抛 `IdeaStateError`。
-    """
-    with session_scope(engine) as db:
-        updated = db.execute(
-            update(Idea)
-            .where(Idea.id == idea_id, Idea.status == "idea")
-            .values(status="picked", project_id=project_id)
-            .returning(Idea.id)
-        ).first()
-        if updated is None:
-            exists = db.get(Idea, idea_id)
-            if exists is None:
-                raise IdeaNotFoundError(idea_id)
-            raise IdeaStateError(f"卡片当前状态为 {exists.status}，不能创建项目")
-    picked = get_idea(engine, idea_id)
-    assert picked is not None
-    return picked

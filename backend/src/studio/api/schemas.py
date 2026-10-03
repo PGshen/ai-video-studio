@@ -18,7 +18,7 @@ class ProjectCreate(BaseModel):
     title: str
     settings: dict[str, Any] | None = None
     idea_id: str | None = None
-    """从选题池的想法卡片创建（卡片须为 `idea` 状态；成功后卡片变为 `picked`）。"""
+    """从选题池的想法卡片创建（卡片须为 `idea` 状态，已归档的不行）。同一张卡片可以创建多个项目。"""
     style_preset_id: str | None = None
     """风格库里的预设 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。"""
 
@@ -277,7 +277,6 @@ class IdeaOut(BaseModel):
     tags: list[str]
     scores: dict[str, int]
     status: str
-    project_id: str | None
     source_session_id: str | None
     created_at: datetime
     updated_at: datetime

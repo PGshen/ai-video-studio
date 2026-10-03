@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from studio.db.repo.ideas import mark_picked
-
 from .conftest import ApiEnv
 
 
@@ -27,7 +25,6 @@ class TestCreateAndList:
         assert body["status"] == "idea"
         assert body["tags"] == ["算法"]
         assert body["scores"] == {"novelty": 4}
-        assert body["project_id"] is None
         assert body["id"]
 
     async def test_list_default_hides_archived_and_is_newest_first(self, api_env: ApiEnv) -> None:
@@ -91,20 +88,10 @@ class TestUpdate:
         restored = await api_env.client.patch(f"/api/ideas/{idea['id']}", json={"status": "idea"})
         assert restored.json()["status"] == "idea"
 
-    async def test_cannot_set_status_picked(self, api_env: ApiEnv) -> None:
+    async def test_cannot_set_unknown_status(self, api_env: ApiEnv) -> None:
         idea = await _create(api_env)
         response = await api_env.client.patch(f"/api/ideas/{idea['id']}", json={"status": "picked"})
         assert response.status_code == 422
-
-    async def test_picked_card_cannot_be_archived_or_renamed(self, api_env: ApiEnv) -> None:
-        idea = await _create(api_env)
-        mark_picked(api_env.app.state.engine, idea["id"], "proj")
-        archived = await api_env.client.patch(
-            f"/api/ideas/{idea['id']}", json={"status": "archived"}
-        )
-        assert archived.status_code == 409
-        renamed = await api_env.client.patch(f"/api/ideas/{idea['id']}", json={"title": "新名"})
-        assert renamed.status_code == 409
 
     async def test_unknown_id_is_404(self, api_env: ApiEnv) -> None:
         response = await api_env.client.patch("/api/ideas/nope", json={"pitch": "x"})

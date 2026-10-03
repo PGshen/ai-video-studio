@@ -1,7 +1,7 @@
 """`/api/ideas`：选题池卡片（设计 §5.0；计划 M4 T2）。
 
-不提供 DELETE：卡片只归档（`status=archived`），可以恢复。`picked` 只能由创建项目
-（`POST /api/projects` 带 `idea_id`）设置，PATCH 不接受。
+不提供 DELETE：卡片只归档（`status=archived`），可以恢复。一张卡片可以创建多个项目
+（`POST /api/projects` 带 `idea_id`），关联记在项目上，卡片状态不变。
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ def _out(value: IdeaValue) -> IdeaOut:
         tags=value.tags,
         scores=value.scores,
         status=value.status,
-        project_id=value.project_id,
         source_session_id=value.source_session_id,
         created_at=value.created_at,
         updated_at=value.updated_at,
@@ -45,7 +44,7 @@ def _http_error(exc: Exception) -> HTTPException:
 
 @router.get("/ideas", response_model=list[IdeaOut])
 def list_ideas_endpoint(
-    status: Literal["idea", "picked", "archived", "all"] | None = None,
+    status: Literal["idea", "archived", "all"] | None = None,
     engine: Engine = Depends(get_engine),
 ) -> list[IdeaOut]:
     return [_out(v) for v in repo.list_ideas(engine, status=status)]
@@ -94,7 +93,6 @@ def update_idea_endpoint(
     except (
         repo.IdeaNotFoundError,
         repo.IdeaValidationError,
-        repo.IdeaStateError,
         repo.DuplicateIdeaError,
     ) as exc:
         raise _http_error(exc) from exc

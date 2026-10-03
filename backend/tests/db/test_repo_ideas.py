@@ -8,7 +8,6 @@ from sqlalchemy import Engine
 from studio.db.repo.ideas import (
     DuplicateIdeaError,
     IdeaNotFoundError,
-    IdeaStateError,
     IdeaValidationError,
     clean_scores,
     clean_tags,
@@ -16,7 +15,6 @@ from studio.db.repo.ideas import (
     find_duplicate,
     get_idea,
     list_ideas,
-    mark_picked,
     normalize_title,
     update_idea,
 )
@@ -26,7 +24,6 @@ def test_create_idea_defaults(migrated_engine: Engine) -> None:
     idea = create_idea(migrated_engine, title="  排序为什么这么快  ")
     assert idea.title == "排序为什么这么快"
     assert idea.status == "idea"
-    assert idea.project_id is None
     assert idea.source_session_id is None
     assert idea.tags == []
     assert idea.scores == {}
@@ -130,11 +127,9 @@ def test_list_ideas_filters_by_status_newest_first(migrated_engine: Engine) -> N
     b = create_idea(migrated_engine, title="B")
     c = create_idea(migrated_engine, title="C")
     update_idea(migrated_engine, c.id, status="archived")
-    mark_picked(migrated_engine, b.id, "p1")
 
     assert [i.id for i in list_ideas(migrated_engine)] == [b.id, a.id]
     assert [i.id for i in list_ideas(migrated_engine, status="archived")] == [c.id]
-    assert [i.id for i in list_ideas(migrated_engine, status="picked")] == [b.id]
     assert [i.id for i in list_ideas(migrated_engine, status="all")] == [c.id, b.id, a.id]
 
 
@@ -166,7 +161,7 @@ def test_update_idea_status_archive_and_restore(migrated_engine: Engine) -> None
     assert update_idea(migrated_engine, idea.id, status="idea").status == "idea"
 
 
-def test_update_idea_rejects_setting_status_picked(migrated_engine: Engine) -> None:
+def test_update_idea_rejects_unknown_status(migrated_engine: Engine) -> None:
     idea = create_idea(migrated_engine, title="A")
     with pytest.raises(IdeaValidationError):
         update_idea(migrated_engine, idea.id, status="picked")
@@ -175,39 +170,3 @@ def test_update_idea_rejects_setting_status_picked(migrated_engine: Engine) -> N
 def test_update_idea_missing_raises(migrated_engine: Engine) -> None:
     with pytest.raises(IdeaNotFoundError):
         update_idea(migrated_engine, "nope", pitch="x")
-
-
-def test_mark_picked_sets_project_and_status(migrated_engine: Engine) -> None:
-    idea = create_idea(migrated_engine, title="A")
-    picked = mark_picked(migrated_engine, idea.id, "proj-1")
-    assert picked.status == "picked"
-    assert picked.project_id == "proj-1"
-
-
-def test_mark_picked_twice_fails(migrated_engine: Engine) -> None:
-    idea = create_idea(migrated_engine, title="A")
-    mark_picked(migrated_engine, idea.id, "proj-1")
-    with pytest.raises(IdeaStateError):
-        mark_picked(migrated_engine, idea.id, "proj-2")
-    fetched = get_idea(migrated_engine, idea.id)
-    assert fetched is not None
-    assert fetched.project_id == "proj-1"
-
-
-def test_mark_picked_archived_or_missing_fails(migrated_engine: Engine) -> None:
-    idea = create_idea(migrated_engine, title="A")
-    update_idea(migrated_engine, idea.id, status="archived")
-    with pytest.raises(IdeaStateError):
-        mark_picked(migrated_engine, idea.id, "p")
-    with pytest.raises(IdeaNotFoundError):
-        mark_picked(migrated_engine, "nope", "p")
-
-
-def test_picked_idea_cannot_be_archived_or_renamed(migrated_engine: Engine) -> None:
-    idea = create_idea(migrated_engine, title="A")
-    mark_picked(migrated_engine, idea.id, "p")
-    with pytest.raises(IdeaStateError):
-        update_idea(migrated_engine, idea.id, status="archived")
-    with pytest.raises(IdeaStateError):
-        update_idea(migrated_engine, idea.id, title="改名")
-    assert update_idea(migrated_engine, idea.id, pitch="仍可改卖点").pitch == "仍可改卖点"

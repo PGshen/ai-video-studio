@@ -30,7 +30,6 @@ class Idea(Base):
     __tablename__ = "ideas"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
-    project_id: Mapped[str | None] = mapped_column(String, nullable=True)
     source_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     pitch: Mapped[str | None] = mapped_column(String, nullable=True)

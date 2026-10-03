@@ -39,12 +39,7 @@ from studio.api.schemas import (
     StageOut,
 )
 from studio.config import Settings
-from studio.db.repo.ideas import (
-    IdeaStateError,
-    IdeaValue,
-    get_idea,
-    mark_picked,
-)
+from studio.db.repo.ideas import IdeaValue, get_idea
 from studio.db.repo.projects import (
     ProjectValue,
     clear_project_completed,
@@ -163,7 +158,7 @@ def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str)
     delete_project(engine, project_id)
 
 
-def _require_pickable_idea(engine: Engine, idea_id: str) -> IdeaValue:
+def _require_usable_idea(engine: Engine, idea_id: str) -> IdeaValue:
     idea = get_idea(engine, idea_id)
     if idea is None:
         raise HTTPException(status_code=404, detail=f"想法卡片不存在：{idea_id}")
@@ -181,7 +176,7 @@ def create_project_endpoint(
     blobs: BlobStore = Depends(get_blobs),
     settings: Settings = Depends(get_settings),
 ) -> ProjectOut:
-    idea = _require_pickable_idea(engine, body.idea_id) if body.idea_id is not None else None
+    idea = _require_usable_idea(engine, body.idea_id) if body.idea_id is not None else None
     style_files, style_settings = _style_for_new_project(engine, body.style_preset_id, body.title)
     client_settings = {
         key: value for key, value in (body.settings or {}).items() if key not in _STYLE_SETTING_KEYS
@@ -216,12 +211,6 @@ def create_project_endpoint(
         )
         for stage, status in _INITIAL_STAGES:
             create_stage(engine, project_id=project_id, stage=stage, status=status)
-        if idea is not None:
-            # 最后一步，条件更新：两个请求同时用一张卡片时，输的一方在这里失败。
-            mark_picked(engine, idea.id, project_id)
-    except IdeaStateError as exc:
-        _cleanup_failed_project(engine, settings, project_id)
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         _cleanup_failed_project(engine, settings, project_id)
         raise HTTPException(status_code=500, detail=f"创建项目失败：{exc}") from exc

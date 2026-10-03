@@ -8,7 +8,6 @@ import pytest
 from httpx import Response
 
 from brief_builder import make_brief
-from studio.db.repo.ideas import IdeaStateError
 from studio.db.repo.projects import get_project
 from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.stages import list_stages
@@ -190,7 +189,7 @@ class TestCreateProjectFromIdea:
         assert response.status_code == 201, response.text
         return response.json()
 
-    async def test_creates_project_linked_to_idea_and_marks_it_picked(
+    async def test_creates_project_linked_to_idea_and_keeps_it_usable(
         self, api_env: ApiEnv
     ) -> None:
         idea = await self._idea(api_env)
@@ -202,8 +201,8 @@ class TestCreateProjectFromIdea:
         assert project["idea_id"] == idea["id"]
 
         card = (await api_env.client.get(f"/api/ideas/{idea['id']}")).json()
-        assert card["status"] == "picked"
-        assert card["project_id"] == project["id"]
+        assert card["status"] == "idea"
+        assert "project_id" not in card
 
     async def test_idea_card_is_seeded_into_workspace_and_init_snapshot(
         self, api_env: ApiEnv
@@ -249,17 +248,18 @@ class TestCreateProjectFromIdea:
             (api_env.data_dir / "projects").iterdir()
         )
 
-    async def test_picked_idea_cannot_be_used_twice(self, api_env: ApiEnv) -> None:
+    async def test_one_idea_can_create_several_projects(self, api_env: ApiEnv) -> None:
         idea = await self._idea(api_env)
         first = await api_env.client.post(
             "/api/projects", json={"title": "P1", "idea_id": idea["id"]}
         )
-        assert first.status_code == 201
         second = await api_env.client.post(
             "/api/projects", json={"title": "P2", "idea_id": idea["id"]}
         )
-        assert second.status_code == 409
-        assert len((await api_env.client.get("/api/projects")).json()) == 1
+        assert first.status_code == 201 and second.status_code == 201
+        projects = (await api_env.client.get("/api/projects")).json()
+        assert {p["idea_id"] for p in projects} == {idea["id"]}
+        assert len(projects) == 2
 
     async def test_archived_idea_is_409(self, api_env: ApiEnv) -> None:
         idea = await self._idea(api_env)
@@ -268,23 +268,6 @@ class TestCreateProjectFromIdea:
             "/api/projects", json={"title": "P", "idea_id": idea["id"]}
         )
         assert response.status_code == 409
-
-    async def test_losing_the_race_cleans_up_the_project(
-        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        idea = await self._idea(api_env)
-
-        def lose(engine: object, idea_id: str, project_id: str) -> None:
-            raise IdeaStateError("已被别的项目选走")
-
-        monkeypatch.setattr("studio.api.projects.mark_picked", lose)
-        response = await api_env.client.post(
-            "/api/projects", json={"title": "P", "idea_id": idea["id"]}
-        )
-        assert response.status_code == 409
-        assert (await api_env.client.get("/api/projects")).json() == []
-        card = (await api_env.client.get(f"/api/ideas/{idea['id']}")).json()
-        assert card["status"] == "idea"
 
     async def test_project_without_idea_still_works(self, api_env: ApiEnv) -> None:
         project = await api_env.create_project()

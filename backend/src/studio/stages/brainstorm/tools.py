@@ -19,7 +19,7 @@ _NO_DB = ToolResult(text="内部错误：当前上下文没有数据库连接。
 
 
 class ListIdeasArgs(BaseModel):
-    status: Literal["idea", "picked", "archived"] | None = Field(
+    status: Literal["idea", "archived"] | None = Field(
         default=None, description="只看某个状态的卡片；不填则列出全部（含归档，方便查重）"
     )
     query: str | None = Field(
@@ -138,7 +138,7 @@ def _update_idea(ctx: ToolContext, args: UpdateIdeaArgs) -> ToolResult:
             text=f"已有相同标题的卡片：{exc.existing.title}（id {exc.existing.id}）。",
             is_error=True,
         )
-    except (repo.IdeaValidationError, repo.IdeaStateError, repo.IdeaNotFoundError) as exc:
+    except (repo.IdeaValidationError, repo.IdeaNotFoundError) as exc:
         return ToolResult(text=f"卡片没有修改：{exc}", is_error=True)
     return ToolResult(text=f"已修改卡片 {updated.id}：{updated.title}")
 

@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import Engine
 
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec, invoke_tool
-from studio.db.repo.ideas import create_idea, get_idea, list_ideas, mark_picked, update_idea
+from studio.db.repo.ideas import create_idea, get_idea, list_ideas, update_idea
 from studio.stages.brainstorm import STAGE
 from studio.stages.brainstorm.tools import (
     CREATE_IDEA_TOOL,
@@ -118,15 +118,13 @@ class TestListIdeas:
         )
         b = create_idea(migrated_engine, title="B 想法")
         update_idea(migrated_engine, b.id, status="archived")
-        c = create_idea(migrated_engine, title="C 想法")
-        mark_picked(migrated_engine, c.id, "p1")
 
         result = await _call(LIST_IDEAS_TOOL, ctx)
 
         assert not result.is_error
-        for idea in (a, b, c):
+        for idea in (a, b):
             assert idea.id in result.text
-        assert "archived" in result.text and "picked" in result.text
+        assert "archived" in result.text
         assert "6" in result.text  # total score of A
 
     async def test_filters_by_status_and_query(
@@ -193,17 +191,11 @@ class TestUpdateIdea:
         assert (await _call(UPDATE_IDEA_TOOL, ctx, id=a.id, title="b")).is_error
         assert not (await _call(UPDATE_IDEA_TOOL, ctx, id=a.id, title="A2")).is_error
 
-    @pytest.mark.parametrize("status", ["picked", "archived"])
-    async def test_refuses_cards_that_are_not_plain_ideas(
-        self, ctx: ToolContext, migrated_engine: Engine, status: str
-    ) -> None:
+    async def test_refuses_archived_cards(self, ctx: ToolContext, migrated_engine: Engine) -> None:
         idea = create_idea(migrated_engine, title="A")
-        if status == "picked":
-            mark_picked(migrated_engine, idea.id, "p")
-        else:
-            update_idea(migrated_engine, idea.id, status="archived")
+        update_idea(migrated_engine, idea.id, status="archived")
         result = await _call(UPDATE_IDEA_TOOL, ctx, id=idea.id, pitch="改")
-        assert result.is_error and status in result.text
+        assert result.is_error and "archived" in result.text
         after = get_idea(migrated_engine, idea.id)
         assert after is not None and after.pitch is None
 
