@@ -6,10 +6,9 @@
 （`narrative/narrative.json`/`timing.json`，决策记录 D14）和每个镜头的代码
 （`animation/scenes/<id>.py`）→ 把全部镜头放进同一个 MainScene，用
 `ManimRenderEngine.render` 一次全画质渲染（镜头间元素通过 `self.xxx` 延续，不能
-逐镜头单独渲染；命中 `.cache/render_cache/` 里的缓存则跳过，决策记录 D14）→ 按镜头
-旁白叠加字幕（决策记录 D15：本机 ffmpeg 没有编译 drawtext/subtitles 滤镜，
-改用 Pillow 画字幕图 + `overlay` 滤镜叠加）→ 写 `output/final.mp4` +
-`output/final.json` → `complete`/`fail`。
+逐镜头单独渲染；命中 `.cache/render_cache/` 里的缓存则跳过，决策记录 D14）→ 写
+`output/final.mp4` + `output/final.json` → `complete`/`fail`。成片不叠字幕
+（ADR 0016）。
 
 `worker` 不依赖 `agent`/`stages`/`api`/`main`（ARCHITECTURE §2 依赖表），所以
 叙事产物直接读工作区顶层的 `narrative/` 目录（该阶段定稿后的产物本来就留在
@@ -24,13 +23,11 @@ import hashlib
 import json
 import logging
 import shutil
-import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy import Engine
 
 from studio.config import get_settings
@@ -44,10 +41,8 @@ from studio.engines.render.base import (
     SceneInput,
 )
 from studio.engines.render.manim import ManimRenderEngine
-from studio.engines.render.manim.keyframes import probe_duration_seconds
 from studio.engines.render.manim.process import failed_scene_index
-from studio.engines.render.manim.script import parse_scene_durations
-from studio.jobs import claim_next, complete, fail, heartbeat, reap_stale_running, update_progress
+from studio.jobs import claim_next, complete, fail, heartbeat, reap_stale_running
 from studio.workspace import (
     BlobStore,
     ScopeError,
@@ -69,15 +64,6 @@ _DEFAULT_FPS = 30
 _HEARTBEAT_TIMEOUT_SECONDS = 120.0
 _POLL_INTERVAL_SECONDS = 2.0
 _TICK_INTERVAL_SECONDS = 15.0
-
-_CJK_FONT_CANDIDATES = (
-    "/System/Library/Fonts/STHeiti Medium.ttc",
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/Supplemental/Songti.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-)
-"""字幕图片用的中文字体候选路径（决策记录 D15），按存在与否取第一个命中的。"""
 
 
 class SceneDataError(RuntimeError):
@@ -177,13 +163,6 @@ def _cache_key(plans: list[_ScenePlan]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-@dataclass(frozen=True, slots=True)
-class _RenderedVideo:
-    video_path: Path
-    scene_durations: list[float]
-    """每个镜头在成片里的实际时长（秒），用于字幕区间。"""
-
-
 async def _render_and_cache(
     render_engine: RenderEngine,
     workdir: Path,
@@ -192,7 +171,7 @@ async def _render_and_cache(
     resolution: tuple[int, int],
     fps: int,
     on_tick: Callable[[], None],
-) -> _RenderedVideo:
+) -> Path:
     """把全部镜头放进同一个 MainScene 一次渲染（全画质，含音频），命中缓存则直接复用。
 
     不能逐镜头单独渲染：镜头间的画面元素是通过 `self.xxx` 延续的（见动画阶段
@@ -201,10 +180,8 @@ async def _render_and_cache(
     """
     key = _cache_key(plans)
     cache_path = _cache_dir(workdir) / f"{key}.mp4"
-    meta_path = cache_path.with_suffix(".json")
-    if cache_path.is_file() and meta_path.is_file():
-        durations = json.loads(meta_path.read_text(encoding="utf-8"))["scene_durations"]
-        return _RenderedVideo(cache_path, [float(d) for d in durations])
+    if cache_path.is_file():
+        return cache_path
 
     request = RenderRequest(
         scenes=[
@@ -230,18 +207,11 @@ async def _render_and_cache(
         raise WorkerRenderError(_describe_render_failure(plans, result))
     assert isinstance(result, RenderResultWithBytes)  # success 时 render() 总是带 video_bytes
 
-    durations = parse_scene_durations(result.render_log, expected=len(plans))
-    if durations is None:
-        logger.warning("[worker] 渲染日志里缺少镜头结束标记，字幕区间回退到声明时长")
-        durations = [plan.duration_seconds for plan in plans]
-
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = cache_path.with_suffix(".mp4.tmp")
     tmp_path.write_bytes(result.video_bytes)
     tmp_path.replace(cache_path)  # 写完再原子改名，中途崩溃不会留下半份缓存文件
-    # 元数据最后写：只要它存在，视频文件一定完整。
-    meta_path.write_text(json.dumps({"scene_durations": durations}), encoding="utf-8")
-    return _RenderedVideo(cache_path, durations)
+    return cache_path
 
 
 def _describe_render_failure(plans: list[_ScenePlan], result: RenderResult) -> str:
@@ -263,140 +233,6 @@ async def _with_ticks[T](work: Awaitable[T], on_tick: Callable[[], None]) -> T:
         if done:
             return task.result()
         on_tick()
-
-
-async def _run_subprocess(cmd: list[str], *, error_prefix: str) -> None:
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise WorkerRenderError(f"{error_prefix}：{stderr.decode(errors='replace')[-1000:]}")
-
-
-def _find_cjk_font() -> str:
-    for candidate in _CJK_FONT_CANDIDATES:
-        if Path(candidate).is_file():
-            return candidate
-    raise WorkerRenderError(
-        f"找不到可用的中文字体，无法生成字幕图片（已尝试：{', '.join(_CJK_FONT_CANDIDATES)}）"
-    )
-
-
-def _wrap_text(
-    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int
-) -> list[str]:
-    """按像素宽度逐字换行（中文没有空格分词，不能按单词换行）。"""
-    lines: list[str] = []
-    current = ""
-    for char in text:
-        candidate = current + char
-        width = draw.textbbox((0, 0), candidate, font=font)[2]
-        if width > max_width and current:
-            lines.append(current)
-            current = char
-        else:
-            current = candidate
-    if current:
-        lines.append(current)
-    return lines
-
-
-def _render_subtitle_png(text: str, resolution: tuple[int, int], out_path: Path) -> None:
-    """画一张跟成片同分辨率的透明字幕图：文字在下方居中，黑边白字保证可读性。"""
-    width, height = resolution
-    font = ImageFont.truetype(_find_cjk_font(), max(width // 32, 16))
-
-    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    lines = _wrap_text(draw, text, font, max_width=int(width * 0.86))
-
-    ascent, descent = font.getmetrics()
-    line_height = ascent + descent + 6
-    y = height - line_height * len(lines) - int(height * 0.07)
-
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        x = (width - (bbox[2] - bbox[0])) // 2
-        for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2), (0, 0)):
-            fill = (255, 255, 255, 255) if (dx, dy) == (0, 0) else (0, 0, 0, 255)
-            draw.text((x + dx, y + dy), line, font=font, fill=fill)
-        y += line_height
-
-    image.save(out_path)
-
-
-async def _burn_subtitles(
-    video_path: Path,
-    plans: list[_ScenePlan],
-    scene_durations: list[float],
-    output_path: Path,
-    *,
-    resolution: tuple[int, int],
-) -> None:
-    """按镜头旁白硬编码时间轴叠加字幕（决策记录 D15，design §10 的"加字幕"）：
-    每个镜头的完整旁白文本，显示区间是该镜头在拼接后成片里的起止时间——由
-    `scene_durations`（ffprobe 实测的各镜头视频轨时长，累加得到，而不是
-    timing.json 声明的时长，两者可能有编码器帧对齐级别的微小差异）决定，不做
-    逐词/逐 beat 对齐（不引入新的字幕对齐算法，见计划范围说明）。
-
-    本机 ffmpeg 编译时没有 drawtext/subtitles 滤镜（无 libass/freetype），改用
-    Pillow 画字幕 PNG，再用 `overlay` 滤镜按时间窗口叠加。
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp = Path(tmpdir)
-        inputs: list[str] = ["-i", str(video_path)]
-        filter_parts: list[str] = []
-        prev_label = "0:v"
-        offset = 0.0
-        overlay_index = 0
-
-        for plan, duration in zip(plans, scene_durations, strict=True):
-            start, end = offset, offset + duration
-            offset = end
-            text = plan.narration.strip()
-            if not text:
-                continue
-
-            overlay_index += 1
-            image_path = tmp / f"sub_{overlay_index}.png"
-            _render_subtitle_png(text, resolution, image_path)
-            inputs.extend(["-loop", "1", "-i", str(image_path)])
-            out_label = f"v{overlay_index}"
-            filter_parts.append(
-                f"[{prev_label}][{overlay_index}:v]"
-                f"overlay=enable='between(t,{start:.3f},{end:.3f})'[{out_label}]"
-            )
-            prev_label = out_label
-
-        if not filter_parts:
-            shutil.copyfile(video_path, output_path)
-            return
-
-        total_duration = await probe_duration_seconds(str(video_path))
-        await _run_subprocess(
-            [
-                "ffmpeg",
-                "-y",
-                *inputs,
-                "-filter_complex",
-                ";".join(filter_parts),
-                "-map",
-                f"[{prev_label}]",
-                "-map",
-                "0:a?",
-                "-t",
-                f"{total_duration:.3f}",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:v",
-                "libx264",
-                "-c:a",
-                "copy",
-                str(output_path),
-            ],
-            error_prefix="叠加字幕失败",
-        )
 
 
 async def run_once(
@@ -447,20 +283,12 @@ async def run_once(
             fps=fps,
             on_tick=lambda: heartbeat(engine, job.id),
         )
-        update_progress(engine, job.id, 0.9)
-        heartbeat(engine, job.id)
 
         output_dir = workdir / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
         final_path = output_dir / "final.mp4"
 
-        await _burn_subtitles(
-            rendered.video_path,
-            plans,
-            rendered.scene_durations,
-            final_path,
-            resolution=resolution,
-        )
+        shutil.copyfile(rendered, final_path)
     except WorkerRenderError as exc:
         logger.warning("[worker] 任务 %s 失败：%s", job.id, exc)
         fail(engine, job.id, error=str(exc))

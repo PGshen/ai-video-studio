@@ -43,4 +43,4 @@
 | 节拍 | beat | 镜头内的一个动画时间点，由 `cue_text` 锚定在旁白中 |
 | 预览渲染 | preview render | 低清渲染单个镜头并抽取关键帧，供视觉自检使用 |
 | 视觉自检 | visual self-check | agent 查看预览关键帧，自己发现并修复画面问题 |
-| 成片 | final render | worker 以最终画质渲染全部镜头，合成音频和字幕 |
+| 成片 | final render | worker 以最终画质一次渲染全部镜头，合成音频（不叠字幕，见 ADR 0016） |

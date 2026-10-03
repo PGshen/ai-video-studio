@@ -24,7 +24,6 @@ from studio.engines.render.base import (
     RenderResultWithBytes,
     SceneInput,
 )
-from studio.engines.render.manim.script import SCENE_END_MARKER
 from studio.jobs import claim_next, create_job, get_job
 from studio.worker import _cache_key, _render_and_cache, _ScenePlan, _with_ticks, run_once
 
@@ -111,9 +110,8 @@ class _FakeRenderEngine:
 
     engine_name = "fake"
 
-    def __init__(self, *, render_log: str = "", fail_with: str | None = None) -> None:
+    def __init__(self, *, fail_with: str | None = None) -> None:
         self.calls: list[RenderRequest] = []
-        self._render_log = render_log
         self._fail_with = fail_with
 
     async def validate_code(self, scenes: list[SceneInput]) -> tuple[bool, str]:
@@ -140,7 +138,7 @@ class _FakeRenderEngine:
             output_path="/dev/null",
             duration_seconds=1.0,
             error_message=None,
-            render_log=self._render_log,
+            render_log="",
             video_bytes=b"fake-mp4-bytes",
         )
 
@@ -184,6 +182,34 @@ class TestCacheKey:
         before = _cache_key([_plan("s-a", code="self.dot = Dot()"), later])
         after = _cache_key([_plan("s-a", code="self.dot = Square()"), later])
         assert before != after
+
+
+class TestRunOnceOutput:
+    async def test_final_video_is_the_rendered_video_without_subtitle_burn_in(
+        self, animation_project: AnimationProjectEnv
+    ) -> None:
+        # 成片不叠字幕：输出就是渲染结果本身（假引擎返回的不是合法视频，
+        # 任何 ffmpeg 后处理都会失败）。
+        _write_scene_codes(animation_project.workdir, _SCENE_CODES)
+        job = create_job(
+            animation_project.engine,
+            type="final_render",
+            project_id=animation_project.project_id,
+            payload={},
+        )
+
+        await run_once(
+            animation_project.engine,
+            animation_project.blobs,
+            data_dir=animation_project.data_dir,
+            render_engine=_FakeRenderEngine(),
+        )
+
+        done = get_job(animation_project.engine, job.id)
+        assert done is not None
+        assert done.status == "done", done.error
+        final_video = animation_project.workdir / "output" / "final.mp4"
+        assert final_video.read_bytes() == b"fake-mp4-bytes"
 
 
 class TestWithTicks:
@@ -235,37 +261,9 @@ class TestRenderAndCache:
             fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
         )
 
-        assert first.video_path == second.video_path
-        assert first.video_path.read_bytes() == b"fake-mp4-bytes"
+        assert first == second
+        assert first.read_bytes() == b"fake-mp4-bytes"
         assert len(fake_engine.calls) == 1  # 第二次命中缓存，没有再调用 render()
-        assert second.scene_durations == first.scene_durations
-
-    async def test_scene_durations_come_from_render_markers(self, tmp_path: Path) -> None:
-        workdir = tmp_path / "project"
-        workdir.mkdir()
-        plans = [_plan("s-a", duration=2.0), _plan("s-b", index=1, duration=3.0)]
-        fake_engine = _FakeRenderEngine(
-            render_log=f"{SCENE_END_MARKER} 0 2.500\n{SCENE_END_MARKER} 1 6.000\n"
-        )
-
-        rendered = await _render_and_cache(
-            fake_engine, workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
-        )
-
-        assert rendered.scene_durations == [2.5, 3.5]
-
-    async def test_scene_durations_fall_back_to_declared_when_markers_missing(
-        self, tmp_path: Path
-    ) -> None:
-        workdir = tmp_path / "project"
-        workdir.mkdir()
-        plans = [_plan("s-a", duration=2.0), _plan("s-b", index=1, duration=3.0)]
-
-        rendered = await _render_and_cache(
-            _FakeRenderEngine(), workdir, plans, resolution=(480, 270), fps=15, on_tick=lambda: None
-        )
-
-        assert rendered.scene_durations == [2.0, 3.0]
 
     async def test_failure_names_the_scene_even_when_rich_wraps_the_frame(
         self, tmp_path: Path

@@ -52,9 +52,7 @@ class ManimRenderEngine:
         return await run_dry_run(script)
 
     async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:
-        script = _build_manim_script(
-            request.scenes, resolution=request.resolution, emit_scene_markers=True
-        )
+        script = _build_manim_script(request.scenes, resolution=request.resolution)
         settings = get_settings()
         return await run_render(
             script,

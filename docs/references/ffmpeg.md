@@ -1,5 +1,7 @@
 # ffmpeg（本机 Homebrew 安装）
 
+> 注：worker 已不再叠字幕、不再拼接（ADR 0015/0016），下面的字幕叠加与 concat 记录保留为已验证的参考，当前代码不使用。
+
 ## ✅ 已验证：本机 ffmpeg 编译时没有 `drawtext`/`subtitles` 滤镜（无 libass/freetype）
 
 日期：2026-09-28（M2 T5 自验证时发现）。来源：实测，`ffmpeg -filters` 的输出里
