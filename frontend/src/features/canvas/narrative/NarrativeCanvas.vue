@@ -7,14 +7,19 @@
  *
  * - 校验标记和"是否已配音"由 `narrativeDoc.ts`/`timingStatus.ts` 在前端
  *   算（校验的权威来源仍是后端 `validate_narrative`，见 narrativeDoc.ts）。
- * - 顶部状态条给出定稿前提（校验通过、全部配音、对齐覆盖率达标）的当前
- *   满足情况；这只是提示，后端 `finalize` 不强制这些条件（设计 §5.2 的
- *   定稿条件由用户确认）。
+ * - 标签行右侧的"播放"按钮（`useScenePlayback`）：所有镜头都配过音后可用，
+ *   从选中的镜头（没有选中则从头）依次连续播放各镜头配音，再点暂停；播放中选中态
+ *   和右侧详情跟着当前镜头走，列表滚动到它，点别的镜头则跳到那里继续播。
+ * - 标签行右侧的状态图标（`ReadinessIcon`）给出定稿前提（校验通过、全部配音、
+ *   对齐覆盖率达标）的当前满足情况，右边还有宿主塞进来的 `actions` 插槽（工作台
+ *   放快照栏开关，同选题画布）；这只是提示，后端 `finalize` 不强制这些条件
+ *   （设计 §5.2 的定稿条件由用户确认）。
  * - JSON 标签页可编辑：缓冲区/冲突处理用共享的 `composables/conflictState.ts`——
  *   缓冲区干净时直接采用服务器新内容，脏时进入冲突态让用户选择。agent 运行时
  *   （`busy`）画布只读。
  */
 import { computed, ref, watch } from 'vue'
+import { PauseIcon, PlayIcon } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import {
@@ -35,6 +40,8 @@ import {
   useWriteFileMutation,
 } from '@/composables/queries'
 import BeatTimeline from './BeatTimeline.vue'
+import ReadinessIcon from './ReadinessIcon.vue'
+import { useScenePlayback, type PlaylistItem } from './useScenePlayback'
 import SceneCardList from './SceneCardList.vue'
 import {
   NARRATIVE_PATH,
@@ -157,6 +164,24 @@ const coverageLabel = computed(() => {
   return coverage === null ? null : `${Math.round(coverage * 100)}%`
 })
 
+// ---- 整体播放 --------------------------------------------------------------
+
+// 每个镜头都有配音音频（文件确实在工作区里）才能整体播放；过期的配音照常播，
+// 过期与否由定稿状态图标提示。
+const playlist = computed<PlaylistItem[]>(() => {
+  const items: PlaylistItem[] = []
+  for (const d of timingParse.value.dubbing) {
+    if (d.timing === null || !filePaths.value.has(d.timing.audio_path)) continue
+    items.push({
+      id: d.id,
+      url: workspaceFileUrl(props.projectId, d.timing.audio_path, d.timing.audio_hash),
+    })
+  }
+  return items
+})
+const canPlayAll = computed(() => scenes.value.length > 0 && playlist.value.length === scenes.value.length)
+const { currentId: playingId, isPlaying, toggle, jumpTo } = useScenePlayback(() => playlist.value)
+
 // ---- 选中镜头 --------------------------------------------------------------
 
 const selectedId = ref<string | null>(null)
@@ -170,6 +195,19 @@ const selectedAudioUrl = computed(() => {
   return workspaceFileUrl(props.projectId, timing.audio_path, timing.audio_hash)
 })
 
+// 从选中的镜头开始往后播；播放中右侧详情和选中态跟着当前镜头走，
+// 播放中用户点了别的镜头则跳到那里继续播。
+function togglePlayAll(): void {
+  toggle(selectedId.value)
+}
+watch(playingId, (id) => {
+  if (id !== null) selectedId.value = id
+})
+function onSelectScene(id: string): void {
+  selectedId.value = id
+  jumpTo(id)
+}
+
 watch(scenes, (list) => {
   if (selectedId.value !== null && !list.some((s) => s.id === selectedId.value)) {
     selectedId.value = null
@@ -180,10 +218,15 @@ watch(scenes, (list) => {
 
 const buffer = ref<BufferState | null>(null)
 
-watch(narrativeContent, (content) => {
-  if (content === undefined) return
-  buffer.value = buffer.value === null ? initBuffer(content) : serverUpdate(buffer.value, content)
-})
+// immediate：从别的阶段切回来时 narrative.json 已在查询缓存里，挂载时就有值，不会再触发"变化"。
+watch(
+  narrativeContent,
+  (content) => {
+    if (content === undefined) return
+    buffer.value = buffer.value === null ? initBuffer(content) : serverUpdate(buffer.value, content)
+  },
+  { immediate: true },
+)
 watch(narrativeExists, (exists) => {
   if (!exists) buffer.value = null
 })
@@ -239,31 +282,12 @@ async function onSave(): Promise<void> {
     </p>
     <template v-else-if="narrativeExists">
       <div
-        class="rounded border px-3 py-2 text-sm"
-        :class="readiness.ready ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'bg-muted'"
-        data-testid="readiness"
+        class="flex flex-wrap items-center gap-1 text-sm"
+        data-testid="narrative-tabbar"
       >
-        <template v-if="readiness.ready">
-          可以定稿：{{ scenes.length }} 个镜头全部校验通过并已配音，对齐覆盖率 {{ coverageLabel }}。
-        </template>
-        <template v-else>
-          暂不满足定稿条件：{{ readiness.reasons.join('；') }}
-          <template v-if="coverageLabel">
-            （当前对齐覆盖率 {{ coverageLabel }}）
-          </template>
-        </template>
-        <p
-          v-if="timingParse.error"
-          class="text-destructive mt-1 text-xs"
-        >
-          解析 timing.json 失败：{{ timingParse.error }}
-        </p>
-      </div>
-
-      <div class="flex gap-1 text-sm">
         <button
           type="button"
-          class="rounded px-3 py-1"
+          class="rounded px-3 py-1 whitespace-nowrap"
           :class="tab === 'scenes' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
           @click="tab = 'scenes'"
         >
@@ -271,12 +295,40 @@ async function onSave(): Promise<void> {
         </button>
         <button
           type="button"
-          class="rounded px-3 py-1"
+          class="rounded px-3 py-1 whitespace-nowrap"
           :class="tab === 'json' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
           @click="tab = 'json'"
         >
           原始 JSON
         </button>
+        <div class="ml-auto flex items-center gap-2">
+          <ReadinessIcon
+            :readiness="readiness"
+            :scene-count="scenes.length"
+            :coverage-label="coverageLabel"
+            :timing-error="timingParse.error"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            class="h-7 gap-1 whitespace-nowrap"
+            data-testid="play-all"
+            :disabled="!canPlayAll"
+            :title="canPlayAll ? undefined : '所有镜头都配音后才能整体播放'"
+            @click="togglePlayAll"
+          >
+            <PauseIcon
+              v-if="isPlaying"
+              class="size-3.5"
+            />
+            <PlayIcon
+              v-else
+              class="size-3.5"
+            />
+            {{ isPlaying ? '暂停' : '播放' }}
+          </Button>
+          <slot name="actions" />
+        </div>
       </div>
 
       <div
@@ -288,7 +340,8 @@ async function onSave(): Promise<void> {
           :issues="issuesById"
           :dubbing="dubbingById"
           :selected-id="selectedId"
-          @select="(id) => (selectedId = id)"
+          :playing-id="playingId"
+          @select="onSelectScene"
         />
 
         <div class="flex min-h-0 flex-col gap-3 overflow-y-auto text-sm">

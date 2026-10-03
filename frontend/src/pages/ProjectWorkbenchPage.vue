@@ -34,6 +34,7 @@ import {
 } from '@/composables/queries'
 import { prefillText } from '@/components/session/suggestionFlow'
 import { useSessionStream } from '@/composables/useSessionStream'
+import StageFinalizeButton from '@/features/workbench/StageFinalizeButton.vue'
 import StageNav from '@/features/workbench/StageNav.vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
 import SessionList from '@/components/session/SessionList.vue'
@@ -202,12 +203,18 @@ const canvasBusy = computed(() =>
           <template #canvas="{ railCollapsed: snapshotsHidden, toggleRail, narrow: stacked }">
             <Card class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4">
               <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <!-- 快照栏默认隐藏，开关放在画布右上角；topic 阶段并进标签行（见 TopicCanvas 的 actions 插槽）。 -->
+                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative 阶段并进标签行（见两个画布的 actions 插槽）。定稿/重新打开按钮和它并排。 -->
                 <div
-                  v-if="stage !== 'topic' && !stacked"
-                  class="flex shrink-0 justify-end"
+                  v-if="stage !== 'topic' && stage !== 'narrative'"
+                  class="flex shrink-0 items-center justify-end gap-2"
                 >
+                  <StageFinalizeButton
+                    :project-id="projectId"
+                    :stages="project.stages"
+                    :current-stage="stage"
+                  />
                   <RailToggleButton
+                    v-if="!stacked"
                     :collapsed="snapshotsHidden"
                     @toggle="toggleRail"
                   />
@@ -221,13 +228,31 @@ const canvasBusy = computed(() =>
                   v-else-if="stage === 'narrative'"
                   :project-id="projectId"
                   :busy="canvasBusy"
-                />
+                >
+                  <template #actions>
+                    <StageFinalizeButton
+                      :project-id="projectId"
+                      :stages="project.stages"
+                      :current-stage="stage"
+                    />
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </NarrativeCanvas>
                 <TopicCanvas
                   v-else-if="stage === 'topic'"
                   :project-id="projectId"
                   :busy="canvasBusy"
                 >
                   <template #actions>
+                    <StageFinalizeButton
+                      :project-id="projectId"
+                      :stages="project.stages"
+                      :current-stage="stage"
+                    />
                     <RailToggleButton
                       v-if="!stacked"
                       :collapsed="snapshotsHidden"
