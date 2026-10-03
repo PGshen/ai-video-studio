@@ -18,6 +18,7 @@ async def extract_keyframe(video_path: str, at_seconds: float) -> bytes:
     """
     cmd = [
         "ffmpeg",
+        "-nostdin",
         "-i",
         video_path,
         "-ss",
@@ -32,6 +33,7 @@ async def extract_keyframe(video_path: str, at_seconds: float) -> bytes:
     ]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -64,6 +66,7 @@ async def probe_duration_seconds(video_path: str) -> float:
     ]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

@@ -109,6 +109,7 @@ async def run_dry_run(script: str) -> tuple[bool, str]:
         cmd = [sys.executable, driver_path]
         proc = await asyncio.create_subprocess_exec(
             *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=tmpdir,
@@ -177,6 +178,7 @@ async def run_render(
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=tmpdir,

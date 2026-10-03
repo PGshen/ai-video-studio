@@ -138,6 +138,7 @@ class ManimRenderEngine:
             "-m",
             "manim",
             "--version",
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

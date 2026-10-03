@@ -85,6 +85,8 @@ make dev
 
 会执行 `scripts/dev.sh`：同时启动后端（`uvicorn studio.main:app --reload --reload-dir <绝对路径>/backend/src`）和前端（`cd frontend && pnpm run dev`），两者共用一个 trap，`Ctrl+C` 会一起结束。
 
+启动前会先清理上一次遗留的旧进程：占用 api 端口（读自 `Settings`）和 5173 的进程、残留的 `studio.worker`，只要工作目录或命令行属于本仓库就会先 TERM、5 秒后 KILL（uvicorn reloader 等父进程一并结束，否则会被重新拉起）；端口被**非本项目**进程占用时不会误杀，而是打印占用者并退出。每个后台任务单独一个进程组，`Ctrl+C` 时整组结束（先 SIGCONT 再 TERM，被停住的进程也能清理掉），避免再产生孤儿进程。后台任务的 stdin 一律重定向到 `/dev/null`：它们是终端的后台进程组，读终端会被 SIGTTIN 停住整组；后端代码里所有子进程同样要显式设 `stdin`（由 `backend/tests/test_subprocess_stdin.py` 守住）。
+
 启动后可以访问：
 - 后端：http://127.0.0.1:8000（健康检查 `/api/health`，OpenAPI 文档在 `/docs`）
 - 前端：http://127.0.0.1:5173（`vite.config.ts` 绑定 `127.0.0.1:5173`、`strictPort: true`，并把 `/api` 代理到 `http://127.0.0.1:8000`，SSE 接口也经代理透传，不缓冲）
