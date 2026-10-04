@@ -39,7 +39,7 @@ class StageOut(BaseModel):
     stage: str
     status: str
     finalized_snapshot_id: str | None
-    based_on_snapshot_id: str | None
+    based_on: dict[str, str]
     finalized_at: datetime | None
 
 

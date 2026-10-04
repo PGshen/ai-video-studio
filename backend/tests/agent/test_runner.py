@@ -886,7 +886,10 @@ class TestPreambleAcrossTurns:
         topic = get_stage(engine, pid, "topic")
         stage = get_stage(engine, pid, "narrative")
         assert topic is not None and stage is not None
-        assert (stage.status, stage.based_on_snapshot_id) == ("active", topic.finalized_snapshot_id)
+        assert (stage.status, stage.based_on) == (
+            "active",
+            {"topic": topic.finalized_snapshot_id},
+        )
 
 
 class TestConcurrency:
@@ -1176,7 +1179,7 @@ class TestReviewFixes:
 
         narrative = get_stage(engine, pid, "narrative")
         assert narrative is not None
-        assert (narrative.status, narrative.based_on_snapshot_id) == ("stale", first)
+        assert (narrative.status, narrative.based_on) == ("stale", {"topic": first})
 
     async def test_finish_turn_is_retried_once(
         self, h: Harness, monkeypatch: pytest.MonkeyPatch

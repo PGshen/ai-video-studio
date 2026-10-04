@@ -10,9 +10,9 @@
     （`payload.kind == "guard_restored"`）；
   - 回滚通知：上一轮结束之后项目里出现的 `reason=rollback` 快照；回滚目标是
     它之前清单完全相同的最近一份快照（回滚会原样写回目标清单）；
-  - 上游新定稿：本阶段 `based_on_snapshot_id` 与上游当前 `finalized_snapshot_id`
-    不同时，两份清单在上游产物目录下的文件级差异；叙事→动画这一条边额外按镜头
-    id 给出新增/删除/旁白变化/beat 变化摘要（设计 §5.4，TD-6），渲染时优先用它；
+  - 上游新定稿：对每个上游，本阶段 `based_on` 里记录的快照与该上游当前
+    `finalized_snapshot_id` 不同时，两份清单在上游产物目录下的文件级差异；叙事→动画
+    这一条边额外按镜头 id 给出新增/删除/旁白变化/beat 变化摘要（设计 §5.4，TD-6），渲染时优先用它；
   - 用户手动修改：本会话上一轮结束（`turns.updated_at`）之后、到本轮开始快照
     为止，项目里每一份 `reason=user_edit` 快照（本轮开始时、其他阶段的 turn
     开始时、定稿时创建的）相对各自前一份快照的 diff，按路径合并（基准取最早
@@ -244,19 +244,21 @@ def _narrative_scene_summary(
 def _upstream_changes(
     engine: Engine, blobs: BlobStore, project_id: str, stage: StageDefinition
 ) -> list[UpstreamChange]:
+    """每个上游各自对比：`based_on` 里该上游的旧版本 vs 它当前的定稿；没有记录旧版本的上游跳过。"""
     current = get_stage(engine, project_id, stage.name)
-    if current is None or current.based_on_snapshot_id is None:
-        return []
-    based_on = get_snapshot(engine, current.based_on_snapshot_id)
-    if based_on is None:
+    if current is None:
         return []
     changes: list[UpstreamChange] = []
     for name in stage.reads():
-        row = get_stage(engine, project_id, name)
-        if row is None or row.finalized_snapshot_id in (None, current.based_on_snapshot_id):
+        old_id = current.based_on.get(name)
+        if old_id is None:
             continue
+        row = get_stage(engine, project_id, name)
+        if row is None or row.finalized_snapshot_id in (None, old_id):
+            continue
+        based_on = get_snapshot(engine, old_id)
         finalized = get_snapshot(engine, row.finalized_snapshot_id or "")
-        if finalized is None:
+        if based_on is None or finalized is None:
             continue
         prefix = f"{name}/"
         old = {p: h for p, h in based_on.manifest.items() if p.startswith(prefix)}

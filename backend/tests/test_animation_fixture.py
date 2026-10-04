@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import Engine
 
 from conftest import AnimationProjectEnv
-from fixtures.animation.seed import seed_animation_project
+from fixtures.animation.seed import fixture_registry, seed_animation_project
 from studio.agent.stage_flow import upstream_sources
 from studio.db.engine import make_engine, migrate
 from studio.db.repo.stages import get_stage
@@ -58,7 +58,7 @@ class TestSeedAnimationProject:
         project_id = seed_animation_project(engine, blobs, data_dir=data_dir)
         workdir = project_dir(data_dir, project_id)
 
-        sources = upstream_sources(engine, project_id, ANIMATION_STAGE)
+        sources = upstream_sources(engine, fixture_registry(), project_id, ANIMATION_STAGE.name)
         materialize_upstream(workdir, blobs, sources)
 
         upstream_narrative = workdir / "upstream" / "narrative"

@@ -310,7 +310,9 @@ class TurnRunner:
         self._publish_status(job, "running")
         turn_events.note_model_switch(self, job)
 
-        state.upstream_ids = stage_flow.upstream_snapshot_ids(engine, project_id, job.stage)
+        state.upstream_ids = stage_flow.upstream_snapshot_ids(
+            engine, self._registry, project_id, job.stage.name
+        )
         state.sources = stage_flow.manifests_of(engine, state.upstream_ids)
         materialize_upstream(workdir, blobs, state.sources)
 

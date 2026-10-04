@@ -69,7 +69,8 @@ class ProjectStage(Base):
     stage: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="locked")
     finalized_snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    based_on_snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    based_on: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
+    """每个上游所基于的定稿快照：`{上游阶段名: 快照 id}`（0009）。"""
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(

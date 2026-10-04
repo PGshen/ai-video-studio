@@ -40,7 +40,7 @@ _INITIAL_STAGES: tuple[tuple[str, str], ...] = (
 )
 
 
-def _registry() -> StageRegistry:
+def fixture_registry() -> StageRegistry:
     """一个只含三个占位阶段的 registry，只供本函数驱动 `stage_flow.finalize`
     使用（和 `main.create_app` 组装出的 registry 里的 `STAGE` 是同一批单例，
     不是另一份定义）。
@@ -70,7 +70,7 @@ def seed_animation_project(engine: Engine, blobs: BlobStore, *, data_dir: Path) 
     `active`）→ 把本目录下的手工 narrative fixture 写进工作区 → 定稿
     narrative（animation 因此从 `locked` 变 `active`）。
     """
-    registry = _registry()
+    registry = fixture_registry()
     project = create_project(engine, id=uuid4().hex, title="动画阶段 fixture 项目")
     project_id = project.id
 
