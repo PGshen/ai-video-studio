@@ -42,7 +42,7 @@ function onDuplicated(id: string): void {
 </script>
 
 <template>
-  <section class="flex flex-col gap-4">
+  <section class="flex min-h-0 flex-1 flex-col gap-4">
     <div>
       <h2 class="text-lg font-medium">
         风格库
@@ -68,9 +68,9 @@ function onDuplicated(id: string): void {
 
     <div
       v-else
-      class="flex gap-4"
+      class="flex min-h-0 flex-1 gap-4"
     >
-      <aside class="flex w-64 shrink-0 flex-col gap-3">
+      <aside class="flex w-52 shrink-0 flex-col gap-3 overflow-y-auto">
         <Button
           data-testid="new-style"
           @click="select('new')"

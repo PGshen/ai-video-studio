@@ -219,7 +219,7 @@ const DIRS: { dir: StyleDir; title: string; hint: string }[] = [
 </script>
 
 <template>
-  <div class="flex min-w-0 flex-1 flex-col gap-3">
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
     <p
       v-if="!isNew && isPending"
       class="text-muted-foreground text-sm"
@@ -258,7 +258,7 @@ const DIRS: { dir: StyleDir; title: string; hint: string }[] = [
         </div>
       </div>
 
-      <div class="flex min-h-[420px] gap-3">
+      <div class="flex min-h-[240px] flex-1 gap-3">
         <div class="flex w-56 shrink-0 flex-col gap-3 overflow-y-auto rounded-md border p-2 text-sm">
           <button
             type="button"

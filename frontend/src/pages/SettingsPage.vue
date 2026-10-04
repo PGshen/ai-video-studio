@@ -14,7 +14,7 @@ const TABS = [
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex min-h-0 flex-1 flex-col gap-6">
     <nav
       class="flex gap-1 border-b"
       aria-label="设置分类"
@@ -29,6 +29,9 @@ const TABS = [
         {{ tab.label }}
       </RouterLink>
     </nav>
-    <RouterView />
+    <!-- 子页在这里滚动；风格库自己撑满高度，内部三栏各自滚动。 -->
+    <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <RouterView />
+    </div>
   </div>
 </template>

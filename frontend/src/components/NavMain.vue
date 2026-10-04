@@ -39,6 +39,7 @@ function isActive(url: string): boolean {
           <SidebarMenuButton
             :tooltip="item.title"
             :is-active="isActive(item.url)"
+            class="data-[active=true]:bg-black data-[active=true]:text-white data-[active=true]:hover:bg-black data-[active=true]:hover:text-white data-[active=true]:active:bg-black data-[active=true]:active:text-white"
             as-child
           >
             <router-link :to="item.url">

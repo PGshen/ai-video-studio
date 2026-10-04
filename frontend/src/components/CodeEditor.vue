@@ -60,6 +60,10 @@ function createView(doc: string): void {
     parent: container.value,
     extensions: [
       basicSetup,
+      // Line-number gutter: drop the default grey fill and divider.
+      EditorView.theme({
+        '.cm-gutters': { backgroundColor: 'var(--background)', borderRight: 'none' },
+      }),
       ...languageExtensions(),
       EditorView.editable.of(!props.readonly),
       EditorView.updateListener.of((update) => {
