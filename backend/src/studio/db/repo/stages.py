@@ -27,6 +27,8 @@ class StageValue:
     based_on: dict[str, str]
     """每个上游所基于的定稿快照 `{上游阶段名: 快照 id}`；没有上游或未解锁时为空。"""
     finalized_at: datetime | None
+    stale_from: str | None = None
+    """变为 `stale` 之前的状态；只在 `status == "stale"` 时有意义。"""
 
 
 def _to_value(row: ProjectStage) -> StageValue:
@@ -37,6 +39,7 @@ def _to_value(row: ProjectStage) -> StageValue:
         finalized_snapshot_id=row.finalized_snapshot_id,
         based_on=dict(row.based_on or {}),
         finalized_at=row.finalized_at,
+        stale_from=row.stale_from,
     )
 
 
@@ -82,6 +85,7 @@ def update_stage(
     finalized_snapshot_id: str | None = None,
     based_on: dict[str, str] | None = None,
     finalized_at: datetime | None = None,
+    stale_from: str | None = None,
 ) -> StageValue:
     """更新阶段行；参数为 `None` 表示该字段不变。`based_on` 整体替换。"""
     with session_scope(engine) as db:
@@ -96,6 +100,8 @@ def update_stage(
             row.based_on = dict(based_on)
         if finalized_at is not None:
             row.finalized_at = finalized_at
+        if stale_from is not None:
+            row.stale_from = stale_from
         db.flush()
         return _to_value(row)
 

@@ -11,8 +11,9 @@
   - 回滚通知：上一轮结束之后项目里出现的 `reason=rollback` 快照；回滚目标是
     它之前清单完全相同的最近一份快照（回滚会原样写回目标清单）；
   - 上游新定稿：对每个上游，本阶段 `based_on` 里记录的快照与该上游当前
-    `finalized_snapshot_id` 不同时，两份清单在上游产物目录下的文件级差异；叙事→动画
-    这一条边额外按镜头 id 给出新增/删除/旁白变化/beat 变化摘要（设计 §5.4，TD-6），渲染时优先用它；
+    `finalized_snapshot_id` 不同时，两份清单在上游产物目录下的文件级差异（没有差异不报告）；
+    叙事→动画这一条边额外按镜头 id 给出新增/删除/旁白变化/beat 变化摘要
+    （设计 §5.4，TD-6），渲染时优先用它；
   - 用户手动修改：本会话上一轮结束（`turns.updated_at`）之后、到本轮开始快照
     为止，项目里每一份 `reason=user_edit` 快照（本轮开始时、其他阶段的 turn
     开始时、定稿时创建的）相对各自前一份快照的 diff，按路径合并（基准取最早
@@ -249,7 +250,8 @@ def _upstream_changes(
     stage: StageDefinition,
     registry: StageRegistry,
 ) -> list[UpstreamChange]:
-    """每个上游各自对比：`based_on` 里该上游的旧版本 vs 它当前的定稿；没有记录旧版本的上游跳过。"""
+    """每个上游各自对比：`based_on` 里该上游的旧版本 vs 它当前的定稿；没有记录旧版本、
+    或产物目录没有变化的上游跳过。"""
     current = get_stage(engine, project_id, stage.name)
     if current is None:
         return []
@@ -270,6 +272,8 @@ def _upstream_changes(
         prefixes = tuple(f"{directory.rstrip('/')}/" for directory in dirs)
         old = {p: h for p, h in based_on.manifest.items() if p.startswith(prefixes)}
         new = {p: h for p, h in finalized.manifest.items() if p.startswith(prefixes)}
+        if old == new:  # re-finalized with changes only outside its artifact dirs
+            continue
         scene_summary = _narrative_scene_summary(old, new, blobs) if name == "narrative" else None
         changes.append(
             UpstreamChange(stage=name, diff=diff(old, new, blobs), scene_summary=scene_summary)
