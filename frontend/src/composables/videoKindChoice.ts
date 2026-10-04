@@ -18,8 +18,8 @@ import type {
 const VIDEO_KIND_LABELS: Record<VideoKind, string> = {
   explainer_manim: '知识讲解（Manim）',
   explainer_html: '知识讲解（HTML）',
-  motion_reel: '动态短片',
-  music_video: '音乐视频',
+  motion_reel: '动态图形短片',
+  music_video: '音乐 MV',
 }
 
 export const MUSIC_LABELS: Record<MusicSource, string> = {

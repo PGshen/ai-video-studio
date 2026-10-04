@@ -18,6 +18,7 @@ from studio.agent.preamble import _narrative_scene_summary as narrative_scene_su
 from studio.agent.preamble import _upstream_changes as upstream_changes
 from studio.agent.stage import StageRegistry
 from studio.agent.stage_flow import finalize
+from studio.db.repo.projects import update_project_settings
 from studio.db.repo.stages import create_stage, update_stage
 from studio.stages.animation import STAGE as ANIMATION_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
@@ -307,3 +308,42 @@ def test_upstream_changes_slice_by_artifact_dirs_not_stage_name(
     assert [c.stage for c in changes] == ["visual"]
     assert [m.path for m in changes[0].diff.modified] == ["animation/a.txt"]
     assert changes[0].diff.added == [] and changes[0].diff.removed == []
+
+
+def test_upstream_changes_follow_pipeline_order(
+    narrative_project: NarrativeProjectEnv,
+) -> None:
+    env = narrative_project
+    # MV-shaped pipeline: music comes before beatsheet, while reads() lists beatsheet first.
+    registry = StageRegistry()
+    registry.register(_FakeStage("concept", ["concept/"]))
+    registry.register(_FakeStage("music", ["music/"]))
+    registry.register(_FakeStage("beatsheet", ["beatsheet/"]))
+    registry.register(_FakeStage("animation_html", [], reads=["beatsheet", "music"]))
+    pipeline = ["concept", "music", "beatsheet", "animation_html"]
+    update_project_settings(env.engine, env.project_id, {"pipeline": pipeline})
+
+    for name in ("music", "beatsheet"):
+        (env.workdir / name).mkdir(exist_ok=True)
+        (env.workdir / name / "a.txt").write_text("old", encoding="utf-8")
+    old_snap = create_snapshot(env.engine, env.blobs, env.project_id, "turn")
+    for name in ("music", "beatsheet"):
+        (env.workdir / name / "a.txt").write_text("new", encoding="utf-8")
+    new_snap = create_snapshot(env.engine, env.blobs, env.project_id, "turn")
+
+    for name in ("music", "beatsheet"):
+        create_stage(env.engine, project_id=env.project_id, stage=name, status="finalized")
+        update_stage(env.engine, env.project_id, name, finalized_snapshot_id=new_snap.id)
+    create_stage(env.engine, project_id=env.project_id, stage="animation_html", status="active")
+    update_stage(
+        env.engine,
+        env.project_id,
+        "animation_html",
+        based_on={"music": old_snap.id, "beatsheet": old_snap.id},
+    )
+
+    changes = upstream_changes(
+        env.engine, env.blobs, env.project_id, registry.get("animation_html"), registry
+    )
+
+    assert [c.stage for c in changes] == ["music", "beatsheet"]

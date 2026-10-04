@@ -39,8 +39,14 @@ describe('videoKindChoice', () => {
     expect(summary({ video_kind: 'explainer_manim', engine: 'manim', narration: true, music_source: 'none', pipeline: [] })).toBe(
       '知识讲解（Manim）· 有旁白 · 无配乐',
     )
+    expect(summary({ video_kind: 'explainer_html', engine: 'html', narration: true, music_source: 'synth', pipeline: [] })).toBe(
+      '知识讲解（HTML）· 有旁白 · 合成配乐',
+    )
     expect(summary({ video_kind: 'motion_reel', engine: 'html', narration: false, music_source: 'synth', pipeline: [] })).toBe(
-      '动态短片 · 无旁白 · 合成配乐',
+      '动态图形短片 · 无旁白 · 合成配乐',
+    )
+    expect(summary({ video_kind: 'music_video', engine: 'html', narration: false, music_source: 'import', pipeline: [] })).toBe(
+      '音乐 MV · 无旁白 · 导入音乐',
     )
   })
 })

@@ -90,7 +90,7 @@ async function submit(): Promise<void> {
       <DialogHeader>
         <DialogTitle>用这张卡片创建项目</DialogTitle>
         <DialogDescription>
-          项目会进入选题打磨阶段，卡片内容会作为起点带过去；卡片随后变为「已创建项目」。
+          项目会进入所选类型的第一个阶段，卡片内容会作为起点带过去；卡片随后变为「已创建项目」。
         </DialogDescription>
       </DialogHeader>
       <div class="flex flex-col gap-2">

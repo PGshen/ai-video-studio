@@ -29,7 +29,8 @@ from typing import Any
 
 from sqlalchemy import Engine
 
-from studio.agent.stage import StageDefinition, StageRegistry
+from studio.agent.stage import StageDefinition, StageRegistry, upstream_of
+from studio.agent.stage_flow import project_pipeline
 from studio.db.repo.snapshots import get_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
 from studio.db.repo.turns import TurnValue, list_turn_events
@@ -253,7 +254,7 @@ def _upstream_changes(
     if current is None:
         return []
     changes: list[UpstreamChange] = []
-    for name in stage.reads():
+    for name in upstream_of(project_pipeline(engine, project_id), registry, stage.name):
         old_id = current.based_on.get(name)
         if old_id is None:
             continue

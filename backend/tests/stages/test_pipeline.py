@@ -69,6 +69,19 @@ def test_kind_from_settings_legacy_and_roundtrip() -> None:
         assert kind_from_settings(settings) == kind
 
 
+def test_kind_from_settings_falls_back_to_legacy_on_bad_values() -> None:
+    good = {"engine": "html", "narration": False, "music_source": "synth"}
+    assert kind_from_settings(good) == ProjectKind("html", False, "synth")
+    assert kind_from_settings({**good, "engine": "blender"}) == LEGACY_KIND
+    assert kind_from_settings({**good, "narration": "true"}) == LEGACY_KIND
+    assert kind_from_settings({**good, "music_source": "radio"}) == LEGACY_KIND
+
+
+def test_kind_from_settings_falls_back_to_legacy_on_partial_fields() -> None:
+    assert kind_from_settings({"engine": "html"}) == LEGACY_KIND
+    assert kind_from_settings({"engine": "html", "narration": False}) == LEGACY_KIND
+
+
 def test_presets() -> None:
     assert len(PRESETS) == 4
     for preset in PRESETS:

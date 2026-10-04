@@ -136,7 +136,10 @@ IDEA_CARD_NAME = "notes/idea-card.md"
 
 
 def _idea_card_markdown(idea: IdeaValue) -> str:
-    """想法卡片的 Markdown 形式，放进新项目的 `topic/notes/`，选题阶段 agent 先读它。"""
+    """想法卡片的 Markdown 形式，放进新项目的 `<pipeline[0]>/notes/idea-card.md`。
+
+    有旁白的类型在 `topic/notes/`，无旁白的类型在 `concept/notes/`；第一个阶段的 agent 先读它。
+    """
     lines = [f"# {idea.title}", "", "（来自选题池的想法卡片，是选题打磨的起点，不是结论。）", ""]
     lines += ["## 一句话卖点", "", idea.pitch or "（未填写）", ""]
     lines += ["## 反直觉点", "", idea.counterintuitive or "（未填写）", ""]

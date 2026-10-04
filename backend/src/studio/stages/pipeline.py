@@ -117,12 +117,20 @@ PRESETS: tuple[Preset, ...] = (
 
 
 def kind_from_settings(settings: Mapping[str, Any]) -> ProjectKind:
-    if "engine" not in settings or "narration" not in settings or "music_source" not in settings:
+    """Legacy kind when fields are missing or hold values outside their allowed set."""
+    engine = settings.get("engine")
+    narration = settings.get("narration")
+    music_source = settings.get("music_source")
+    if (
+        engine not in ("manim", "html")
+        or not isinstance(narration, bool)
+        or music_source not in ("none", "synth", "import")
+    ):
         return LEGACY_KIND
     return ProjectKind(
-        engine=cast(Engine, settings["engine"]),
-        narration=bool(settings["narration"]),
-        music_source=cast(MusicSource, settings["music_source"]),
+        engine=cast(Engine, engine),
+        narration=narration,
+        music_source=cast(MusicSource, music_source),
     )
 
 
