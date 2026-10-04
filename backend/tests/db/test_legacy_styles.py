@@ -133,6 +133,15 @@ class TestConversion:
             assert path in preset.content
         assert "叙事" in preset.content and "动画" in preset.content and "选题" in preset.content
 
+    def test_color_scheme_is_read_in_both_narrative_and_animation_stages(
+        self, migrated_engine: Engine
+    ) -> None:
+        import_export(migrated_engine, _full_export())
+
+        content = list_style_presets(migrated_engine)[0].content
+        row = next(line for line in content.splitlines() if "references/color-scheme.md" in line)
+        assert "叙事阶段" in row and "动画阶段" in row
+
     def test_legacy_format_exemplar_is_flagged_in_entry_and_report(
         self, migrated_engine: Engine
     ) -> None:

@@ -43,6 +43,11 @@ from studio.db.repo.style_presets import (
 
 IMPORT_CATEGORY: Final = "旧项目导入"
 
+# 配色两个阶段都要读：叙事阶段写 visual_intent/visual_action 要带上颜色，动画阶段写代码要用色值。
+_COLOR_SCHEME_WHEN: Final = (
+    "叙事阶段：动笔改 `narrative.json` 之前（画面描述要写明颜色）；动画阶段：写镜头代码之前"
+)
+
 # 旧类别 → (新文件名, 中文名, 什么时候读)
 _REFERENCE_CATEGORIES: Final = (
     (
@@ -51,7 +56,7 @@ _REFERENCE_CATEGORIES: Final = (
         "叙事蓝图",
         "叙事阶段：动笔改 `narrative.json` 之前",
     ),
-    ("color_scheme", "color-scheme.md", "配色方案", "动画阶段：写镜头代码之前"),
+    ("color_scheme", "color-scheme.md", "配色方案", _COLOR_SCHEME_WHEN),
     ("animation_style", "animation-style.md", "动画风格", "动画阶段：写镜头代码之前"),
 )
 _EXEMPLAR_CATEGORY: Final = "exemplar"

@@ -28,6 +28,12 @@ def test_system_prompt_tells_the_agent_which_style_files_to_read_and_when() -> N
     assert "动笔" in prompt
 
 
+def test_system_prompt_requires_colors_in_visual_descriptions() -> None:
+    prompt = NARRATIVE_STAGE.system_prompt()
+    assert "style/references/color-scheme.md" in prompt
+    assert "配色" in prompt
+
+
 def test_system_prompt_handles_missing_style_files_and_old_field_names() -> None:
     prompt = NARRATIVE_STAGE.system_prompt()
     assert "这些文件不存在" in prompt
