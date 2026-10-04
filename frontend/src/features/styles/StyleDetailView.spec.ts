@@ -76,6 +76,15 @@ describe('StyleDetailView', () => {
     expect(w.find('[data-testid="code-view"]').exists()).toBe(false)
   })
 
+  it('切换文件时渲染面板整个换新，不带着上一个文件的滚动位置', async () => {
+    const w = await mountDetail()
+    const before = w.get('[data-testid="markdown-pane"]').element
+
+    await w.get('[data-testid="file-references/color.md"]').trigger('click')
+
+    expect(w.get('[data-testid="markdown-pane"]').element).not.toBe(before)
+  })
+
   it('json 金样本仍用只读编辑器显示', async () => {
     seedStyle('s2', '带金样本', { 'exemplars/e1.json': '{"a":1}' })
     const w = await mountDetail('s2')

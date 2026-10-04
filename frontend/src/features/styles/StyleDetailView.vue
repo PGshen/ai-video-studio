@@ -138,6 +138,7 @@ async function remove(): Promise<void> {
       </div>
       <div
         v-if="isMarkdown"
+        :key="active"
         class="min-h-0 overflow-auto rounded-md border p-4"
         data-testid="markdown-pane"
       >
