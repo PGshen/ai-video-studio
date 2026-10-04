@@ -47,7 +47,7 @@ def parse_frontmatter(content: str) -> dict[str, str] | None:
     return result
 
 
-def _split(path: str) -> tuple[str, str] | None:
+def split_style_path(path: str) -> tuple[str, str] | None:
     """`references/x.md` → `("references", "x.md")`；入口和不允许的路径返回 `None`。"""
     for directory in (REFERENCES_DIR, EXEMPLARS_DIR):
         prefix = f"{directory}/"
@@ -71,14 +71,19 @@ def _validate_entry(content: str, errors: list[str]) -> None:
         errors.append(f"STYLE.md 过长（上限 {MAX_FILE_CHARS} 字符）")
 
 
+def is_plain_file_name(name: str) -> bool:
+    """文件名只允许字母、数字、下划线、点和连字符，不以点开头，不超过 80 字符。"""
+    return (
+        bool(name)
+        and len(name) <= MAX_FILE_NAME_CHARS
+        and not name.startswith(".")
+        and _FILE_NAME.match(name) is not None
+    )
+
+
 def _validate_file(directory: str, name: str, text: str, errors: list[str]) -> None:
     label = f"{directory}/{name}"
-    if (
-        not name
-        or len(name) > MAX_FILE_NAME_CHARS
-        or name.startswith(".")
-        or _FILE_NAME.match(name) is None
-    ):
+    if not is_plain_file_name(name):
         errors.append(
             f"文件名不合法：{label!r}（只允许字母、数字、下划线、点和连字符，不能以点开头）"
         )
@@ -104,7 +109,7 @@ def validate_style_files(files: Mapping[str, str]) -> list[str]:
     for path, text in files.items():
         if path == ENTRY_NAME:
             continue
-        parts = _split(path)
+        parts = split_style_path(path)
         if parts is None:
             errors.append(
                 f"不允许的路径：{path!r}（只能有 STYLE.md、references/ 和 exemplars/ 下的文件）"
@@ -134,3 +139,27 @@ def validate_style_files(files: Mapping[str, str]) -> list[str]:
             reported.add(path)
             errors.append(f"STYLE.md 引用了不存在的文件：{path}")
     return errors
+
+
+def _format_value(value: str) -> str:
+    value = " ".join(value.splitlines())
+    if value == "" or value != value.strip() or any(c in value for c in ":#\"'\\"):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return value
+
+
+def set_frontmatter_fields(content: str, fields: Mapping[str, str]) -> str:
+    """改写（或追加）frontmatter 里的字段，其余内容原样保留；没有 frontmatter 时在开头补一个。
+    必要时给值加双引号，保证 `parse_frontmatter` 能还原。"""
+    match = _FRONTMATTER.match(content)
+    lines = match.group(1).splitlines() if match else []
+    rest = content[match.end() :] if match else content
+    for key, value in fields.items():
+        line = f"{key}: {_format_value(value)}"
+        for index, existing in enumerate(lines):
+            if existing.partition(":")[0].strip() == key and ":" in existing:
+                lines[index] = line
+                break
+        else:
+            lines.append(line)
+    return "---\n" + "\n".join(lines) + "\n---\n" + rest

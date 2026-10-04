@@ -73,7 +73,7 @@
 - **完成标准**：纯函数测试全绿；import-linter 契约生效；ADR 通过 `scripts/check_docs.py`。此任务不删除旧代码。
 - **验证命令**：`cd backend && uv run pytest tests/styles -q`；`make check`
 
-### T2：目录存储与草稿（待开始）
+### T2：目录存储与草稿（完成）
 
 - **目标**：在 `studio.styles` 里实现正式版本与草稿的全部目录操作，保存是原子的。
 - **涉及文件**：新建 `backend/src/studio/styles/store.py`；`backend/tests/styles/test_store.py`。
@@ -191,16 +191,18 @@
 ## 进度
 
 - 2026-10-04 — T1 styles 纯能力模块（校验、frontmatter、布局）+ ADR 0019 — `make check` 绿，新增 52 个后端用例
+- 2026-10-04 — T2 目录存储与草稿（`styles/store.py`；另在 `validate.py` 补 `set_frontmatter_fields`/`split_style_path`/`is_plain_file_name`）— `make check` 绿，`tests/styles` 共 109 个用例
 
 ## 下一步
 
-- 从 T2 开始：先写 `backend/tests/styles/test_store.py`（列表扫描含坏目录、复制命名、草稿打开幂等、`dirty` 判断、原子保存与中途失败、草稿非法内容、重名），再实现 `backend/src/studio/styles/store.py`。T1 的 `validate_style_files(files)`、`parse_frontmatter`、`layout.{style_dir,draft_dir,is_valid_style_id}` 已就绪。
+- 从 T3 开始：先重写 `backend/tests/api/test_styles.py`（新 `/api/styles*` 接口全部端点与错误路径，评审关注点 3、5），再把旧 `api/styles.py` 改名为 `api/style_presets_legacy.py` 暂存，新建 `api/styles.py`。可用的存储接口见 `studio.styles.store`（`list_styles`、`get_style`、`read_style_files`、`create_new_draft`、`open_draft`、`draft_status`、`read/write/delete_draft_file`、`validate_draft`、`save_draft`、`discard_draft`、`duplicate_style`、`delete_style`、`import_style`、`style_exists`；异常 `StyleNotFoundError`/`StyleValidationError`/`DuplicateStyleNameError`/`StyleExistsError`/`StylePathError`）。
 
 ## 决策记录
 
 - 2026-10-04 — 目录存储模块做成只依赖 `config` 的纯能力层 `studio.styles`，而不是放进 `workspace` — `db/legacy_styles.py` 和旧表导出在 `db` 层，`db` 不能 import `workspace`（分层规则）；纯能力层让 `db`、`workspace`、`agent`、`api` 都能用。
 - 2026-10-04 — 旧表导出放在 lifespan 里 `migrate()` 之前，迁移 0007 才删表 — 迁移里拿不到数据目录；导出失败则启动失败，迁移不会执行，数据不会丢。
 - 2026-10-04 — 风格会话复用 `workspaceless` 阶段标记，靠 `sessions.subject_id` 区分绑定目录模式 — 避免给 `StageDefinition` 协议加字段而改动全部阶段。
+- 2026-10-04 — T2：草稿读写只允许 `STYLE.md` 和 `references|exemplars/<普通文件名>`，路径上有符号链接一律拒绝；`import_style` 带 `overwrite` 参数供导入脚本「覆盖」模式用 — 草稿写入时就收紧比保存时才发现更安全，也不需要给导入脚本另开接口。
 - 2026-10-04 — 迁移后目录 id 沿用旧表 id，新建的用 `uuid4().hex` — 与旧表 `_new_id` 一致，免去对 `default_style_preset_id` 和项目记录的映射。
 
 ## 意外与发现

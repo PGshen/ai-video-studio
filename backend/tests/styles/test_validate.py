@@ -11,6 +11,7 @@ from studio.styles.validate import (
     MAX_FILES_PER_DIR,
     StyleFiles,
     parse_frontmatter,
+    set_frontmatter_fields,
     validate_style_files,
 )
 
@@ -155,3 +156,31 @@ class TestValidate:
         files = {"STYLE.md": MINIMAL}
         files.update({f"references/f{i}.md": "x" for i in range(MAX_FILES_PER_DIR + 1)})
         assert any("最多" in e for e in validate_style_files(files))
+
+
+class TestSetFrontmatterFields:
+    def test_replaces_existing_keys_and_keeps_the_rest(self) -> None:
+        out = set_frontmatter_fields(ENTRY, {"name": "新名字"})
+        assert parse_frontmatter(out) == {
+            "name": "新名字",
+            "description": "暖色纸张质感的双色风格",
+            "category": "概念传记",
+        }
+        assert out.endswith(ENTRY.split("---\n", 2)[2])
+
+    def test_appends_missing_keys_inside_the_block(self) -> None:
+        out = set_frontmatter_fields(MINIMAL + "正文\n", {"category": "科普"})
+        assert parse_frontmatter(out) == {"name": "n", "description": "d", "category": "科普"}
+        assert out.endswith("---\n正文\n")
+
+    def test_adds_a_block_when_there_is_none(self) -> None:
+        out = set_frontmatter_fields("# 标题\n", {"name": "n", "description": "d"})
+        assert parse_frontmatter(out) == {"name": "n", "description": "d"}
+        assert out.endswith("# 标题\n")
+
+    @pytest.mark.parametrize(
+        "value", ["带: 冒号", 'say "hi"', "back\\slash", " 首尾空格 ", "#井号"]
+    )
+    def test_values_round_trip_through_parse(self, value: str) -> None:
+        out = set_frontmatter_fields(MINIMAL, {"name": value})
+        assert parse_frontmatter(out) == {"name": value, "description": "d"}
