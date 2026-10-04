@@ -9,7 +9,7 @@
  * 一次 `final_render` 任务是什么"，拿到就直接采用——刷新页面后不用重新点
  * 一次"渲染成片"才能看到上一次的进度/成片。只在 `currentJobId` 还是
  * `null` 时采用这个结果，不覆盖用户在本次挂载期间刚点出来的新任务（这个
- * watcher 只应该跑一次生效，见下面的 `stop()`）。
+ * watcher 只应该生效一次，见下面的 `latestJobAdopted`）。
  * `useJobQuery` 的轮询间隔由 `composables/queries.ts::jobRefetchIntervalMs`
  * 决定：`queued`/`running` 时 1 秒一次，`done`/`failed` 后自动停止。
  */
@@ -36,12 +36,22 @@ const props = defineProps<{
 
 const currentJobId = ref<string | null>(null)
 
-const { data: latestJob } = useLatestJobQuery(() => props.projectId, RENDER_JOB_TYPE)
-const stopAdoptingLatestJob = watch(latestJob, (value) => {
-  if (value === undefined) return // still loading
-  if (currentJobId.value === null && value !== null) currentJobId.value = value.id
-  stopAdoptingLatestJob()
-})
+const { data: latestJob, isFetching: latestJobFetching } = useLatestJobQuery(
+  () => props.projectId,
+  RENDER_JOB_TYPE,
+)
+// 必须等这次挂载的请求结束再采用：切走再回来时 `data` 一上来就是缓存值（可能
+// 是过期的旧任务，且和新结果一致时 watcher 看不到任何变化），不能直接用。
+let latestJobAdopted = false
+watch(
+  [latestJob, latestJobFetching],
+  ([value, fetching]) => {
+    if (latestJobAdopted || value === undefined || fetching) return // still loading
+    latestJobAdopted = true
+    if (currentJobId.value === null && value !== null) currentJobId.value = value.id
+  },
+  { immediate: true },
+)
 
 const { data: job } = useJobQuery(() => props.projectId, currentJobId)
 const { data: project } = useProjectQuery(() => props.projectId)
