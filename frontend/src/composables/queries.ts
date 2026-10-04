@@ -444,6 +444,15 @@ export function usePatchProjectSettingsMutation(projectId: MaybeRefOrGetter<stri
 
 // ---- styles（磁盘目录 + 草稿）---------------------------------------------
 
+/** 视频类型选项来自后端注册表，进程生命周期内不变。 */
+export function useVideoKindsQuery() {
+  return useQuery({
+    queryKey: ['video-kinds'] as const,
+    queryFn: api.getVideoKinds,
+    staleTime: Infinity,
+  })
+}
+
 export function useStylesQuery() {
   return useQuery({ queryKey: queryKeys.styles(), queryFn: api.listStyles })
 }

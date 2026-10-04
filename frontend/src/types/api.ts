@@ -11,6 +11,48 @@ export interface ProjectCreate {
   idea_id?: string | null
   /** 风格库里的风格 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。 */
   style_preset_id?: string | null
+  /** 视频类型的三个配置字段：要么都给要么都不给（不给 = 知识讲解 Manim、有旁白、无配乐）。 */
+  engine?: Engine
+  narration?: boolean
+  music_source?: MusicSource
+}
+
+export type Engine = 'manim' | 'html'
+export type MusicSource = 'none' | 'synth' | 'import'
+export type VideoKind = 'explainer_manim' | 'explainer_html' | 'motion_reel' | 'music_video'
+
+/** 项目的视频类型（创建后只读）；`pipeline` 是该项目的阶段 id 顺序。 */
+export interface ProjectKindOut {
+  video_kind: VideoKind
+  engine: Engine
+  narration: boolean
+  music_source: MusicSource
+  pipeline: string[]
+}
+
+export interface PresetOut {
+  video_kind: VideoKind
+  label: string
+  description: string
+  music_choices: MusicSource[]
+  default: { engine: Engine; narration: boolean; music_source: MusicSource }
+}
+
+/** 8 种合法配置之一；`available=false` 表示阶段还没实现（`unavailable_reason` 说明原因）。 */
+export interface KindOptionOut {
+  engine: Engine
+  narration: boolean
+  music_source: MusicSource
+  video_kind: VideoKind
+  pipeline: string[]
+  available: boolean
+  unavailable_reason: string | null
+}
+
+/** `GET /api/video-kinds`。 */
+export interface VideoKindsOut {
+  presets: PresetOut[]
+  kinds: KindOptionOut[]
 }
 
 /** `GET /api/styles` 的一项（不含文件内容）。 */
@@ -54,7 +96,8 @@ export interface StageOut {
   stage: string
   status: string
   finalized_snapshot_id: string | null
-  based_on_snapshot_id: string | null
+  /** 定稿时各上游阶段的快照 id（`{上游阶段: 快照 id}`）；没有上游的阶段为空对象。 */
+  based_on: Record<string, string>
   finalized_at: string | null
 }
 
@@ -72,6 +115,7 @@ export interface ProjectOut {
   abandoned_at: string | null
   /** 后端由两个时间戳推导的项目状态。 */
   status: ProjectStatus
+  kind: ProjectKindOut
 }
 
 export interface ProjectDetailOut extends ProjectOut {

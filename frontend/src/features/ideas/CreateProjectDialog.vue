@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * 「创建项目」对话框（计划 M4 T9）：标题预填卡片标题，可以改；成功后跳到新项目的选题阶段。
+ * 「创建项目」对话框（计划 M4 T9）：标题预填卡片标题，可以改；成功后跳到新项目的当前阶段。
  * 创建成功后 `useCreateProjectMutation` 会让选题池和项目列表的查询失效（卡片上的项目数 +1）。
  */
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,10 +18,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import EffortSelect from '@/components/EffortSelect.vue'
 import StyleSelect from '@/components/StyleSelect.vue'
-import { useCreateProjectMutation, useStylesQuery } from '@/composables/queries'
+import VideoKindPicker from '@/components/VideoKindPicker.vue'
+import { useCreateProjectMutation, useStylesQuery, useVideoKindsQuery } from '@/composables/queries'
 import { DEFAULT_EFFORT, type Effort } from '@/composables/effortChoice'
 import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
-import type { IdeaOut } from '@/types/api'
+import { findKind, initialSelection } from '@/composables/videoKindChoice'
+import type { IdeaOut, MusicSource, VideoKind } from '@/types/api'
 
 const props = defineProps<{ idea: IdeaOut | null }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -29,6 +31,9 @@ const open = defineModel<boolean>('open', { default: false })
 const router = useRouter()
 const mutation = useCreateProjectMutation()
 const { data: stylePresets } = useStylesQuery()
+const { data: videoKinds, isError: kindsError } = useVideoKindsQuery()
+const videoKind = ref<VideoKind>('explainer_manim')
+const music = ref<MusicSource>('none')
 const title = ref('')
 const styleId = ref('')
 const effort = ref<Effort>(DEFAULT_EFFORT)
@@ -38,21 +43,44 @@ watch(open, (isOpen) => {
     title.value = props.idea?.title ?? ''
     styleId.value = initialStyleId(stylePresets.value ?? [])
     effort.value = DEFAULT_EFFORT
+    resetKind()
     mutation.reset()
   }
 })
 
+function resetKind(): void {
+  if (!videoKinds.value) return
+  const initial = initialSelection(videoKinds.value)
+  videoKind.value = initial.videoKind
+  music.value = initial.music
+}
+// 对话框打开时类型数据可能还没到：到了之后补上预选。
+watch(videoKinds, (data, old) => {
+  if (data && !old) resetKind()
+})
+
+const selectedKind = computed(() => {
+  const data = videoKinds.value
+  const preset = data?.presets.find((p) => p.video_kind === videoKind.value)
+  return data && preset ? findKind(data.kinds, preset, music.value) : undefined
+})
+const canSubmit = computed(() => selectedKind.value?.available === true)
+
 async function submit(): Promise<void> {
   const trimmed = title.value.trim()
-  if (!trimmed || !props.idea) return
+  const kind = selectedKind.value
+  if (!trimmed || !props.idea || !kind?.available) return
   const project = await mutation.mutateAsync({
     title: trimmed,
     idea_id: props.idea.id,
     style_preset_id: styleIdForRequest(styleId.value),
+    engine: kind.engine,
+    narration: kind.narration,
+    music_source: kind.music_source,
     settings: { effort: effort.value },
   })
   open.value = false
-  await router.push(`/projects/${project.id}/topic`)
+  await router.push(`/projects/${project.id}/${project.current_stage}`)
 }
 </script>
 
@@ -71,6 +99,20 @@ async function submit(): Promise<void> {
           id="create-project-title"
           v-model="title"
           @keydown.enter="submit"
+        />
+        <p
+          v-if="kindsError"
+          class="text-destructive mt-2 text-sm"
+          data-testid="video-kinds-error"
+        >
+          视频类型加载失败，暂时不能创建项目，请稍后重试。
+        </p>
+        <VideoKindPicker
+          v-else-if="videoKinds"
+          v-model:video-kind="videoKind"
+          v-model:music="music"
+          class="mt-2"
+          :data="videoKinds"
         />
         <StyleSelect
           id="create-project-style"
@@ -92,7 +134,7 @@ async function submit(): Promise<void> {
       </div>
       <DialogFooter>
         <Button
-          :disabled="!title.trim() || mutation.isPending.value"
+          :disabled="!title.trim() || !canSubmit || mutation.isPending.value"
           @click="submit"
         >
           {{ mutation.isPending.value ? '创建中…' : '创建项目' }}

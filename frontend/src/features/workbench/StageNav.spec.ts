@@ -28,7 +28,7 @@ function mountNav(collapsed = false) {
       currentStage: 'animation',
       collapsed,
       stages: [
-        { stage: 'topic', status: 'finalized', finalized_snapshot_id: null, based_on_snapshot_id: null, finalized_at: null },
+        { stage: 'topic', status: 'finalized', finalized_snapshot_id: null, based_on: {}, finalized_at: null },
       ],
     },
   })

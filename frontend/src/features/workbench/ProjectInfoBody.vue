@@ -12,6 +12,7 @@ import {
   useFileTreeQuery,
   useProjectQuery,
 } from '@/composables/queries'
+import { KIND_SUMMARY } from '@/composables/videoKindChoice'
 import { SCORE_DIMENSIONS } from '@/composables/ideaScores'
 import { findProjectIdea, parseStyleHeader, styleFileGroups } from './projectInfo'
 import { STAGE_TITLES, stageStatusStyle } from './stageStatus'
@@ -55,6 +56,12 @@ function formatTime(iso: string): string {
           标题
         </dt>
         <dd>{{ project.title }}</dd>
+        <dt class="text-muted-foreground">
+          视频类型
+        </dt>
+        <dd data-testid="project-info-kind">
+          {{ KIND_SUMMARY(project.kind) }}
+        </dd>
         <dt class="text-muted-foreground">
           当前阶段
         </dt>
