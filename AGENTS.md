@@ -18,8 +18,9 @@
 1. 读本文件。
 2. 读 [docs/SOP.md](docs/SOP.md)，确认当前所处的 SOP 阶段和你的职责。
 3. 打开 `docs/plans/active/` 中的计划，先读 **「进度」** 和 **「下一步」** 两节。
-4. 运行 `make check`，确认基线是绿的。基线不绿时先处理这个问题，或者按升级条件停下来问人。
-5. 从计划的「下一步」继续。
+4. 读 [docs/plans/TODO.md](docs/plans/TODO.md)，了解待办和优先级。`active/` 中没有计划时，从这里挑下一件事，和负责人确认后再开工。
+5. 运行 `make check`，确认基线是绿的。基线不绿时先处理这个问题，或者按升级条件停下来问人。
+6. 从计划的「下一步」继续；新发现的、不属于当前计划的事项记进 TODO。
 
 ## 常用命令
 
@@ -40,6 +41,7 @@
 |---|---|
 | 工作流程、关口、升级条件 | [docs/SOP.md](docs/SOP.md) |
 | 当前任务和交接信息 | `docs/plans/active/` |
+| 待办（还没写成计划的工作） | [docs/plans/TODO.md](docs/plans/TODO.md) |
 | 过去为什么这么决定 | [docs/decisions/](docs/decisions/) |
 | 外部 SDK 和库的已验证行为 | [docs/references/](docs/references/README.md) |
 | 旧项目中可迁移的资产 | [docs/references/legacy-assets.md](docs/references/legacy-assets.md) |
