@@ -18,6 +18,7 @@ setup:
 	git config core.hooksPath .githooks
 ifneq ($(HAS_BACKEND),)
 	cd backend && $(UV) sync
+	cd backend && $(UV) run playwright install chromium
 endif
 ifneq ($(HAS_FRONTEND),)
 	cd frontend && $(PNPM) install
