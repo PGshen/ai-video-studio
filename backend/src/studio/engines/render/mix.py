@@ -36,7 +36,8 @@ def build_mix_command(
     video: Path, tracks: Sequence[AudioTrack], duration: float, output: Path
 ) -> list[str]:
     """ffmpeg 参数（含可执行文件名）。每条旁白轨 `adelay` 到自己的起点，`amix` 不归一化，
-    `apad` + `-t` 把总时长钉在 `duration`；没有旁白轨时补一条静音 AAC 轨，成片总有音轨。"""
+    `apad=whole_dur` + `atrim` + `-t` 把总时长钉在 `duration`；没有旁白轨时补一条静音 AAC 轨，
+    成片总有音轨。"""
     head = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video)]
     tail = [
         "-c:v",
@@ -69,9 +70,13 @@ def build_mix_command(
         millis = round(track.start * 1000)
         delayed.append(f"[{index + 1}:a]adelay={millis}|{millis}[a{index}]")
     labels = "".join(f"[a{index}]" for index in range(len(tracks)))
+    # 补静音到至少 `duration`、再裁到 `duration`：两端都有限。裸 `apad` 是无限流，遇上
+    # 引擎自己编码的视频时 ffmpeg 会一直写下去，`-t` 也拦不住（2B T8 实测）。
+    span = _duration_arg(duration)
     graph = (
         ";".join(delayed)
-        + f";{labels}amix=inputs={len(tracks)}:normalize=0:duration=longest,apad[aout]"
+        + f";{labels}amix=inputs={len(tracks)}:normalize=0:duration=longest,"
+        + f"apad=whole_dur={span},atrim=end={span}[aout]"
     )
     return [*head, *inputs, "-filter_complex", graph, "-map", "0:v", "-map", "[aout]", *tail]
 

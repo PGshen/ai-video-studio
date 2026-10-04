@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -146,3 +148,50 @@ async def test_mix_failure_raises_and_leaves_no_output(tmp_path: Path) -> None:
     assert "missing.mp3" in str(info.value)
     assert not out.exists()
     assert not list(tmp_path.glob("*.tmp*"))
+
+
+def test_audio_graph_is_finite_so_ffmpeg_cannot_spin_on_an_endless_pad() -> None:
+    cmd = build_mix_command(VIDEO, [AudioTrack(Path("/a/1.mp3"), 0.0)], 3.0, OUT)
+    graph = cmd[cmd.index("-filter_complex") + 1]
+    assert "apad=whole_dur=3" in graph
+    assert "atrim=end=3" in graph
+    assert not re.search(r"apad(?!=)", graph)  # a bare `apad` pads forever
+
+
+@pytest.mark.slow
+async def test_mix_terminates_when_the_narration_exactly_fills_the_timeline(tmp_path: Path) -> None:
+    """回归：旁白总长恰好等于视频时长（真实成片的常态）时，无限 `apad` 会让 ffmpeg 一直写下去。
+
+    视频用引擎自己的编码路径生成（`render_silent_video`），它的时间戳形态正是触发条件。
+    """
+    from fixtures.html_engine import fakes
+    from studio.engines.render.html.video import render_silent_video
+
+    class Frames:
+        errors: list[str] = []
+        poisoned = False
+
+        async def render_jpeg(self, t: float) -> bytes:
+            return fakes.jpeg()
+
+        async def render_hash(self, t: float) -> str:
+            return ""
+
+        async def set_timeline(self, timeline: object) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+    video, a1, a2, out = (tmp_path / n for n in ("v.mp4", "a1.wav", "a2.wav", "out.mp4"))
+    await render_silent_video(Frames(), 3.0, video, fps=30)
+    for path, seconds in ((a1, 1.4), (a2, 1.6)):
+        _ffmpeg(
+            "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}",
+            "-ar", "24000", "-ac", "1", str(path),
+        )  # fmt: skip
+    await asyncio.wait_for(
+        mix_final(video, [AudioTrack(a1, 0.0), AudioTrack(a2, 1.4)], 3.0, out), timeout=30
+    )
+    assert abs(float(_probe(out)["format"]["duration"]) - 3.0) <= 0.1
+    assert out.stat().st_size < 5_000_000
