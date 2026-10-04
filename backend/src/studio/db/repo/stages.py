@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, select, text
 from sqlalchemy.orm import Session
 
 from studio.db.engine import session_scope
@@ -68,7 +68,7 @@ def list_stages(engine: Engine, project_id: str) -> list[StageValue]:
         rows = db.scalars(
             select(ProjectStage)
             .where(ProjectStage.project_id == project_id)
-            .order_by(ProjectStage.created_at.asc())
+            .order_by(ProjectStage.created_at.asc(), text("rowid"))
         ).all()
         return [_to_value(row) for row in rows]
 

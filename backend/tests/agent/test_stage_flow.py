@@ -210,7 +210,7 @@ class TestLegacyProjectUpgrade:
         assert animation.status == "active"
         assert animation.based_on == {"narrative": _stage(env, "narrative").finalized_snapshot_id}
         changes = upstream_changes(
-            env.engine, env.blobs, env.project_id, env.registry.get("narrative")
+            env.engine, env.blobs, env.project_id, env.registry.get("narrative"), env.registry
         )
         assert [c.stage for c in changes] == ["topic"]
         assert [m.path for m in changes[0].diff.modified] == ["topic/brief.md"]
@@ -422,13 +422,13 @@ class TestMultiUpstream:
 
         reel.edit_and_finalize("concept", "concept/idea.md", "c2")
         changes = upstream_changes(
-            env.engine, env.blobs, reel.project_id, reel.registry.get("music")
+            env.engine, env.blobs, reel.project_id, reel.registry.get("music"), reel.registry
         )
         assert [c.stage for c in changes] == ["concept"]
         assert [m.path for m in changes[0].diff.modified] == ["concept/idea.md"]
 
         reel.edit_and_finalize("beatsheet", "beatsheet/beats.json", "b2")
         changes = upstream_changes(
-            env.engine, env.blobs, reel.project_id, reel.registry.get("music")
+            env.engine, env.blobs, reel.project_id, reel.registry.get("music"), reel.registry
         )
         assert [c.stage for c in changes] == ["concept", "beatsheet"]

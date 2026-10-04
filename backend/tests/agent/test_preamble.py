@@ -18,10 +18,12 @@ from studio.agent.preamble import _narrative_scene_summary as narrative_scene_su
 from studio.agent.preamble import _upstream_changes as upstream_changes
 from studio.agent.stage import StageRegistry
 from studio.agent.stage_flow import finalize
+from studio.db.repo.stages import create_stage, update_stage
 from studio.stages.animation import STAGE as ANIMATION_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
-from studio.workspace import BlobStore, ModifiedFile, WorkspaceDiff
+from studio.workspace import BlobStore, ModifiedFile, WorkspaceDiff, create_snapshot
+from studio.workspace.scope import WriteScope
 
 
 class NarrativeProjectEnv(Protocol):
@@ -227,7 +229,7 @@ def test_gather_uses_scene_summary_only_for_narrative_edge(
     )
     finalize(env.engine, env.blobs, registry, env.project_id, "narrative")
 
-    changes = upstream_changes(env.engine, env.blobs, env.project_id, ANIMATION_STAGE)
+    changes = upstream_changes(env.engine, env.blobs, env.project_id, ANIMATION_STAGE, registry)
     assert [c.scene_summary for c in changes] == [["- 新增镜头 s-b"]]
     assert changes[0].diff.modified  # 文件级 diff 仍照常计算
 
@@ -235,6 +237,73 @@ def test_gather_uses_scene_summary_only_for_narrative_edge(
     brief = env.workdir / "topic" / "brief.md"
     brief.write_text(brief.read_text(encoding="utf-8") + "\n新增一段\n", encoding="utf-8")
     finalize(env.engine, env.blobs, registry, env.project_id, "topic")
-    topic_changes = upstream_changes(env.engine, env.blobs, env.project_id, NARRATIVE_STAGE)
+    topic_changes = upstream_changes(
+        env.engine, env.blobs, env.project_id, NARRATIVE_STAGE, registry
+    )
     assert [c.stage for c in topic_changes] == ["topic"]
     assert topic_changes[0].scene_summary is None
+
+
+class _FakeStage:
+    allow_web = False
+    workspaceless = False
+
+    def __init__(self, name: str, dirs: list[str], reads: list[str] | None = None) -> None:
+        self.name = name
+        self._dirs = dirs
+        self._reads = reads or []
+
+    def prepare_turn(self, workdir: Path) -> None:
+        return None
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        return []
+
+    def system_prompt(self) -> str:
+        return ""
+
+    def tools(self) -> list:
+        return []
+
+    def write_scope(self) -> WriteScope:
+        return WriteScope(writable=[], tool_managed=[])
+
+    def reads(self) -> list[str]:
+        return list(self._reads)
+
+    def artifact_dirs(self) -> list[str]:
+        return list(self._dirs)
+
+    def status_summary(self, workdir: Path) -> str:
+        return ""
+
+
+def test_upstream_changes_slice_by_artifact_dirs_not_stage_name(
+    narrative_project: NarrativeProjectEnv,
+) -> None:
+    env = narrative_project
+    upstream = _FakeStage("visual", ["animation/"])
+    downstream = _FakeStage("animation_html", [], reads=["visual"])
+    registry = StageRegistry()
+    registry.register(upstream)
+    registry.register(downstream)
+
+    (env.workdir / "animation").mkdir(exist_ok=True)
+    (env.workdir / "visual").mkdir(exist_ok=True)
+    (env.workdir / "animation" / "a.txt").write_text("old", encoding="utf-8")
+    (env.workdir / "visual" / "note.txt").write_text("old", encoding="utf-8")
+    old_snap = create_snapshot(env.engine, env.blobs, env.project_id, "turn")
+    (env.workdir / "animation" / "a.txt").write_text("new", encoding="utf-8")
+    (env.workdir / "visual" / "note.txt").write_text("new", encoding="utf-8")
+    new_snap = create_snapshot(env.engine, env.blobs, env.project_id, "turn")
+
+    create_stage(env.engine, project_id=env.project_id, stage="visual", status="finalized")
+    update_stage(env.engine, env.project_id, "visual", finalized_snapshot_id=new_snap.id)
+    create_stage(env.engine, project_id=env.project_id, stage="animation_html", status="active")
+    update_stage(env.engine, env.project_id, "animation_html", based_on={"visual": old_snap.id})
+
+    changes = upstream_changes(env.engine, env.blobs, env.project_id, downstream, registry)
+
+    assert [c.stage for c in changes] == ["visual"]
+    assert [m.path for m in changes[0].diff.modified] == ["animation/a.txt"]
+    assert changes[0].diff.added == [] and changes[0].diff.removed == []

@@ -29,7 +29,7 @@ from typing import Any
 
 from sqlalchemy import Engine
 
-from studio.agent.stage import StageDefinition
+from studio.agent.stage import StageDefinition, StageRegistry
 from studio.db.repo.snapshots import get_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
 from studio.db.repo.turns import TurnValue, list_turn_events
@@ -242,7 +242,11 @@ def _narrative_scene_summary(
 
 
 def _upstream_changes(
-    engine: Engine, blobs: BlobStore, project_id: str, stage: StageDefinition
+    engine: Engine,
+    blobs: BlobStore,
+    project_id: str,
+    stage: StageDefinition,
+    registry: StageRegistry,
 ) -> list[UpstreamChange]:
     """每个上游各自对比：`based_on` 里该上游的旧版本 vs 它当前的定稿；没有记录旧版本的上游跳过。"""
     current = get_stage(engine, project_id, stage.name)
@@ -260,9 +264,11 @@ def _upstream_changes(
         finalized = get_snapshot(engine, row.finalized_snapshot_id or "")
         if based_on is None or finalized is None:
             continue
-        prefix = f"{name}/"
-        old = {p: h for p, h in based_on.manifest.items() if p.startswith(prefix)}
-        new = {p: h for p, h in finalized.manifest.items() if p.startswith(prefix)}
+        # Same file set the stale check compares: the upstream's artifact dirs.
+        dirs = registry.get(name).artifact_dirs() if registry.has(name) else [name]
+        prefixes = tuple(f"{directory.rstrip('/')}/" for directory in dirs)
+        old = {p: h for p, h in based_on.manifest.items() if p.startswith(prefixes)}
+        new = {p: h for p, h in finalized.manifest.items() if p.startswith(prefixes)}
         scene_summary = _narrative_scene_summary(old, new, blobs) if name == "narrative" else None
         changes.append(
             UpstreamChange(stage=name, diff=diff(old, new, blobs), scene_summary=scene_summary)
@@ -314,6 +320,7 @@ def gather_preamble_inputs(
     workdir: Path,
     project_id: str,
     stage: StageDefinition,
+    registry: StageRegistry,
     previous: TurnValue | None,
     start_snapshot_id: str,
 ) -> PreambleInputs:
@@ -322,7 +329,7 @@ def gather_preamble_inputs(
     """
     return PreambleInputs(
         user_edits=_user_edits(engine, blobs, project_id, previous, start_snapshot_id),
-        upstream_changes=_upstream_changes(engine, blobs, project_id, stage),
+        upstream_changes=_upstream_changes(engine, blobs, project_id, stage, registry),
         restored_paths=_restored_paths(engine, previous),
         rollback=_rollback_notice(engine, blobs, project_id, previous),
         status_summary=stage.status_summary(workdir),

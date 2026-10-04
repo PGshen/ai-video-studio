@@ -52,3 +52,20 @@ def test_update_stage_replaces_based_on_as_a_whole(migrated_engine: Engine) -> N
 
     music = get_stage(migrated_engine, "p1", "music")
     assert music is not None and music.based_on == {"concept": "s3"}
+
+
+def test_list_stages_keeps_insertion_order_for_identical_created_at(
+    migrated_engine: Engine,
+) -> None:
+    from datetime import UTC, datetime
+
+    from studio.db.engine import session_scope
+    from studio.db.models import ProjectStage
+
+    same = datetime(2026, 1, 1, tzinfo=UTC)
+    names = ["z-last-alpha", "a-first-alpha", "m-middle", "b-second"]
+    with session_scope(migrated_engine) as db:
+        for name in names:
+            db.add(ProjectStage(project_id="p1", stage=name, status="locked", created_at=same))
+
+    assert [s.stage for s in list_stages(migrated_engine, "p1")] == names

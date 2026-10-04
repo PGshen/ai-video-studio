@@ -32,7 +32,7 @@ from studio.db.repo.profiles import get_model_profile, seed_model_profiles
 from studio.db.repo.projects import update_project_settings
 from studio.db.repo.sessions import create_session, get_session
 from studio.db.repo.snapshots import get_snapshot, latest_snapshot, list_snapshots
-from studio.db.repo.stages import get_stage
+from studio.db.repo.stages import create_stage, get_stage
 from studio.db.repo.turns import (
     NEVER_STARTED_ERROR,
     TurnValue,
@@ -1249,3 +1249,111 @@ class TestReviewFixes:
 
 def _never_stage() -> Any:
     raise AssertionError("stage missing")
+
+
+class _DelegatingStage:
+    """Wraps a registered stage, overriding `prepare_turn` and optionally `reads`/name."""
+
+    allow_web = False
+    workspaceless = False
+
+    def __init__(self, base: Any, *, name: str | None = None, reads: list[str] | None = None):
+        self._base = base
+        self.name = name or base.name
+        self._reads = reads
+        self.calls: list[bool] = []
+        self.prepare_error: Exception | None = None
+
+    def prepare_turn(self, workdir: Path) -> None:
+        self.calls.append((workdir / "upstream" / "topic" / "brief.md").exists())
+        if self.prepare_error is not None:
+            raise self.prepare_error
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        return []
+
+    def system_prompt(self) -> str:
+        return "p"
+
+    def tools(self) -> list[ToolSpec]:
+        return []
+
+    def write_scope(self) -> WriteScope:
+        return self._base.write_scope()
+
+    def reads(self) -> list[str]:
+        return self._base.reads() if self._reads is None else list(self._reads)
+
+    def artifact_dirs(self) -> list[str]:
+        return self._base.artifact_dirs()
+
+    def status_summary(self, workdir: Path) -> str:
+        return ""
+
+
+class TestPrepareTurn:
+    async def test_called_once_per_turn_after_upstream_is_materialized(self, h: Harness) -> None:
+        h.env.write("topic/brief.md", "选题\n")
+        finalize(h.env.engine, h.env.blobs, h.env.registry, h.env.project_id, "topic")
+        stage = _DelegatingStage(h.env.registry.get("narrative"))
+        h.env.registry.register(stage)
+        session_id = h.session(stage="narrative")
+
+        await h.run(session_id, [fake.say("a")])
+        assert stage.calls == [True]
+        await h.run(session_id, [fake.say("b")])
+        assert stage.calls == [True, True]
+
+    async def test_failure_fails_the_turn_with_stage_name_and_message(self, h: Harness) -> None:
+        stage = _DelegatingStage(h.env.registry.get("topic"))
+        stage.prepare_error = ValueError("素材目录损坏")
+        h.env.registry.register(stage)
+        session_id = h.session(stage="topic")
+
+        turn = await h.run(session_id, [fake.say("a")])
+
+        assert turn.status == "failed"
+        [error] = [e for e in list_events(h.env.engine, session_id) if e.type == "error"]
+        assert "topic" in error.payload["message"]
+        assert "素材目录损坏" in error.payload["message"]
+        assert h.contexts == []
+
+    async def test_workspaceless_stage_does_not_call_prepare_turn(self, h: Harness) -> None:
+        stage = _DelegatingStage(h.env.registry.get("topic"), name="brainstorm")
+        stage.workspaceless = True
+        h.env.registry.register(stage)
+        profile = get_model_profile(h.env.engine, "fake")
+        assert profile is not None
+        session_id = create_session(
+            h.env.engine,
+            project_id=None,
+            stage="brainstorm",
+            model_profile_id=profile.id,
+            runtime="fake",
+        ).id
+
+        turn = await h.run(session_id, [fake.say("a")])
+
+        assert turn.status == "done"
+        assert stage.calls == []
+        assert h.contexts[-1].tool_context().upstream_stages == ()
+
+    async def test_upstream_stages_follow_the_project_pipeline(self, h: Harness) -> None:
+        music = _DelegatingStage(
+            h.env.registry.get("narrative"),
+            name="music",
+            reads=["concept", "narrative", "beatsheet"],
+        )
+        h.env.registry.register(music)
+        project_id = h.env.new_project("讲解加配乐")
+        update_project_settings(
+            h.env.engine,
+            project_id,
+            {"pipeline": ["topic", "narrative", "music", "animation"]},
+        )
+        create_stage(h.env.engine, project_id=project_id, stage="music", status="active")
+        session_id = h.session(stage="music", project_id=project_id)
+
+        await h.run(session_id, [fake.say("x")])
+
+        assert h.contexts[-1].tool_context().upstream_stages == ("narrative",)
