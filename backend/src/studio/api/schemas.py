@@ -429,3 +429,33 @@ class KindOptionOut(BaseModel):
 class VideoKindsOut(BaseModel):
     presets: list[PresetOut]
     kinds: list[KindOptionOut]
+
+
+class HtmlPreviewBeat(BaseModel):
+    start: float
+    end: float
+    cue_text: str
+
+
+class HtmlPreviewSection(BaseModel):
+    id: str
+    label: str
+    start: float
+    end: float
+    beats: list[HtmlPreviewBeat]
+
+
+class HtmlPreviewAudio(BaseModel):
+    section_id: str
+    url: str
+    """叙事配音文件的下载地址（工作区文件端点），带 `audio_hash` 作缓存标识。"""
+
+
+class HtmlPreviewMeta(BaseModel):
+    """`GET .../animation/html-preview/meta`：实时预览画布需要的全部时间与配音信息。"""
+
+    hash: str
+    """覆盖镜头、`lib`、`global`、`assets` 与时间轴；变了才需要刷新 iframe。"""
+    duration: float
+    sections: list[HtmlPreviewSection]
+    audio: list[HtmlPreviewAudio]

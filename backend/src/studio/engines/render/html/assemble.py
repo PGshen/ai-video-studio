@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from studio.engines.render.html.assets import list_assets
 
@@ -171,3 +171,41 @@ def page_hash(workdir: Path, timeline: Mapping[str, Any]) -> str:
             digest.update(path.read_bytes())
         digest.update(b"|")
     return digest.hexdigest()
+
+
+_CONTENT_TYPES: dict[str, str] = {
+    ".woff2": "font/woff2",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ServedFile:
+    body: bytes
+    content_type: str
+
+
+def serve_page_path(page: AssembledPage, path: str) -> ServedFile | None:
+    """页面里一个相对 URL 路径对应的内容；不在页面里的一律返回 `None`（调用方回 404）。
+
+    浏览器层（进程内 `page.route`）和预览端点（HTTP）共用这一处：路径先解码，再只在
+    `AssembledPage` 的页面、脚本、路由表里查，永远不按路径去碰磁盘。
+    """
+    path = unquote(path.split("?", 1)[0])
+    if path in ("", "index.html"):
+        return ServedFile(page.html.encode("utf-8"), "text/html; charset=utf-8")
+    if path.startswith("scripts/"):
+        source = page.scripts.get(path[len("scripts/") :])
+        if source is None:
+            return None
+        return ServedFile(source.encode("utf-8"), "text/javascript; charset=utf-8")
+    file = page.routes.get(path)
+    if file is None or not file.is_file():
+        return None
+    return ServedFile(
+        file.read_bytes(), _CONTENT_TYPES.get(file.suffix.lower(), "application/octet-stream")
+    )

@@ -159,3 +159,42 @@ def test_style_font_names_with_quotes_cannot_break_the_css(tmp_path: Path) -> No
     _write(tmp_path, "style/fonts/it's.woff2", "x")
     html = assemble(_project(tmp_path), TIMELINE).html
     assert "font-family:'it\\'s'" in html
+
+
+# ---- serve_page_path：浏览器层与预览端点共用的路径查表 -------------------------------
+
+
+def test_serve_page_path_returns_index_scripts_fonts_and_assets(tmp_path: Path) -> None:
+    from studio.engines.render.html.assemble import serve_page_path
+
+    workdir = _project(tmp_path)
+    _write(workdir, "animation/assets/logo.svg", "<svg/>")
+    page = assemble(workdir, TIMELINE)
+
+    html = serve_page_path(page, "")
+    assert html is not None and html.content_type.startswith("text/html")
+    assert serve_page_path(page, "index.html") == html
+
+    script = serve_page_path(page, "scripts/studio-runtime.js")
+    assert script is not None and script.content_type.startswith("text/javascript")
+    nested = serve_page_path(page, "scripts/animation/lib/a.js")
+    assert nested is not None and b"LIB-A" in nested.body
+
+    font = serve_page_path(page, "fonts/anton.woff2")
+    assert font is not None and font.content_type == "font/woff2" and font.body[:4] == b"wOF2"
+    asset = serve_page_path(page, "assets/logo.svg")
+    assert asset is not None and asset.content_type == "image/svg+xml"
+
+
+def test_serve_page_path_decodes_names_and_rejects_anything_not_in_the_page(
+    tmp_path: Path,
+) -> None:
+    from studio.engines.render.html.assemble import serve_page_path
+
+    workdir = _project(tmp_path)
+    _write(workdir, "animation/assets/my logo.svg", "<svg/>")
+    page = assemble(workdir, TIMELINE)
+
+    assert serve_page_path(page, "assets/my%20logo.svg") is not None
+    for bad in ("../x", "%2e%2e/x", "scripts/../../x", "/etc/passwd", "assets/nope.svg", "fonts/x"):
+        assert serve_page_path(page, bad) is None, bad

@@ -54,7 +54,8 @@ async def test_html_project_can_queue_a_render_job(api_env: ApiEnv) -> None:
 
 async def test_html_project_with_locked_animation_stage_cannot_render(api_env: ApiEnv) -> None:
     created = await api_env.client.post(
-        "/api/projects", json={"title": "HTML", "video_kind": "explainer_html"}
+        "/api/projects",
+        json={"title": "HTML", "engine": "html", "narration": True, "music_source": "none"},
     )
     assert created.status_code == 201, created.text
     response = await api_env.client.post(f"/api/projects/{created.json()['id']}/render")
