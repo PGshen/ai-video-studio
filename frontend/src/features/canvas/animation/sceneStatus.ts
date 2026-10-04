@@ -22,8 +22,9 @@ export interface SceneStatus {
   renderPreview: SceneCheckOut | null
 }
 
-export function scenePath(sceneId: string): string {
-  return `animation/scenes/${sceneId}.py`
+/** 镜头脚本路径；Manim 是 `.py`（默认），HTML 引擎是 `.js`。 */
+export function scenePath(sceneId: string, extension: 'py' | 'js' = 'py'): string {
+  return `animation/scenes/${sceneId}.${extension}`
 }
 
 /**
@@ -31,15 +32,17 @@ export function scenePath(sceneId: string): string {
  * @param existingPaths 当前工作区文件树里的全部路径（`FileEntry.path`）。
  * @param checks `useSceneChecksQuery` 拉到的读模型；未传或还没拉到时全部
  *   镜头的 `validateScenes`/`renderPreview` 都是 `null`。
+ * @param extension 镜头脚本扩展名，HTML 引擎传 `'js'`。
  */
 export function computeSceneStatuses(
   sceneIds: readonly string[],
   existingPaths: readonly string[],
   checks?: SceneChecksResponse['scenes'],
+  extension: 'py' | 'js' = 'py',
 ): SceneStatus[] {
   const known = new Set(existingPaths)
   return sceneIds.map((id) => {
-    const path = scenePath(id)
+    const path = scenePath(id, extension)
     const check: SceneChecksOut | undefined = checks?.[id]
     return {
       id,

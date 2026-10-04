@@ -1,0 +1,204 @@
+import { effectScope } from 'vue'
+import { describe, expect, it } from 'vitest'
+import type { HtmlPreviewMeta } from '@/types/api'
+import { useHtmlPlayback, type PlaybackAudio } from './useHtmlPlayback'
+
+class FakeAudio implements PlaybackAudio {
+  src = ''
+  currentTime = 0
+  paused = true
+  playRejects = false
+  plays = 0
+  private listeners: Record<string, Array<() => void>> = {}
+  addEventListener(type: string, fn: () => void): void {
+    ;(this.listeners[type] ??= []).push(fn)
+  }
+  removeEventListener(type: string, fn: () => void): void {
+    this.listeners[type] = (this.listeners[type] ?? []).filter((f) => f !== fn)
+  }
+  play(): Promise<void> {
+    this.plays += 1
+    if (this.playRejects) return Promise.reject(new Error('NotAllowedError'))
+    this.paused = false
+    return Promise.resolve()
+  }
+  pause(): void {
+    this.paused = true
+  }
+  emit(type: string): void {
+    for (const fn of this.listeners[type] ?? []) fn()
+  }
+}
+
+const META: HtmlPreviewMeta = {
+  hash: 'h',
+  duration: 6,
+  sections: [
+    { id: 'a', label: 'A', start: 0, end: 2, beats: [] },
+    { id: 'b', label: 'B', start: 2, end: 5, beats: [] },
+    { id: 'c', label: 'C', start: 5, end: 6, beats: [] },
+  ],
+  audio: [
+    { section_id: 'a', url: '/audio/a.wav' },
+    { section_id: 'c', url: '/audio/c.wav' },
+  ],
+}
+
+function setup(meta: HtmlPreviewMeta | null = META) {
+  const audio = new FakeAudio()
+  const seeks: number[] = []
+  let frame: ((ms: number) => void) | null = null
+  let now = 0
+  const scope = effectScope()
+  const playback = scope.run(() =>
+    useHtmlPlayback({
+      meta: () => meta ?? undefined,
+      onSeek: (t) => seeks.push(t),
+      createAudio: () => audio,
+      requestFrame: (cb) => {
+        frame = cb
+        return 1
+      },
+      cancelFrame: () => {
+        frame = null
+      },
+    }),
+  )!
+  /** Advance the wall clock by `seconds` and run one animation frame. */
+  const tick = (seconds: number): void => {
+    now += seconds * 1000
+    const cb = frame
+    frame = null
+    cb?.(now)
+  }
+  const scheduled = (): boolean => frame !== null
+  return { playback, audio, seeks, tick, scheduled, scope }
+}
+
+async function started(h: ReturnType<typeof setup>): Promise<void> {
+  h.playback.toggle()
+  await Promise.resolve()
+  h.tick(0) // first frame only records the wall-clock origin
+}
+
+describe('useHtmlPlayback', () => {
+  it('plays the first section from its audio and follows audio.currentTime', async () => {
+    const h = setup()
+    await started(h)
+    expect(h.playback.playing.value).toBe(true)
+    expect(h.audio.src).toContain('/audio/a.wav')
+    h.audio.currentTime = 1
+    h.tick(0.016)
+    expect(h.playback.t.value).toBe(1)
+    expect(h.seeks.at(-1)).toBe(1)
+  })
+
+  it('falls back to wall-clock time for a section without audio', async () => {
+    const h = setup()
+    h.playback.seekTo(2.5) // section b has no audio
+    h.playback.toggle()
+    await Promise.resolve()
+    h.tick(0)
+    h.tick(0.5)
+    expect(h.playback.t.value).toBeCloseTo(3.0)
+    expect(h.audio.plays).toBe(0)
+  })
+
+  it('moves to the next section when audio ends and loads its audio', async () => {
+    const h = setup()
+    await started(h)
+    h.audio.emit('ended')
+    expect(h.playback.t.value).toBe(2) // section b starts at 2 (no audio: wall clock)
+    h.audio.currentTime = 0
+    h.playback.seekTo(5)
+    expect(h.audio.src).toContain('/audio/c.wav')
+  })
+
+  it('stops at the very end and rewinds on the next play', async () => {
+    const h = setup()
+    h.playback.seekTo(5.2)
+    h.playback.toggle()
+    await Promise.resolve()
+    h.audio.emit('ended')
+    expect(h.playback.playing.value).toBe(false)
+    expect(h.playback.t.value).toBe(6)
+    expect(h.scheduled()).toBe(false)
+    h.playback.toggle()
+    await Promise.resolve()
+    expect(h.playback.t.value).toBe(0)
+    expect(h.playback.playing.value).toBe(true)
+  })
+
+  it('loops the current section: past its end it goes back to the start and restarts audio', async () => {
+    const h = setup()
+    h.playback.setLoop(true)
+    await started(h)
+    h.audio.currentTime = 2
+    h.tick(0.016) // audio is at the section end
+    expect(h.playback.t.value).toBe(0)
+    expect(h.audio.currentTime).toBe(0)
+    expect(h.playback.playing.value).toBe(true)
+  })
+
+  it('seeking while paused only updates the time and the page', () => {
+    const h = setup()
+    h.playback.seekTo(3)
+    expect(h.playback.t.value).toBe(3)
+    expect(h.playback.currentIndex.value).toBe(1)
+    expect(h.seeks).toEqual([3])
+    expect(h.audio.plays).toBe(0)
+  })
+
+  it('seeking while playing restarts from the new section audio at the right offset', async () => {
+    const h = setup()
+    await started(h)
+    h.playback.seekTo(5.5)
+    await Promise.resolve()
+    expect(h.audio.src).toContain('/audio/c.wav')
+    expect(h.audio.currentTime).toBeCloseTo(0.5)
+  })
+
+  it('pausing stops the audio and the frame loop', async () => {
+    const h = setup()
+    await started(h)
+    h.playback.toggle()
+    expect(h.playback.playing.value).toBe(false)
+    expect(h.audio.paused).toBe(true)
+    expect(h.scheduled()).toBe(false)
+  })
+
+  it('keeps playing on the wall clock when the browser refuses to play audio', async () => {
+    const h = setup()
+    h.audio.playRejects = true
+    h.playback.toggle()
+    await Promise.resolve()
+    await Promise.resolve()
+    h.tick(0)
+    h.tick(0.5)
+    expect(h.playback.playing.value).toBe(true)
+    expect(h.playback.t.value).toBeCloseTo(0.5)
+  })
+
+  it('does nothing before the meta is available', () => {
+    const h = setup(null)
+    h.playback.toggle()
+    expect(h.playback.playing.value).toBe(false)
+    h.playback.seekTo(1)
+    expect(h.seeks).toEqual([])
+  })
+
+  it('jumpToSection seeks to the section start', () => {
+    const h = setup()
+    h.playback.jumpToSection(2)
+    expect(h.playback.t.value).toBe(5)
+  })
+
+  it('stops everything when the scope is disposed', async () => {
+    const h = setup()
+    await started(h)
+    h.scope.stop()
+    expect(h.audio.paused).toBe(true)
+    expect(h.scheduled()).toBe(false)
+  })
+})
+

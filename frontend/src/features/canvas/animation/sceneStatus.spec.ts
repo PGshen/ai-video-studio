@@ -13,6 +13,15 @@ describe('scenePath', () => {
   })
 })
 
+describe('HTML 引擎的镜头文件是 .js', () => {
+  it('scenePath 与 computeSceneStatuses 接受扩展名，默认仍是 .py', () => {
+    expect(scenePath('s-hook', 'js')).toBe('animation/scenes/s-hook.js')
+    const [status] = computeSceneStatuses(['s-hook'], ['animation/scenes/s-hook.js'], undefined, 'js')
+    expect(status).toMatchObject({ path: 'animation/scenes/s-hook.js', exists: true })
+    expect(computeSceneStatuses(['s-hook'], ['animation/scenes/s-hook.js'])[0]?.exists).toBe(false)
+  })
+})
+
 describe('computeSceneStatuses', () => {
   it('按叙事顺序标出每个镜头代码是否存在，没有检查数据时留 null（TD-33）', () => {
     const result = computeSceneStatuses(
