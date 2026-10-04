@@ -255,6 +255,20 @@ describe('增删文件', () => {
     expect(draft.files.value).toEqual(['STYLE.md'])
     expect(draft.activePath.value).toBe('STYLE.md')
   })
+
+  it('刚敲的字还在防抖里时删另一个文件，不会被冲回旧内容，之后照常写出', async () => {
+    const { draft } = setup()
+    await settle()
+
+    draft.edit('STYLE.md', entry('刚敲的新名字'))
+    await draft.removeFile('references/color.md')
+    await settle()
+
+    expect(draft.entryText.value).toBe(entry('刚敲的新名字'))
+    expect(draft.content.value).toBe(entry('刚敲的新名字'))
+    await draft.flush()
+    expect(server.drafts.get('s1')!['STYLE.md']).toBe(entry('刚敲的新名字'))
+  })
 })
 
 describe('保存与放弃', () => {
@@ -294,6 +308,36 @@ describe('保存与放弃', () => {
     await settle()
     expect(await fresh.draft.discard()).toEqual({ wasNew: true })
     expect(server.drafts.has('n1')).toBe(false)
+  })
+})
+
+describe('放弃修改失败', () => {
+  it('后端拒绝（409）时返回 null、给出原因，草稿保留', async () => {
+    const { draft } = setup()
+    await settle()
+    server.discardError = new ApiError(409, 'AI 正在修改这套风格，请等这一轮结束（或先停止它）')
+
+    const result = await draft.discard()
+
+    expect(result).toBeNull()
+    expect(draft.discardError.value).toBe('AI 正在修改这套风格，请等这一轮结束（或先停止它）')
+    expect(server.drafts.has('s1')).toBe(true)
+  })
+
+  it('失败时还没写出的编辑不丢，之后照常写出；再次放弃成功后错误清空', async () => {
+    const { draft } = setup()
+    await settle()
+    draft.edit('references/color.md', '深蓝')
+    server.discardError = new ApiError(409, '忙')
+
+    expect(await draft.discard()).toBeNull()
+    await vi.advanceTimersByTimeAsync(700)
+    await settle()
+    expect(server.drafts.get('s1')!['references/color.md']).toBe('深蓝')
+
+    server.discardError = null
+    expect(await draft.discard()).toEqual({ wasNew: false })
+    expect(draft.discardError.value).toBeNull()
   })
 })
 

@@ -223,6 +223,19 @@ describe('StyleEditView 保存与放弃', () => {
     expect(server.drafts.has('s1')).toBe(true)
     expect(w.emitted('discarded')).toBeUndefined()
   })
+
+  it('后端拒绝放弃（409）时界面显示原因，不触发 discarded，草稿保留', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const w = await mountEdit()
+    server.discardError = new ApiError(409, 'AI 正在修改这套风格，请等这一轮结束（或先停止它）')
+
+    await w.get('[data-testid="discard-style"]').trigger('click')
+    await settle()
+
+    expect(w.get('[data-testid="style-server-error"]').text()).toContain('AI 正在修改这套风格')
+    expect(w.emitted('discarded')).toBeUndefined()
+    expect(server.drafts.has('s1')).toBe(true)
+  })
 })
 
 describe('StyleEditView 只读（AI 正在修改时）', () => {
@@ -263,6 +276,44 @@ describe('StyleEditView 右侧的 AI 对话区', () => {
     const beforeSend = w.getComponent({ name: 'StyleChatPaneStub' }).props('beforeSend') as () => Promise<void>
 
     await expect(beforeSend()).rejects.toThrow('磁盘已满')
+  })
+})
+
+describe('StyleEditView 点发送起本地只读', () => {
+  const chat = (w: Awaited<ReturnType<typeof mountEdit>>) =>
+    w.getComponent({ name: 'StyleChatPaneStub' })
+
+  it('对话区发 sending(true) 后编辑区立刻只读，sending(false) 后恢复', async () => {
+    const w = await mountEdit()
+    expect(editor(w).disabled).toBe(false)
+
+    chat(w).vm.$emit('sending', true)
+    await settle()
+
+    expect(editor(w).disabled).toBe(true)
+    expect(w.get('[data-testid="style-name"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="discard-style"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="save-state"]').text()).toContain('AI 正在修改')
+
+    chat(w).vm.$emit('sending', false)
+    await settle()
+
+    expect(editor(w).disabled).toBe(false)
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('换一套风格时本地锁复位', async () => {
+    seedStyle('s2', '另一套')
+    const w = await mountEdit()
+    chat(w).vm.$emit('sending', true)
+    await settle()
+    expect(editor(w).disabled).toBe(true)
+
+    await w.setProps({ styleId: 's2' })
+    await settle()
+
+    expect(editor(w).disabled).toBe(false)
   })
 })
 

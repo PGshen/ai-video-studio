@@ -556,7 +556,12 @@ export function useDeleteDraftFileMutation(styleId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (path: string) => api.deleteDraftFile(toValue(styleId), path),
-    onSuccess: () => invalidateStyleDraft(queryClient, toValue(styleId)),
+    // 只刷新草稿状态（文件列表）：按前缀失效会连带重取各文件内容，把还在防抖里的编辑冲回服务端旧内容。
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.styleDraft(toValue(styleId)),
+        exact: true,
+      }),
   })
 }
 

@@ -46,7 +46,15 @@ const props = defineProps<{
   /** 每次发送（含「继续」）之前先执行；失败（reject）则不发送，错误显示在输入框上方。 */
   beforeSend?: () => Promise<void>
 }>()
-const emit = defineEmits<{ (e: 'sent'): void }>()
+const emit = defineEmits<{
+  /** 用户发的新消息已被后端接收（[继续] 不发：它没有把输入框里的内容发出去）。 */
+  (e: 'sent'): void
+  /** 后端接受了一轮（新消息或 [继续]）：这一轮此刻已排队或运行。 */
+  (e: 'accepted'): void
+  /** 一次发送/继续开始（`true`，在 `beforeSend` 之前）和结束（`false`，无论成败）；
+   * 风格编辑据此在这段时间内本地锁住编辑区。 */
+  (e: 'sending', value: boolean): void
+}>()
 
 const sessionIdRef = toRef(props, 'sessionId')
 const { items, turnStatus, turns, addLocalUserMessage, markTurnAccepted, removeLocalUserMessage } =
@@ -89,6 +97,7 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
   const text = message.text.trim()
   if (!text || (!props.sessionId && !props.createSession)) return
   sendError.value = null
+  emit('sending', true)
   try {
     await props.beforeSend?.()
     if (!props.sessionId && props.createSession) {
@@ -107,8 +116,11 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
       markTurnAccepted(accepted.turn_id, text)
     })
     emit('sent')
+    emit('accepted')
   } catch (error) {
     sendError.value = describeError(error)
+  } finally {
+    emit('sending', false)
   }
 }
 
@@ -122,6 +134,7 @@ async function onStop(): Promise<void> {
 
 async function onContinue(): Promise<void> {
   sendError.value = null
+  emit('sending', true)
   try {
     await props.beforeSend?.()
     // The backend sends the fixed text "继续" as this turn's user message, or re-sends the
@@ -132,8 +145,11 @@ async function onContinue(): Promise<void> {
       const accepted = await continueMutation.mutateAsync()
       markTurnAccepted(accepted.turn_id, text)
     })
+    emit('accepted')
   } catch (error) {
     sendError.value = describeError(error)
+  } finally {
+    emit('sending', false)
   }
 }
 </script>

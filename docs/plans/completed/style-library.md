@@ -201,7 +201,7 @@
 - 2026-10-04 — T9 `style` 阶段（写范围 `STYLE.md`/`references/*`/`exemplars/*`、`validate_style` 工具、提示词）、`TurnRunner._execute_bound_dir`（cwd = 草稿目录、无快照/前言）、`busy_key = subject:<id>`、`is_subject_busy`、轮次结束清理草稿里界面够不着的文件并发 `draft_pruned` 通知和一次 `workspace_changed`、草稿改动类接口 409、`stage_default_profile` 接受 `style` — `make check` 绿（后端 1583）
 - 2026-10-04 — T10 编辑态右侧 AI 对话区（`StyleChatPane`，复用 `SessionPanel`/`SessionPicker`）、会话范围 `style`、风格会话查询与创建、`useSessionStream` 在 `workspace_changed`/轮次开始结束时刷新草稿、草稿状态带后端 `busy` 驱动只读、发送前先写出未写入的编辑（`SessionPanel.beforeSend`）、设置里 `style` 阶段默认模型、`draft_pruned` 提示文案、风格阶段可写范围 `references/*` 排最前使 fake 默认脚本能改草稿 — `make check` 绿（后端 1585、前端 875）；隔离实例上用 fake 运行时端到端走通
 - 2026-10-04 — T11 真实模型冒烟 `test_style_chat_claude_login`（本机 Claude 登录，两次通过）、文档（ADR 0019 之外的 ARCHITECTURE/glossary/verification/QUALITY/tech-debt/legacy-assets）、AC 逐条核对与 L4 走查收尾；冒烟中发现并修复运行时 `.claude/` 目录被当作多余文件通知用户 — `make check` 绿（后端 1586、前端 875）
-- 2026-10-04 — 整分支评审（Opus 新上下文，只读）：4 项 Important 全部修复（每项先写失败测试）——重新进入编辑态时草稿文件缓存过期（打开草稿时失效文件内容缓存）、被 409 拒绝的编辑事后重放覆盖 AI 成果（409 时丢弃该编辑并重取草稿）、未保存的新风格出现在创建项目下拉框且被导入脚本当成已有风格（`selectableStyles`、`list_saved_styles`）、风格目录被弄坏时创建项目/设默认风格 500（`style_is_usable`）；Minor 登记为 TD-44～TD-51 — `make check` 绿（后端 1591、前端 882）
+- 2026-10-04 — 整分支评审（Opus 新上下文，只读）：4 项 Important 全部修复（每项先写失败测试）——重新进入编辑态时草稿文件缓存过期（打开草稿时失效文件内容缓存）、被 409 拒绝的编辑事后重放覆盖 AI 成果（409 时丢弃该编辑并重取草稿）、未保存的新风格出现在创建项目下拉框且被导入脚本当成已有风格（`selectableStyles`、`list_saved_styles`）、风格目录被弄坏时创建项目/设默认风格 500（`style_is_usable`）；Minor 登记为 TD-52～TD-59 — `make check` 绿（后端 1591、前端 882）
 
 ## 下一步
 
@@ -229,7 +229,7 @@
 
 ## 意外与发现
 
-- 整分支评审（2026-10-04）的 Minor 没有在本计划里修，已登记到 [tech-debt.md](../../quality/tech-debt.md) 的 TD-44～TD-51；另有一条文档层面的发现已顺手改掉（没有单独成任务）：`styles/store.py` 模块文档开头原写「从未保存过的新建风格……不出现在列表里」，与 T7 的修订相反；仍未处理：ADR 0019 的「影响」建议补两条（以后改 `studio.styles` 的校验会改变尚未迁移的旧库的导出结果；导出遇到坏数据时 api 和 worker 都起不来，运行手册只说「按报错修正后重启」）。
+- 整分支评审（2026-10-04）的 Minor 没有在本计划里修，已登记到 [tech-debt.md](../../quality/tech-debt.md) 的 TD-52～TD-59；另有一条文档层面的发现已顺手改掉（没有单独成任务）：`styles/store.py` 模块文档开头原写「从未保存过的新建风格……不出现在列表里」，与 T7 的修订相反；仍未处理：ADR 0019 的「影响」建议补两条（以后改 `studio.styles` 的校验会改变尚未迁移的旧库的导出结果；导出遇到坏数据时 api 和 worker 都起不来，运行手册只说「按报错修正后重启」）。
 
 ## 阻塞
 

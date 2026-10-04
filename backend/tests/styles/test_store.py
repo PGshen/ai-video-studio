@@ -496,6 +496,20 @@ class TestPruneDraft:
         assert not (draft / ".claude").exists()
         assert store.validate_draft(tmp_path, style_id) == []
 
+    def test_the_openai_shell_cache_directory_is_removed_silently(self, tmp_path: Path) -> None:
+        """OpenAI 运行时的 Shell 在工作目录里建 `.cache/tmp`：同 `.claude/`，静默清掉。"""
+        style_id = _saved(tmp_path)
+        store.open_draft(tmp_path, style_id)
+        draft = draft_dir(tmp_path, style_id)
+        (draft / ".cache" / "tmp").mkdir(parents=True)
+        (draft / ".cache" / "tmp" / "x").write_text("scratch")
+        (draft / "notes.md").write_text("多余文件")
+
+        removed = store.prune_draft(tmp_path, style_id)
+
+        assert removed == ["notes.md"]
+        assert not (draft / ".cache").exists()
+
     def test_a_clean_draft_is_left_alone(self, tmp_path: Path) -> None:
         style_id = _saved(tmp_path)
         store.open_draft(tmp_path, style_id)
