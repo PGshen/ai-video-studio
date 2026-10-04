@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 已采纳 |
+| 状态 | 已采纳（存储方式已被 [ADR 0019](0019-风格库改用磁盘目录存储.md) 取代，其余约定仍有效） |
 | 日期 | 2026-09-30 |
 | 相关 | [M5 计划 D1/D2](../plans/completed/m5-polish.md)、[架构设计 §3.2、§5.5](../design/2026-09-26-architecture.md)、[legacy-assets.md](../references/legacy-assets.md)、[ADR 0004](0004-原生工具优先.md) |
 

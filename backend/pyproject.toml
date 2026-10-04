@@ -168,7 +168,7 @@ allow_indirect_imports = true
 [[tool.importlinter.contracts]]
 name = "分层（ARCHITECTURE §2 依赖表）：main > api > stages > agent > workspace > db > config"
 type = "layers"
-# 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines（M2 T1）、
+# 上层可以 import 下层，下层不能 import 上层（含间接 import）。engines（M2 T1）、styles（style-library T1）、
 # jobs（M2 T3）、worker（M2 T5）、search（M4 T1）不在这条链上，各自已有独立的 forbidden
 # 契约（见下）。各阶段之间的独立性由上面的
 # independence 契约保证。
@@ -202,6 +202,22 @@ forbidden_modules = [
     "studio.db",
     "studio.engines",
     "studio.jobs",
+]
+
+[[tool.importlinter.contracts]]
+name = "styles 是纯能力层（规则 4）：只依赖 config，不访问数据库，不知道项目和阶段的存在"
+type = "forbidden"
+source_modules = ["studio.styles"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.engines",
+    "studio.jobs",
+    "studio.search",
 ]
 
 [[tool.importlinter.contracts]]

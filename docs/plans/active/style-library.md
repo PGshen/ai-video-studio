@@ -61,7 +61,7 @@
 
 交付分四个阶段，每个阶段结束时都能独立跑通 `make check`：T1–T4 后端存储，T5–T7 前端新页面（无对话），T8–T9 agent 与会话，T10–T11 对话接入与收尾。
 
-### T1：styles 纯能力模块——校验与 frontmatter（待开始）
+### T1：styles 纯能力模块——校验与 frontmatter（完成）
 
 - **目标**：把风格校验从 `db/repo/style_presets.py` 搬成作用在「目录内容」上的纯函数，不依赖数据库；同时写 ADR 记录存储方式的变更。
 - **涉及文件**：新建 `backend/src/studio/styles/{__init__,layout,validate}.py`；`backend/pyproject.toml`（新增 `studio.styles` 只依赖 `config` 的 import-linter 契约）；`backend/tests/styles/test_validate.py`；新建 `docs/decisions/0019-风格库改用磁盘目录存储.md`（含 ADR 必需章节，注明取代 0011 的存储部分）；ADR 0011 元信息标注「存储部分被 0019 取代」。
@@ -190,11 +190,11 @@
 
 ## 进度
 
-- 无
+- 2026-10-04 — T1 styles 纯能力模块（校验、frontmatter、布局）+ ADR 0019 — `make check` 绿，新增 52 个后端用例
 
 ## 下一步
 
-- 等负责人批准计划并指定执行方式；批准后从 T1 开始：先写 `backend/tests/styles/test_validate.py`，再建 `backend/src/studio/styles/` 与 import-linter 契约。
+- 从 T2 开始：先写 `backend/tests/styles/test_store.py`（列表扫描含坏目录、复制命名、草稿打开幂等、`dirty` 判断、原子保存与中途失败、草稿非法内容、重名），再实现 `backend/src/studio/styles/store.py`。T1 的 `validate_style_files(files)`、`parse_frontmatter`、`layout.{style_dir,draft_dir,is_valid_style_id}` 已就绪。
 
 ## 决策记录
 
