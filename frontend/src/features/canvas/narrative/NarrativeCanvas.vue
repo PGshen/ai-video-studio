@@ -41,7 +41,7 @@ import {
 } from '@/composables/queries'
 import BeatTimeline from './BeatTimeline.vue'
 import ReadinessIcon from './ReadinessIcon.vue'
-import { useScenePlayback, type PlaylistItem } from './useScenePlayback'
+import { useScenePlayback, type PlaylistItem } from '@/composables/useScenePlayback'
 import SceneCardList from './SceneCardList.vue'
 import {
   NARRATIVE_PATH,

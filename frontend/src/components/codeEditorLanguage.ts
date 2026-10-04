@@ -10,4 +10,4 @@
  * import `components/`），这个类型跟着挪出来，`fileKind.ts` 改成从这里
  * import 再重新导出，保持自己现有的对外接口不变。
  */
-export type EditorLanguage = 'markdown' | 'json' | 'python' | 'text'
+export type EditorLanguage = 'markdown' | 'json' | 'python' | 'javascript' | 'text'

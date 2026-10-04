@@ -6,7 +6,7 @@ describe('isTextFile / editorLanguage', () => {
     ['topic/brief.md', true, 'markdown'],
     ['narrative/shots.json', true, 'json'],
     ['animation/scene.py', true, 'python'],
-    ['animation/scenes/s-hook.js', true, 'text'],
+    ['animation/scenes/s-hook.js', true, 'javascript'],
     ['animation/assets/logo.svg', true, 'text'],
     ['notes.txt', true, 'text'],
     ['style/STYLE.md', true, 'markdown'],

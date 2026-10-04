@@ -80,6 +80,8 @@ export const queryKeys = {
    * "新的" query 并重新取数；失效走 `sceneChecksAll` 这个前缀，靠 TanStack
    * 默认的前缀匹配（`exact: false`）覆盖所有镜头集合的变体。
    */
+  htmlPreviewMeta: (projectId: string) =>
+    ['projects', projectId, 'animation', 'html-preview-meta'] as const,
   sceneChecks: (projectId: string, sceneIds: readonly string[]) =>
     [...queryKeys.sceneChecksAll(projectId), sceneIds.join(',')] as const,
 }
@@ -206,6 +208,7 @@ export async function invalidateAfterWrite(
     queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.fileContent(projectId, path) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.htmlPreviewMeta(projectId) }),
   ])
 }
 
@@ -674,6 +677,15 @@ export function useSceneChecksQuery(
   })
 }
 
+/** HTML 动画阶段的实时预览元数据；工作区变化后重新取，409（叙事不可用）不重试。 */
+export function useHtmlPreviewMetaQuery(projectId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.htmlPreviewMeta(toValue(projectId))),
+    queryFn: () => api.getHtmlPreviewMeta(toValue(projectId)),
+    retry: retryUnlessClientError,
+  })
+}
+
 // ---- ideas / 选题池 ----------------------------------------------------
 
 export function useIdeasQuery(view: MaybeRefOrGetter<IdeasView>) {
@@ -746,5 +758,6 @@ export async function invalidateWorkspace(
     queryClient.invalidateQueries({ queryKey: queryKeys.fileTree(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.snapshots(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.htmlPreviewMeta(projectId) }),
   ])
 }

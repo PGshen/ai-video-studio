@@ -30,6 +30,7 @@ import type {
   ProjectOut,
   ProjectSettingsPatch,
   ProjectStatus,
+  HtmlPreviewMeta,
   SceneChecksResponse,
   SessionCreate,
   SettingsOut,
@@ -389,6 +390,19 @@ export function getSceneChecks(
   return request(`/projects/${encodePathSegment(projectId)}/animation/scene-checks`, {
     query: { scene_id: [...sceneIds] },
   })
+}
+
+/** 实时预览的时间、镜头、配音与内容哈希（`GET .../animation/html-preview/meta`）。 */
+export function getHtmlPreviewMeta(projectId: string): Promise<HtmlPreviewMeta> {
+  return request(`/projects/${encodePathSegment(projectId)}/animation/html-preview/meta`)
+}
+
+/**
+ * 预览 iframe 的地址（`GET .../animation/html-preview/`）：`hash` 拼进查询串（后端忽略它），
+ * 内容变了 URL 就变，iframe 一定重新加载。页面里的相对资源在同一前缀下。
+ */
+export function htmlPreviewUrl(projectId: string, hash: string): string {
+  return `/api/projects/${encodePathSegment(projectId)}/animation/html-preview/?v=${encodeURIComponent(hash)}`
 }
 
 /**
