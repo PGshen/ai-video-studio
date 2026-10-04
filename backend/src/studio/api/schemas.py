@@ -348,6 +348,8 @@ class StyleSummaryOut(BaseModel):
     is_default: bool
     has_draft: bool
     """有未保存的草稿。"""
+    is_new: bool
+    """从未保存过（只有草稿）：点开直接进编辑，没有正式版本可看。"""
     modified_at: datetime
 
 

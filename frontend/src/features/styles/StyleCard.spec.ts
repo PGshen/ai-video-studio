@@ -12,6 +12,7 @@ const style: StyleSummaryOut = {
   exemplar_count: 1,
   is_default: false,
   has_draft: false,
+  is_new: false,
   modified_at: '2026-10-01T00:00:00Z',
 }
 
@@ -34,6 +35,13 @@ describe('StyleCard', () => {
     const w = render({ is_default: true, has_draft: true })
     expect(w.get('[data-testid="style-default-s1"]').text()).toBe('默认')
     expect(w.get('[data-testid="style-draft-s1"]').text()).toBe('有未保存草稿')
+  })
+
+  it('从未保存的新风格显示「未保存的新风格」，不再重复显示草稿标记', () => {
+    const w = render({ is_new: true, has_draft: true })
+    expect(w.get('[data-testid="style-new-s1"]').text()).toBe('未保存的新风格')
+    expect(w.find('[data-testid="style-draft-s1"]').exists()).toBe(false)
+    expect(render().find('[data-testid="style-new-s1"]').exists()).toBe(false)
   })
 
   it('简介为空时不渲染简介段落', () => {

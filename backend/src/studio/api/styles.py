@@ -2,7 +2,7 @@
 
 - 正式版本在 `data/styles/<id>/`，列表、详情、复制、删除直接读写目录；
 - 编辑走草稿 `data/style-drafts/<id>/`：打开草稿、读写草稿文件、保存（校验通过才覆盖正式版本）、
-  放弃。`POST /api/styles` 新建的是只有草稿的风格，保存之前不出现在列表里；
+  放弃。`POST /api/styles` 新建的是只有草稿的风格，保存之前在列表里标记为 `is_new`（找得回来）；
 - 默认风格是 `settings.default_style_preset_id`，删除默认风格时清掉它。
 
 错误映射：404 风格或文件不存在，400 草稿文件路径不合法，422 内容不合法（detail 逐条列出），
@@ -86,6 +86,7 @@ async def list_styles_endpoint(
             exemplar_count=s.exemplar_count,
             is_default=s.id == default_id,
             has_draft=s.has_draft,
+            is_new=s.is_new,
             modified_at=s.modified_at,
         )
         for s in store.list_styles(settings.data_dir)
@@ -94,7 +95,7 @@ async def list_styles_endpoint(
 
 @router.post("/styles", response_model=DraftStatusOut, status_code=201)
 async def create_style_endpoint(settings: Settings = Depends(get_settings)) -> DraftStatusOut:
-    """新建风格：生成带模板的草稿，保存之前不出现在列表里。"""
+    """新建风格：生成带模板的草稿，保存之前在列表里标记为 `is_new`。"""
     style_id = store.create_new_draft(settings.data_dir)
     return _draft_out(store.draft_status(settings.data_dir, style_id))
 

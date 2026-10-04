@@ -9,6 +9,7 @@
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/vue-query'
 import * as api from '@/api/endpoints'
+import { ApiError } from '@/api/http'
 import type { SessionScope } from '@/composables/sessionScope'
 import type {
   FileWriteResult,
@@ -446,11 +447,18 @@ export function useStylesQuery() {
   return useQuery({ queryKey: queryKeys.styles(), queryFn: api.listStyles })
 }
 
+/** 4xx（比如 404「风格不存在」）重试没有意义；只有网络/服务端错误才按默认次数重试。 */
+function retryUnlessClientError(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false
+  return failureCount < 3
+}
+
 export function useStyleQuery(styleId: MaybeRefOrGetter<string | null>) {
   return useQuery({
     queryKey: computed(() => queryKeys.style(toValue(styleId) ?? '')),
     queryFn: () => api.getStyle(toValue(styleId)!),
     enabled: computed(() => toValue(styleId) !== null),
+    retry: retryUnlessClientError,
   })
 }
 
@@ -464,6 +472,9 @@ export function useStyleDraftQuery(
     queryFn: () => api.getStyleDraft(toValue(styleId)!),
     enabled: computed(() => toValue(styleId) !== null && toValue(enabled)),
     retry: false,
+    // 草稿内容由编辑器自己写进缓存，只在 AI 改动或显式失效时重取；窗口聚焦时重取会把还没写出的编辑冲掉。
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   })
 }
 
@@ -481,6 +492,8 @@ export function useDraftFileQuery(
       () => toValue(styleId) !== null && toValue(path) !== null && toValue(enabled),
     ),
     retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   })
 }
 
@@ -532,19 +545,6 @@ export function useOpenStyleDraftMutation() {
     onSuccess: (draft) => {
       queryClient.setQueryData(queryKeys.styleDraft(draft.id), draft)
       void queryClient.invalidateQueries({ queryKey: queryKeys.styles(), exact: true })
-    },
-  })
-}
-
-export function useWriteDraftFileMutation(styleId: MaybeRefOrGetter<string>) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (args: { path: string; content: string }) =>
-      api.writeDraftFile(toValue(styleId), args.path, args.content),
-    onSuccess: (draft, args) => {
-      const id = toValue(styleId)
-      queryClient.setQueryData(queryKeys.styleDraft(id), draft)
-      queryClient.setQueryData(queryKeys.styleDraftFile(id, args.path), args.content)
     },
   })
 }

@@ -32,6 +32,7 @@ function style(id: string, overrides: Partial<StyleSummaryOut> = {}): StyleSumma
     exemplar_count: 1,
     is_default: false,
     has_draft: false,
+    is_new: false,
     modified_at: '2026-10-01T00:00:00Z',
     ...overrides,
   }
@@ -170,6 +171,16 @@ describe('StyleGrid 打开抽屉（只改 URL query）', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.query).toEqual({ style: 'a', mode: 'view' })
+  })
+
+  it('点从未保存的新风格 → 直接 mode=edit（它没有正式版本可看）', async () => {
+    state.styles = [style('n', { is_new: true, has_draft: true })]
+    const { wrapper, router } = await mountGrid()
+
+    await wrapper.get('[data-testid="style-card-n"]').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.query).toEqual({ style: 'n', mode: 'edit' })
   })
 
   it('点编辑按钮 → mode=edit', async () => {

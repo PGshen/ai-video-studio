@@ -133,7 +133,7 @@
 - **完成标准**：列表可用；组件测试全绿。
 - **验证命令**：`cd frontend && pnpm vitest run src/features/styles`；`make check`
 
-### T7：抽屉——详情态与编辑态（无对话）（待开始）
+### T7：抽屉——详情态与编辑态（无对话）（完成）
 
 - **目标**：右侧抽屉打开详情（只读）和编辑（草稿），拆掉旧的设置页风格库组件。
 - **涉及文件**：新建 `frontend/src/features/styles/{StyleDrawer,StyleDetailView,StyleEditView,StyleMetaForm,StyleFileTree}.vue`、`useStyleDraft.ts`（草稿查询、防抖写入、保存/放弃）及 `.spec.ts`；删除 `frontend/src/features/settings/{StylePresetsPanel,StylePresetEditor}.vue`、`styleDraft.ts` 及其测试；`frontend/src/pages/StylesPage.vue`（挂载抽屉，由 URL query 驱动）；复用 `components/CodeEditor.vue`、`components/ui/sheet`、`ConfirmDeleteButton`。
@@ -196,10 +196,11 @@
 - 2026-10-04 — T4 迁移 0007（导出旧表 → 目录，成功后删表）、删除旧 repo/ORM/旧接口/`render_style_files`、导入脚本改写目录、运行手册更新 — `make check` 绿，后端 1531 个用例；对真实库副本实跑导出 9 套风格，原库未动
 - 2026-10-04 — T5 前端基础：侧栏「风格库」、`/styles` 路由与旧地址重定向、新 API 客户端/类型/query hook、`styleView`/`styleFrontmatter` 纯逻辑；设置页去掉风格库 Tab，并删除旧的 `StylePresetsPanel`/`StylePresetEditor`/`styleDraft` — `make check` 绿（后端 1531、前端 748），`pnpm typecheck` 无错误
 - 2026-10-04 — T6 风格库列表页（`StyleGrid`/`StyleCard`，筛选、分页、新建、点卡片/编辑只改 URL query）— `make check` 绿（前端 766），`pnpm typecheck` 无错误
+- 2026-10-04 — T7 抽屉详情态/编辑态（`StyleDrawer`/`StyleDetailView`/`StyleEditView`/`StyleMetaForm`/`StyleFileTree`/`useStyleDraft`，StylesPage 挂载）；浏览器走查发现并修复：编辑态内容比状态晚到导致空白闪烁、关闭抽屉动画期间空白、深链接 404 重试 7 秒、窄屏编辑器只剩 73px、新建草稿关抽屉后成孤儿（改为列表里标记 `is_new`）— `make check` 绿（后端 1534、前端 850）
 
 ## 下一步
 
-- 从 T7 开始：先写 `frontend/src/features/styles/` 下的测试——`useStyleDraft.spec.ts`（防抖写草稿、保存/放弃）、`StyleDrawer.spec.ts`（URL query 驱动、详情态/编辑态切换、关闭保留草稿、不存在的 id 显示「风格不存在」）、`StyleMetaForm.spec.ts`（表单读写 frontmatter）、`StyleFileTree.spec.ts`（新增/删除文件）、`StyleEditView.spec.ts`（保存 422/409 展示、readonly）、`StyleDetailView.spec.ts`（设为默认/复制/删除）；再实现 `StyleDrawer.vue`、`StyleDetailView.vue`、`StyleEditView.vue`、`StyleMetaForm.vue`、`StyleFileTree.vue`、`useStyleDraft.ts`，并在 `pages/StylesPage.vue` 挂载抽屉（读 `route.query.style`/`mode`）。可用：`StyleGrid` 已负责写 query；hook 见 `composables/queries.ts`（`useStyleQuery`、`useStyleDraftQuery`、`useDraftFileQuery`、`useOpenStyleDraftMutation`、`useWriteDraftFileMutation`、`useDeleteDraftFileMutation`、`useSaveStyleDraftMutation`、`useDiscardStyleDraftMutation`、`useDuplicateStyleMutation`、`useDeleteStyleMutation`），设默认用 `usePatchSettingsMutation`（`default_style_preset_id`）。完成后由我在 8001/5174 隔离实例上做 L4 截图（列表、详情、编辑；顺便确认 `StylesPage` 的 `h-full` 布局在真实浏览器里撑满高度）。
+- 从 T8 开始（后端）：先写 `backend/tests/db/test_repo_sessions.py` 里关于 `subject_id` 的用例（同风格新建会话使旧会话取消活动、不同风格互不影响、与头脑风暴互不影响、`subject_id` 往返、删除风格清理会话）、`backend/tests/db/test_migrate.py` 里 0008 的升级用例、`backend/tests/api/test_styles.py` 里 `POST/GET /api/styles/{id}/sessions` 的用例；再写迁移 `0008_sessions_subject_id.py`、改 `db/models.py`、`db/repo/sessions.py`（`create_session(..., subject_id=None)`、`list_sessions(engine, project_id, stage, subject_id=None)`、`delete_subject_sessions`）、`api/styles.py`、`api/schemas.py`（`SessionOut.subject_id`）。注意：此任务里 `style` 阶段尚未注册，所以创建接口先只做数据层与接口，T9 注册阶段后才能发消息；`styles` 删除接口要顺带清理会话。隔离的 L4 实例（后端 8001/前端 5174，数据目录在 scratchpad `l4data/`）还开着，T10 要用时后端需手动重启（没开热重载），T11 收尾时关掉。
 
 ## 决策记录
 
@@ -210,6 +211,8 @@
 - 2026-10-04 — T3：不在接口里预留空的 `_ensure_not_busy` 钩子，写端点直接写成 `async def`，T9 再加忙碌检查 — 一个什么都不做的钩子是死代码；`async def` 已满足「检查与写入之间不 `await`」的前提。
 - 2026-10-04 — T3：`tests/api/test_projects.py` 里准备风格的 helper 改用 `studio.styles.store.import_style`，更新/删除改走 `/api/styles` 草稿接口，断言原样保留（并新增「默认风格被删后退回占位」一条）— 创建项目已改读目录，旧接口建的预设不再可见。
 - 2026-10-04 — T5：旧的 `StylePresetsPanel`/`StylePresetEditor`/`styleDraft` 在 T5 就删除（计划原写在 T7）— 旧 `/api/style-presets` 在 T4 已删，设置页的风格库路由在 T5 移除，这些组件不再有入口，也没有可调用的接口，留着只会让类型检查失败。
+- 2026-10-04 — T7（浏览器走查后改设计）：从未保存的新风格也出现在列表里，标记 `is_new`（卡片「未保存的新风格」，点开直接进编辑态），放弃时整个目录删除；名称唯一性仍只在已保存的风格间检查。设计文档对应条目已改并加了修订记录 — 实测发现关抽屉后草稿成了找不回的孤儿目录，AI 对话写进去的内容也会丢。
+- 2026-10-04 — T7：编辑视图不另存「本地缓冲」，编辑直接写进查询缓存再防抖 PUT；草稿查询设 `staleTime: Infinity`、不随窗口聚焦重取；草稿文件写入直接调接口、不走 mutation — 聚焦重取会冲掉没写出的编辑，卸载（关闭抽屉）时 mutation 不可靠。
 - 2026-10-04 — 迁移后目录 id 沿用旧表 id，新建的用 `uuid4().hex` — 与旧表 `_new_id` 一致，免去对 `default_style_preset_id` 和项目记录的映射。
 
 ## 意外与发现
@@ -222,4 +225,5 @@
 
 ## 验证记录
 
+- T7（AC3/AC4/AC5 的一部分）：2026-10-04 在隔离实例（8001/5174，数据目录 scratchpad `l4data/`，复制自真实库迁移出的 9 套风格）上用内置浏览器：列表渲染 9 张卡片且改过的排最前；点卡片 URL 变 `?style=<id>&mode=view` 抽屉滑出，详情显示真实风格的文件树和入口内容；点「编辑」进编辑态，改名称后编辑器里的 frontmatter 同步、状态「已保存到草稿」；保存前 `GET /api/styles/<id>` 仍是旧名称且草稿 `dirty: true`，保存后正式版本为新名称、草稿 404、回到详情态；Esc 关闭时 URL 立刻清掉、内容在滑出动画期间保留；新建风格出现「未保存的新风格」卡片，点开直接进编辑并带模板；`?style=zzz` 在详情态和编辑态都显示「风格不存在」；375px 窄屏编辑器 309px 宽、保存按钮在视口内、无横向溢出。浏览器面板被收起后改用 DOM 检查，没有保留截图文件。
 - T4（AC1 迁移部分）：2026-10-04 对 `data/studio.db` 的 `sqlite3 .backup` 副本（旧表 9 行，版本 0006）实跑 `migrate()`：旧表已删；`styles/` 下 9 个目录，名称/分类/引用数/金样本数与旧表一致（如「反差心理学·直觉翻案」3 个引用 1 个金样本，frontmatter 含 `category: 旧项目导入`）；再次 `migrate()` 无报错；原库 `style_presets` 仍是 9 行。

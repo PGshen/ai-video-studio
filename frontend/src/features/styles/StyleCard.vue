@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 一套风格的卡片摘要（风格库列表里用）：名称、分类、简介（截断）、引用/金样本数量，以及「默认」
- * 和「有未保存草稿」标记。点卡片本身打开详情，右下角的编辑按钮直接进入编辑态。
+ * 一套风格的卡片摘要（风格库列表里用）：名称、分类、简介（截断）、引用/金样本数量，以及「默认」、
+ * 「有未保存草稿」和「未保存的新风格」标记。点卡片本身打开详情，右下角的编辑按钮直接进入编辑态。
  */
 import { Pencil } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
@@ -54,7 +54,14 @@ const emit = defineEmits<{
     <CardContent class="text-muted-foreground flex flex-1 flex-wrap items-center gap-2 text-xs">
       <span>{{ props.item.reference_count }} 个引用 · {{ props.item.exemplar_count }} 个金样本</span>
       <Badge
-        v-if="props.item.has_draft"
+        v-if="props.item.is_new"
+        variant="secondary"
+        :data-testid="`style-new-${props.item.id}`"
+      >
+        未保存的新风格
+      </Badge>
+      <Badge
+        v-else-if="props.item.has_draft"
         variant="secondary"
         :data-testid="`style-draft-${props.item.id}`"
       >

@@ -93,7 +93,7 @@ class TestList:
         first = summaries[0]
         assert (first.reference_count, first.exemplar_count) == (1, 1)
         assert first.description == "暖色纸张质感的双色风格"
-        assert first.has_draft is False
+        assert first.has_draft is False and first.is_new is False
         assert first.modified_at.tzinfo is not None
 
     def test_missing_category_shows_as_uncategorized(self, tmp_path: Path) -> None:
@@ -160,13 +160,49 @@ class TestDelete:
 
 
 class TestDraftLifecycle:
-    def test_new_draft_starts_from_a_valid_template_and_is_not_listed(self, tmp_path: Path) -> None:
+    def test_new_draft_starts_from_a_valid_template(self, tmp_path: Path) -> None:
         style_id = store.create_new_draft(tmp_path)
         status = store.draft_status(tmp_path, style_id)
         assert status.is_new is True and status.dirty is True
         assert status.files == ["STYLE.md"]
         assert store.validate_draft(tmp_path, style_id) == []
-        assert store.list_styles(tmp_path) == []
+
+    def test_a_never_saved_draft_is_listed_as_new_so_it_can_be_resumed(
+        self, tmp_path: Path
+    ) -> None:
+        saved = _saved(tmp_path, "已保存")
+        new_id = store.create_new_draft(tmp_path)
+        store.write_draft_file(tmp_path, new_id, "references/a.md", "x")
+
+        summaries = {s.id: s for s in store.list_styles(tmp_path)}
+
+        assert set(summaries) == {saved, new_id}
+        assert summaries[saved].is_new is False
+        item = summaries[new_id]
+        assert item.is_new is True and item.has_draft is True
+        assert item.name == "新风格" and item.category == "未分类"
+        assert item.reference_count == 1
+        assert item.modified_at.tzinfo is not None
+
+    def test_a_draft_without_a_usable_entry_is_still_listed_so_it_can_be_discarded(
+        self, tmp_path: Path
+    ) -> None:
+        new_id = store.create_new_draft(tmp_path)
+        store.write_draft_file(tmp_path, new_id, "STYLE.md", "frontmatter 被删了")
+
+        [item] = store.list_styles(tmp_path)
+
+        assert item.id == new_id and item.is_new is True
+        assert item.name == "未命名风格"
+
+    def test_two_new_drafts_with_the_same_name_do_not_block_each_other_until_saved(
+        self, tmp_path: Path
+    ) -> None:
+        first = store.create_new_draft(tmp_path)
+        second = store.create_new_draft(tmp_path)
+        store.save_draft(tmp_path, first)
+        with pytest.raises(DuplicateStyleNameError):
+            store.save_draft(tmp_path, second)
 
     def test_open_draft_copies_the_saved_version_and_is_idempotent(self, tmp_path: Path) -> None:
         style_id = _saved(tmp_path)

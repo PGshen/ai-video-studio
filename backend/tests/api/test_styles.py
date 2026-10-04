@@ -55,6 +55,7 @@ class TestListAndRead:
         assert (item["reference_count"], item["exemplar_count"]) == (1, 1)
         assert item["is_default"] is False
         assert item["has_draft"] is False
+        assert item["is_new"] is False
         assert "modified_at" in item
         assert "files" not in item
 
@@ -89,14 +90,19 @@ class TestListAndRead:
 
 
 class TestNewStyle:
-    async def test_create_opens_a_template_draft_that_is_not_listed(self, api_env: ApiEnv) -> None:
+    async def test_create_opens_a_template_draft_listed_as_a_new_style(
+        self, api_env: ApiEnv
+    ) -> None:
         response = await api_env.client.post("/api/styles")
 
         assert response.status_code == 201
         body = response.json()
         assert body["is_new"] is True and body["dirty"] is True
         assert body["files"] == ["STYLE.md"]
-        assert (await api_env.client.get("/api/styles")).json() == []
+        [item] = (await api_env.client.get("/api/styles")).json()
+        assert item["id"] == body["id"]
+        assert item["is_new"] is True and item["has_draft"] is True
+        # there is no saved version yet
         assert (await api_env.client.get(f"/api/styles/{body['id']}")).status_code == 404
 
     async def test_edit_and_save_makes_it_a_listed_style(self, api_env: ApiEnv) -> None:
@@ -121,6 +127,7 @@ class TestNewStyle:
 
         assert response.status_code == 204
         assert not draft_dir(api_env.data_dir, style_id).exists()
+        assert (await api_env.client.get("/api/styles")).json() == []
 
 
 class TestDraftFiles:

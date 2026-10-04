@@ -60,8 +60,9 @@ async function createStyle(): Promise<void> {
   }
 }
 
+/** 从未保存的新风格没有正式版本可看，点开直接进编辑。 */
 function open(item: StyleSummaryOut): void {
-  openDrawer(item.id, 'view')
+  openDrawer(item.id, item.is_new ? 'edit' : 'view')
 }
 function edit(item: StyleSummaryOut): void {
   openDrawer(item.id, 'edit')

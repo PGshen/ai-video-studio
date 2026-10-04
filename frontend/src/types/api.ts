@@ -24,6 +24,8 @@ export interface StyleSummaryOut {
   is_default: boolean
   /** 有未保存的草稿。 */
   has_draft: boolean
+  /** 从未保存过（只有草稿）：点开直接进编辑，没有正式版本可看。 */
+  is_new: boolean
   modified_at: string
 }
 

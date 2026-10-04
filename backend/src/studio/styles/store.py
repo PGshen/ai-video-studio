@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -23,6 +23,7 @@ from uuid import uuid4
 from studio.styles.layout import (
     ENTRY_NAME,
     draft_dir,
+    drafts_root,
     is_valid_style_id,
     style_dir,
     styles_root,
@@ -90,6 +91,8 @@ class StyleSummary:
     exemplar_count: int
     modified_at: datetime
     has_draft: bool
+    is_new: bool = False
+    """从未保存过：只有草稿，没有正式版本（列表里标记出来，让它不会成为找不回的孤儿）。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,8 +219,7 @@ def _name_of(files: StyleFiles) -> str:
 # ---- 正式版本 -----------------------------------------------------------
 
 
-def list_styles(data_dir: Path | str) -> list[StyleSummary]:
-    """按分类、名称排序；坏目录（没有 `STYLE.md`、frontmatter 不合法）跳过并记警告。"""
+def _saved_summaries(data_dir: Path | str) -> list[StyleSummary]:
     root = styles_root(data_dir)
     if not root.is_dir():
         return []
@@ -230,19 +232,48 @@ def list_styles(data_dir: Path | str) -> list[StyleSummary]:
         if meta is None or not meta.get("name", "").strip():
             logger.warning("风格目录无法识别，已跳过：%s", child)
             continue
-        detail = _detail(child.name, files, _mtime(child))
         summaries.append(
-            StyleSummary(
-                id=detail.id,
-                name=detail.name,
-                category=detail.category,
-                description=detail.description,
-                reference_count=sum(1 for p in files if p.startswith("references/")),
-                exemplar_count=sum(1 for p in files if p.startswith("exemplars/")),
-                modified_at=detail.modified_at,
-                has_draft=draft_dir(data_dir, child.name).is_dir(),
-            )
+            _summary(child.name, files, _mtime(child), draft_dir(data_dir, child.name))
         )
+    return summaries
+
+
+def _summary(style_id: str, files: StyleFiles, modified_at: datetime, draft: Path) -> StyleSummary:
+    detail = _detail(style_id, files, modified_at)
+    return StyleSummary(
+        id=detail.id,
+        name=detail.name,
+        category=detail.category,
+        description=detail.description,
+        reference_count=sum(1 for p in files if p.startswith("references/")),
+        exemplar_count=sum(1 for p in files if p.startswith("exemplars/")),
+        modified_at=detail.modified_at,
+        has_draft=draft.is_dir(),
+    )
+
+
+def _new_draft_summaries(data_dir: Path | str) -> list[StyleSummary]:
+    """只有草稿、从未保存过的风格。草稿里的 STYLE.md 可能已经不合法（被改坏或删了 frontmatter），
+    照样列出来，让用户能回去继续改或者放弃。"""
+    root = drafts_root(data_dir)
+    if not root.is_dir():
+        return []
+    summaries: list[StyleSummary] = []
+    for child in sorted(root.iterdir()):
+        if not is_valid_style_id(child.name) or child.is_symlink() or not child.is_dir():
+            continue
+        if style_dir(data_dir, child.name).exists():
+            continue
+        files, _problems = _read_tree(child)
+        base = _summary(child.name, files, _mtime(child), child)
+        name = base.name if base.name != child.name else "未命名风格"
+        summaries.append(replace(base, name=name, is_new=True))
+    return summaries
+
+
+def list_styles(data_dir: Path | str) -> list[StyleSummary]:
+    """正式版本加上从未保存过的草稿（`is_new`），按分类、名称排序；坏的正式版本目录跳过并记警告。"""
+    summaries = [*_saved_summaries(data_dir), *_new_draft_summaries(data_dir)]
     return sorted(summaries, key=lambda s: (s.category, s.name))
 
 
@@ -266,7 +297,7 @@ def style_exists(data_dir: Path | str, style_id: str) -> bool:
 
 
 def _ensure_unique_name(data_dir: Path | str, name: str, *, except_id: str | None) -> None:
-    for existing in list_styles(data_dir):
+    for existing in _saved_summaries(data_dir):
         if existing.id != except_id and existing.name.strip() == name:
             raise DuplicateStyleNameError(f"已有同名的风格：{name}")
 
@@ -297,7 +328,7 @@ def import_style(
 def duplicate_style(data_dir: Path | str, style_id: str) -> StyleDetail:
     """复制成独立的一份，名称是「原名（副本）」，已占用时依次「（副本 2）」「（副本 3）」…"""
     source = get_style(data_dir, style_id)
-    taken = {s.name.strip() for s in list_styles(data_dir)}
+    taken = {s.name.strip() for s in _saved_summaries(data_dir)}
     candidate, n = f"{source.name}（副本）", 1
     while candidate in taken:
         n += 1
@@ -320,7 +351,7 @@ def delete_style(data_dir: Path | str, style_id: str) -> None:
 
 
 def create_new_draft(data_dir: Path | str) -> str:
-    """新建风格：生成带模板的草稿，返回新 id；保存之前不出现在列表里。"""
+    """新建风格：生成带模板的草稿，返回新 id；保存之前在列表里标记为 `is_new`。"""
     style_id = uuid4().hex
     _install({ENTRY_NAME: ENTRY_TEMPLATE}, draft_dir(data_dir, style_id))
     return style_id
