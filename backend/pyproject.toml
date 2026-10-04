@@ -133,6 +133,7 @@ modules = [
     "studio.stages.topic",
     "studio.stages.narrative",
     "studio.stages.animation",
+    "studio.stages.animation_html",
 ]
 
 [[tool.importlinter.contracts]]
@@ -180,6 +181,7 @@ forbidden_modules = [
     "studio.stages.topic",
     "studio.stages.narrative",
     "studio.stages.animation",
+    "studio.stages.animation_html",
     "studio.stages.style",
     "studio.stages.common",
 ]
