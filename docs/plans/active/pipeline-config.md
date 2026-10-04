@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待批准 |
+| 状态 | 待验收 |
 | 里程碑 | 多形态视频流水线 · 子项目 1/4 |
 | 设计依据 | [多形态视频流水线设计](../../design/2026-10-04-html-video-pipeline.md) §2、§3、§11；[ADR 0020](../../decisions/0020-阶段流水线按项目配置派生.md) |
 | 分支 | `pipeline-config` |
-| 批准记录 | 2026-10-04：负责人批准设计与 ADR 0020/0021，要求开始写本计划 |
+| 批准记录 | 2026-10-04：负责人批准设计与 ADR 0020/0021，要求开始写本计划；2026-10-04：负责人批准本计划，选择 Subagent-driven 执行 |
 
 > 执行者：按 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐个任务执行；本计划的「进度」「决策记录」就是账本。每个任务先写失败的测试，再实现。
 
@@ -67,20 +67,20 @@
 
 ## 验收标准
 
-- [ ] AC1：`build_pipeline` 对 8 种合法配置给出设计 §3.2 的流水线，非法组合返回中文错误（验证方式：`tests/stages/test_pipeline.py`）
-- [ ] AC2：`upstream_of` 对短片、MV、讲解 + 配乐、老项目给出设计 §3.3 的上游（验证方式：`tests/agent/test_stage.py`）
-- [ ] AC3：多上游流转：全部上游定稿才解锁；按上游分别判断 stale 与恢复；`after_turn_done` 记录每个上游的版本（验证方式：`tests/agent/test_stage_flow.py`，用假阶段）
-- [ ] AC4：迁移 0009 把老数据的 `based_on_snapshot_id` 正确回填为 `based_on`，升级和降级都能跑（验证方式：`tests/db/` 迁移测试）
-- [ ] AC5：TurnRunner 每轮按项目流水线物化 `upstream/`、给工具上下文传正确的直接上游、在物化之后调用 `prepare_turn`（验证方式：`tests/agent/test_runner*.py`）
-- [ ] AC6：`POST /projects` 接收类型配置、写入派生字段、按上游设置初始状态；不可用组合 422 且无残留；`GET /api/video-kinds` 返回预设与 8 种配置的可用性（验证方式：`tests/api/test_projects.py`、新 `tests/api/test_video_kinds.py`）
-- [ ] AC7：创建项目对话框可选类型，不可用的卡片/选项禁用并显示原因，创建后跳到项目的 `current_stage`；项目信息里显示类型（验证方式：前端单测 + L4 截图）
-- [ ] AC8：现有 Manim 流程不变：现有后端、前端测试全部通过；`ARCHITECTURE.md`、`QUALITY.md` 已更新；`make check` 为绿
+- [x] AC1：`build_pipeline` 对 8 种合法配置给出设计 §3.2 的流水线，非法组合返回中文错误（验证方式：`tests/stages/test_pipeline.py`）
+- [x] AC2：`upstream_of` 对短片、MV、讲解 + 配乐、老项目给出设计 §3.3 的上游（验证方式：`tests/agent/test_stage.py`）
+- [x] AC3：多上游流转：全部上游定稿才解锁；按上游分别判断 stale 与恢复；`after_turn_done` 记录每个上游的版本（验证方式：`tests/agent/test_stage_flow.py`，用假阶段）
+- [x] AC4：迁移 0009 把老数据的 `based_on_snapshot_id` 正确回填为 `based_on`，升级和降级都能跑（验证方式：`tests/db/` 迁移测试）
+- [x] AC5：TurnRunner 每轮按项目流水线物化 `upstream/`、给工具上下文传正确的直接上游、在物化之后调用 `prepare_turn`（验证方式：`tests/agent/test_runner*.py`）
+- [x] AC6：`POST /projects` 接收类型配置、写入派生字段、按上游设置初始状态；不可用组合 422 且无残留；`GET /api/video-kinds` 返回预设与 8 种配置的可用性（验证方式：`tests/api/test_projects.py`、新 `tests/api/test_video_kinds.py`）
+- [x] AC7：创建项目对话框可选类型，不可用的卡片/选项禁用并显示原因，创建后跳到项目的 `current_stage`；项目信息里显示类型（验证方式：前端单测 + L4 截图）
+- [x] AC8：现有 Manim 流程不变：现有后端、前端测试全部通过；`ARCHITECTURE.md`、`QUALITY.md` 已更新；`make check` 为绿
 
 ## 任务
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：项目类型与流水线派生（待开始）
+### T1：项目类型与流水线派生（完成）
 
 - **目标**：AC1。
 - **涉及文件**：
@@ -110,7 +110,7 @@
 - **完成标准**：用例通过，lint-imports 通过。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_pipeline.py -q && uv run lint-imports`
 
-### T2：阶段协议：`reads()`、`prepare_turn`、`upstream_of`（待开始）
+### T2：阶段协议：`reads()`、`prepare_turn`、`upstream_of`（完成）
 
 - **目标**：AC2。
 - **涉及文件**：
@@ -133,7 +133,7 @@
 - **完成标准**：新用例通过；全量后端测试不变绿（纯改名）。
 - **验证命令**：`cd backend && uv run pytest -q && uv run lint-imports`
 
-### T3：多上游的阶段流转与迁移 0009（待开始）
+### T3：多上游的阶段流转与迁移 0009（完成）
 
 - **目标**：AC3、AC4；评审重点 1～3。
 - **涉及文件**：
@@ -165,7 +165,7 @@
 - **完成标准**：新老用例全部通过；`grep -rn based_on_snapshot_id backend/src` 只剩迁移文件。
 - **验证命令**：`cd backend && uv run pytest -q && uv run lint-imports`
 
-### T4：TurnRunner 接入项目流水线与 `prepare_turn`（待开始）
+### T4：TurnRunner 接入项目流水线与 `prepare_turn`（完成）
 
 - **目标**：AC5。
 - **涉及文件**：`backend/src/studio/agent/runner.py`（`_execute` 约第 313–357 行；`_execute_workspaceless`、`_execute_bound_dir` 的 `upstream_stages` 参数）、`backend/src/studio/agent/turn_finish.py`（第 82 行附近对 `after_turn_done` 的调用，签名不变则只核对）、测试 `tests/agent/test_runner.py`、`tests/agent/test_runner_suggestion.py`。
@@ -181,7 +181,7 @@
 - **完成标准**：用例通过；既有 runner 测试不变绿。
 - **验证命令**：`cd backend && uv run pytest tests/agent -q`
 
-### T5：api：按类型创建项目与 `GET /api/video-kinds`（待开始）
+### T5：api：按类型创建项目与 `GET /api/video-kinds`（完成）
 
 - **目标**：AC6；评审重点 4、5。
 - **涉及文件**：`backend/src/studio/api/projects.py`、`backend/src/studio/api/schemas.py`、新建 `backend/src/studio/api/video_kinds.py`（并在 `main.py` 注册路由）、`backend/src/studio/db/repo/projects.py`（`create_project` 增加 `current_stage: str` 参数）、测试 `tests/api/test_projects.py`、新建 `tests/api/test_video_kinds.py`。
@@ -206,7 +206,7 @@
 - **完成标准**：用例通过；既有 api 测试通过。
 - **验证命令**：`cd backend && uv run pytest tests/api -q && uv run lint-imports`
 
-### T6：前端：类型选择、阶段名、项目信息（待开始）
+### T6：前端：类型选择、阶段名、项目信息（完成）
 
 - **目标**：AC7。
 - **涉及文件**：
@@ -234,7 +234,7 @@
 - **完成标准**：前端单测、类型检查、lint 通过。
 - **验证命令**：`cd frontend && pnpm run lint && pnpm run typecheck && pnpm exec vitest run`
 
-### T7：文档同步与 L4（待开始）
+### T7：文档同步与 L4（完成）
 
 - **目标**：AC8，并对 AC7 做真实浏览器走查。
 - **涉及文件**：`docs/ARCHITECTURE.md`（`agent` 行：`reads`/`upstream_of`/`project_pipeline`/`prepare_turn`、多上游流转；`stages` 行：新增 `stages.pipeline`；`api` 行：`video_kinds`、创建项目的类型字段；分层规则段落：新的 import-linter 契约；前端 `components/VideoKindPicker`、`composables/videoKindChoice`）、`docs/quality/QUALITY.md`（`agent`、`api`、`frontend` 行的日期与说明）、`docs/quality/tech-debt.md`（执行中发现的新债）、本计划。
@@ -244,11 +244,20 @@
 
 ## 进度
 
-- 2026-10-04 — 计划写成，待负责人批准。
+- 2026-10-04 — 计划写成并获批准；从 main 建分支 `pipeline-config`，基线 `make check` 绿（f5c21cf）
+- 2026-10-04 — T1 `stages/pipeline.py` 与 import-linter 契约，15 个用例先 RED（da2a487）
+- 2026-10-04 — T2 `reads()`/`prepare_turn`/`StageRegistry.has`/`upstream_of`，纯改名不改行为（7002400）
+- 2026-10-04 — T3 迁移 0009（`based_on` 映射）、多上游解锁与按上游 stale/恢复、前言按上游比较（f4f19ee）
+- 2026-10-04 — T4 TurnRunner 按项目流水线解析上游、物化后调用 `prepare_turn`；顺带 `list_stages` 按 rowid 兜底排序、前言按 `artifact_dirs()` 截取（a3e2a5e）
+- 2026-10-04 — T5 按类型创建项目、`GET /api/video-kinds`、`ProjectOut.kind`（3ade831）
+- 2026-10-04 — T6 前端类型选择、阶段中文名、项目信息与设置里只读显示类型（9cd7212）
+- 2026-10-04 — T7 ARCHITECTURE/QUALITY 同步（fdec501）；L4 在真实数据副本上走查通过
+- 2026-10-04 — 整分支评审（Opus）：可以合并，0 Critical/Important；一次修复波处理 9 项（12e654d），复审全部 ADDRESSED；遗留登记为 TD-64～TD-68
 
 ## 下一步
 
-- 负责人审阅本计划并选择执行方式；批准后从 `main` 建分支 `pipeline-config`，从 T1 开始。
+- 负责人验收；通过后合并到 main，计划移到 `plans/completed/`。
+- 下一份计划：子项目 2（时间轴 + HTML 引擎）。开工前先做设计 §12 的 spike（真实模型在无运行时库下写 Canvas 场景）。TD-64、TD-65 须在子项目 3 之前解决。
 
 ## 决策记录
 
@@ -258,9 +267,16 @@
 - 2026-10-04：`based_on` 改成按上游记录的映射，并且"全部上游定稿才解锁"。这两点设计文档没有写明，是在梳理 `stage_flow` 时发现的：原实现假设每个阶段最多一个上游（`after_turn_done` 只取第一个），任一上游定稿就解锁下游——在短片流水线里会让 `music` 在 `beatsheet` 定稿前就被解锁。属于 ADR 0020"上下游按项目解析"的必要实现细节，不另写 ADR。
 - 2026-10-04：`build_pipeline` 放在 `studio.stages.pipeline`（独立模块，不属于任何阶段包），因为它知道阶段 key，不能放进 `agent`；它只依赖标准库，`api` 和测试都能直接用。
 
+- 2026-10-04：执行用 SDD；分支直接建在当前检出（计划文件在提交前未跟踪）；任务标题是 `### T<n>`，brief 由控制者自行抽取。
+- 2026-10-04：T5「PATCH 带 engine」的用例只断言类型与流水线不变，不断言状态码（计划写「与现有行为一致」；现有白名单返回 422）。
+- 2026-10-04：T3 评审的两条小问题（`list_stages` 并列排序兜底、前言按 `artifact_dirs()` 截取）并入 T4 一起做，因为后者在上游目录名与阶段名不同时会让前言和 stale 判断看的文件不一致。
+- 2026-10-04：整分支评审后的修复波除文字修正外，还做了：前端类型标签与后端 `PRESETS` 对齐、`kind_from_settings` 对非法值回落到 Manim 讲解（避免手改坏的设置让 `GET /projects` 500）、前言按流水线顺序列上游、创建对话框文案不再写死「选题打磨」。其余登记为技术债。
+
 ## 意外与发现
 
-- （执行中填写）
+- 梳理 `stage_flow` 时发现原实现假设每阶段最多一个上游、任一上游定稿即解锁下游（已在决策记录说明并修复）。
+- 评审指出两条早已存在的流转问题，在多上游下更容易遇到：定稿 `stale` 阶段不刷新自身 `based_on`（TD-64）、已定稿下游 stale 后上游改回原样落到 `active` 而不是 `finalized`（TD-65）。都不会卡死，但会多一次定稿、前言重复出现同一处变化；子项目 3 之前解决。
+- `list_stages` 的并列排序测试写在实现之前就能通过（SQLite 本身按 rowid 稳定），保留为回归用例。
 
 ## 阻塞
 
@@ -268,4 +284,11 @@
 
 ## 验证记录
 
-- （执行中填写）
+- AC1：`backend/tests/stages/test_pipeline.py`（先 RED：ModuleNotFoundError）。
+- AC2：`backend/tests/agent/test_stage.py` 的 `upstream_of` 用例（短片、MV、讲解 + 配乐、老项目、不在流水线）。
+- AC3：`backend/tests/agent/test_stage_flow.py`（多上游不提前解锁、四步 stale 恢复、`after_turn_done` 轮中上游又定稿、`initial_statuses`、老项目升级）。
+- AC4：`backend/tests/db/test_migrate.py` 0008↔0009 升降级；L4 在真实数据副本上迁移，7 个老项目 `based_on` 回填正确。
+- AC5：`backend/tests/agent/test_runner.py` 的 `TestPrepareTurn` 与流水线上游用例、`test_runner_suggestion.py` 原断言不变。
+- AC6：`backend/tests/api/test_projects.py`、`tests/api/test_video_kinds.py`（不可用组合 422 且无残留、夹带类型字段被丢弃、MV 假阶段创建）。
+- AC7：`VideoKindPicker.spec.ts`、`CreateProjectDialog.spec.ts`、`videoKindChoice.spec.ts`、`ProjectInfoBody`/`ProjectSettingsDialog` spec；L4 截图与记录 `data/evidence/pipeline-config/l4.md`。
+- AC8：`make check` 绿（2026-10-04，修复波之后：后端约 1650、前端 914）。
