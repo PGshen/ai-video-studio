@@ -145,3 +145,17 @@ def test_page_hash_reacts_to_every_input(tmp_path: Path) -> None:
         (tmp_path / relpath).write_text(original, encoding="utf-8")
     _write(tmp_path, "animation/assets/x.svg", "<svg/>")
     assert page_hash(tmp_path, TIMELINE) != base
+
+
+def test_html_comment_openers_in_timeline_text_cannot_break_the_page(tmp_path: Path) -> None:
+    timeline = json.loads(json.dumps(TIMELINE))
+    timeline["sections"][0]["label"] = "<!--<script>"
+    html = assemble(_project(tmp_path), timeline).html
+    head = html.split('<script src="scripts/')[0]
+    assert "<!--" not in head
+
+
+def test_style_font_names_with_quotes_cannot_break_the_css(tmp_path: Path) -> None:
+    _write(tmp_path, "style/fonts/it's.woff2", "x")
+    html = assemble(_project(tmp_path), TIMELINE).html
+    assert "font-family:'it\\'s'" in html

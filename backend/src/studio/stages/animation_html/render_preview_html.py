@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from studio.agent.events import ImageData
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.engines.render.html.assemble import assemble
+from studio.engines.render.html.browser import BrowserClosed
 from studio.engines.render.html.pool import get_browser_pool
 from studio.engines.render.html.probe import (
     boundary_diff,
@@ -84,26 +85,35 @@ async def _handler(ctx: ToolContext, args: RenderPreviewHtmlArgs) -> ToolResult:
 
     start, end, _ = section_info(timeline, sid)
     index = ids.index(sid)
-    try:
-        async with get_browser_pool().acquire(assemble(ctx.workdir, timeline)) as page:
-            smoke = await smoke_run(page, timeline, sid)
-            if smoke.errors:
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            async with get_browser_pool().acquire(assemble(ctx.workdir, timeline)) as page:
+                smoke = await smoke_run(page, timeline, sid)
+                if smoke.errors:
+                    return ToolResult(
+                        text="\n".join(f"镜头 {sid}：{m}" for m in smoke.errors), is_error=True
+                    )
+                boundaries: list[str] = []
+                if index > 0:
+                    diff = await boundary_diff(page, start)
+                    boundaries.append(_boundary_line("与前一镜头的边界帧差", diff))
+                if index < len(ids) - 1:
+                    diff = await boundary_diff(page, end)
+                    boundaries.append(_boundary_line("与后一镜头的边界帧差", diff))
+                pads = await _pad_lines(page, timeline, sid)
+            break
+        except BrowserClosed as exc:
+            if attempt >= 2:
                 return ToolResult(
-                    text="\n".join(f"镜头 {sid}：{m}" for m in smoke.errors), is_error=True
+                    text=f"浏览器在预览过程中被关闭（已重试一次仍失败）：{exc}", is_error=True
                 )
-            boundaries: list[str] = []
-            if index > 0:
-                diff = await boundary_diff(page, start)
-                boundaries.append(_boundary_line("与前一镜头的边界帧差", diff))
-            if index < len(ids) - 1:
-                diff = await boundary_diff(page, end)
-                boundaries.append(_boundary_line("与后一镜头的边界帧差", diff))
-            pads = await _pad_lines(page, timeline, sid)
-    except Exception as exc:
-        text = browser_error_text(exc)
-        if text is None:
-            raise
-        return ToolResult(text=text, is_error=True)
+        except Exception as exc:
+            text = browser_error_text(exc)
+            if text is None:
+                raise
+            return ToolResult(text=text, is_error=True)
 
     lines = [f"镜头 {sid} 预览：时长 {end - start:.2f}s，采样 {len(smoke.frames)} 帧。"]
     for (t, metrics), _frame in zip(smoke.metrics, smoke.frames, strict=True):

@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.engines.render.html.assemble import assemble
 from studio.engines.render.html.assets import check_assets
+from studio.engines.render.html.browser import BrowserClosed, PageLike
 from studio.engines.render.html.glyphs import missing_characters
 from studio.engines.render.html.pool import get_browser_pool
 from studio.engines.render.html.probe import (
@@ -118,50 +119,82 @@ def _pre_browser_checks(
             report.warn(f"字符 {'、'.join(missing[:10])} 不在内置字体里，可能显示成方框", sid)
 
 
+async def _check_scene(page: PageLike, timeline: dict[str, Any], sid: str, report: _Report) -> None:
+    smoke = await smoke_run(page, timeline, sid)
+    for message in smoke.errors:
+        report.error(message, sid)
+    for message in smoke.warnings:
+        report.warn(message, sid)
+    if smoke.errors:
+        return
+    start, end, beats = section_info(timeline, sid)
+    try:
+        times = sample_times(start, end, beats)[:_DETERMINISM_SAMPLES]
+        unstable = await determinism_check(page, times)
+        if unstable:
+            report.error(
+                "渲染结果依赖调用顺序或外部状态（例如 t="
+                f"{unstable[0]:.2f}s 两次渲染不同）：draw 必须是 lt 的纯函数",
+                sid,
+            )
+            return
+        if not beats:
+            return
+        sensitivity = await beat_sensitivity(page, timeline, sid)
+    except BrowserClosed:
+        raise
+    except Exception as exc:  # 镜头里的异常已带标签
+        report.error(str(exc), sid)
+        return
+    if sensitivity.all_insensitive:
+        report.error(
+            "整个镜头对任何旁白 beat 都无反应：疑似把 beat 时刻写成了字面量，"
+            "请改用 env.cue(i) / env.cueEnd(i)",
+            sid,
+        )
+    elif sensitivity.insensitive_beats:
+        names = "、".join(f"env.cue({i})" for i in sensitivity.insensitive_beats)
+        report.warn(f"{names} 对应的 beat 没有驱动画面", sid)
+
+
+def _report_page_errors(page: PageLike, seen: set[str], report: _Report) -> None:
+    """页面加载阶段留下的错误（资源 404、lib 的告警等）不属于某个镜头，只报一次。"""
+    for message in dict.fromkeys(page.errors):
+        if message in seen:
+            continue
+        seen.add(message)
+        if message.startswith("console.warning"):
+            report.warn(message)
+        else:
+            report.error(message)
+
+
 async def _browser_checks(
     workdir: Path, timeline: dict[str, Any], targets: list[str], report: _Report
 ) -> None:
-    try:
-        async with get_browser_pool().acquire(assemble(workdir, timeline)) as page:
-            for sid in targets:
-                smoke = await smoke_run(page, timeline, sid)
-                for message in smoke.errors:
-                    report.error(message, sid)
-                for message in smoke.warnings:
-                    report.warn(message, sid)
-                if smoke.errors:
-                    continue
-                start, end, beats = section_info(timeline, sid)
-                try:
-                    times = sample_times(start, end, beats)[:_DETERMINISM_SAMPLES]
-                    unstable = await determinism_check(page, times)
-                    if unstable:
-                        report.error(
-                            "渲染结果依赖调用顺序或外部状态（例如 t="
-                            f"{unstable[0]:.2f}s 两次渲染不同）：draw 必须是 lt 的纯函数",
-                            sid,
-                        )
-                        continue
-                    if not beats:
-                        continue
-                    sensitivity = await beat_sensitivity(page, timeline, sid)
-                except Exception as exc:  # 镜头里的异常已带标签
-                    report.error(str(exc), sid)
-                    continue
-                if sensitivity.all_insensitive:
-                    report.error(
-                        "整个镜头对任何旁白 beat 都无反应：疑似把 beat 时刻写成了字面量，"
-                        "请改用 env.cue(i) / env.cueEnd(i)",
-                        sid,
-                    )
-                elif sensitivity.insensitive_beats:
-                    names = "、".join(f"env.cue({i})" for i in sensitivity.insensitive_beats)
-                    report.warn(f"{names} 对应的 beat 没有驱动画面", sid)
-    except Exception as exc:
-        text = browser_error_text(exc)
-        if text is None:
-            raise
-        report.error(text)
+    remaining = list(targets)
+    seen_page_errors: set[str] = set()
+    can_retry = True
+    while remaining:
+        try:
+            async with get_browser_pool().acquire(assemble(workdir, timeline)) as page:
+                _report_page_errors(page, seen_page_errors, report)
+                while remaining:
+                    await _check_scene(page, timeline, remaining[0], report)
+                    remaining.pop(0)
+                    if page.poisoned:  # 卡死的页面不再使用，剩余镜头换新页面
+                        break
+        except BrowserClosed as exc:
+            if not can_retry:
+                report.error(f"浏览器在校验过程中被关闭（已重试一次仍失败）：{exc}")
+                return
+            can_retry = False  # 当前镜头没有 pop，换新页面从它重来
+        except Exception as exc:
+            text = browser_error_text(exc)
+            if text is None:
+                raise
+            report.error(text)
+            return
 
 
 def _render(report: _Report, targets: list[str], single: bool) -> ToolResult:

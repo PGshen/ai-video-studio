@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from studio.engines.render.html.assets import list_assets
 
@@ -62,11 +63,15 @@ class AssembledPage:
 
 
 def _json_for_script(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
+    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c")
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _css_string(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("'", "\\'")
 
 
 def _font_faces(style_fonts: list[Path]) -> str:
@@ -76,7 +81,8 @@ def _font_faces(style_fonts: list[Path]) -> str:
         for family, weight, name in _BUNDLED_FACES
     ]
     rules += [
-        f"@font-face{{font-family:'{path.stem}';src:url(style-fonts/{path.name}) format('woff2')}}"
+        f"@font-face{{font-family:'{_css_string(path.stem)}';"
+        f"src:url(style-fonts/{quote(path.name)}) format('woff2')}}"
         for path in style_fonts
     ]
     return "".join(rules)

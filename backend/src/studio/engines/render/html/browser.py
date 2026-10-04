@@ -11,6 +11,7 @@ import base64
 import hashlib
 from collections.abc import Mapping
 from typing import Any, Protocol
+from urllib.parse import unquote
 
 from playwright.async_api import Browser, BrowserContext, Page, Route, async_playwright
 from playwright.async_api import Error as PlaywrightError
@@ -46,6 +47,10 @@ class RenderTimeout(RuntimeError):
 
 class SceneRenderError(RuntimeError):
     """页面里 `renderAt` 抛出的异常（消息已带 `[scene <id> @lt=…]` 前缀和 JS 堆栈）。"""
+
+
+class BrowserClosed(SceneRenderError):
+    """浏览器或页面在调用进行中被关闭（崩溃、被杀）：调用方可以换新页面重试一次。"""
 
 
 class PageLike(Protocol):
@@ -91,6 +96,8 @@ class HtmlPage:
         self._page = page
         self.errors = errors
         self.poisoned = False
+        self.close_failed = False
+        """关闭 context 失败（渲染进程可能还卡着）：池据此换掉整个浏览器。"""
         self._render_timeout = render_timeout
 
     async def _call(self, expression: str, arg: Any, t: float) -> Any:
@@ -104,6 +111,7 @@ class HtmlPage:
         except PlaywrightError as exc:
             if "closed" in str(exc).lower():
                 self.poisoned = True
+                raise BrowserClosed(_clean(exc)) from exc
             raise SceneRenderError(_clean(exc)) from exc
 
     async def render_jpeg(self, t: float) -> bytes:
@@ -136,6 +144,7 @@ class HtmlPage:
             await asyncio.wait_for(self._context.close(), 5.0)
         except (TimeoutError, PlaywrightError):
             self.poisoned = True
+            self.close_failed = True
 
 
 class HtmlBrowser:
@@ -162,6 +171,10 @@ class HtmlBrowser:
             await self._playwright.stop()
             self._playwright = None
             raise ChromiumUnavailable(str(exc).splitlines()[0] if str(exc) else "") from exc
+        except BaseException:
+            await self._playwright.stop()
+            self._playwright = None
+            raise
         return self
 
     async def __aenter__(self) -> HtmlBrowser:
@@ -190,11 +203,15 @@ class HtmlBrowser:
             raise ChromiumUnavailable("浏览器尚未启动")
         context = await self._browser.new_context(viewport={"width": 1920, "height": 1080})
         errors: list[str] = []
-        html_page = await context.new_page()
+        try:
+            html_page = await context.new_page()
+        except BaseException:
+            await context.close()
+            raise
         result = HtmlPage(context, html_page, errors, render_timeout=self._render_timeout)
 
         async def handle(route: Route) -> None:
-            path = route.request.url.removeprefix(ORIGIN).split("?", 1)[0]
+            path = unquote(route.request.url.removeprefix(ORIGIN).split("?", 1)[0])
             if path in ("", "index.html"):
                 await route.fulfill(body=page.html, content_type="text/html; charset=utf-8")
                 return
@@ -212,7 +229,11 @@ class HtmlBrowser:
                 body=file.read_bytes(), content_type=_content_type(file.suffix.lower())
             )
 
-        await context.route(ORIGIN + "**", handle)
+        try:
+            await context.route(ORIGIN + "**", handle)
+        except BaseException:
+            await result.close()
+            raise
         html_page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         html_page.on(
             "console",

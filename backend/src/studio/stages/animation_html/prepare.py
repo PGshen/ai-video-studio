@@ -45,10 +45,12 @@ def prepare_turn(workdir: Path) -> None:
         )
     except FileNotFoundError as exc:
         _fail(workdir, f"缺少上游叙事产物：{exc}（narrative 阶段需要先定稿并完成配音）")
+    except TimelineError as exc:
+        _fail(workdir, "；".join(exc.errors))
     except json.JSONDecodeError as exc:
         _fail(workdir, f"上游叙事产物不是合法的 JSON：{exc}")
-    except TimelineError as exc:
-        _fail(workdir, str(exc))
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        _fail(workdir, f"上游叙事产物的结构不符合预期：{type(exc).__name__}: {exc}")
     else:
         (workdir / ERROR_PATH).unlink(missing_ok=True)
         (workdir / TIMELINE_PATH).write_text(

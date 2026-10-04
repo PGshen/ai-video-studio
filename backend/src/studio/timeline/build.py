@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from studio.timeline.schema import Beat, NarrationScene, Section, Timeline
 
+_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+"""镜头 id 会变成文件名、URL 路径和 JS 字符串键，只允许字母、数字、下划线和连字符。"""
 _TOLERANCE = 0.05
 """beat 起止允许超出镜头时长的容差（秒），与配音对齐的取整误差同量级。"""
 
@@ -97,7 +100,10 @@ def narration_from_documents(
     for index, scene in enumerate(raw_scenes):
         scene_id = scene.get("id") if isinstance(scene, dict) else None
         if not isinstance(scene_id, str) or not scene_id:
-            errors.append(f"第 {index} 个镜头缺少 id")
+            errors.append(f"第 {index} 个镜头缺少 id：镜头 id 必须是非空字符串")
+            continue
+        if not _ID_PATTERN.match(scene_id):
+            errors.append(f"镜头 id {scene_id!r} 不合法：只能包含字母、数字、下划线和连字符")
             continue
         if scene_id in seen:
             errors.append(f"镜头 id {scene_id} 重复")

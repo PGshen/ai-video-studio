@@ -128,3 +128,12 @@ def test_hash_is_stable_sensitive_and_key_order_independent() -> None:
     changed = _two_scenes()
     changed[1] = NarrationInput("s-b", "乙", 3.0, [(0.6, 2.5, "三")])
     assert timeline_hash(build_timeline(TimelineLayers(narration=changed))) != timeline_hash(a)
+
+
+@pytest.mark.parametrize("bad_id", ["开场", "s two", "../x", "a/b", "a.b", ""])
+def test_scene_ids_are_restricted_to_a_safe_character_set(bad_id: str) -> None:
+    narrative, timing = _docs()
+    narrative["scenes"][0]["id"] = bad_id
+    timing["scenes"][0]["id"] = bad_id
+    errors = _errors(narrative, timing)
+    assert any("镜头 id" in e for e in errors)

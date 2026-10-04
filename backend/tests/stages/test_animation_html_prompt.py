@@ -28,6 +28,7 @@ _REQUIRED = [
     ("字体 Anton", "Anton"),
     ("字体 Space Mono", "Space Mono"),
     ("字体 Noto Sans SC", "Noto Sans SC"),
+    ("风格字体", "style/fonts"),
     ("校验工具", "validate_scenes_html"),
     ("预览工具", "render_preview_html"),
     ("回退建议工具", "suggest_upstream_change"),

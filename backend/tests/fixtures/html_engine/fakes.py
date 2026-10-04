@@ -12,6 +12,7 @@ from PIL import Image
 
 from fixtures.html_engine import projects as fx
 from studio.engines.render.html.assemble import AssembledPage
+from studio.engines.render.html.browser import RenderTimeout
 
 
 def jpeg(*, flat: bool = False) -> bytes:
@@ -41,7 +42,11 @@ class ScriptedPage:
         self._b = behaviour
 
     async def render_jpeg(self, t: float) -> bytes:
-        return self._b.jpeg_fn(t)
+        try:
+            return self._b.jpeg_fn(t)
+        except RenderTimeout:
+            self.poisoned = True  # 和真实页面一样：超时后作废
+            raise
 
     async def render_hash(self, t: float) -> str:
         return self._b.hash_fn(t, self.timeline)

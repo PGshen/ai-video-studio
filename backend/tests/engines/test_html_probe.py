@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from studio.engines.render.html.browser import RenderTimeout, SceneRenderError
+from studio.engines.render.html.browser import BrowserClosed, RenderTimeout, SceneRenderError
 from studio.engines.render.html.probe import (
     FrameMetrics,
     beat_sensitivity,
@@ -187,11 +187,32 @@ async def test_smoke_run_flags_flat_frames_as_warnings_not_errors() -> None:
     assert report.warnings and "空白" in report.warnings[0]
 
 
-async def test_smoke_run_collects_console_errors_from_the_page() -> None:
-    page = FakePage()
-    page.errors.append("console.error: boom from lib")
+async def test_smoke_run_collects_console_errors_raised_while_rendering() -> None:
+    holder: dict[str, FakePage] = {}
+
+    def jpeg(t: float) -> bytes:
+        holder["page"].errors.append("console.error: boom from lib")
+        return _jpeg(flat=False)
+
+    page = FakePage(jpeg_fn=jpeg)
+    holder["page"] = page
     report = await smoke_run(page, TIMELINE, "s-a")
-    assert any("boom from lib" in e for e in report.errors)
+    assert sum("boom from lib" in e for e in report.errors) == 1
+
+
+async def test_smoke_run_ignores_errors_recorded_before_it_started() -> None:
+    page = FakePage()
+    page.errors.append("console.error: earlier problem")
+    report = await smoke_run(page, TIMELINE, "s-a")
+    assert report.errors == [] and report.warnings == []
+
+
+async def test_smoke_run_lets_a_closed_browser_propagate() -> None:
+    def jpeg(t: float) -> bytes:
+        raise BrowserClosed("Target page, context or browser has been closed")
+
+    with pytest.raises(BrowserClosed):
+        await smoke_run(FakePage(jpeg_fn=jpeg), TIMELINE, "s-a")
 
 
 async def test_smoke_run_stops_at_a_timeout() -> None:
@@ -266,3 +287,26 @@ async def test_beat_sensitivity_without_beats_tests_nothing() -> None:
     page.timeline = timeline
     report = await beat_sensitivity(page, timeline, "s-a")
     assert report.tested == [] and not report.all_insensitive
+
+
+class _PoisoningPage(FakePage):
+    def __init__(self) -> None:
+        super().__init__(hash_fn=lambda t, tl: _digest(t))
+        self.set_calls = 0
+        self.calls_at_poison: list[int] = []
+
+    async def set_timeline(self, timeline: Mapping[str, Any]) -> None:
+        self.set_calls += 1
+        await super().set_timeline(timeline)
+
+    async def render_hash(self, t: float) -> str:
+        self.poisoned = True
+        self.calls_at_poison.append(self.set_calls)
+        raise RenderTimeout(t, 10.0)
+
+
+async def test_beat_sensitivity_does_not_touch_a_poisoned_page_in_its_cleanup() -> None:
+    page = _PoisoningPage()
+    with pytest.raises(RenderTimeout):
+        await beat_sensitivity(page, TIMELINE, "s-b")
+    assert page.set_calls == page.calls_at_poison[0]  # 页面作废后，清理阶段不再碰它

@@ -15,7 +15,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已写成 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)（草案待审阅），拆为计划 2A/2B |
+| P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A（已实现，待验收）/2B |
 | P1 | 多形态视频子项目 3：合成配乐 + 动态图形短片 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 2 |
 | P2 | 多形态视频子项目 4：导入音乐 + 音乐 MV | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 3 |
 | P2 | 把本地 `main` 推送到 `origin` | 2026-10-04 | 需负责人确认后再推 |

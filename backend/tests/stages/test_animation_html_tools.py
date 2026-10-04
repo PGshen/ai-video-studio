@@ -23,6 +23,7 @@ from fixtures.html_engine.fakes import digest as _digest
 from fixtures.html_engine.fakes import jpeg as _jpeg
 from studio.agent.tools import ToolContext, ToolResult, invoke_tool
 from studio.engines.render.html.browser import (
+    BrowserClosed,
     ChromiumUnavailable,
     PageNotReady,
     RenderTimeout,
@@ -270,6 +271,83 @@ async def test_pool_busy_and_missing_chromium_are_readable(
     behaviour.open_error = ChromiumUnavailable()
     missing = await _validate(project)
     assert missing.is_error and "uv run playwright install chromium" in missing.text
+
+
+# ---- validate：页面作废、页面级错误、浏览器中途关闭 --------------------------------------------
+
+
+async def test_a_hung_scene_does_not_make_later_scenes_fail(
+    project: Path, behaviour: Behaviour
+) -> None:
+    def jpeg(t: float) -> bytes:
+        if t < 3.0:  # s-hook 的区间
+            raise RenderTimeout(t, 10.0)
+        return _jpeg()
+
+    behaviour.jpeg_fn = jpeg
+    result = await _validate(project)
+    assert result.is_error
+    assert "镜头 s-hook 在 lt=" in result.text and "渲染超时" in result.text
+    assert "镜头 s-explain：" not in result.text
+    assert behaviour.opened == 2  # 作废的页面不再使用，剩余镜头换新页面
+
+
+async def test_page_level_errors_are_reported_once_without_a_scene_prefix(
+    project: Path, behaviour: Behaviour
+) -> None:
+    behaviour.page_errors = ["console.error: Failed to load resource: 404 (fonts/x.woff2)"]
+    result = await _validate(project)
+    assert result.is_error
+    assert result.text.count("Failed to load resource") == 1
+    assert (
+        "镜头 s-hook：console" not in result.text and "镜头 s-explain：console" not in result.text
+    )
+
+
+async def test_a_browser_closed_mid_call_is_retried_once_on_a_fresh_page(
+    project: Path, behaviour: Behaviour
+) -> None:
+    calls = {"n": 0}
+
+    def jpeg(t: float) -> bytes:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BrowserClosed("Target page, context or browser has been closed")
+        return _jpeg()
+
+    behaviour.jpeg_fn = jpeg
+    result = await _validate(project)
+    assert not result.is_error, result.text
+    assert behaviour.opened == 2
+
+
+async def test_a_browser_that_keeps_closing_is_reported_after_one_retry(
+    project: Path, behaviour: Behaviour
+) -> None:
+    def jpeg(t: float) -> bytes:
+        raise BrowserClosed("Target page, context or browser has been closed")
+
+    behaviour.jpeg_fn = jpeg
+    result = await _validate(project)
+    assert result.is_error and "浏览器" in result.text and "已重试一次" in result.text
+    assert behaviour.opened == 2
+
+
+async def test_preview_retries_once_when_the_browser_closes_mid_call(
+    project: Path, behaviour: Behaviour
+) -> None:
+    calls = {"n": 0}
+
+    def jpeg(t: float) -> bytes:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BrowserClosed("Target page, context or browser has been closed")
+        return _jpeg()
+
+    behaviour.jpeg_fn = jpeg
+    result = await _preview(project, scene_id="s-hook")
+    assert not result.is_error, result.text
+    assert len(result.images) == 1
 
 
 # ---- validate：警告 -------------------------------------------------------------------------

@@ -106,15 +106,17 @@ class BrowserPool:
             opened = await self._open(page)
             yield opened
         finally:
-            if opened is not None:
-                await opened.close()
-                if opened.poisoned:
-                    async with self._lock:
-                        await self._discard_browser()  # 页面卡死：整个浏览器换新
-            self._active -= 1
-            self._semaphore.release()
-            if self._active == 0:
-                self._schedule_idle()
+            try:
+                if opened is not None:
+                    await opened.close()
+                    if getattr(opened, "close_failed", False):
+                        async with self._lock:
+                            await self._discard_browser()  # 渲染进程可能还卡着：整个浏览器换新
+            finally:
+                self._active -= 1
+                self._semaphore.release()
+                if self._active == 0:
+                    self._schedule_idle()
 
     async def close(self) -> None:
         self._cancel_idle()

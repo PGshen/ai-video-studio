@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import pytest
 
@@ -24,6 +25,8 @@ class FakePage:
         self.errors: list[str] = []
         self.poisoned = False
         self.closed = False
+        self.close_failed = False
+        self.close_delay = 0.0
         self._browser = browser
 
     async def render_jpeg(self, t: float) -> bytes:
@@ -36,6 +39,7 @@ class FakePage:
         return None
 
     async def close(self) -> None:
+        await asyncio.sleep(self.close_delay)
         self.closed = True
         self._browser.live -= 1
 
@@ -162,15 +166,46 @@ async def test_user_errors_propagate_without_rebuilding() -> None:
     await pool.close()
 
 
-async def test_poisoned_page_makes_the_next_call_use_a_fresh_browser() -> None:
+async def test_poisoned_page_does_not_close_the_shared_browser() -> None:
     log: list[FakeBrowser] = []
     pool = _pool(log)
     async with pool.acquire(PAGE) as page:
         page.poisoned = True
+    assert not log[0].closed
+    async with pool.acquire(PAGE):
+        pass
+    assert len(log) == 1
+    await pool.close()
+
+
+async def test_page_whose_close_failed_makes_the_pool_replace_the_browser() -> None:
+    log: list[FakeBrowser] = []
+    pool = _pool(log)
+    async with pool.acquire(PAGE) as page:
+        page.poisoned = True
+        cast(FakePage, page).close_failed = True
     assert log[0].closed
     async with pool.acquire(PAGE):
         pass
     assert len(log) == 2
+    await pool.close()
+
+
+async def test_a_cancelled_release_still_returns_the_slot() -> None:
+    log: list[FakeBrowser] = []
+    pool = _pool(log, max_pages=1, queue_timeout=0.2)
+
+    async def use() -> None:
+        async with pool.acquire(PAGE) as page:
+            cast(FakePage, page).close_delay = 5.0
+
+    task = asyncio.ensure_future(use())
+    await asyncio.sleep(0.2)  # 已经在 close 里等待
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    async with pool.acquire(PAGE):  # 槽位必须已归还，否则这里会抛 PoolBusy
+        pass
     await pool.close()
 
 

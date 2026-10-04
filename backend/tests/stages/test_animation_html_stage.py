@@ -105,6 +105,34 @@ class TestPrepareTurn:
         reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
         assert "s-hook" in reason and "beat 数" in reason
 
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda t: t["scenes"][0]["beats"][0].pop("start_seconds"),
+            lambda t: t["scenes"][0].update(beats=None),
+        ],
+        ids=["missing-field", "null-beats"],
+    )
+    def test_structurally_malformed_timing_does_not_raise(self, tmp_path: Path, mutate) -> None:
+        _upstream(tmp_path)
+        timing_path = tmp_path / "upstream" / "narrative" / "timing.json"
+        timing = _load(timing_path)
+        mutate(timing)
+        timing_path.write_text(json.dumps(timing), encoding="utf-8")
+        STAGE.prepare_turn(tmp_path)
+        assert not (tmp_path / "upstream" / "timeline.json").exists()
+        assert (tmp_path / "upstream" / "timeline.error.txt").is_file()
+
+    def test_error_text_does_not_repeat_the_unavailable_prefix(self, tmp_path: Path) -> None:
+        _upstream(tmp_path)
+        timing_path = tmp_path / "upstream" / "narrative" / "timing.json"
+        timing = _load(timing_path)
+        timing["scenes"][0]["beats"].pop()
+        timing_path.write_text(json.dumps(timing), encoding="utf-8")
+        STAGE.prepare_turn(tmp_path)
+        reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
+        assert "时间轴不可用" not in reason
+
     def test_corrupt_json_does_not_raise(self, tmp_path: Path) -> None:
         _upstream(tmp_path)
         (tmp_path / "upstream" / "narrative" / "narrative.json").write_text("{", encoding="utf-8")

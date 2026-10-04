@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -212,7 +213,7 @@ async def test_pool_recovers_after_chromium_is_killed_and_after_a_hang(tmp_path:
         async with pool.acquire(good_page) as page:
             assert frame_metrics(await page.render_jpeg(1.0)).std > 0
         assert pool._browser is not None
-        await pool._browser._browser.close()  # type: ignore[attr-defined]
+        await cast(Any, pool._browser)._browser.close()  # 模拟 Chromium 被杀
         async with pool.acquire(good_page) as page:
             assert frame_metrics(await page.render_jpeg(1.0)).std > 0
 
@@ -223,3 +224,33 @@ async def test_pool_recovers_after_chromium_is_killed_and_after_a_hang(tmp_path:
             assert frame_metrics(await page.render_jpeg(1.0)).std > 0
     finally:
         await pool.close()
+
+
+async def test_style_fonts_are_loaded_before_ready(browser: HtmlBrowser, tmp_path: Path) -> None:
+    from studio.engines.render.html.assemble import FONTS_DIR
+
+    scene = (
+        "module.exports = { draw(ctx, lt, env) {"
+        " ctx.fillStyle = '#000'; ctx.fillRect(0, 0, env.W, env.H);"
+        " ctx.fillStyle = '#fff'; ctx.font = '120px Brand'; ctx.fillText('ABC', 100, 400); } };"
+    )
+    fx.write_project(tmp_path, scenes={"s-hook": scene})
+    font = tmp_path / "style" / "fonts" / "Brand.woff2"
+    font.parent.mkdir(parents=True)
+    font.write_bytes((FONTS_DIR / "anton.woff2").read_bytes())
+    page = await _open(browser, tmp_path)
+    statuses = await page.evaluate("[...document.fonts].map(f => f.status)")
+    assert statuses and all(status == "loaded" for status in statuses)
+    assert await determinism_check(page, [0.5, 1.0]) == []
+    await page.close()
+
+
+async def test_non_ascii_asset_names_are_served(browser: HtmlBrowser, tmp_path: Path) -> None:
+    scene = (
+        "module.exports = { draw(ctx, lt, env) {"
+        " ctx.drawImage(env.assets['中文 logo.svg'], 0, 0, 100, 100); } };"
+    )
+    fx.write_project(tmp_path, scenes={"s-hook": scene}, assets={"中文 logo.svg": fx.SVG_RED})
+    page = await _open(browser, tmp_path)
+    assert (await _pixel(page, 1.0, 50, 50))[:3] == [255, 0, 0]
+    await page.close()

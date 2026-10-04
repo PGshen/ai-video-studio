@@ -252,6 +252,7 @@ forbidden_modules = [
     "studio.agent",
     "studio.workspace",
     "studio.db",
+    "studio.timeline",
 ]
 allow_indirect_imports = true
 

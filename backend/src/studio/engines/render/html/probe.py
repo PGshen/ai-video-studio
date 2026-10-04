@@ -14,7 +14,7 @@ from typing import Any
 
 from PIL import Image, ImageChops, ImageDraw, ImageStat
 
-from studio.engines.render.html.browser import PageLike, RenderTimeout
+from studio.engines.render.html.browser import BrowserClosed, PageLike, RenderTimeout
 
 FLAT_STD = 3.0
 SHIFT_SECONDS = 0.7
@@ -136,12 +136,15 @@ async def smoke_run(page: PageLike, timeline: Mapping[str, Any], scene_id: str) 
     report = SceneSmoke()
     seen: set[str] = set()
     flat_times: list[float] = []
+    known_errors = len(page.errors)  # 只归因于本次运行期间新出现的页面错误
     for t in sample_times(start, end, beats):
         try:
             jpeg = await page.render_jpeg(t)
         except RenderTimeout:
             report.errors.append(f"镜头 {scene_id} 在 lt={t - start:.2f} 渲染超时（可能有死循环）")
             break
+        except BrowserClosed:
+            raise
         except Exception as exc:  # 镜头里的异常已带 [scene <id> @lt=…] 前缀
             key = _error_key(str(exc))
             if key not in seen:
@@ -157,7 +160,7 @@ async def smoke_run(page: PageLike, timeline: Mapping[str, Any], scene_id: str) 
         report.warnings.append(
             f"{len(flat_times)} 个采样帧画面空白或纯色（首个在 t={flat_times[0]:.2f}s）"
         )
-    for message in dict.fromkeys(page.errors):
+    for message in dict.fromkeys(page.errors[known_errors:]):
         if message.startswith("console.warning"):
             report.warnings.append(message)
         elif _error_key(message) not in seen:
@@ -207,7 +210,8 @@ async def beat_sensitivity(
             if changed == original:
                 insensitive.append(i)
     finally:
-        await page.set_timeline(timeline)
+        if not page.poisoned:
+            await page.set_timeline(timeline)
     return SensitivityReport(
         tested=tested,
         insensitive_beats=insensitive,

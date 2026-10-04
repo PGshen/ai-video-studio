@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 待验收 |
 | 里程碑 | 多形态视频流水线 · 子项目 2/4 · 计划 2A |
 | 设计依据 | [子项目 2 设计](../../design/2026-10-04-timeline-html-engine.md)（已批准）；[总设计](../../design/2026-10-04-html-video-pipeline.md) §4、§5、§11；[ADR 0021](../../decisions/0021-HTML引擎与配乐阶段.md)；[小试结论](../../references/html-canvas-agent-spike.md) |
 | 分支 | `html-engine-2a` |
-| 批准记录 | 2026-10-04：负责人批准设计，要求写计划 2A；计划待批准 |
+| 批准记录 | 2026-10-04：负责人批准设计，要求写计划 2A；计划待批准；2026-10-05：负责人批准计划，选择 Native 执行 |
 
 > 执行者：按 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐个任务执行；本计划的「进度」「决策记录」就是账本。每个任务先写失败的测试，再实现。计划只写结构和意图，不写完整实现代码。
 
@@ -61,24 +61,24 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 
 ## 验收标准
 
-- [ ] AC1：`studio.timeline` 的 schema、构建、`narration_from_documents`、记法换算、哈希行为符合设计 §4，预留层被拒绝（验证方式：`tests/timeline/`）
-- [ ] AC2：随包字体文件齐全、体积在预算内，覆盖表包含常用汉字（验证方式：`tests/engines/test_html_fonts.py`，实测体积记入进度）
-- [ ] AC3：页面组装、路由表、静态检查、资产检查符合设计 §5（验证方式：`tests/engines/test_html_assemble.py`、`test_html_static_check.py`）
-- [ ] AC4：浏览器池与 probe 逻辑正确，真实 Chromium 下运行时契约成立：`env` 字段、`pad` 叠画、错误包装、`assets` 预解码、字体就绪、确定性（验证方式：`tests/engines/test_html_pool.py`、`test_html_probe.py`；`-m slow` 的 `test_html_browser.py`）
-- [ ] AC5：`animation_html` 阶段的定义、`prepare_turn`、提示词符合设计 §6（验证方式：`tests/stages/test_animation_html_stage.py`、`test_animation_html_prompt.py`）
-- [ ] AC6：两个工具按设计 §6.3 的检查表给出错误与警告，输出文本形状固定（验证方式：`tests/stages/test_animation_html_tools.py`；`slow` 版用真实 Chromium）
-- [ ] AC7：`POST /projects` 能创建 `explainer_html` 项目，`GET /api/video-kinds` 里该配置可用，其余新形态仍不可用；设置页阶段列表含 `animation_html`；`make check` 为绿（验证方式：`tests/api/`、前端单测、`make check`）
-- [ ] AC8：fake 运行时在真实 Chromium 下跑通 `explainer_html` 动画阶段一轮（写镜头、校验、预览）（验证方式：`-m slow` 的 `tests/api/test_animation_html_flow.py`）
-- [ ] AC9：真实模型（`claude-login`）写出 3 个镜头，`validate_scenes_html` 无错误，beat 敏感度通过（验证方式：`make smoke SMOKE_ARGS="-k animation_html_claude_login"`，证据写到 `data/evidence/html-engine/smoke/`）
-- [ ] AC10：L4：在内置浏览器里创建"知识讲解（HTML）"项目，叙事定稿后进入动画阶段，通用画布能看到 agent 写的 `animation/scenes/*.js`（验证方式：控制者截图）
-- [ ] AC11：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`docs/references/` 已同步；旧 Manim 流程的现有测试全部通过
+- [x] AC1：`studio.timeline` 的 schema、构建、`narration_from_documents`、记法换算、哈希行为符合设计 §4，预留层被拒绝（验证方式：`tests/timeline/`）
+- [x] AC2：随包字体文件齐全、体积在预算内，覆盖表包含常用汉字（验证方式：`tests/engines/test_html_fonts.py`，实测体积记入进度）
+- [x] AC3：页面组装、路由表、静态检查、资产检查符合设计 §5（验证方式：`tests/engines/test_html_assemble.py`、`test_html_static_check.py`）
+- [x] AC4：浏览器池与 probe 逻辑正确，真实 Chromium 下运行时契约成立：`env` 字段、`pad` 叠画、错误包装、`assets` 预解码、字体就绪、确定性（验证方式：`tests/engines/test_html_pool.py`、`test_html_probe.py`；`-m slow` 的 `test_html_browser.py`）
+- [x] AC5：`animation_html` 阶段的定义、`prepare_turn`、提示词符合设计 §6（验证方式：`tests/stages/test_animation_html_stage.py`、`test_animation_html_prompt.py`）
+- [x] AC6：两个工具按设计 §6.3 的检查表给出错误与警告，输出文本形状固定（验证方式：`tests/stages/test_animation_html_tools.py`；`slow` 版用真实 Chromium）
+- [x] AC7：`POST /projects` 能创建 `explainer_html` 项目，`GET /api/video-kinds` 里该配置可用，其余新形态仍不可用；设置页阶段列表含 `animation_html`；`make check` 为绿（验证方式：`tests/api/`、前端单测、`make check`）
+- [x] AC8：fake 运行时在真实 Chromium 下跑通 `explainer_html` 动画阶段一轮（写镜头、校验、预览）（验证方式：`-m slow` 的 `tests/api/test_animation_html_flow.py`）
+- [x] AC9：真实模型（`claude-login`）写出 3 个镜头，`validate_scenes_html` 无错误，beat 敏感度通过（验证方式：`make smoke SMOKE_ARGS="-k animation_html_claude_login"`，证据写到 `data/evidence/html-engine/smoke/`）
+- [x] AC10：L4：在内置浏览器里创建"知识讲解（HTML）"项目，叙事定稿后进入动画阶段，通用画布能看到 agent 写的 `animation/scenes/*.js`（验证方式：控制者截图）
+- [x] AC11：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`docs/references/` 已同步；旧 Manim 流程的现有测试全部通过
 
 ## 任务
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 <!-- 依赖：T1、T2 互相独立；T3 依赖 T1；T4 依赖 T3；T5 依赖 T2、T3；T6 依赖 T4、T5；T7 依赖 T6；T8 依赖 T7；T9 依赖 T8 -->
 
-### T1：依赖、字体与资产（待开始）
+### T1：依赖、字体与资产（完成）
 
 - **目标**：把 `playwright` 依赖、随包字体和覆盖表就位，`make setup` 能装好 Chromium。
 - **涉及文件**：`backend/pyproject.toml`、`backend/uv.lock`、`Makefile`（`setup` 目标）、`docs/runbooks/dev-setup.md`、`scripts/build_fonts.sh`、`backend/src/studio/engines/render/html/fonts/`（`anton.woff2`、`spacemono.woff2`、`spacemono-bold.woff2`、`notosanssc-400.woff2`、`notosanssc-700.woff2`、`coverage.txt`、各字体的 OFL 许可文件）、`backend/tests/engines/test_html_fonts.py`。
@@ -92,7 +92,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：`make setup` 后 `uv run python -c "from playwright.sync_api import sync_playwright"` 成功且 Chromium 可启动；测试通过；实测体积记入进度。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_html_fonts.py -v`；`make check`
 
-### T2：`studio.timeline`（待开始）
+### T2：`studio.timeline`（完成）
 
 - **目标**：实现统一时间轴的纯能力模块（设计 §4）。
 - **涉及文件**：`backend/src/studio/timeline/{__init__,schema,notation,build}.py`；`backend/tests/timeline/{__init__,test_schema,test_notation,test_build}.py`；`backend/pyproject.toml`（import-linter 契约）。
@@ -114,7 +114,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：契约生效（故意 import `studio.config` 时 `lint-imports` 失败，实现后通过）；测试通过。
 - **验证命令**：`cd backend && uv run pytest tests/timeline -v && uv run lint-imports`；`make check`
 
-### T3：引擎——页面组装、运行时、静态检查、资产检查（待开始）
+### T3：引擎——页面组装、运行时、静态检查、资产检查（完成）
 
 - **目标**：纯函数部分：把工作区和时间轴装配成页面，静态检查与资产检查。不启动浏览器。
 - **涉及文件**：`backend/src/studio/engines/render/html/{__init__,assemble,static_check,assets}.py`、`runtime.js`；`backend/tests/engines/{test_html_assemble,test_html_static_check}.py`。
@@ -137,7 +137,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：纯函数测试通过；`runtime.js` 在 T4 的 `slow` 测试里被真实 Chromium 验证。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_html_assemble.py tests/engines/test_html_static_check.py -v`；`make check`
 
-### T4：引擎——浏览器、池、probe（待开始）
+### T4：引擎——浏览器、池、probe（完成）
 
 - **目标**：真实 Chromium 的页面封装、并发受控的池，以及校验与预览用的探针逻辑。
 - **涉及文件**：`backend/src/studio/engines/render/html/{browser,pool,probe}.py`；`backend/tests/engines/{test_html_pool,test_html_probe,test_html_browser}.py`（最后一个标 `slow`）。
@@ -172,7 +172,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：非 `slow` 测试通过；`slow` 测试在本机通过，耗时与稳定性记入进度。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_html_pool.py tests/engines/test_html_probe.py -v`；`uv run pytest -m slow tests/engines/test_html_browser.py -v`；`make check`
 
-### T5：`animation_html` 阶段定义、`prepare_turn`、金样本、提示词（待开始）
+### T5：`animation_html` 阶段定义、`prepare_turn`、金样本、提示词（完成）
 
 - **目标**：阶段本体，agent 能读到时间轴和金样本，提示词落实设计 §6.4。
 - **涉及文件**：`backend/src/studio/stages/animation_html/{__init__,prepare,prompt.md}`、`exemplar/canvas-techniques.js`；`backend/tests/stages/{test_animation_html_stage,test_animation_html_prompt}.py`；`backend/pyproject.toml`（independence 与 `stages.pipeline` 契约）。
@@ -189,7 +189,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：测试与 import-linter 通过。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_animation_html_stage.py tests/stages/test_animation_html_prompt.py -v && uv run lint-imports`；`make check`
 
-### T6：两个业务工具（待开始）
+### T6：两个业务工具（完成）
 
 - **目标**：`validate_scenes_html` 与 `render_preview_html`，输出文本形状固定（供 2B 的 `scene_checks` 解析）。
 - **涉及文件**：`backend/src/studio/stages/animation_html/{validate_scenes_html,render_preview_html}.py`，`__init__.py`（工具列表）；`backend/tests/stages/test_animation_html_tools.py`。
@@ -207,7 +207,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：测试通过；输出文本形状有测试固定。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_animation_html_tools.py -v`；`uv run pytest -m slow tests/stages/test_animation_html_tools.py -v`；`make check`
 
-### T7：接入——注册、契约、设置页、文档与环境（待开始）
+### T7：接入——注册、契约、设置页、文档与环境（完成）
 
 - **目标**：阶段进入应用，"知识讲解（HTML）"可创建，文档与环境说明同步。
 - **涉及文件**：`backend/src/studio/main.py`（注册、lifespan 收尾）、`backend/src/studio/db/repo/settings.py`（`STAGES`）、`frontend/src/features/settings/settingsView.ts`（及其单测）、`backend/tests/api/{test_video_kinds,test_projects,test_lifespan}.py`、`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`、`docs/runbooks/verification.md`、`docs/references/html-canvas-agent-spike.md`（补"已落地"指针）。
@@ -220,7 +220,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：`make check` 全绿；`lint-imports` 通过；文档检查通过。
 - **验证命令**：`make check`
 
-### T8：fake 运行时流水线集成测试（待开始）
+### T8：fake 运行时流水线集成测试（完成）
 
 - **目标**：证明"项目 → 叙事定稿 → `animation_html` 一轮"在真实 Chromium 下串得起来。
 - **涉及文件**：`backend/tests/fixtures/animation_html/{__init__,seed}.py`（复用 `tests/fixtures/animation/` 的叙事与音频，建 `explainer_html` 项目并定稿 topic、narrative）；`backend/tests/api/test_animation_html_flow.py`（`slow`）。
@@ -231,7 +231,7 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - **完成标准**：两个测试通过。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_animation_html_flow.py -v`；`uv run pytest -m slow tests/api/test_animation_html_flow.py -v`
 
-### T9：真实模型冒烟与验收（待开始）
+### T9：真实模型冒烟与验收（完成）
 
 - **目标**：用真实模型验证提示词和工具闭环（AC9），并完成 L4（AC10）与收尾。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`（新用例 `test_animation_html_claude_login`）、`backend/tests/fixtures/animation_html/`（"天空为什么是蓝的"3 镜头叙事与 timing 夹具，时间取小试的 32.4 秒时间轴，无需音频文件；若叙事定稿检查要求音频存在，则改用 `generate_audio.py` 生成静音 wav）、`docs/runbooks/verification.md`、本计划的验证记录。
@@ -247,11 +247,19 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-10-05 — T2 `studio.timeline` — 31 个测试，契约生效（f22a3e5）
+- 2026-10-05 — T1 依赖与字体 — playwright 1.63.0；Noto Sans SC 400=1.07 MB、700=1.10 MB，覆盖 7560 字；Chromium 可启动（46e8d27）
+- 2026-10-05 — T3 页面组装/运行时/静态检查/资产检查 — 33 个测试（00a6743）
+- 2026-10-05 — T4 浏览器/池/probe — 117 个引擎测试；`-m slow` 14 个，约 38 秒（5c1e031）
+- 2026-10-05 — T5 阶段定义/prepare_turn/金样本/提示词 — 273 个阶段测试（见 git log）
+- 2026-10-05 — T6 两个工具 — 27 个测试，slow 2 个
+- 2026-10-05 — T7 注册/设置页/文档 — 后端全量 1835 通过
+- 2026-10-05 — T8 集成测试 — 发现并修复 `prepare_turn` 派生文件被当成 agent 改动的缺陷（见决策记录）；后端全量 1840 通过，slow 流程测试通过
+- 2026-10-05 — T9 真实模型冒烟与 L4 — 冒烟通过（15 分 37 秒）；L4 在隔离实例完成；前端通用画布补 `.js`/`.svg` 文本支持
 
 ## 下一步
 
-- 计划批准后，在分支 `html-engine-2a` 上从 T1 开始；T1 与 T2 互相独立，可先做 T2。
+- 整分支评审的发现修完后，等待负责人验收；验收后合并到 main（`--no-ff`）、计划移到 `completed/`、TODO 更新、开始计划 2B。
 
 ## 决策记录
 
@@ -262,13 +270,27 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 - 2026-10-05 — `engines.render.html` 接收 dict 形式的时间轴，不 import `studio.timeline`：保持设计 §5 的"只依赖 `config`、playwright、Pillow"，两个纯能力层互不依赖。
 - 2026-10-05 — probe 的 beat 敏感度测试通过替换 `window.__TIMELINE__` 复用同一页面，不为每个 beat 重载页面：单次校验的页面装载次数不随 beat 数增长。
 - 2026-10-05 — 字号阈值定为 40px（承载信息）与 24px（纯装饰），边界帧差标注阈值 12：小试中小字约 10px 不可读，边界帧差最大的一次约 5.4、其余不超过 2，12 留出硬切的余量；数值在冒烟后可调，改动写进这里。
-- 2026-10-05 — 草稿状态：以上数值与池参数为计划假设，T1、T4 的实测结果可修订。
+- 2026-10-05 — 生成的脚本改为外部文件（`AssembledPage.scripts`，浏览器层在 `/scripts/` 下供给）：内联脚本的语法错误只报 `index.html:2`，无法点名文件；外部脚本报真实文件名和行号。2B 的预览端点要同样供给 `scripts/`。
+- 2026-10-05 — `sample_times` 必选点（首尾、beat 点）优先，均匀点只补余量。
+- 2026-10-05 — `write_scope` 是 fnmatch 语义，`animation/scenes/nested/x.js` 也可写；引擎只读 `scenes/*.js` 顶层，嵌套文件被忽略，无害。
+- 2026-10-05 — 前置检查（缺文件、静态、cue 引用、资产）有错误时不启动浏览器；beat 无反应的警告用 0 起的 `env.cue(i)` 点名；`SceneSmoke` 增加 `frames` 复用冒烟帧做拼图。
+- 2026-10-05 — **计划外的公共接口新增**：集成测试发现 `prepare_turn` 写进 `upstream/` 的派生文件会被轮末 `upstream_drift` 当成 agent 改动（每轮发 `guard_restored` 提示、写进下一轮前言）。修复：`workspace.upstream.derived_upstream` 在 `prepare_turn` 之后记录多出的文件作为基线，`upstream_drift(..., derived)` 据此对账，`_State.derived_upstream` 保存。先写红测试（workspace 3 个、runner 1 个）。`upstream/` 每轮结束重建，派生文件只在轮内存在。
+- 2026-10-05 — 冒烟时把 `tests/smoke/support.py` 的 `TURN_TIMEOUT_SECONDS` 从 600 提到 1500（真实模型写 3 个镜头约 15 分钟），并给 `build_harness` 增加 `html` 参数。
+- 2026-10-05 — 前端通用画布把 `.js`、`.svg` 当文本文件（L4 发现原来显示"二进制文件，不可编辑"）；语法高亮需要新依赖 `@codemirror/lang-javascript`，留给 2B。
+- 2026-10-05 — 整分支评审（独立评审者）修复：整体校验时卡死的镜头不再拖垮后续镜头（页面作废后换新页面）；池只在 context 关闭失败时才换掉整个浏览器，不再误伤别的会话；资源路径先 `unquote`，镜头 id 限制为 `[A-Za-z0-9_-]+`（同时堵住 id 拼进文件路径）；运行时对全部 `@font-face`（含风格字体）加载后才置 `ready`；页面级错误只报一次、不再归到每个镜头；工具调用中浏览器被关闭时整轮换新页面重试一次；`prepare_turn` 兜底捕获结构畸形；`<` 一律转义进内联 JSON；池的释放对取消安全；engines 契约补禁止 `studio.timeline`；提示词补风格字体。均先写红测试。
+- 2026-10-05 — 评审发现 `docs/temp/`（约 40 MB 探索作品）被 T2 的提交误加入历史；合并前已用 `git filter-branch` 把它从分支历史里移除（备份标签 `backup-html-engine-2a-pre-review`，验收后可删）。
+- 2026-10-05 — 延后（Minor）：`strip_comments` 不识别正则字面量，字符串内容参与禁用词匹配导致少量误报/漏报（TD 登记）；镜头与 `lib` 脚本不检查符号链接（资产检查了；id 限制后不再有路径穿越）；beat 敏感度测试按设计 §6.3 本应同步加长镜头，实现为跳过镜头末尾 0.2 秒内的 beat（缺口在末尾 beat 不被测）；`prepare_turn` 派生文件未设只读，`derived_upstream` 不处理阶段改写已物化文件的情况（现无阶段这样做）；常驻浏览器资源占用与真实 SIGKILL 下的恢复未实测（只用 `browser.close()` 和假浏览器模拟）。
+- 2026-10-05 — 字号阈值（40/24px）、边界帧差标注阈值 12、字体体积预算、池参数按计划假设落地；冒烟中模型写出的场景无警告，未调整。
 
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 无
+- 内联 `<script>` 的语法错误报错只带 `index.html:2`，改成外部脚本文件后才有文件名和正确行号（T4）。
+- `prepare_turn` 派生文件被 `upstream_drift` 误判为 agent 改动（T8，已修，见决策记录）。
+- 通用文件画布把 `.js` 当二进制显示（L4 发现，已修；高亮留给 2B）。
+- Playwright 1.63.0 能直接用本机已有的 Chromium 1243；字体构建脚本在 `backend` 里用 `uv run --with fonttools --with brotli`，下载可变字体 17.8 MB。
+- 小试的"3 个镜头 11–14 分钟"在冒烟里同量级（15 分 37 秒，80 步上限内未触顶），一部 20 个镜头的片子需要按计划的"逐镜头"工作流分多轮做。
 
 ## 阻塞
 
@@ -280,4 +302,14 @@ agent 能在"知识讲解（HTML）"项目里写 Canvas 2D 场景，并用两个
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 无
+- AC1：`cd backend && uv run pytest tests/timeline -q` → 31 passed；`uv run lint-imports` → 25 kept。
+- AC2：`pytest tests/engines/test_html_fonts.py` → 11 passed；Noto 400=1.07 MB、700=1.10 MB（预算 3 MB）。
+- AC3：`pytest tests/engines/test_html_{assemble,static_check,assets,glyphs}.py` 全部通过。
+- AC4：`pytest tests/engines/test_html_pool.py tests/engines/test_html_probe.py` 通过；`pytest -m slow tests/engines/test_html_browser.py` → 14 passed（约 38 秒），覆盖 `env` 契约、`pad`、`global.js`、资产、中文字体、确定性、beat 敏感度、语法错误/`lib` 重名、死循环、Chromium 被杀与卡死恢复。
+- AC5：`pytest tests/stages/test_animation_html_stage.py tests/stages/test_animation_html_prompt.py` 通过。
+- AC6：`pytest tests/stages/test_animation_html_tools.py` → 27 passed；`-m slow` → 2 passed。
+- AC7：`pytest tests/api/test_video_kinds.py tests/api/test_projects.py tests/api/test_settings.py tests/api/test_lifespan.py` 通过；前端 `settingsView.spec.ts` 通过；`make check` 全绿（后端全量 1840 passed，前端 916 passed）。
+- AC8：`pytest tests/api/test_animation_html_flow.py`（假池）与 `-m slow`（真实 Chromium）均通过。
+- AC9：`make smoke SMOKE_ARGS="-k animation_html_claude_login"` → 1 passed（15 分 37 秒）；一轮 `done`，`validate_scenes_html` 5 次、`render_preview_html` 4 次，最终校验无错误、无警告；证据 `data/evidence/html-engine/smoke/`。
+- AC10：L4 在隔离实例（api 8010、前端 5174、临时数据目录）完成：创建项目对话框里"知识讲解（HTML）"可选、短片与 MV 仍不可用（显示原因）；创建后进入选题阶段，阶段导航为 选题 → 叙事 → 动画；种子项目的动画阶段在通用画布里列出 `animation/scenes/*.js`，修复后能打开查看脚本内容。镜头文件由种子脚本写入（不是 agent 写的）。截图保存在内置浏览器的工具结果目录 `/Users/peng/.claude/projects/-Users-peng-Me-Ai-ai-video-studio/bc313abf-f3bf-4d49-9986-f943c5ca68f9/tool-results/`。
+- AC11：ARCHITECTURE、QUALITY、runbook、references 已同步；`make check` 全绿。

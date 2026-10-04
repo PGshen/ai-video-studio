@@ -110,13 +110,9 @@
     });
   }
 
-  window.ready = Promise.all([
-    document.fonts.load("40px Anton"),
-    document.fonts.load("400 20px 'Space Mono'"),
-    document.fonts.load("700 20px 'Space Mono'"),
-    document.fonts.load("400 20px 'Noto Sans SC'", '天空为什么是蓝的'),
-    document.fonts.load("700 20px 'Noto Sans SC'", '天空为什么是蓝的'),
-  ].concat(assetUrls.map(loadAsset))).then(function () {
+  // 所有 @font-face（内置字体和风格目录字体）都要加载完才算就绪；
+  var fontLoads = Array.from(document.fonts).map(function (face) { return face.load(); });
+  window.ready = Promise.all(fontLoads.concat(assetUrls.map(loadAsset))).then(function () {
     if (window.__LOAD_ERRORS__ && window.__LOAD_ERRORS__.length) {
       throw new Error('脚本加载出错：' + window.__LOAD_ERRORS__.join('；'));
     }
