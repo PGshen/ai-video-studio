@@ -6,14 +6,14 @@
  * 风格，没有默认风格时用占位 `STYLE.md`。
  */
 
-import type { StylePresetSummaryOut } from '@/types/api'
+import type { StyleSummaryOut } from '@/types/api'
 
 /** 预选值：有默认风格就是它，否则空字符串（不指定）。 */
-export function initialStyleId(presets: StylePresetSummaryOut[]): string {
+export function initialStyleId(presets: StyleSummaryOut[]): string {
   return presets.find((p) => p.is_default)?.id ?? ''
 }
 
-export function styleOptionLabel(preset: StylePresetSummaryOut): string {
+export function styleOptionLabel(preset: StyleSummaryOut): string {
   return preset.is_default ? `${preset.name}（默认）` : preset.name
 }
 
@@ -23,7 +23,7 @@ export interface StyleOption {
 }
 
 /** 下拉的选项：第一项是「不指定」，之后是各预设。 */
-export function styleSelectOptions(presets: StylePresetSummaryOut[]): StyleOption[] {
+export function styleSelectOptions(presets: StyleSummaryOut[]): StyleOption[] {
   return [
     { value: '', label: '不指定（用默认风格；没有默认风格时用占位）' },
     ...presets.map((p) => ({ value: p.id, label: styleOptionLabel(p) })),

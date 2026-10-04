@@ -26,8 +26,6 @@ import type {
   SessionCreate,
   SettingsOut,
   SettingsPatch,
-  StylePresetCreate,
-  StylePresetPatch,
 } from '@/types/api'
 
 /** 选题池列表的视图：`null` 是未归档（后端默认），`'archived'` 是已归档。 */
@@ -63,8 +61,13 @@ export const queryKeys = {
   suggestionsAll: () => ['suggestions'] as const,
   suggestions: (projectId: string) => ['suggestions', projectId, 'list'] as const,
   suggestionSummary: (projectId: string) => ['suggestions', projectId, 'summary'] as const,
-  stylePresets: () => ['style-presets'] as const,
-  stylePreset: (presetId: string) => ['style-presets', presetId] as const,
+  /** 风格列表；所有风格相关查询的公共前缀。 */
+  styles: () => ['styles'] as const,
+  style: (styleId: string) => ['styles', styleId] as const,
+  /** 草稿状态（文件列表、是否有改动）；`styleDraftFile` 都在它之下，按它失效就是整份草稿刷新。 */
+  styleDraft: (styleId: string) => ['styles', styleId, 'draft'] as const,
+  styleDraftFile: (styleId: string, path: string) =>
+    ['styles', styleId, 'draft', 'files', path] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   latestJob: (projectId: string, type: string) =>
     ['projects', projectId, 'jobs', 'latest', type] as const,
@@ -358,7 +361,7 @@ export function usePatchSettingsMutation() {
     mutationFn: (patch: SettingsPatch) => api.patchSettings(patch),
     onSuccess: (settings: SettingsOut) => {
       queryClient.setQueryData(queryKeys.settings(), settings)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.stylePresets() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.styles() })
     },
   })
 }
@@ -437,56 +440,144 @@ export function usePatchProjectSettingsMutation(projectId: MaybeRefOrGetter<stri
   })
 }
 
-// ---- style presets（M5）-----------------------------------------------
+// ---- styles（磁盘目录 + 草稿）---------------------------------------------
 
-export function useStylePresetsQuery() {
-  return useQuery({ queryKey: queryKeys.stylePresets(), queryFn: api.listStylePresets })
+export function useStylesQuery() {
+  return useQuery({ queryKey: queryKeys.styles(), queryFn: api.listStyles })
 }
 
-export function useStylePresetQuery(presetId: MaybeRefOrGetter<string | null>) {
+export function useStyleQuery(styleId: MaybeRefOrGetter<string | null>) {
   return useQuery({
-    queryKey: computed(() => queryKeys.stylePreset(toValue(presetId) ?? '')),
-    queryFn: () => api.getStylePreset(toValue(presetId) as string),
-    enabled: computed(() => toValue(presetId) !== null),
+    queryKey: computed(() => queryKeys.style(toValue(styleId) ?? '')),
+    queryFn: () => api.getStyle(toValue(styleId)!),
+    enabled: computed(() => toValue(styleId) !== null),
   })
+}
+
+/** 草稿状态（文件列表 + 是否有改动）；只在已经打开草稿（编辑态）时才启用。 */
+export function useStyleDraftQuery(
+  styleId: MaybeRefOrGetter<string | null>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.styleDraft(toValue(styleId) ?? '')),
+    queryFn: () => api.getStyleDraft(toValue(styleId)!),
+    enabled: computed(() => toValue(styleId) !== null && toValue(enabled)),
+    retry: false,
+  })
+}
+
+export function useDraftFileQuery(
+  styleId: MaybeRefOrGetter<string | null>,
+  path: MaybeRefOrGetter<string | null>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      queryKeys.styleDraftFile(toValue(styleId) ?? '', toValue(path) ?? ''),
+    ),
+    queryFn: () => api.readDraftFile(toValue(styleId)!, toValue(path)!),
+    enabled: computed(
+      () => toValue(styleId) !== null && toValue(path) !== null && toValue(enabled),
+    ),
+    retry: false,
+  })
+}
+
+/** AI 改了草稿（`workspace_changed`）或轮次结束后：整份草稿（状态和各文件）重新取。 */
+export function invalidateStyleDraft(queryClient: QueryClient, styleId: string): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.styleDraft(styleId) })
 }
 
 /** 风格的增删改复制都会改列表；删除还可能清掉默认风格设置，所以一并失效。 */
 function invalidateStyles(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.stylePresets() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.styles() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.settings() })
 }
 
-export function useCreateStylePresetMutation() {
+export function useCreateStyleMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: StylePresetCreate) => api.createStylePreset(body),
+    mutationFn: () => api.createStyle(),
+    onSuccess: (draft) => {
+      queryClient.setQueryData(queryKeys.styleDraft(draft.id), draft)
+    },
+  })
+}
+
+export function useDuplicateStyleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (styleId: string) => api.duplicateStyle(styleId),
     onSuccess: () => invalidateStyles(queryClient),
   })
 }
 
-export function useUpdateStylePresetMutation() {
+export function useDeleteStyleMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (args: { id: string; patch: StylePresetPatch }) =>
-      api.updateStylePreset(args.id, args.patch),
-    onSuccess: () => invalidateStyles(queryClient),
+    mutationFn: (styleId: string) => api.deleteStyle(styleId),
+    onSuccess: (_data, styleId) => {
+      queryClient.removeQueries({ queryKey: queryKeys.style(styleId) })
+      invalidateStyles(queryClient)
+    },
   })
 }
 
-export function useDeleteStylePresetMutation() {
+/** 打开草稿（没有就从正式版本复制）；列表里的「有未保存草稿」随之失效。 */
+export function useOpenStyleDraftMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (presetId: string) => api.deleteStylePreset(presetId),
-    onSuccess: () => invalidateStyles(queryClient),
+    mutationFn: (styleId: string) => api.openStyleDraft(styleId),
+    onSuccess: (draft) => {
+      queryClient.setQueryData(queryKeys.styleDraft(draft.id), draft)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.styles(), exact: true })
+    },
   })
 }
 
-export function useDuplicateStylePresetMutation() {
+export function useWriteDraftFileMutation(styleId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (presetId: string) => api.duplicateStylePreset(presetId),
-    onSuccess: () => invalidateStyles(queryClient),
+    mutationFn: (args: { path: string; content: string }) =>
+      api.writeDraftFile(toValue(styleId), args.path, args.content),
+    onSuccess: (draft, args) => {
+      const id = toValue(styleId)
+      queryClient.setQueryData(queryKeys.styleDraft(id), draft)
+      queryClient.setQueryData(queryKeys.styleDraftFile(id, args.path), args.content)
+    },
+  })
+}
+
+export function useDeleteDraftFileMutation(styleId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (path: string) => api.deleteDraftFile(toValue(styleId), path),
+    onSuccess: () => invalidateStyleDraft(queryClient, toValue(styleId)),
+  })
+}
+
+/** 保存草稿：成为正式版本，草稿相关缓存清掉，列表和详情刷新。 */
+export function useSaveStyleDraftMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (styleId: string) => api.saveStyleDraft(styleId),
+    onSuccess: (style) => {
+      queryClient.removeQueries({ queryKey: queryKeys.styleDraft(style.id) })
+      queryClient.setQueryData(queryKeys.style(style.id), style)
+      invalidateStyles(queryClient)
+    },
+  })
+}
+
+export function useDiscardStyleDraftMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (styleId: string) => api.discardStyleDraft(styleId),
+    onSuccess: (_data, styleId) => {
+      queryClient.removeQueries({ queryKey: queryKeys.styleDraft(styleId) })
+      invalidateStyles(queryClient)
+    },
   })
 }
 

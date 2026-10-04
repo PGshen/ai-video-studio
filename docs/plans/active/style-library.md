@@ -115,7 +115,7 @@
 - **完成标准**：代码库里不再有 `style_presets`/`StylePreset`/`render_style_files` 的引用（旧迁移 0001/0004 除外）；对一份旧库副本实跑导出，列出每套风格的目录和报告，附在「验证记录」。
 - **验证命令**：`cd backend && uv run pytest -q`；`make check`
 
-### T5：前端基础——菜单、路由、API 客户端与纯逻辑（待开始）
+### T5：前端基础——菜单、路由、API 客户端与纯逻辑（完成）
 
 - **目标**：侧栏出现「风格库」，路由、类型、查询 hook、纯逻辑就绪，页面先是占位。
 - **涉及文件**：`frontend/src/components/AppSidebar.vue`（`navMain` 在「项目」和「设置」之间加「风格库」）；`frontend/src/router.ts`（`/styles`，`/settings/styles` 重定向到 `/styles`，meta.title）；`frontend/src/pages/SettingsPage.vue`（移除风格库 Tab）；`frontend/src/api/endpoints.ts`、`frontend/src/types/api.ts`、`frontend/src/composables/queries.ts`（新增 `listStyles`、`getStyle`、`createStyle`、`duplicateStyle`、`deleteStyle`、`openStyleDraft`、`getStyleDraft`、`readDraftFile`、`writeDraftFile`、`deleteDraftFile`、`saveStyleDraft`、`discardStyleDraft` 及对应 query/mutation hook，key 统一在 `queryKeys.styles*`）；新建 `frontend/src/features/styles/styleView.ts`（`filterStyles`、`allCategories`、排序）、`styleFrontmatter.ts`（`parseFrontmatter`、`updateFrontmatter(content, patch)`，保持其余行不变，支持引号与转义）及两个 `.spec.ts`；新建 `frontend/src/pages/StylesPage.vue` 占位；`components/StyleSelect.vue`、`composables/styleChoice.ts` 改用新 hook。
@@ -194,10 +194,11 @@
 - 2026-10-04 — T2 目录存储与草稿（`styles/store.py`；另在 `validate.py` 补 `set_frontmatter_fields`/`split_style_path`/`is_plain_file_name`）— `make check` 绿，`tests/styles` 共 109 个用例
 - 2026-10-04 — T3 `/api/styles*` 接口、创建项目与默认风格设置改读目录 — `make check` 绿，后端 1567 个用例
 - 2026-10-04 — T4 迁移 0007（导出旧表 → 目录，成功后删表）、删除旧 repo/ORM/旧接口/`render_style_files`、导入脚本改写目录、运行手册更新 — `make check` 绿，后端 1531 个用例；对真实库副本实跑导出 9 套风格，原库未动
+- 2026-10-04 — T5 前端基础：侧栏「风格库」、`/styles` 路由与旧地址重定向、新 API 客户端/类型/query hook、`styleView`/`styleFrontmatter` 纯逻辑；设置页去掉风格库 Tab，并删除旧的 `StylePresetsPanel`/`StylePresetEditor`/`styleDraft` — `make check` 绿（后端 1531、前端 748），`pnpm typecheck` 无错误
 
 ## 下一步
 
-- 从 T5 开始（前端）：先写 `frontend/src/features/styles/styleView.spec.ts`、`styleFrontmatter.spec.ts` 和路由/侧栏组件测试，再实现 `styleView.ts`、`styleFrontmatter.ts`，改 `AppSidebar.vue`、`router.ts`、`SettingsPage.vue`，替换 `api/endpoints.ts`/`types/api.ts`/`composables/queries.ts` 里的旧风格客户端（后端接口见 `backend/src/studio/api/styles.py`：`GET/POST /api/styles`、`GET/DELETE /api/styles/{id}`、`POST /api/styles/{id}/duplicate`、`POST/DELETE /api/styles/{id}/draft`、`GET /api/styles/{id}/draft/files`、`GET/PUT/DELETE /api/styles/{id}/draft/files/{path}`、`POST /api/styles/{id}/draft/save`）。注意：旧 `/api/style-presets` 已删除，现在前端的风格库页和创建项目的风格选择都是坏的，T5–T7 修好。
+- 从 T6 开始：先写 `frontend/src/features/styles/StyleGrid.spec.ts`（筛选、分页、空列表/无结果提示、点击卡片与编辑按钮产生的 URL query、新建流程、草稿标记），再实现 `StyleGrid.vue`、`StyleCard.vue`，替换 `pages/StylesPage.vue` 占位；布局借 `features/ideas/IdeaGrid.vue`、`components/ListPager.vue`、`composables/pagination.ts`；可用的纯逻辑 `features/styles/styleView.ts`（`filterStyles`/`allCategories`/`sortStyles`）和 hook（`useStylesQuery`、`useCreateStyleMutation` 等，见 `composables/queries.ts`）已就绪。
 
 ## 决策记录
 
@@ -207,6 +208,7 @@
 - 2026-10-04 — T2：草稿读写只允许 `STYLE.md` 和 `references|exemplars/<普通文件名>`，路径上有符号链接一律拒绝；`import_style` 带 `overwrite` 参数供导入脚本「覆盖」模式用 — 草稿写入时就收紧比保存时才发现更安全，也不需要给导入脚本另开接口。
 - 2026-10-04 — T3：不在接口里预留空的 `_ensure_not_busy` 钩子，写端点直接写成 `async def`，T9 再加忙碌检查 — 一个什么都不做的钩子是死代码；`async def` 已满足「检查与写入之间不 `await`」的前提。
 - 2026-10-04 — T3：`tests/api/test_projects.py` 里准备风格的 helper 改用 `studio.styles.store.import_style`，更新/删除改走 `/api/styles` 草稿接口，断言原样保留（并新增「默认风格被删后退回占位」一条）— 创建项目已改读目录，旧接口建的预设不再可见。
+- 2026-10-04 — T5：旧的 `StylePresetsPanel`/`StylePresetEditor`/`styleDraft` 在 T5 就删除（计划原写在 T7）— 旧 `/api/style-presets` 在 T4 已删，设置页的风格库路由在 T5 移除，这些组件不再有入口，也没有可调用的接口，留着只会让类型检查失败。
 - 2026-10-04 — 迁移后目录 id 沿用旧表 id，新建的用 `uuid4().hex` — 与旧表 `_new_id` 一致，免去对 `default_style_preset_id` 和项目记录的映射。
 
 ## 意外与发现

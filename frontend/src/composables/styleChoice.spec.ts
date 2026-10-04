@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { StylePresetSummaryOut } from '@/types/api'
+import type { StyleSummaryOut } from '@/types/api'
 import { initialStyleId, styleIdForRequest, styleOptionLabel, styleSelectOptions } from './styleChoice'
 
-function preset(overrides: Partial<StylePresetSummaryOut>): StylePresetSummaryOut {
+function preset(overrides: Partial<StyleSummaryOut>): StyleSummaryOut {
   return {
     id: 'p1',
     name: '暖纸双色',
@@ -11,6 +11,8 @@ function preset(overrides: Partial<StylePresetSummaryOut>): StylePresetSummaryOu
     reference_count: 3,
     exemplar_count: 1,
     is_default: false,
+    has_draft: false,
+    modified_at: '2026-10-01T00:00:00Z',
     ...overrides,
   }
 }

@@ -21,7 +21,15 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '选题' },
   },
   {
-    // 设置页外壳 + 四个子页（M5 T10）。子页直接是 `features/settings/` 的面板；外壳
+    path: '/styles',
+    name: 'styles',
+    component: () => import('@/pages/StylesPage.vue'),
+    meta: { title: '风格库' },
+  },
+  // 风格库从设置页挪到侧栏一级菜单（ADR 0019 / 计划 style-library）：旧地址继续可用。
+  { path: '/settings/styles', redirect: '/styles' },
+  {
+    // 设置页外壳 + 三个子页（M5 T10；风格库已移出）。子页直接是 `features/settings/` 的面板；外壳
     // `pages/SettingsPage.vue` 只负责子导航。
     path: '/settings',
     name: 'settings',
@@ -33,11 +41,6 @@ export const routes: RouteRecordRaw[] = [
         path: 'models',
         name: 'settings-models',
         component: () => import('@/features/settings/ModelProfilesPanel.vue'),
-      },
-      {
-        path: 'styles',
-        name: 'settings-styles',
-        component: () => import('@/features/settings/StylePresetsPanel.vue'),
       },
       {
         path: 'voice',

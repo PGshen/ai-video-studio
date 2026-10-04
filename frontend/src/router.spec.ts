@@ -44,7 +44,6 @@ describe('router', () => {
 
   it.each([
     ['/settings/models', 'settings-models'],
-    ['/settings/styles', 'settings-styles'],
     ['/settings/voice', 'settings-voice'],
     ['/settings/general', 'settings-general'],
   ])('resolves %s to the %s sub page inside the settings shell', async (path, name) => {
@@ -54,5 +53,26 @@ describe('router', () => {
     expect(route.name).toBe(name)
     expect(route.matched.map((r) => r.name)).toEqual(['settings', name])
     expect(route.meta.title).toBe('设置')
+  })
+
+  it('resolves /styles to the style library page', async () => {
+    const router = makeRouter()
+    await router.push('/styles')
+    const route = router.currentRoute.value
+    expect(route.name).toBe('styles')
+    expect(route.meta.title).toBe('风格库')
+  })
+
+  it('keeps the drawer query when opening a style', async () => {
+    const router = makeRouter()
+    await router.push('/styles?style=abc&mode=edit')
+    expect(router.currentRoute.value.query).toEqual({ style: 'abc', mode: 'edit' })
+  })
+
+  it('redirects the old /settings/styles address to /styles', async () => {
+    const router = makeRouter()
+    await router.push('/settings/styles')
+    expect(router.currentRoute.value.path).toBe('/styles')
+    expect(router.currentRoute.value.name).toBe('styles')
   })
 })

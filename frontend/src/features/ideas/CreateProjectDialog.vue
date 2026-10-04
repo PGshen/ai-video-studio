@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import EffortSelect from '@/components/EffortSelect.vue'
 import StyleSelect from '@/components/StyleSelect.vue'
-import { useCreateProjectMutation, useStylePresetsQuery } from '@/composables/queries'
+import { useCreateProjectMutation, useStylesQuery } from '@/composables/queries'
 import { DEFAULT_EFFORT, type Effort } from '@/composables/effortChoice'
 import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
 import type { IdeaOut } from '@/types/api'
@@ -28,7 +28,7 @@ const open = defineModel<boolean>('open', { default: false })
 
 const router = useRouter()
 const mutation = useCreateProjectMutation()
-const { data: stylePresets } = useStylePresetsQuery()
+const { data: stylePresets } = useStylesQuery()
 const title = ref('')
 const styleId = ref('')
 const effort = ref<Effort>(DEFAULT_EFFORT)

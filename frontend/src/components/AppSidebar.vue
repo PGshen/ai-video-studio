@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { FolderKanban, Lightbulb, Settings, Sparkles } from '@lucide/vue'
+import { Sparkles } from '@lucide/vue'
 
 import NavMain from '@/components/NavMain.vue'
 import NavUser from '@/components/NavUser.vue'
+import { NAV_MAIN } from '@/components/navItems'
 import {
   Sidebar,
   SidebarContent,
@@ -21,11 +22,7 @@ const data = {
     email: 'pgs1108pgs@gmail.com',
     avatar: '',
   },
-  navMain: [
-    { title: '选题', url: '/ideas', icon: Lightbulb },
-    { title: '项目', url: '/projects', icon: FolderKanban },
-    { title: '设置', url: '/settings', icon: Settings },
-  ],
+  navMain: NAV_MAIN,
 }
 </script>
 

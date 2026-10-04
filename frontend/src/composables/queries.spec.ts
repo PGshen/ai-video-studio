@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/vue-query'
 import { describe, expect, it, vi } from 'vitest'
 import {
   invalidateAfterWrite,
+  invalidateStyleDraft,
   invalidateWorkspace,
   jobRefetchIntervalMs,
   queryKeys,
@@ -69,5 +70,42 @@ describe('invalidateWorkspace', () => {
     const keys = spy.mock.calls.map((call) => call[0]?.queryKey)
     expect(keys).toContainEqual(['projects', 'p1', 'files'])
     expect(keys).toContainEqual(['projects', 'p1', 'snapshots'])
+  })
+})
+
+describe('style queries', () => {
+  it('风格的 key 层级：列表 ⊃ 单个风格 ⊃ 草稿 ⊃ 草稿文件，方便前缀失效', () => {
+    expect(queryKeys.styles()).toEqual(['styles'])
+    expect(queryKeys.style('s1')).toEqual(['styles', 's1'])
+    expect(queryKeys.styleDraft('s1')).toEqual(['styles', 's1', 'draft'])
+    expect(queryKeys.styleDraftFile('s1', 'references/a.md')).toEqual([
+      'styles',
+      's1',
+      'draft',
+      'files',
+      'references/a.md',
+    ])
+  })
+
+  it('invalidateStyleDraft 只失效这套风格的草稿（状态和各文件），不碰列表和别的风格', async () => {
+    const queryClient = new QueryClient()
+    for (const key of [
+      queryKeys.styles(),
+      queryKeys.style('s1'),
+      queryKeys.styleDraft('s1'),
+      queryKeys.styleDraftFile('s1', 'STYLE.md'),
+      queryKeys.styleDraft('s2'),
+    ]) {
+      queryClient.setQueryData(key, 'x')
+    }
+
+    invalidateStyleDraft(queryClient, 's1')
+
+    const stale = (key: readonly unknown[]) => queryClient.getQueryState(key)?.isInvalidated
+    expect(stale(queryKeys.styleDraft('s1'))).toBe(true)
+    expect(stale(queryKeys.styleDraftFile('s1', 'STYLE.md'))).toBe(true)
+    expect(stale(queryKeys.styles())).toBe(false)
+    expect(stale(queryKeys.style('s1'))).toBe(false)
+    expect(stale(queryKeys.styleDraft('s2'))).toBe(false)
   })
 })

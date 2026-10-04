@@ -13,6 +13,7 @@ import {
   requestText,
 } from '@/api/http'
 import type {
+  DraftStatusOut,
   FileTreeOut,
   FileWriteResult,
   IdeaCreate,
@@ -38,10 +39,8 @@ import type {
   SnapshotDiffOut,
   SnapshotOut,
   StageOut,
-  StylePresetCreate,
-  StylePresetOut,
-  StylePresetPatch,
-  StylePresetSummaryOut,
+  StyleOut,
+  StyleSummaryOut,
   SuggestionOut,
   SuggestionStatus,
   TopicCheckOut,
@@ -270,33 +269,69 @@ export function patchProjectSettings(
   return request(`/projects/${encodePathSegment(projectId)}/settings`, { method: 'PATCH', body })
 }
 
-// ---- style presets（M5，对应 `api/styles.py`）--------------------------
+// ---- styles（磁盘目录 + 草稿，对应 `api/styles.py`）----------------------
 
-export function listStylePresets(): Promise<StylePresetSummaryOut[]> {
-  return request('/style-presets')
+export function listStyles(): Promise<StyleSummaryOut[]> {
+  return request('/styles')
 }
 
-export function getStylePreset(presetId: string): Promise<StylePresetOut> {
-  return request(`/style-presets/${encodePathSegment(presetId)}`)
+export function getStyle(styleId: string): Promise<StyleOut> {
+  return request(`/styles/${encodePathSegment(styleId)}`)
 }
 
-export function createStylePreset(body: StylePresetCreate): Promise<StylePresetOut> {
-  return request('/style-presets', { method: 'POST', body })
+/** 新建风格：返回只有草稿的新风格（保存之前不在列表里）。 */
+export function createStyle(): Promise<DraftStatusOut> {
+  return request('/styles', { method: 'POST' })
 }
 
-export function updateStylePreset(
-  presetId: string,
-  body: StylePresetPatch,
-): Promise<StylePresetOut> {
-  return request(`/style-presets/${encodePathSegment(presetId)}`, { method: 'PATCH', body })
+export function duplicateStyle(styleId: string): Promise<StyleOut> {
+  return request(`/styles/${encodePathSegment(styleId)}/duplicate`, { method: 'POST' })
 }
 
-export function deleteStylePreset(presetId: string): Promise<void> {
-  return request(`/style-presets/${encodePathSegment(presetId)}`, { method: 'DELETE' })
+export function deleteStyle(styleId: string): Promise<void> {
+  return request(`/styles/${encodePathSegment(styleId)}`, { method: 'DELETE' })
 }
 
-export function duplicateStylePreset(presetId: string): Promise<StylePresetOut> {
-  return request(`/style-presets/${encodePathSegment(presetId)}/duplicate`, { method: 'POST' })
+/** 打开草稿：没有就从正式版本复制一份，已有则原样返回。 */
+export function openStyleDraft(styleId: string): Promise<DraftStatusOut> {
+  return request(`/styles/${encodePathSegment(styleId)}/draft`, { method: 'POST' })
+}
+
+export function getStyleDraft(styleId: string): Promise<DraftStatusOut> {
+  return request(`/styles/${encodePathSegment(styleId)}/draft/files`)
+}
+
+export async function readDraftFile(styleId: string, path: string): Promise<string> {
+  const body = await request<{ content: string }>(
+    `/styles/${encodePathSegment(styleId)}/draft/files/${encodeFilePath(path)}`,
+  )
+  return body.content
+}
+
+export function writeDraftFile(
+  styleId: string,
+  path: string,
+  content: string,
+): Promise<DraftStatusOut> {
+  return request(`/styles/${encodePathSegment(styleId)}/draft/files/${encodeFilePath(path)}`, {
+    method: 'PUT',
+    body: { content },
+  })
+}
+
+export function deleteDraftFile(styleId: string, path: string): Promise<void> {
+  return request(`/styles/${encodePathSegment(styleId)}/draft/files/${encodeFilePath(path)}`, {
+    method: 'DELETE',
+  })
+}
+
+/** 校验草稿，通过后覆盖（或新建）正式版本并删除草稿；不合法 422，名称重复 409。 */
+export function saveStyleDraft(styleId: string): Promise<StyleOut> {
+  return request(`/styles/${encodePathSegment(styleId)}/draft/save`, { method: 'POST' })
+}
+
+export function discardStyleDraft(styleId: string): Promise<void> {
+  return request(`/styles/${encodePathSegment(styleId)}/draft`, { method: 'DELETE' })
 }
 
 // ---- settings（M5，对应 `api/settings.py`）-----------------------------
