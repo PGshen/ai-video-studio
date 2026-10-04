@@ -1078,3 +1078,84 @@ async def test_suggestion_claude_login(tmp_path: Path) -> None:
     finally:
         record_evidence("suggestion-claude-login", evidence, M5_EVIDENCE_DIR)
         harness.engine.dispose()
+
+
+_STYLE_CHAT_ENTRY = """---
+name: 冒烟测试风格
+description: 暖纸质感的双色风格
+category: 冒烟测试
+---
+
+# 冒烟测试风格
+
+先读 `references/color.md`。
+"""
+_STYLE_CHAT_PROMPT = (
+    "这是自动化测试。把 STYLE.md 的 description 改成「深色科技风，冷蓝主色」；"
+    "在 references/ 里新增 palette.md，写三个冷蓝色系的色值，并在 STYLE.md 里索引它"
+    "（写明什么时候读）；改完用 validate_style 检查到没有问题。不要做别的修改。"
+)
+
+
+async def test_style_chat_claude_login(tmp_path: Path) -> None:
+    """风格对话（ADR 0019）：真实模型直接改草稿目录——正式版本不变，保存后才更新。"""
+    _skip_unless_claude_login()
+    from studio.db.repo.snapshots import list_snapshots
+    from studio.styles import store
+
+    from .support import STYLE_EVIDENCE_DIR
+
+    harness = build_harness(tmp_path, real_stages=True)
+    try:
+        saved = store.import_style(
+            harness.data_dir,
+            {"STYLE.md": _STYLE_CHAT_ENTRY, "references/color.md": "主色：暖白"},
+        )
+        profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
+        session_id = harness.style_session(profile, "claude", saved.id)
+        snapshots_before = len(list_snapshots(harness.engine, harness.project_id))
+
+        outcome = await harness.turn(session_id, _STYLE_CHAT_PROMPT)
+
+        draft = store.open_draft(harness.data_dir, saved.id)
+        draft_entry = store.read_draft_file(harness.data_dir, saved.id, "STYLE.md")
+        problems = store.validate_draft(harness.data_dir, saved.id)
+        palette = (
+            store.read_draft_file(harness.data_dir, saved.id, "references/palette.md")
+            if "references/palette.md" in draft.files
+            else None
+        )
+        still_saved = store.get_style(harness.data_dir, saved.id)
+        evidence: dict[str, Any] = {
+            **outcome_summary(outcome),
+            "draft_files": draft.files,
+            "draft_entry": draft_entry,
+            "palette": palette,
+            "validate_problems": problems,
+            "saved_description_before_save": still_saved.description,
+            "pruned_notices": outcome.notices("draft_pruned"),
+        }
+
+        assert outcome.turn.status == "done", (outcome.turn.status, outcome.turn.error)
+        assert outcome.turn.start_snapshot_id is None and outcome.turn.end_snapshot_id is None
+        assert len(list_snapshots(harness.engine, harness.project_id)) == snapshots_before
+        assert outcome.used_tool("validate_style")
+        # 草稿被改了，正式版本没动。
+        assert "深色科技风" in draft_entry
+        assert palette is not None and palette.strip()
+        assert "palette.md" in draft_entry
+        assert still_saved.description == "暖纸质感的双色风格"
+        assert still_saved.files["STYLE.md"] == _STYLE_CHAT_ENTRY
+        assert problems == []
+        # 运行时自己的目录（`.claude/`）被静默清掉，不会给用户发「多余文件」的提示。
+        assert outcome.notices("draft_pruned") == []
+
+        # 保存后才成为正式版本，草稿消失。
+        after = store.save_draft(harness.data_dir, saved.id)
+        evidence["saved_description_after_save"] = after.description
+        assert after.description is not None and "深色科技风" in after.description
+        assert "references/palette.md" in after.files
+        assert not store.draft_dir_exists(harness.data_dir, saved.id)
+        record_evidence("style-chat-claude-login", evidence, STYLE_EVIDENCE_DIR)
+    finally:
+        harness.engine.dispose()

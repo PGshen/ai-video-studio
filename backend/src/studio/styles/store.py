@@ -54,6 +54,8 @@ category: 未分类
 在这里写这套风格的入口说明：列出每个文件的用途，以及选题、叙事、动画各阶段什么时候读取。
 """
 _IGNORED_FILES: Final = {".DS_Store"}
+_RUNTIME_DIRS: Final = {".claude"}
+"""运行时自己在工作目录里建的目录（Claude 的 `.claude/`）：清理时静默删除，不当作多余文件报告。"""
 _MAX_READ_BYTES: Final = MAX_FILE_CHARS * 4
 
 
@@ -298,6 +300,10 @@ def style_exists(data_dir: Path | str, style_id: str) -> bool:
     return is_valid_style_id(style_id) and style_dir(data_dir, style_id).is_dir()
 
 
+def draft_dir_exists(data_dir: Path | str, style_id: str) -> bool:
+    return is_valid_style_id(style_id) and draft_dir(data_dir, style_id).is_dir()
+
+
 def style_known(data_dir: Path | str, style_id: str) -> bool:
     """有正式版本或草稿（从未保存的新风格只有草稿）。"""
     return is_valid_style_id(style_id) and (
@@ -488,7 +494,8 @@ def prune_draft(data_dir: Path | str, style_id: str) -> list[str]:
                     removed.append(f"{entry.name}/{child.name}")
             continue
         _remove(entry)
-        removed.append(entry.name)
+        if entry.name not in _RUNTIME_DIRS:
+            removed.append(entry.name)
     return removed
 
 
@@ -525,6 +532,7 @@ __all__ = [
     "delete_draft_file",
     "delete_style",
     "discard_draft",
+    "draft_dir_exists",
     "draft_status",
     "duplicate_style",
     "get_style",

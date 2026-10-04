@@ -17,7 +17,7 @@
 | 叙事 schema（scene、beat） | `../ai-video/backend/app/schemas/narrative.py`、`beat.py` | `stages/narrative/` 的产物 schema（改为以稳定 id 标识镜头） | `tests/test_schemas_narrative.py` | M3 | 已完成 |
 | 兜底文件工具 | `../ai-video/backend/app/services/strategies/openai_agent_runtime.py`（`OpenAICodegenWorkspace`） | `backend/src/studio/agent/fallback_tools.py` | `tests/test_openai_agent_runtime.py` → `backend/tests/agent/test_fallback_tools.py`（运行时部分改写进 `test_openai_runtime.py`） | M1 | 已完成（T10，2026-09-27）：按工作区相对路径读写、范围由 `WriteScope` 决定；保留大小上限与"精确匹配一次"；`validate` 留给 M2 |
 | Claude 运行时写法参考 | `../ai-video/backend/app/services/strategies/claude_agent_runtime.py` | `backend/src/studio/agent/`（只参考写法） | `tests/test_claude_agent_runtime.py` | M1 | 未开始 |
-| 风格组件内容 | 旧项目 dev DB 的 `style_templates` + `prompt_components` 表（注意：dev DB 曾在 git 之外被改动过，所以以真实库为准） | `style_presets`（每个模板一条预设，skill 形态目录，见 ADR 0011） | — | M5 | 已完成（T4，2026-09-30）：`make export-legacy-styles` 只读导出、`make import-legacy-styles` 导入；9 个模板、34 个组件（4 个未被引用），组件正文原样落盘，旧字段名在入口里标注，见 `backend/src/studio/db/legacy_styles.py` |
+| 风格组件内容 | 旧项目 dev DB 的 `style_templates` + `prompt_components` 表（注意：dev DB 曾在 git 之外被改动过，所以以真实库为准） | 风格目录 `data/styles/<id>/`（每个模板一套，skill 形态目录，见 ADR 0011；2026-10-04 起存磁盘目录而不是 `style_presets` 表，见 ADR 0019） | — | M5 | 已完成（T4，2026-09-30）：`make export-legacy-styles` 只读导出、`make import-legacy-styles` 导入；9 个模板、34 个组件（4 个未被引用），组件正文原样落盘，旧字段名在入口里标注，见 `backend/src/studio/db/legacy_styles.py` |
 | 风格组件编写经验 | 见下一节 | `stages/animation/prompt.md` | — | M2 | 已完成（M2 写进动画提示词「对任何风格都成立」一节；M5 T4 的导入原样保留旧风格组件里的同类约束） |
 
 ## 风格组件编写经验（来自旧项目的实践）

@@ -41,6 +41,7 @@ from studio.db.repo.turns import TurnEventValue, TurnValue, get_turn, list_event
 from studio.stages.animation import STAGE as ANIMATION
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 from studio.stages.narrative import STAGE as NARRATIVE
+from studio.stages.style import STAGE as STYLE
 from studio.stages.topic import STAGE as TOPIC
 from studio.workspace import BlobStore, create_snapshot, project_dir
 from studio.workspace.scope import WriteScope
@@ -52,6 +53,7 @@ M3_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m3-narrative" / "smoke"
 M4_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m4-topic" / "smoke"
 M5_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m5-polish" / "smoke"
 THINKING_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "chat-ui-redesign" / "smoke"
+STYLE_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "style-library" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}
@@ -248,6 +250,17 @@ class SmokeHarness:
             runtime=runtime,
         ).id
 
+    def style_session(self, profile_id: str, runtime: str, style_id: str) -> str:
+        """一套风格的对话会话（风格库重构）：没有项目，`subject_id` 是风格 id。"""
+        return create_session(
+            self.engine,
+            project_id=None,
+            stage="style",
+            subject_id=style_id,
+            model_profile_id=profile_id,
+            runtime=runtime,
+        ).id
+
     async def turn(self, session_id: str, text: str) -> TurnOutcome:
         turn_id = await self.runner.start_turn(session_id, UserInput(text=text))
         await asyncio.wait_for(self.runner.wait(turn_id), timeout=TURN_TIMEOUT_SECONDS)
@@ -320,7 +333,7 @@ def build_harness(
     seed_model_profiles(engine, enable_fake_runtime=False, settings=settings)
     registry = StageRegistry()
     if real_stages:
-        for stage in (BRAINSTORM, TOPIC, NARRATIVE, ANIMATION):
+        for stage in (BRAINSTORM, TOPIC, NARRATIVE, ANIMATION, STYLE):
             registry.register(stage)
     else:
         registry.register(SmokeStage(TOPIC))

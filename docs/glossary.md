@@ -34,7 +34,9 @@
 | 越界检查 | scope guard | 每轮结束时，还原本阶段可写范围之外的改动 |
 | 工具托管文件 | tool-managed file | 只能由工具写入的文件，例如 `narrative/timing.json` |
 | 回退建议 | upstream suggestion | 下游 agent 对上游产物提出的修改建议；只能向直接上游提；状态 `open`/`applied`/`dismissed`，在对话流里显示为卡片，阶段导航上有待处理数量的角标 |
-| 风格预设 | style preset | 风格库里的一套风格，创建项目时复制进项目的 `style/` 目录；见 skill 形态目录 |
+| 风格 | style | 风格库里的一套风格：磁盘上的一个目录 `data/styles/<id>/`，创建项目时复制进项目的 `style/` 目录（之后与风格库脱钩）；名称、简介、分类写在 `STYLE.md` 的 frontmatter（ADR 0019，原「风格预设」存 SQLite 的 `style_presets` 表，已取代） |
+| 风格草稿 | style draft | 编辑一套风格时的服务端工作副本 `data/style-drafts/<id>/`：用户在编辑器里改的、AI 对话改的都是它，点「保存」校验通过才覆盖正式版本，「放弃修改」删除它；从未保存过的新风格只有草稿（`is_new`） |
+| 风格对话 | style chat | 编辑态右侧的 AI 对话：`style` 阶段的会话，没有项目，属于一套风格（`sessions.subject_id`），agent 的工作目录就是这套风格的草稿目录 |
 | skill 形态目录 | skill-shaped style directory | 一套风格的目录结构：入口 `STYLE.md`（frontmatter + 文件索引，每轮先读）+ `references/`（叙事蓝图、配色、动画风格）+ `exemplars/`（金样本）；各阶段提示词说明动笔前读哪些（ADR 0011） |
 | 金样本 | exemplar | 一套风格附带的范例（镜头结构与旁白语感），放在 `style/exemplars/` |
 | 会话内换模型 | model switch | 会话中途换成同 runtime、同 provider 的另一个模型配置，对话记忆保留；换后第一轮有 `model_switched` 提示（ADR 0012） |

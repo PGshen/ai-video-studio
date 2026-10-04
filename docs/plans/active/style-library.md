@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | M5 之后的独立改动（无里程碑编号） |
 | 设计依据 | [风格库重构设计](../../superpowers/specs/2026-10-04-style-library-redesign-design.md)（2026-10-04 负责人确认）；取代 [ADR 0011](../../decisions/0011-风格库采用skill形态目录.md) 中的存储方式；[架构设计](../../design/2026-09-26-architecture.md) §3.1 的 `style_presets` 表描述因此过时，按红线不改该文件 |
 | 分支 | `style-library-redesign` |
@@ -37,13 +37,13 @@
 
 ## 验收标准
 
-- [ ] AC1：风格以目录形式存放在 `data/styles/<id>/`，草稿在 `data/style-drafts/<id>/`；SQLite 里不再有 `style_presets` 表；旧表数据已按原 id 导出成目录，数量核对一致，重复启动不重复导出。（验证：迁移与存储单测、对一份旧库副本实跑）
-- [ ] AC2：`/api/styles*` 全部接口可用，保存校验失败返回 422 逐条错误；有对话轮次运行时草稿写入、保存、放弃、删除返回 409；创建项目、设置里的默认风格、旧项目导入脚本都改读写目录，行为与改造前一致。（验证：API 测试 + `make check`）
-- [ ] AC3：侧栏有「风格库」，`/styles` 是卡片列表，可按关键词、分类、是否默认筛选并分页；设置页不再有风格库 Tab，`/settings/styles` 重定向到 `/styles`。（验证：组件测试 + L4）
-- [ ] AC4：点卡片在右侧抽屉打开只读详情；卡片编辑按钮直接以编辑态打开；URL query 保持抽屉状态，刷新可恢复；关闭抽屉不丢草稿，卡片显示「有未保存草稿」。（验证：组件测试 + L4）
-- [ ] AC5：编辑态是「名称/分类/简介表单 + 文件树 + 代码编辑器 + 右侧对话区」；表单读写 `STYLE.md` frontmatter；编辑自动写草稿；保存/放弃/设默认/复制/删除可用。（验证：组件测试 + L4）
-- [ ] AC6：在对话区让 AI 修改风格，agent 只在草稿目录内工作，改动实时出现在文件树和编辑器里（未保存状态）；轮次运行时编辑器与表单只读；保存后才变成正式版本，放弃则恢复。（验证：fake runtime 的 API/组件测试 + 用本机登录 Claude 的 `make smoke` + L4 截图）
-- [ ] AC7：ADR（取代 0011）、`ARCHITECTURE.md`、`glossary.md`、`dev-setup.md` 已更新；`make check` 全绿；收尾清单（SOP §7）完成。
+- [x] AC1：风格以目录形式存放在 `data/styles/<id>/`，草稿在 `data/style-drafts/<id>/`；SQLite 里不再有 `style_presets` 表；旧表数据已按原 id 导出成目录，数量核对一致，重复启动不重复导出。（验证：迁移与存储单测、对一份旧库副本实跑）
+- [x] AC2：`/api/styles*` 全部接口可用，保存校验失败返回 422 逐条错误；有对话轮次运行时草稿写入、保存、放弃、删除返回 409；创建项目、设置里的默认风格、旧项目导入脚本都改读写目录，行为与改造前一致。（验证：API 测试 + `make check`）
+- [x] AC3：侧栏有「风格库」，`/styles` 是卡片列表，可按关键词、分类、是否默认筛选并分页；设置页不再有风格库 Tab，`/settings/styles` 重定向到 `/styles`。（验证：组件测试 + L4）
+- [x] AC4：点卡片在右侧抽屉打开只读详情；卡片编辑按钮直接以编辑态打开；URL query 保持抽屉状态，刷新可恢复；关闭抽屉不丢草稿，卡片显示「有未保存草稿」。（验证：组件测试 + L4）
+- [x] AC5：编辑态是「名称/分类/简介表单 + 文件树 + 代码编辑器 + 右侧对话区」；表单读写 `STYLE.md` frontmatter；编辑自动写草稿；保存/放弃/设默认/复制/删除可用。（验证：组件测试 + L4）
+- [x] AC6：在对话区让 AI 修改风格，agent 只在草稿目录内工作，改动实时出现在文件树和编辑器里（未保存状态）；轮次运行时编辑器与表单只读；保存后才变成正式版本，放弃则恢复。（验证：fake runtime 的 API/组件测试 + 用本机登录 Claude 的 `make smoke` + L4 截图）
+- [x] AC7：ADR（取代 0011）、`ARCHITECTURE.md`、`glossary.md`、`dev-setup.md` 已更新；`make check` 全绿；收尾清单（SOP §7）完成。
 
 ## 评审关注点
 
@@ -179,7 +179,7 @@
 - **完成标准**：编辑态下用 fake runtime 能完整走一遍「对话 → 草稿变化 → 保存」。
 - **验证命令**：`cd frontend && pnpm vitest run`；`make check`
 
-### T11：文档、真实模型冒烟与 L4 走查（待开始）
+### T11：文档、真实模型冒烟与 L4 走查（完成）
 
 - **目标**：文档与实现一致，真实模型下 AI 改风格可用，浏览器走查留证据。
 - **涉及文件**：`docs/ARCHITECTURE.md`（后端模块表加 `styles`，`db`/`workspace`/`api`/`agent`/`stages` 相关描述，前端 `features/styles/`、`features/settings/` 的变化）；`docs/glossary.md`（风格、草稿、正式版本）；`docs/runbooks/dev-setup.md`、`docs/runbooks/verification.md`（风格库验证步骤、升级前备份提示）；`docs/quality/QUALITY.md`；`backend/tests/smoke/test_smoke.py`（新增风格对话冒烟用例，走本机 Claude 登录）；本计划的验证记录。
@@ -200,10 +200,11 @@
 - 2026-10-04 — T8 `sessions.subject_id`（迁移 0008）、`create_session`/`list_sessions` 按 `subject_id` 分组、`delete_subject_sessions`、`POST/GET /api/styles/{id}/sessions`（正式风格和从未保存的新风格都可建会话）、删除风格/放弃新风格时清理会话 — `make check` 绿（后端 1551）
 - 2026-10-04 — T9 `style` 阶段（写范围 `STYLE.md`/`references/*`/`exemplars/*`、`validate_style` 工具、提示词）、`TurnRunner._execute_bound_dir`（cwd = 草稿目录、无快照/前言）、`busy_key = subject:<id>`、`is_subject_busy`、轮次结束清理草稿里界面够不着的文件并发 `draft_pruned` 通知和一次 `workspace_changed`、草稿改动类接口 409、`stage_default_profile` 接受 `style` — `make check` 绿（后端 1583）
 - 2026-10-04 — T10 编辑态右侧 AI 对话区（`StyleChatPane`，复用 `SessionPanel`/`SessionPicker`）、会话范围 `style`、风格会话查询与创建、`useSessionStream` 在 `workspace_changed`/轮次开始结束时刷新草稿、草稿状态带后端 `busy` 驱动只读、发送前先写出未写入的编辑（`SessionPanel.beforeSend`）、设置里 `style` 阶段默认模型、`draft_pruned` 提示文案、风格阶段可写范围 `references/*` 排最前使 fake 默认脚本能改草稿 — `make check` 绿（后端 1585、前端 875）；隔离实例上用 fake 运行时端到端走通
+- 2026-10-04 — T11 真实模型冒烟 `test_style_chat_claude_login`（本机 Claude 登录，两次通过）、文档（ADR 0019 之外的 ARCHITECTURE/glossary/verification/QUALITY/tech-debt/legacy-assets）、AC 逐条核对与 L4 走查收尾；冒烟中发现并修复运行时 `.claude/` 目录被当作多余文件通知用户 — `make check` 绿（后端 1586、前端 875）
 
 ## 下一步
 
-- 从 T11 开始（文档、真实模型冒烟、L4 走查收尾）：先写 `backend/tests/smoke/test_smoke.py` 里的 `test_style_chat_claude_login`（创建一套风格草稿，经 `TurnRunner` 用本机 Claude 登录跑一轮「把简介改成……并新增一个 references 文件」，断言草稿内容变化、正式版本未变，再保存后正式版本更新；运行：`make smoke SMOKE_ARGS="-k style_chat_claude_login"`，不产生 API 费用，见 SOP §6 第 7 条例外），跑通后把输出摘要写进「验证记录」；再更新 `docs/ARCHITECTURE.md`（后端模块表加 `styles`、`db`/`workspace`/`api`/`agent`/`stages` 相关描述、`stages.style`、`TurnRunner` 绑定目录模式、`sessions.subject_id`；前端 `features/styles/`、`features/settings/` 的变化、`components/session` 的 `beforeSend`）、`docs/glossary.md`（风格、草稿、正式版本）、`docs/runbooks/verification.md`（风格库验证步骤和新的冒烟用例）、`docs/quality/QUALITY.md`；最后逐条核对 AC1–AC7，把证据写进「验证记录」，计划状态改为「待验收」，关掉隔离的 L4 实例（后端 8001、前端 5174，`pkill -f "uvicorn studio.main:app --host 127.0.0.1 --port 8001"` 和 5174 的 vite）。
+- 等整分支评审（SOP §3 第 5 阶段）：对 `main..style-library-redesign` 做代码评审，处理发现；然后负责人验收（演示：`/styles` 列表、抽屉详情与编辑、对话改风格并保存）。验收后：计划移到 `plans/completed/` 并把状态改为「已完成」，决定如何合并分支 `style-library-redesign`（本分支带有设计文档、ADR 0019、计划本身）。升级真实数据库前提醒负责人**备份 `data/studio.db`**（迁移 0007 会把旧 `style_presets` 表导出成 `data/styles/` 目录并删表，没有降级）。
 
 ## 决策记录
 
@@ -222,6 +223,7 @@
 - 2026-10-04 — T10：编辑区是否只读由后端草稿状态的 `busy`（`TurnRunner.is_subject_busy`）决定，不在前端再开第二条 SSE 去推断；`turn_status` 事件、`workspace_changed`、以及消息发送成功后都刷新草稿状态 — 新会话第一轮时 SSE 可能还没连上，实测第一条消息期间 UI 没锁，所以加了发送成功后的主动刷新。
 - 2026-10-04 — T10：`validate_style` 工具沿用通用工具展示（和 `check_brief` 一样），不新增渲染种类；只在 `toolPresentation` 的路径推断里加了 `style-drafts/<id>/` 使行里显示相对路径 — 计划原写「补一个展示」，通用展示已能显示名称和结果。
 - 2026-10-04 — T10：`SessionPanel` 新增可选 `beforeSend`（发送和「继续」之前执行，失败则不发送）— 风格编辑发送前必须先把编辑器里的编辑写进草稿，否则轮次开始后写入会被 409。
+- 2026-10-04 — T11：运行时自己的目录（Claude 的 `.claude/`）在清理草稿时静默删除，不发 `draft_pruned` 通知 — 真实冒烟发现每一轮都会提示「已清除：.claude」，是噪音；其余多余文件仍然通知。
 - 2026-10-04 — 迁移后目录 id 沿用旧表 id，新建的用 `uuid4().hex` — 与旧表 `_new_id` 一致，免去对 `default_style_preset_id` 和项目记录的映射。
 
 ## 意外与发现
@@ -234,6 +236,13 @@
 
 ## 验证记录
 
+- **AC1**（目录存储与迁移）：`data/styles/<id>/`、`data/style-drafts/<id>/` 布局见 `backend/tests/styles/`（约 130 个用例）；迁移 0007 见下方 T4 条目：对 `data/studio.db` 的 `sqlite3 .backup` 副本实跑，9 套风格按原 id 导出、旧表删除、再次迁移无报错、原库未动；`backend/tests/db/test_legacy_style_table.py` 覆盖无 frontmatter/与列不一致/重名/幂等/失败时保留旧表。
+- **AC2**（API 与调用方）：`backend/tests/api/test_styles.py`（38 个）、`test_projects.py`/`test_settings.py` 的风格用例、`backend/tests/db/test_legacy_styles.py`（34 个，导入脚本写目录）全绿；`make check` 1586 个后端用例。
+- **AC3**（侧栏与列表页）：`StyleGrid`/`StyleCard`/`styleView`/`router`/`SettingsPage`/`navItems` 的 vitest；L4（见下方 T7）列表渲染、改过的卡片排最前；筛选与分页只有 vitest 验证，没有在浏览器里点过。
+- **AC4**（抽屉与 URL）：L4（T7 条目）：卡片点击/编辑按钮、刷新后状态、关闭保留草稿、不存在的 id 提示；2026-10-04 另验证已有风格有草稿时卡片显示「有未保存草稿」、详情态提示草稿存在且显示的仍是已保存版本。
+- **AC5**（编辑态）：L4（T7 条目）：表单与 frontmatter 同步、防抖写草稿、保存/放弃、窄屏。`CodeEditor` 里的 CodeMirror 键盘输入没有自动化（只在 L4 用表单和 DOM 事件驱动）。
+- **AC6**（AI 对话改风格）：fake 运行时见 T10 条目（草稿被改、运行期间只读、结束恢复、正式版本不变）；**真实模型**：`make smoke SMOKE_ARGS="-k style_chat_claude_login"`（本机 Claude 登录）2026-10-04 通过两次（每次约 56–58 秒）：模型用 `Read`/`Bash`/`Write`/`Edit` 和 `validate_style`，把 description 改成「深色科技风，冷蓝主色」、新增 `references/palette.md`（三个冷蓝色值）并在 `STYLE.md` 里加一行索引（写明什么时候读），`validate_draft` 无问题，保存前正式版本原样，`save_draft` 后更新；第二次运行 `draft_pruned` 通知为空。证据 `data/evidence/style-library/smoke/*-style-chat-claude-login.json`。未验证：OpenAI 运行时的风格对话；更复杂、更长的改写任务。
+- **AC7**（文档）：ADR 0019（取代 0011 的存储部分）、`ARCHITECTURE.md`、`glossary.md`、`runbooks/verification.md`（新冒烟用例与风格库 L4 步骤）、`dev-setup.md`（存储位置与升级备份）、`quality/QUALITY.md`、`tech-debt.md`（TD-43 移到已处理）、`references/legacy-assets.md` 已更新；`python3 scripts/check_docs.py` 通过；设计文档加了修订记录。未更新 `docs/design/2026-09-26-architecture.md` §3.1（按红线）。
 - T10（AC6 的一部分，fake 运行时）：2026-10-04 在隔离实例（8001/5174，`STUDIO_ENABLE_FAKE_RUNTIME=true`、`STUDIO_FAKE_DELAY_SECONDS=2`）用 JS 派发真实的 input/click 事件驱动页面（浏览器面板被收起，输入类操作不可用）：编辑态右侧显示「AI 对话」和会话选择；先改分类（防抖中）再发消息——草稿里分类已写入（发送前先写出）、正式版本仍是旧分类；AI 运行期间 `GET …/draft/files` 返回 `busy: true`，界面「保存」按钮禁用、状态栏显示「AI 正在修改，完成后可以继续编辑」，约 2 秒后恢复；AI 新建的 `references/fake-note.md` 出现在草稿文件树里；新建风格的第一条消息（新会话）同样立即只读（修了 SSE 未连上时的竞态）。会话 `stage=style`、`subject_id` 为该风格。真实模型冒烟见 T11。
 - T7（AC3/AC4/AC5 的一部分）：2026-10-04 在隔离实例（8001/5174，数据目录 scratchpad `l4data/`，复制自真实库迁移出的 9 套风格）上用内置浏览器：列表渲染 9 张卡片且改过的排最前；点卡片 URL 变 `?style=<id>&mode=view` 抽屉滑出，详情显示真实风格的文件树和入口内容；点「编辑」进编辑态，改名称后编辑器里的 frontmatter 同步、状态「已保存到草稿」；保存前 `GET /api/styles/<id>` 仍是旧名称且草稿 `dirty: true`，保存后正式版本为新名称、草稿 404、回到详情态；Esc 关闭时 URL 立刻清掉、内容在滑出动画期间保留；新建风格出现「未保存的新风格」卡片，点开直接进编辑并带模板；`?style=zzz` 在详情态和编辑态都显示「风格不存在」；375px 窄屏编辑器 309px 宽、保存按钮在视口内、无横向溢出。浏览器面板被收起后改用 DOM 检查，没有保留截图文件。
 - T4（AC1 迁移部分）：2026-10-04 对 `data/studio.db` 的 `sqlite3 .backup` 副本（旧表 9 行，版本 0006）实跑 `migrate()`：旧表已删；`styles/` 下 9 个目录，名称/分类/引用数/金样本数与旧表一致（如「反差心理学·直觉翻案」3 个引用 1 个金样本，frontmatter 含 `category: 旧项目导入`）；再次 `migrate()` 无报错；原库 `style_presets` 仍是 9 行。

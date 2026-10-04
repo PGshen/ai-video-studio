@@ -481,6 +481,21 @@ class TestPruneDraft:
         ]
         assert store.validate_draft(tmp_path, style_id) == []
 
+    def test_the_runtimes_own_directory_is_removed_silently(self, tmp_path: Path) -> None:
+        """Claude 运行时会在工作目录里建 `.claude/`：清掉，但不当作「agent 留下的多余文件」报告。"""
+        style_id = _saved(tmp_path)
+        store.open_draft(tmp_path, style_id)
+        draft = draft_dir(tmp_path, style_id)
+        (draft / ".claude").mkdir()
+        (draft / ".claude" / "settings.local.json").write_text("{}")
+        (draft / "notes.md").write_text("多余文件")
+
+        removed = store.prune_draft(tmp_path, style_id)
+
+        assert removed == ["notes.md"]
+        assert not (draft / ".claude").exists()
+        assert store.validate_draft(tmp_path, style_id) == []
+
     def test_a_clean_draft_is_left_alone(self, tmp_path: Path) -> None:
         style_id = _saved(tmp_path)
         store.open_draft(tmp_path, style_id)
