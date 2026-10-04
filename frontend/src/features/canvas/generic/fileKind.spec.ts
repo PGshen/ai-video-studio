@@ -6,6 +6,8 @@ describe('isTextFile / editorLanguage', () => {
     ['topic/brief.md', true, 'markdown'],
     ['narrative/shots.json', true, 'json'],
     ['animation/scene.py', true, 'python'],
+    ['animation/scenes/s-hook.js', true, 'text'],
+    ['animation/assets/logo.svg', true, 'text'],
     ['notes.txt', true, 'text'],
     ['style/STYLE.md', true, 'markdown'],
   ] as const)('%s 是文本文件，语言为 %s', (path, expectedText, expectedLang) => {

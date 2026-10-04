@@ -1159,3 +1159,75 @@ async def test_style_chat_claude_login(tmp_path: Path) -> None:
         record_evidence("style-chat-claude-login", evidence, STYLE_EVIDENCE_DIR)
     finally:
         harness.engine.dispose()
+
+
+# ---- 子项目 2A: animation_html（本机 Claude 登录，真实 Chromium）----------------------------
+
+_SKY_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "animation_html" / "sky"
+_HTML_STEPS = 80
+_HTML_PROMPT = (
+    "按提示词为时间轴里的 3 个镜头各写一个场景脚本，主题是“天空为什么是蓝的”。"
+    "按镜头顺序逐个做：写完先用 validate_scenes_html 校验该镜头，再用 render_preview_html 看图；"
+    "全部做完后做一次全量校验。最后用一小段话说明每个 beat 对应的画面。"
+)
+_HTML_FOLLOW_UP = (
+    "上一轮的最终校验还有错误。根据 validate_scenes_html 的错误继续修复，直到全部通过。"
+)
+
+
+def _html_tool_results(outcome: TurnOutcome, name: str) -> list[dict[str, Any]]:
+    names = {
+        e.payload["call_id"]: e.payload["name"] for e in outcome.events if e.type == "tool_call"
+    }
+    return [
+        e.payload
+        for e in outcome.events
+        if e.type == "tool_result" and names.get(e.payload["call_id"]) == name
+    ]
+
+
+async def test_animation_html_claude_login(tmp_path: Path) -> None:
+    from studio.engines.render.html.pool import close_browser_pool
+
+    from .support import HTML_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    harness = build_harness(tmp_path, real_stages=True, html=True)
+    evidence: dict[str, Any] = {}
+    try:
+        for name in ("narrative.json", "timing.json"):
+            target = harness.workdir / "narrative" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((_SKY_FIXTURES / name).read_bytes())
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "topic")
+        finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "narrative")
+
+        profile = harness.profile("claude-login", max_steps_per_turn=_HTML_STEPS)
+        session = harness.session(profile, "claude", stage="animation_html")
+        turns = [await harness.turn(session, _HTML_PROMPT)]
+        validations = _html_tool_results(turns[0], "validate_scenes_html")
+        if not validations or validations[-1]["is_error"]:
+            turns.append(await harness.turn(session, _HTML_FOLLOW_UP))
+        evidence["turns"] = [outcome_summary(t) for t in turns]
+
+        assert all(t.turn.status == "done" for t in turns), [
+            (t.turn.status, t.turn.error) for t in turns
+        ]
+        scenes = harness.workdir / "animation" / "scenes"
+        for scene_id in ("s-question", "s-scattering", "s-sunset"):
+            assert (scenes / f"{scene_id}.js").is_file(), f"缺少镜头 {scene_id}"
+        results = [r for t in turns for r in _html_tool_results(t, "validate_scenes_html")]
+        assert results, "没有调用 validate_scenes_html"
+        assert not results[-1]["is_error"], results[-1]["text"]
+        previews = [r for t in turns for r in _html_tool_results(t, "render_preview_html")]
+        assert previews, "没有调用 render_preview_html"
+        evidence["warnings"] = [
+            line for line in results[-1]["text"].splitlines() if line.startswith("警告")
+        ]
+        evidence["preview_calls"] = len(previews)
+        evidence["validate_calls"] = len(results)
+        evidence["tool_calls"] = [name for t in turns for name in t.tool_names]
+    finally:
+        record_evidence("animation-html-claude-login", evidence, HTML_EVIDENCE_DIR)
+        await close_browser_pool()
+        harness.engine.dispose()

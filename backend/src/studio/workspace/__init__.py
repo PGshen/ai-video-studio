@@ -33,7 +33,7 @@ from studio.workspace.snapshot import (
     rollback,
     scan,
 )
-from studio.workspace.upstream import materialize_upstream, upstream_drift
+from studio.workspace.upstream import derived_upstream, materialize_upstream, upstream_drift
 
 __all__ = [
     "BlobStore",
@@ -51,6 +51,7 @@ __all__ = [
     "init_workspace",
     "is_writable",
     "list_tree",
+    "derived_upstream",
     "materialize_upstream",
     "project_dir",
     "read_bytes",

@@ -39,6 +39,7 @@ from studio.db.repo.sessions import create_session
 from studio.db.repo.stages import create_stage
 from studio.db.repo.turns import TurnEventValue, TurnValue, get_turn, list_events
 from studio.stages.animation import STAGE as ANIMATION
+from studio.stages.animation_html import STAGE as ANIMATION_HTML
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 from studio.stages.narrative import STAGE as NARRATIVE
 from studio.stages.style import STAGE as STYLE
@@ -54,11 +55,12 @@ M4_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m4-topic" / "smoke"
 M5_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m5-polish" / "smoke"
 THINKING_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "chat-ui-redesign" / "smoke"
 STYLE_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "style-library" / "smoke"
+HTML_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "html-engine" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}
 
-TURN_TIMEOUT_SECONDS = 600
+TURN_TIMEOUT_SECONDS = 1500
 
 
 # ---- PNG ---------------------------------------------------------------------
@@ -323,6 +325,7 @@ def build_harness(
     cancel_grace_seconds: float = 10.0,
     real_stages: bool = False,
     web_mode: Literal["tools", "native"] = "tools",
+    html: bool = False,
 ) -> SmokeHarness:
     """`real_stages=True`（M4）：注册真实的 brainstorm/topic/narrative/animation 阶段（带联网
     工具、`check_brief` 等），并按 `web_mode` 决定联网方式；默认仍是 M1 的精简阶段。"""
@@ -336,7 +339,7 @@ def build_harness(
     seed_model_profiles(engine, enable_fake_runtime=False, settings=settings)
     registry = StageRegistry()
     if real_stages:
-        for stage in (BRAINSTORM, TOPIC, NARRATIVE, ANIMATION, STYLE):
+        for stage in (BRAINSTORM, TOPIC, NARRATIVE, ANIMATION, ANIMATION_HTML, STYLE):
             registry.register(stage)
     else:
         registry.register(SmokeStage(TOPIC))
@@ -357,8 +360,20 @@ def build_harness(
         cancel_grace_seconds=cancel_grace_seconds,
     )
 
-    project = create_project(engine, title="冒烟测试")
-    for stage, status in (("topic", "active"), ("narrative", "locked"), ("animation", "locked")):
+    last = "animation_html" if html else "animation"
+    project_settings = (
+        {
+            "video_kind": "explainer_html",
+            "engine": "html",
+            "narration": True,
+            "music_source": "none",
+            "pipeline": ["topic", "narrative", "animation_html"],
+        }
+        if html
+        else None
+    )
+    project = create_project(engine, title="冒烟测试", settings=project_settings)
+    for stage, status in (("topic", "active"), ("narrative", "locked"), (last, "locked")):
         create_stage(engine, project_id=project.id, stage=stage, status=status)
     style = project_dir(data_dir, project.id) / "style" / "STYLE.md"
     style.parent.mkdir(parents=True, exist_ok=True)

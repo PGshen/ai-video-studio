@@ -78,6 +78,14 @@ class TestPatchSettings:
         assert response.status_code == 200
         assert response.json()["stage_default_profile"] == {"style": fake_id}
 
+    async def test_the_html_animation_stage_can_have_a_default_model(self, api_env: ApiEnv) -> None:
+        fake_id = await _profile_id(api_env, "fake")
+
+        response = await _patch(api_env, {"stage_default_profile": {"animation_html": fake_id}})
+
+        assert response.status_code == 200
+        assert response.json()["stage_default_profile"] == {"animation_html": fake_id}
+
     async def test_tts_default_round_trip_and_partial(self, api_env: ApiEnv) -> None:
         response = await _patch(api_env, {"tts_default": {"voice": "xiaohe", "speech_rate": 1.2}})
         assert response.json()["tts_default"] == {"voice": "xiaohe", "speech_rate": 1.2}

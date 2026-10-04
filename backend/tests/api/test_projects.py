@@ -125,6 +125,29 @@ class TestCreateProjectKinds:
         stages = list_stages(api_env.app.state.engine, body["id"])
         assert [s.stage for s in stages] == ["topic", "narrative", "animation"]
 
+    async def test_html_explainer_is_creatable(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects",
+            json={
+                "title": "HTML 讲解",
+                "engine": "html",
+                "narration": True,
+                "music_source": "none",
+            },
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["current_stage"] == "topic"
+        assert body["kind"]["video_kind"] == "explainer_html"
+        assert body["settings"]["pipeline"] == ["topic", "narrative", "animation_html"]
+        stages = list_stages(api_env.app.state.engine, body["id"])
+        assert [(s.stage, s.status) for s in stages] == [
+            ("topic", "active"),
+            ("narrative", "locked"),
+            ("animation_html", "locked"),
+        ]
+
     async def test_music_video_pipeline_stages_and_idea_card(self, api_env: ApiEnv) -> None:
         from studio.db.repo.ideas import create_idea
 

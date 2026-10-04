@@ -27,3 +27,4 @@ agent SDK 和前端组件库更新很快，AI 的训练知识可能已经过时�
 | [ffmpeg.md](ffmpeg.md) | ffmpeg（本机 Homebrew 安装）：滤镜可用性、字幕叠加方案 |
 | [volcengine-tts.md](volcengine-tts.md) | Volcengine TTS：真实合成的时间戳粒度、开头/结尾静音、对齐结果 |
 | [tavily.md](tavily.md) | Tavily 搜索与网页抓取：端点、字段、错误码 |
+| [html-canvas-agent-spike.md](html-canvas-agent-spike.md) | 真实模型写 Canvas 场景的小试：稳定性、确定性、暴露的问题 |

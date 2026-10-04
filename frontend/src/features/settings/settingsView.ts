@@ -11,6 +11,7 @@ export const DEFAULT_PROFILE_STAGES = [
   { key: 'topic', label: '选题' },
   { key: 'narrative', label: '叙事' },
   { key: 'animation', label: '动画' },
+  { key: 'animation_html', label: '动画（HTML）' },
   { key: 'style', label: '风格对话' },
 ] as const
 

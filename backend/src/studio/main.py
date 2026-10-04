@@ -42,7 +42,9 @@ from studio.api.video_kinds import router as video_kinds_router
 from studio.config import Settings, get_settings
 from studio.db.engine import make_engine, migrate
 from studio.db.repo.profiles import seed_model_profiles
+from studio.engines.render.html.pool import close_browser_pool
 from studio.stages.animation import STAGE as ANIMATION_STAGE
+from studio.stages.animation_html import STAGE as ANIMATION_HTML_STAGE
 from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.style import STAGE as STYLE_STAGE
@@ -59,7 +61,14 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     seed_model_profiles(engine, enable_fake_runtime=settings.enable_fake_runtime, settings=settings)
 
     registry = StageRegistry()
-    for stage in (BRAINSTORM_STAGE, TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE, STYLE_STAGE):
+    for stage in (
+        BRAINSTORM_STAGE,
+        TOPIC_STAGE,
+        NARRATIVE_STAGE,
+        ANIMATION_STAGE,
+        ANIMATION_HTML_STAGE,
+        STYLE_STAGE,
+    ):
         registry.register(stage)
 
     runtime_factory = RuntimeFactory()
@@ -88,7 +97,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             await turn_runner.shutdown()
         finally:
-            engine.dispose()
+            try:
+                await close_browser_pool()
+            finally:
+                engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

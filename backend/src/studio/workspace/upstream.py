@@ -101,19 +101,8 @@ def _expected_upstream(sources: dict[str, Manifest | None]) -> dict[str, str]:
     return expected
 
 
-def upstream_drift(workdir: Path | str, sources: dict[str, Manifest | None]) -> list[str]:
-    """`upstream/` 当前内容与按 `sources` 物化的结果不同的路径（`upstream/...`，排序）。
-
-    TurnRunner 在轮末重新物化之前调用，把 agent 对只读副本的改动（新增、修改、
-    删除、符号链接）报告为"被还原"，写进下一轮前言（R5、评审关注点 1）。
-    符号链接不跟随，一律视为改动。
-    """
-    workdir = Path(workdir)
-    expected = _expected_upstream(sources)
+def _actual_upstream(workdir: Path) -> dict[str, str]:
     actual: dict[str, str] = {}
-    if (workdir / "upstream").is_symlink():
-        # os.walk would follow a symlinked top directory; report it instead.
-        return sorted({"upstream", *expected})
     for root, dirnames, filenames in os.walk(workdir / "upstream", followlinks=False):
         root_path = Path(root)
         for name in (*dirnames, *filenames):
@@ -127,6 +116,45 @@ def upstream_drift(workdir: Path | str, sources: dict[str, Manifest | None]) -> 
                 except OSError:
                     # Unreadable (e.g. agent ran `chmod 000`): count it as drift.
                     actual[rel_path] = "unreadable"
+    return actual
+
+
+def derived_upstream(workdir: Path | str, sources: dict[str, Manifest | None]) -> dict[str, str]:
+    """`materialize_upstream` 之后、`prepare_turn` 之后 `upstream/` 里多出来的文件（路径 → 哈希）。
+
+    它们是阶段为本轮生成的派生文件（例如 `upstream/timeline.json`），不是 agent 的改动：
+    TurnRunner 把它作为基线传给 `upstream_drift`，轮末据此区分“agent 动过派生文件”和
+    “派生文件原样还在”。
+    """
+    workdir = Path(workdir)
+    if (workdir / "upstream").is_symlink():
+        return {}
+    expected = _expected_upstream(sources)
+    return {
+        path: digest
+        for path, digest in _actual_upstream(workdir).items()
+        if expected.get(path) != digest
+    }
+
+
+def upstream_drift(
+    workdir: Path | str,
+    sources: dict[str, Manifest | None],
+    derived: dict[str, str] | None = None,
+) -> list[str]:
+    """`upstream/` 当前内容与按 `sources` 物化的结果不同的路径（`upstream/...`，排序）。
+
+    TurnRunner 在轮末重新物化之前调用，把 agent 对只读副本的改动（新增、修改、
+    删除、符号链接）报告为"被还原"，写进下一轮前言（R5、评审关注点 1）。
+    符号链接不跟随，一律视为改动。`derived` 是 `derived_upstream` 给出的基线：阶段派生的
+    文件按基线算“应有内容”，原样保留不算改动。
+    """
+    workdir = Path(workdir)
+    expected = {**(derived or {}), **_expected_upstream(sources)}
+    if (workdir / "upstream").is_symlink():
+        # os.walk would follow a symlinked top directory; report it instead.
+        return sorted({"upstream", *expected})
+    actual = _actual_upstream(workdir)
     return sorted(
         path for path in set(expected) | set(actual) if expected.get(path) != actual.get(path)
     )
