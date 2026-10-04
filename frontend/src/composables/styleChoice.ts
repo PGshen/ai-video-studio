@@ -8,9 +8,14 @@
 
 import type { StyleSummaryOut } from '@/types/api'
 
+/** 能用来创建项目的风格：后端只认已保存的风格，从未保存过的新风格（`is_new`，只有草稿）选了会 404。 */
+export function selectableStyles(presets: StyleSummaryOut[]): StyleSummaryOut[] {
+  return presets.filter((p) => !p.is_new)
+}
+
 /** 预选值：有默认风格就是它，否则空字符串（不指定）。 */
 export function initialStyleId(presets: StyleSummaryOut[]): string {
-  return presets.find((p) => p.is_default)?.id ?? ''
+  return selectableStyles(presets).find((p) => p.is_default)?.id ?? ''
 }
 
 export function styleOptionLabel(preset: StyleSummaryOut): string {
@@ -26,7 +31,7 @@ export interface StyleOption {
 export function styleSelectOptions(presets: StyleSummaryOut[]): StyleOption[] {
   return [
     { value: '', label: '不指定（用默认风格；没有默认风格时用占位）' },
-    ...presets.map((p) => ({ value: p.id, label: styleOptionLabel(p) })),
+    ...selectableStyles(presets).map((p) => ({ value: p.id, label: styleOptionLabel(p) })),
   ]
 }
 

@@ -2,7 +2,8 @@
 
 - 正式版本 `<data>/styles/<id>/`；保存时先写临时目录再 rename 替换，失败时旧版本不变。
 - 草稿 `<data>/style-drafts/<id>/`：用户编辑和 agent 对话都只改草稿；`save_draft` 校验通过后
-  才覆盖正式版本，`discard_draft` 丢弃草稿。从未保存过的新建风格只有草稿，不出现在列表里。
+  才覆盖正式版本，`discard_draft` 丢弃草稿。从未保存过的新建风格只有草稿：`list_styles` 列出它
+  （`is_new`），`list_saved_styles` 不含它。
 - 读取目录一律不跟随符号链接；草稿里出现符号链接、顶层多余文件、非 UTF-8 内容等在保存时
   作为校验错误报告，不会被静默复制。
 
@@ -275,6 +276,12 @@ def _new_draft_summaries(data_dir: Path | str) -> list[StyleSummary]:
     return summaries
 
 
+def list_saved_styles(data_dir: Path | str) -> list[StyleSummary]:
+    """只含有正式版本的风格（不含从未保存过的草稿），按分类、名称排序。导入脚本、创建项目等
+    只认已保存风格的调用方用这个，不要用 `list_styles`。"""
+    return sorted(_saved_summaries(data_dir), key=lambda s: (s.category, s.name))
+
+
 def list_styles(data_dir: Path | str) -> list[StyleSummary]:
     """正式版本加上从未保存过的草稿（`is_new`），按分类、名称排序；坏的正式版本目录跳过并记警告。"""
     summaries = [*_saved_summaries(data_dir), *_new_draft_summaries(data_dir)]
@@ -302,6 +309,16 @@ def style_exists(data_dir: Path | str, style_id: str) -> bool:
 
 def draft_dir_exists(data_dir: Path | str, style_id: str) -> bool:
     return is_valid_style_id(style_id) and draft_dir(data_dir, style_id).is_dir()
+
+
+def style_is_usable(data_dir: Path | str, style_id: str) -> bool:
+    """正式版本存在且读得出来（有 `STYLE.md`）。目录被手工弄坏时 `style_exists` 仍为真，
+    创建项目、设默认风格要用这个。"""
+    try:
+        get_style(data_dir, style_id)
+    except StyleNotFoundError:
+        return False
+    return True
 
 
 def style_known(data_dir: Path | str, style_id: str) -> bool:
@@ -537,6 +554,7 @@ __all__ = [
     "duplicate_style",
     "get_style",
     "import_style",
+    "list_saved_styles",
     "list_styles",
     "open_draft",
     "read_draft_file",
@@ -544,6 +562,7 @@ __all__ = [
     "read_style_files",
     "save_draft",
     "style_exists",
+    "style_is_usable",
     "style_known",
     "validate_draft",
     "validate_tree",

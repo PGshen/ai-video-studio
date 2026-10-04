@@ -10,9 +10,10 @@ vi.mock('@/api/endpoints', async () => (await import('@/test/fakeStyleApi')).end
 
 import { useStyleDraft } from './useStyleDraft'
 
-function setup(styleId = 's1') {
+function setup(styleId = 's1', sharedClient?: QueryClient) {
   const id = ref(styleId)
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient =
+    sharedClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } })
   let draft!: ReturnType<typeof useStyleDraft>
   const wrapper = mount(
     defineComponent({
@@ -293,5 +294,56 @@ describe('保存与放弃', () => {
     await settle()
     expect(await fresh.draft.discard()).toEqual({ wasNew: true })
     expect(server.drafts.has('n1')).toBe(false)
+  })
+})
+
+describe('评审修复：AI 的改动不会被旧缓存或事后重放的编辑覆盖', () => {
+  it('编辑视图卸载期间 AI 改了草稿，重新进入时显示新内容而不是旧缓存', async () => {
+    const shared = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const first = setup('s1', shared)
+    await settle()
+    first.wrapper.unmount()
+
+    server.drafts.get('s1')!['STYLE.md'] = entry('AI 在抽屉关闭期间改的名字')
+    server.drafts.get('s1')!['references/color.md'] = 'AI 改的配色'
+    const second = setup('s1', shared)
+    await settle()
+
+    expect(second.draft.content.value).toContain('AI 在抽屉关闭期间改的名字')
+    expect(second.draft.meta.value.name).toBe('AI 在抽屉关闭期间改的名字')
+    second.draft.selectFile('references/color.md')
+    await settle()
+    expect(second.draft.content.value).toBe('AI 改的配色')
+  })
+
+  it('写入被 409 拒绝（AI 正在修改）的编辑不会留着事后重放，覆盖 AI 的成果', async () => {
+    const { draft } = setup()
+    await settle()
+    server.writeError = new ApiError(409, 'AI 正在修改这套风格，请等这一轮结束')
+
+    draft.edit('references/color.md', '我在锁住之前敲的字')
+    await draft.flush()
+    expect(draft.saveState.value).toBe('idle')
+
+    server.writeError = null
+    server.drafts.get('s1')!['references/color.md'] = 'AI 的成果'
+    await draft.flush()
+    const saved = await draft.save()
+
+    expect(server.writes.map((w) => w.content)).not.toContain('我在锁住之前敲的字')
+    expect(saved?.files['references/color.md']).toBe('AI 的成果')
+  })
+
+  it('非 409 的写入失败仍然保留编辑，等下一次重试', async () => {
+    const { draft } = setup()
+    await settle()
+    server.writeError = new ApiError(500, '磁盘已满')
+
+    draft.edit('references/color.md', '要保住的编辑')
+    await draft.flush()
+    server.writeError = null
+    await draft.flush()
+
+    expect(server.drafts.get('s1')!['references/color.md']).toBe('要保住的编辑')
   })
 })

@@ -135,14 +135,13 @@ def _style_for_new_project(
     """
     data_dir = settings.data_dir
     if requested_id is not None:
-        if not style_store.style_exists(data_dir, requested_id):
+        if not style_store.style_is_usable(data_dir, requested_id):
             raise HTTPException(status_code=404, detail=f"风格不存在：{requested_id}")
         style_id: str | None = requested_id
     else:
         default_id = get_all_settings(engine).default_style_preset_id
-        style_id = (
-            default_id if default_id and style_store.style_exists(data_dir, default_id) else None
-        )
+        usable = default_id is not None and style_store.style_is_usable(data_dir, default_id)
+        style_id = default_id if usable else None
     if style_id is None:
         placeholder = f"# {title}\n\n（未选择风格：风格库里没有可用的风格，这是一份占位。）\n"
         return {"style/STYLE.md": placeholder}, {}

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { StyleSummaryOut } from '@/types/api'
-import { initialStyleId, styleIdForRequest, styleOptionLabel, styleSelectOptions } from './styleChoice'
+import {
+  initialStyleId,
+  selectableStyles,
+  styleIdForRequest,
+  styleOptionLabel,
+  styleSelectOptions,
+} from './styleChoice'
 
 function preset(overrides: Partial<StyleSummaryOut>): StyleSummaryOut {
   return {
@@ -57,5 +63,17 @@ describe('styleIdForRequest', () => {
   it('空字符串不发（让服务端用默认风格或占位），其他原样发', () => {
     expect(styleIdForRequest('')).toBeUndefined()
     expect(styleIdForRequest('abc')).toBe('abc')
+  })
+})
+
+describe('从未保存的新风格不能用来创建项目（后端只认已保存的风格，选了会 404）', () => {
+  it('选项里不出现 is_new 的风格', () => {
+    const list = [preset({ id: 'a' }), preset({ id: 'n', name: '新草稿', is_new: true, has_draft: true })]
+    expect(styleSelectOptions(list).map((o) => o.value)).toEqual(['', 'a'])
+    expect(selectableStyles(list).map((p) => p.id)).toEqual(['a'])
+  })
+
+  it('只有未保存的新风格时等于风格库为空', () => {
+    expect(selectableStyles([preset({ id: 'n', is_new: true })])).toEqual([])
   })
 })

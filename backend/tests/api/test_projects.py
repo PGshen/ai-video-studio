@@ -17,6 +17,7 @@ from studio.db.repo.stages import list_stages
 from studio.db.repo.suggestions import create_suggestion, get_suggestion
 from studio.db.repo.turns import append_event, create_turn_if_session_idle, list_events, list_turns
 from studio.styles import store as style_store
+from studio.styles.layout import style_dir
 from studio.workspace import files
 
 from .conftest import ApiEnv, assert_detail
@@ -423,6 +424,32 @@ class TestCreateProjectWithStyle:
 
         assert list(self._style_files(api_env, project["id"])) == ["style/STYLE.md"]
         assert "style_preset_id" not in project["settings"]
+
+    async def test_a_broken_default_style_falls_back_to_the_placeholder(
+        self, api_env: ApiEnv
+    ) -> None:
+        """默认风格目录被手工弄坏（没有 STYLE.md）：创建项目不能 500（评审 I4）。"""
+        default = await self._preset(api_env, name="默认")
+        await api_env.client.patch("/api/settings", json={"default_style_preset_id": default["id"]})
+        (style_dir(api_env.data_dir, default["id"]) / "STYLE.md").unlink()
+
+        response = await api_env.client.post("/api/projects", json={"title": "P"})
+
+        assert response.status_code == 201
+        project = response.json()
+        assert list(self._style_files(api_env, project["id"])) == ["style/STYLE.md"]
+        assert "style_preset_id" not in project["settings"]
+
+    async def test_a_broken_requested_style_is_404_not_500(self, api_env: ApiEnv) -> None:
+        preset = await self._preset(api_env)
+        (style_dir(api_env.data_dir, preset["id"]) / "STYLE.md").unlink()
+
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "style_preset_id": preset["id"]}
+        )
+
+        assert response.status_code == 404
+        assert "风格不存在" in assert_detail(response)
 
     async def test_unknown_preset_is_404_and_leaves_nothing(self, api_env: ApiEnv) -> None:
         response = await api_env.client.post(

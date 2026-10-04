@@ -27,7 +27,7 @@ from studio.db.repo.settings import (
     validate_settings_patch,
 )
 from studio.engines.tts.voice_map import DEFAULT_SPEED, DEFAULT_VOICE, voice_aliases
-from studio.styles.store import style_exists
+from studio.styles.store import style_is_usable
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
@@ -66,7 +66,7 @@ def _check_references(
     if voice is not None and voice not in voice_aliases():
         raise SettingsValidationError(f"音色不可用：{voice}")
     style_id = patch.get("default_style_preset_id")
-    if style_id is not None and not style_exists(data_dir, style_id):
+    if style_id is not None and not style_is_usable(data_dir, style_id):
         raise SettingsValidationError(f"风格不存在：{style_id}")
 
 

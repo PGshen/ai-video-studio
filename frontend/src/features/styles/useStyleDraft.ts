@@ -12,6 +12,7 @@ import { computed, onBeforeUnmount, ref, toValue, watch, type MaybeRefOrGetter }
 import * as api from '@/api/endpoints'
 import { ApiError, errorMessage } from '@/api/http'
 import {
+  invalidateStyleDraft,
   queryKeys,
   useDeleteDraftFileMutation,
   useDiscardStyleDraftMutation,
@@ -112,10 +113,18 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
         writeError.value = null
         if (pending.size === 0 && active === 1) saveState.value = 'saved'
       } catch (error) {
-        // 留着等下一次 flush / 新的编辑；比它更新的编辑不被覆盖。
-        if (!pending.has(key)) pending.set(key, item)
-        writeError.value = errorMessage(error)
-        saveState.value = 'error'
+        if (error instanceof ApiError && error.status === 409) {
+          // AI 正在修改这份草稿：这条编辑不能留着事后重放，否则会悄悄覆盖 AI 的成果。丢弃它，
+          // 并让草稿重新取一遍（轮次结束时界面显示的是服务端的内容）。
+          writeError.value = null
+          saveState.value = pending.size === 0 ? 'idle' : 'pending'
+          invalidateStyleDraft(queryClient, item.id)
+        } else {
+          // 其他失败：留着等下一次 flush / 新的编辑；比它更新的编辑不被覆盖。
+          if (!pending.has(key)) pending.set(key, item)
+          writeError.value = errorMessage(error)
+          saveState.value = 'error'
+        }
       } finally {
         active -= 1
       }

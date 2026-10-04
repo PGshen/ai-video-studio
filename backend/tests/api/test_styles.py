@@ -320,6 +320,17 @@ class TestDefaultStyle:
         assert response.status_code == 422
         assert "风格不存在" in assert_detail(response)
 
+    async def test_a_style_that_cannot_be_read_cannot_become_the_default(
+        self, api_env: ApiEnv
+    ) -> None:
+        style_id = _make(api_env)
+        (style_dir(api_env.data_dir, style_id) / "STYLE.md").unlink()
+
+        response = await self._set_default(api_env, style_id)
+
+        assert response.status_code == 422
+        assert "风格不存在" in assert_detail(response)
+
     async def test_deleting_the_default_clears_the_setting(self, api_env: ApiEnv) -> None:
         style_id = _make(api_env)
         await self._set_default(api_env, style_id)

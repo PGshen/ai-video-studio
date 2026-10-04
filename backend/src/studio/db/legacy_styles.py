@@ -297,7 +297,7 @@ def import_export(
     覆盖它的内容和文件（保留用户后来改过的分类）。"""
     report = ImportReport()
     components = {str(c.get("id")): c for c in export["components"] if isinstance(c, dict)}
-    existing = {s.name.strip(): s.id for s in store.list_styles(data_dir)}
+    existing = {s.name.strip(): s.id for s in store.list_saved_styles(data_dir)}
     used_ids: set[str] = set()
     handled: set[str] = set()
 

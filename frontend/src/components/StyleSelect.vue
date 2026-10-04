@@ -6,7 +6,7 @@
  */
 import { computed } from 'vue'
 import { Label } from '@/components/ui/label'
-import { styleSelectOptions } from '@/composables/styleChoice'
+import { selectableStyles, styleSelectOptions } from '@/composables/styleChoice'
 import type { StyleSummaryOut } from '@/types/api'
 
 const props = defineProps<{
@@ -16,15 +16,16 @@ const props = defineProps<{
 }>()
 const value = defineModel<string>({ default: '' })
 
+const available = computed(() => selectableStyles(props.presets))
 const options = computed(() => styleSelectOptions(props.presets))
-const selected = computed(() => props.presets.find((p) => p.id === value.value))
+const selected = computed(() => available.value.find((p) => p.id === value.value))
 </script>
 
 <template>
   <div class="flex flex-col gap-1.5">
     <Label :for="id">风格</Label>
     <p
-      v-if="presets.length === 0"
+      v-if="available.length === 0"
       class="text-muted-foreground text-xs"
       data-testid="style-empty"
     >

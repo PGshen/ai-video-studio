@@ -466,3 +466,31 @@ class TestLoadAndCli:
 
         assert code == 1
         assert "nope.json" in capsys.readouterr().err
+
+
+class TestUnsavedDraftsAreNotExistingStyles:
+    """从未保存的新风格只有草稿：导入脚本不能把它当成已有风格（评审 I3）。"""
+
+    def _draft_named(self, data_dir: Path, name: str) -> str:
+        draft_id = store.create_new_draft(data_dir)
+        content = store.read_draft_file(data_dir, draft_id, "STYLE.md")
+        store.write_draft_file(
+            data_dir, draft_id, "STYLE.md", content.replace("name: 新风格", f"name: {name}")
+        )
+        return draft_id
+
+    def test_a_same_named_draft_does_not_block_the_import(self, data_dir: Path) -> None:
+        self._draft_named(data_dir, "概念传记·纸上溯源")
+
+        report = import_export(data_dir, _full_export())
+
+        assert report.created == ["概念传记·纸上溯源"]
+        assert report.skipped_existing == []
+
+    def test_overwrite_mode_does_not_crash_on_a_same_named_draft(self, data_dir: Path) -> None:
+        self._draft_named(data_dir, "概念传记·纸上溯源")
+        import_export(data_dir, _full_export())
+
+        report = import_export(data_dir, _full_export(), overwrite=True)
+
+        assert report.overwritten == ["概念传记·纸上溯源"]

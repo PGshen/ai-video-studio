@@ -545,6 +545,8 @@ export function useOpenStyleDraftMutation() {
     mutationFn: (styleId: string) => api.openStyleDraft(styleId),
     onSuccess: (draft) => {
       queryClient.setQueryData(queryKeys.styleDraft(draft.id), draft)
+      // 草稿文件内容的缓存可能是上次编辑留下的：抽屉关闭期间 AI 可能已经改过，重新打开时必须重取。
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.styleDraft(draft.id), 'files'] })
       void queryClient.invalidateQueries({ queryKey: queryKeys.styles(), exact: true })
     },
   })
