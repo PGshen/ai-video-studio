@@ -52,7 +52,7 @@
 - **完成标准**：登记表编号唯一；全仓库 `grep "TD-4[4-9]\|TD-5[0-9]"` 的每处引用都指向正确的那一条。
 - **验证命令**：`make check`
 
-### T2：`.cache` 加进运行时目录（待开始）
+### T2：`.cache` 加进运行时目录（完成）
 
 - **目标**：AC2。
 - **涉及文件**：`backend/src/studio/styles/store.py`（`_RUNTIME_DIRS`，同步更新它下面的说明文字）、`backend/tests/styles/test_store.py`（紧挨现有 `.claude` 用例，约第 485 行）。
@@ -98,11 +98,12 @@
 
 ## 进度
 
-- 2026-10-04 — T1 登记表 8 条改为 TD-52～TD-59，三处引用同步；`check_docs.py` 新增「未处理条目编号唯一」检查（对旧登记表实测报 7 处重复）— `make check` 绿
+- 2026-10-04 — T1 登记表 8 条改为 TD-52～TD-59，三处引用同步；`check_docs.py` 新增「未处理条目编号唯一」检查（对旧登记表实测报 7 处重复）— `make check` 绿（59e6294）
+- 2026-10-04 — T2 `_RUNTIME_DIRS` 加 `.cache`；先写失败用例（`removed` 多出 `.cache`），实现后 `tests/styles` 117 个通过
 
 ## 下一步
 
-- 在分支 `td-cleanup-style` 上做 T2（`backend/tests/styles/test_store.py` 先加 `.cache` 的失败用例）；之后 T3、T4（都改 `StyleEditView`，按顺序做）、T5。
+- 在分支 `td-cleanup-style` 上做 T3（`useStyleDraft.spec.ts` 先写三个失败用例，见计划 T3「测试」）；之后 T4、T5。
 
 ## 决策记录
 

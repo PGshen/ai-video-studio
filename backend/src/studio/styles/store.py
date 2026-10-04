@@ -55,8 +55,9 @@ category: 未分类
 在这里写这套风格的入口说明：列出每个文件的用途，以及选题、叙事、动画各阶段什么时候读取。
 """
 _IGNORED_FILES: Final = {".DS_Store"}
-_RUNTIME_DIRS: Final = {".claude"}
-"""运行时自己在工作目录里建的目录（Claude 的 `.claude/`）：清理时静默删除，不当作多余文件报告。"""
+_RUNTIME_DIRS: Final = {".claude", ".cache"}
+"""运行时自己在工作目录里建的目录（Claude 的 `.claude/`、OpenAI Shell 的 `.cache/tmp`）：
+清理时静默删除，不当作多余文件报告。"""
 _MAX_READ_BYTES: Final = MAX_FILE_CHARS * 4
 
 
