@@ -198,3 +198,49 @@ def test_serve_page_path_decodes_names_and_rejects_anything_not_in_the_page(
     assert serve_page_path(page, "assets/my%20logo.svg") is not None
     for bad in ("../x", "%2e%2e/x", "scripts/../../x", "/etc/passwd", "assets/nope.svg", "fonts/x"):
         assert serve_page_path(page, bad) is None, bad
+
+
+# ---- inline=True：自包含页面（实时预览的 iframe 用 srcdoc，不依赖任何子资源请求）---------
+
+
+def test_inline_page_has_no_external_references(tmp_path: Path) -> None:
+    _project(tmp_path)
+    _write(tmp_path, "style/fonts/Brand.woff2", "brand-font-bytes")
+    html = assemble(tmp_path, TIMELINE, preview=True, inline=True).html
+    assert "<script src=" not in html
+    assert "url(fonts/" not in html and "url(style-fonts/" not in html
+    assert html.count("data:font/woff2;base64,") == 6  # five bundled faces + one style font
+    assert "window.renderAt" in html and "window.__PREVIEW__" in html
+
+
+def test_inline_scripts_keep_their_file_names_for_error_reports(tmp_path: Path) -> None:
+    html = assemble(_project(tmp_path), TIMELINE, inline=True).html
+    for name in ("animation/lib/a.js", "animation/scenes/s-hook.js", "studio-runtime.js"):
+        assert f"//# sourceURL={name}" in html
+    assert html.index("// LIB-A") < html.index("// HOOK") < html.index("// GLOBAL")
+
+
+def test_inline_script_text_cannot_close_the_script_tag(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "animation/scenes/s-hook.js",
+        "module.exports = { draw() { return '</script><b>x</b>'; } };\n",
+    )
+    html = assemble(tmp_path, TIMELINE, inline=True).html
+    assert html.count("</script>") == html.count("<script")
+
+
+def test_inline_assets_are_data_uris_the_runtime_can_look_up_by_name(tmp_path: Path) -> None:
+    _project(tmp_path)
+    _write(tmp_path, "animation/assets/logo.svg", "<svg/>")
+    page = assemble(tmp_path, TIMELINE, inline=True)
+    match = re.search(r"window\.__ASSET_SRC__=(\{.*?\});", page.html)
+    assert match is not None
+    sources = json.loads(match.group(1))
+    assert sources["logo.svg"].startswith("data:image/svg+xml;base64,")
+    assert '["assets/logo.svg"]' in page.html
+
+
+def test_non_inline_pages_are_unchanged(tmp_path: Path) -> None:
+    html = assemble(_project(tmp_path), TIMELINE).html
+    assert "__ASSET_SRC__" not in html and "data:font" not in html

@@ -4,8 +4,10 @@
 （`studio.timeline.load`）。页面里的相对 URL（`scripts/…`、`fonts/…`、`assets/…`）由同一前缀下
 的资源端点供给，路径只在组装结果的页面、脚本、路由表里查，永不按路径碰磁盘。
 
-iframe 使用 `sandbox="allow-scripts"` 且不带 `allow-same-origin`，是不透明源，字体必须有
-CORS 才能加载，所以每个响应都带 `Access-Control-Allow-Origin: *`；`no-store` 保证编辑后立刻生效。
+iframe 使用 `sandbox="allow-scripts"` 且不带 `allow-same-origin`，是不透明源。画布用 `/inline`
+（自包含页面）做 `srcdoc`——实测不透明源的 iframe 对本机服务的请求（连它自己的页面和脚本）会被
+浏览器拦下；`/` 和资源端点保留，用于在标签页里直接打开调试，响应带 `Access-Control-Allow-Origin: *`
+以便沙盒页面也能取字体；`no-store` 保证编辑后立刻生效。
 """
 
 from __future__ import annotations
@@ -93,6 +95,20 @@ def html_preview_meta_endpoint(
         ],
         audio=audio,
     )
+
+
+@router.get("/projects/{project_id}/animation/html-preview/inline")
+def html_preview_inline_endpoint(
+    project_id: str,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """自包含的预览页（脚本内联、字体与资产是 data URI）。画布用它做 iframe 的 `srcdoc`：沙盒 iframe
+    是不透明源，浏览器可能不放行它对本机服务的子资源请求（内置浏览器里实测被拦），自包含页面
+    不需要任何子请求。`/` 与资源端点保留，用于在标签页里直接打开调试。"""
+    loaded, workdir = _load(engine, settings, project_id)
+    page = assemble(workdir, loaded.timeline.model_dump(mode="json"), preview=True, inline=True)
+    return Response(content=page.html, media_type="text/html; charset=utf-8", headers=_HEADERS)
 
 
 @router.get("/projects/{project_id}/animation/html-preview")

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from collections.abc import Mapping
@@ -74,18 +75,30 @@ def _css_string(text: str) -> str:
     return text.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _font_faces(style_fonts: list[Path]) -> str:
+def _data_uri(path: Path, content_type: str) -> str:
+    return f"data:{content_type};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+
+
+def _font_faces(style_fonts: list[Path], *, inline: bool) -> str:
+    def source(route: str, path: Path) -> str:
+        return _data_uri(path, "font/woff2") if inline else route
+
     rules = [
         f"@font-face{{font-family:'{family}';font-weight:{weight};"
-        f"src:url(fonts/{name}) format('woff2')}}"
+        f"src:url({source(f'fonts/{name}', FONTS_DIR / name)}) format('woff2')}}"
         for family, weight, name in _BUNDLED_FACES
     ]
     rules += [
         f"@font-face{{font-family:'{_css_string(path.stem)}';"
-        f"src:url(style-fonts/{quote(path.name)}) format('woff2')}}"
+        f"src:url({source(f'style-fonts/{quote(path.name)}', path)}) format('woff2')}}"
         for path in style_fonts
     ]
     return "".join(rules)
+
+
+def _inline_script_text(source: str) -> str:
+    """内联进 `<script>` 的 JS 文本不能提前结束脚本元素，也不能进入 HTML 注释状态。"""
+    return source.replace("</script", "<\\/script").replace("<!--", "<\\!--")
 
 
 def _style_fonts(workdir: Path) -> list[Path]:
@@ -98,7 +111,16 @@ def _style_fonts(workdir: Path) -> list[Path]:
     )
 
 
-def assemble(workdir: Path, timeline: Mapping[str, Any], *, preview: bool = False) -> AssembledPage:
+def assemble(
+    workdir: Path,
+    timeline: Mapping[str, Any],
+    *,
+    preview: bool = False,
+    inline: bool = False,
+) -> AssembledPage:
+    """`inline=True` 产出自包含页面：脚本内联（用 `//# sourceURL` 保留文件名）、字体和资产是
+    data URI，页面不再发任何子资源请求。实时预览的 iframe 是不透明源的沙盒，浏览器可能不放行
+    它对本机服务的请求，所以预览用 `srcdoc` 加载这种页面；成片和探测仍用路由表供给文件。"""
     animation = workdir / "animation"
     style_fonts = _style_fonts(workdir)
     assets = list_assets(workdir)
@@ -111,12 +133,14 @@ def assemble(workdir: Path, timeline: Mapping[str, Any], *, preview: bool = Fals
 
     def add_script(name: str, source: str) -> str:
         scripts[name] = source
+        if inline:
+            return f"<script>{_inline_script_text(source)}\n//# sourceURL={name}\n</script>"
         return f'<script src="scripts/{name}"></script>'
 
     parts = [
         '<!doctype html><meta charset="utf-8">',
         "<style>",
-        _font_faces(style_fonts),
+        _font_faces(style_fonts, inline=inline),
         "html,body{margin:0;background:#000}canvas{display:block}</style>",
         '<canvas id="c" width="1920" height="1080"></canvas>',
         # 第一段脚本先挂错误收集器：后面任何一段脚本的语法错误都会记进 __LOAD_ERRORS__。
@@ -126,6 +150,9 @@ def assemble(workdir: Path, timeline: Mapping[str, Any], *, preview: bool = Fals
         f"<script>window.__TIMELINE__={_json_for_script(dict(timeline))};window.__SCENES__={{}};"
         f"window.__ASSETS__={_json_for_script([f'assets/{p.name}' for p in assets])};</script>",
     ]
+    if inline:
+        asset_sources = {p.name: _data_uri(p, _content_type(p)) for p in assets}
+        parts.append(f"<script>window.__ASSET_SRC__={_json_for_script(asset_sources)};</script>")
     for lib in sorted((animation / "lib").glob("*.js")):
         parts.append(add_script(f"animation/lib/{lib.name}", _read(lib)))
     for section in timeline.get("sections", []):
@@ -183,6 +210,10 @@ _CONTENT_TYPES: dict[str, str] = {
 }
 
 
+def _content_type(path: Path) -> str:
+    return _CONTENT_TYPES.get(path.suffix.lower(), "application/octet-stream")
+
+
 @dataclass(frozen=True, slots=True)
 class ServedFile:
     body: bytes
@@ -206,6 +237,4 @@ def serve_page_path(page: AssembledPage, path: str) -> ServedFile | None:
     file = page.routes.get(path)
     if file is None or not file.is_file():
         return None
-    return ServedFile(
-        file.read_bytes(), _CONTENT_TYPES.get(file.suffix.lower(), "application/octet-stream")
-    )
+    return ServedFile(file.read_bytes(), _content_type(file))

@@ -205,3 +205,27 @@ async def test_manim_projects_have_no_html_preview(api_env: ApiEnv) -> None:
     response = await api_env.client.get(f"{_base(manim)}/meta")
     assert response.status_code == 409
     assert "HTML" in assert_detail(response)
+
+
+async def test_inline_page_is_self_contained_for_the_sandboxed_iframe(
+    api_env: ApiEnv, pid: str
+) -> None:
+    response = await api_env.client.get(f"{_base(pid)}/inline")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/html")
+    _assert_preview_headers(response)
+    assert "<script src=" not in response.text
+    assert "data:font/woff2;base64," in response.text
+    assert "window.__PREVIEW__" in response.text and "s-hook" in response.text
+
+
+async def test_inline_page_follows_the_workspace_and_reports_unavailable_timelines(
+    api_env: ApiEnv, pid: str
+) -> None:
+    (api_env.workdir(pid) / "animation/scenes/s-hook.js").write_text(
+        "module.exports = { draw() {} }; // INLINE-EDIT\n"
+    )
+    assert "INLINE-EDIT" in (await api_env.client.get(f"{_base(pid)}/inline")).text
+    (api_env.workdir(pid) / "narrative/timing.json").unlink()
+    response = await api_env.client.get(f"{_base(pid)}/inline")
+    assert response.status_code == 409 and "timing.json" in assert_detail(response)

@@ -254,3 +254,23 @@ async def test_non_ascii_asset_names_are_served(browser: HtmlBrowser, tmp_path: 
     page = await _open(browser, tmp_path)
     assert (await _pixel(page, 1.0, 50, 50))[:3] == [255, 0, 0]
     await page.close()
+
+
+async def test_inline_page_renders_the_same_frames_as_the_route_served_page(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    """实时预览用的自包含页面（脚本内联、字体与资产是 data URI）和成片用的页面渲染结果一致。"""
+    fx.write_project(
+        tmp_path,
+        scenes={"s-hook": fx.CHINESE_SCENE, "s-explain": fx.ASSET_SCENE},
+        assets={"logo.svg": fx.SVG_RED},
+    )
+    served = await browser.open_page(assemble(tmp_path, fx.TIMELINE))
+    inline = await browser.open_page(assemble(tmp_path, fx.TIMELINE, preview=True, inline=True))
+    try:
+        for t in (0.5, 2.0, 3.5, 5.5):
+            assert await served.render_hash(t) == await inline.render_hash(t), t
+        assert inline.errors == []
+    finally:
+        await served.close()
+        await inline.close()

@@ -3,14 +3,16 @@
  * 实时预览标签（设计 §7.2）：一个沙盒 iframe 加传输控制。
  *
  * iframe 用 `sandbox="allow-scripts"`、不带 `allow-same-origin`，页面是不透明源，只通过
- * `postMessage` 通信（`htmlPreview/previewProtocol.ts`，只信任自己那个 iframe 窗口）。页面
- * 本身是 1920×1080 的画布，这里按容器宽度整体缩放。`meta.hash` 变了才重载 iframe；预览页报错
- * 只显示横幅，不影响编辑和成片。播放时钟见 `useHtmlPlayback`。
+ * `postMessage` 通信（`htmlPreview/previewProtocol.ts`，只信任自己那个 iframe 窗口）。不透明源的
+ * iframe 对本机服务的请求会被浏览器拦下（内置浏览器里实测：连它自己的页面和脚本都取不到），所以
+ * 页面由本组件取成自包含的 HTML 文本，设为 `srcdoc`。页面本身是 1920×1080 的画布，这里按容器宽度
+ * 整体缩放。`meta.hash` 变了才重新取页面；预览页报错只显示横幅，不影响编辑和成片。播放时钟见
+ * `useHtmlPlayback`。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Pause, Play, Repeat } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { htmlPreviewUrl } from '@/api/endpoints'
+import { getHtmlPreviewPage } from '@/api/endpoints'
 import type { HtmlPreviewMeta } from '@/types/api'
 import { parsePreviewMessage, seekMessage } from './htmlPreview/previewProtocol'
 import { sectionTicks, shouldReloadPreview } from './htmlPreview/previewClock'
@@ -24,11 +26,10 @@ const props = defineProps<{ projectId: string; meta: HtmlPreviewMeta }>()
 const frame = ref<HTMLIFrameElement | null>(null)
 const stage = ref<HTMLDivElement | null>(null)
 const loadedHash = ref<string | null>(null)
+const pageHtml = ref<string | null>(null)
 const frameReady = ref(false)
 const pageError = ref<string | null>(null)
 const scale = ref(0.4)
-
-const src = computed(() => (loadedHash.value === null ? '' : htmlPreviewUrl(props.projectId, loadedHash.value)))
 
 function post(message: unknown): void {
   frame.value?.contentWindow?.postMessage(message, '*')
@@ -41,13 +42,26 @@ const playback = useHtmlPlayback({
   },
 })
 
+let loadToken = 0
+async function loadPage(hash: string): Promise<void> {
+  const token = ++loadToken
+  frameReady.value = false
+  pageError.value = null
+  loadedHash.value = hash
+  try {
+    const html = await getHtmlPreviewPage(props.projectId)
+    if (token === loadToken) pageHtml.value = html
+  } catch (error) {
+    if (token !== loadToken) return
+    pageHtml.value = null
+    pageError.value = `预览页加载失败：${error instanceof Error ? error.message : String(error)}`
+  }
+}
+
 watch(
   () => props.meta.hash,
   (hash) => {
-    if (!shouldReloadPreview(loadedHash.value, hash)) return
-    frameReady.value = false
-    pageError.value = null
-    loadedHash.value = hash
+    if (shouldReloadPreview(loadedHash.value, hash)) void loadPage(hash)
   },
   { immediate: true },
 )
@@ -115,9 +129,9 @@ function onScrub(event: Event): void {
       :style="{ height: `${FRAME_HEIGHT * scale}px` }"
     >
       <iframe
-        v-if="src"
+        v-if="pageHtml !== null"
         ref="frame"
-        :src="src"
+        :srcdoc="pageHtml"
         sandbox="allow-scripts"
         title="HTML 动画实时预览"
         class="absolute top-0 left-0 border-0"

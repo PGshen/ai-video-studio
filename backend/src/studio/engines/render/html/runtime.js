@@ -106,7 +106,7 @@
       var img = new Image();
       img.onload = function () { assets[name] = img; resolve(); };
       img.onerror = function () { reject(new Error('资产加载失败：' + name)); };
-      img.src = url;
+      img.src = (window.__ASSET_SRC__ && window.__ASSET_SRC__[name]) || url;
     });
   }
 

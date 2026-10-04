@@ -398,11 +398,11 @@ export function getHtmlPreviewMeta(projectId: string): Promise<HtmlPreviewMeta> 
 }
 
 /**
- * 预览 iframe 的地址（`GET .../animation/html-preview/`）：`hash` 拼进查询串（后端忽略它），
- * 内容变了 URL 就变，iframe 一定重新加载。页面里的相对资源在同一前缀下。
+ * 预览页（自包含：脚本内联、字体与资产是 data URI）的 HTML 文本，给 iframe 的 `srcdoc` 用。
+ * 沙盒 iframe 是不透明源，浏览器可能不放行它对本机服务的任何请求，所以不能让它自己去取页面或资源。
  */
-export function htmlPreviewUrl(projectId: string, hash: string): string {
-  return `/api/projects/${encodePathSegment(projectId)}/animation/html-preview/?v=${encodeURIComponent(hash)}`
+export function getHtmlPreviewPage(projectId: string): Promise<string> {
+  return requestText(`/projects/${encodePathSegment(projectId)}/animation/html-preview/inline`)
 }
 
 /**
