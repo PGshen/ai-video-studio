@@ -117,6 +117,7 @@ describe('SessionPanel：sending 事件', () => {
   const listeners = () => ({
     onSending: (value: boolean) => state.log.push(`sending:${value}`),
     onSent: () => state.log.push('sent'),
+    onAccepted: () => state.log.push('accepted'),
   })
 
   it('点发送起（beforeSend 之前）发 sending(true)，发送成功后先 sent 再 sending(false)', async () => {
@@ -127,7 +128,7 @@ describe('SessionPanel：sending 事件', () => {
 
     await submit(w, '你好')
 
-    expect(state.log).toEqual(['sending:true', 'before', 'add:你好', 'send', 'sent', 'sending:false'])
+    expect(state.log).toEqual(['sending:true', 'before', 'add:你好', 'send', 'sent', 'accepted', 'sending:false'])
   })
 
   it('beforeSend 失败：sending(false) 照发，没有 sent', async () => {
@@ -141,7 +142,7 @@ describe('SessionPanel：sending 事件', () => {
     expect(state.log).toEqual(['sending:true', 'sending:false'])
   })
 
-  it('点 [继续] 同样：sending(true) → 乐观消息 → sent → sending(false)', async () => {
+  it('点 [继续]：发 accepted，但不发 sent（工作台靠 sent 把回退建议标成已处理，继续并没有把建议发出去）', async () => {
     state.turnStatus = { status: 'interrupted', turnId: 't0' }
     try {
       const w = mountPanel({ sessionId: 's1', ...listeners() })
@@ -149,7 +150,7 @@ describe('SessionPanel：sending 事件', () => {
       await button.trigger('click')
       await flushPromises()
 
-      expect(state.log).toEqual(['sending:true', 'add:继续', 'sent', 'sending:false'])
+      expect(state.log).toEqual(['sending:true', 'add:继续', 'accepted', 'sending:false'])
     } finally {
       state.turnStatus = null
     }

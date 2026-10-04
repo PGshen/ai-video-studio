@@ -47,8 +47,10 @@ const props = defineProps<{
   beforeSend?: () => Promise<void>
 }>()
 const emit = defineEmits<{
-  /** 消息已被后端接收。 */
+  /** 用户发的新消息已被后端接收（[继续] 不发：它没有把输入框里的内容发出去）。 */
   (e: 'sent'): void
+  /** 后端接受了一轮（新消息或 [继续]）：这一轮此刻已排队或运行。 */
+  (e: 'accepted'): void
   /** 一次发送/继续开始（`true`，在 `beforeSend` 之前）和结束（`false`，无论成败）；
    * 风格编辑据此在这段时间内本地锁住编辑区。 */
   (e: 'sending', value: boolean): void
@@ -114,6 +116,7 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
       markTurnAccepted(accepted.turn_id, text)
     })
     emit('sent')
+    emit('accepted')
   } catch (error) {
     sendError.value = describeError(error)
   } finally {
@@ -142,7 +145,7 @@ async function onContinue(): Promise<void> {
       const accepted = await continueMutation.mutateAsync()
       markTurnAccepted(accepted.turn_id, text)
     })
-    emit('sent')
+    emit('accepted')
   } catch (error) {
     sendError.value = describeError(error)
   } finally {

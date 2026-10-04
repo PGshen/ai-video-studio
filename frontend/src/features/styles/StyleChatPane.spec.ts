@@ -26,15 +26,15 @@ vi.mock('@/components/session/SessionPanel.vue', () => ({
   default: {
     name: 'SessionPanelStub',
     props: ['sessionId', 'projectId', 'createSession', 'beforeSend'],
-    emits: ['sent', 'sending'],
+    emits: ['accepted', 'sending'],
     setup:
       (
         props: { sessionId?: string | null },
-        { emit }: { emit: (e: 'sent' | 'sending', v?: boolean) => void },
+        { emit }: { emit: (e: 'accepted' | 'sending', v?: boolean) => void },
       ) =>
       () =>
         h('div', { 'data-testid': 'panel', 'data-session': props.sessionId ?? '' }, [
-          h('button', { 'data-testid': 'send', onClick: () => emit('sent') }),
+          h('button', { 'data-testid': 'send', onClick: () => emit('accepted') }),
           h('button', { 'data-testid': 'start', onClick: () => emit('sending', true) }),
           h('button', { 'data-testid': 'end', onClick: () => emit('sending', false) }),
         ]),
@@ -118,7 +118,7 @@ describe('StyleChatPane', () => {
       expect(w.emitted('sending')).toEqual([[true]])
     })
 
-    it('发送失败（没有 sent）：sending(false) 立即转发', async () => {
+    it('发送失败（没有 accepted）：sending(false) 立即转发', async () => {
       const w = mountPane()
 
       await w.get('[data-testid="start"]').trigger('click')

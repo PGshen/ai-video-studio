@@ -36,9 +36,9 @@ const createSession = useEnsureSession(scope, sessionId)
 const queryClient = useQueryClient()
 /** 发送成功后正在重取的草稿状态；`sending(false)` 要等它完成（此时 `busy` 已由服务端给出）。 */
 let refetch: Promise<unknown> | null = null
-/** 消息已被后端接收：这套风格此刻已经 busy。新会话的第一轮时 SSE 可能还没连上，收不到
+/** 一轮已被后端接受（新消息或 [继续]）：这套风格此刻已经 busy。新会话的第一轮时 SSE 可能还没连上，收不到
  * `turn_status`，所以发送成功后主动刷新一次草稿状态，编辑区才会立刻只读。 */
-function onSent(): void {
+function onAccepted(): void {
   refetch = queryClient.invalidateQueries({ queryKey: queryKeys.styleDraft(props.styleId) })
 }
 
@@ -75,7 +75,7 @@ async function onSending(value: boolean): Promise<void> {
       :project-id="null"
       :create-session="createSession"
       :before-send="beforeSend"
-      @sent="onSent"
+      @accepted="onAccepted"
       @sending="onSending"
     />
   </aside>

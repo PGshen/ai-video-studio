@@ -26,6 +26,10 @@
 | TD-54 | 2026-10-04 | `agent/recovery.py` | 进程崩溃时风格轮次正在运行，重启恢复不清理草稿：agent 留下的符号链接/多余文件要等下一轮结束才被清，期间保存 422 且界面删不掉 | 崩溃后草稿暂时无法保存 | 恢复流程对 `subject_id` 非空的会话调用 `prune_draft` | 评审 M3 |
 | TD-57 | 2026-10-04 | `api/styles.py::_http_error`、`StyleEditView.vue` | 保存 422 的 `detail` 是用「；」拼成的一个字符串，界面放在一个 `<p>` 里，不是逐条显示（设计写的是逐条） | 多个问题时难读 | 后端返回列表，前端逐条渲染 | 评审 M6 |
 | TD-58 | 2026-10-04 | `styles/store.py::_swap` | 原子替换在两次 rename 之间进程被杀（毫秒级窗口）时，正式目录消失、内容留在 `.<id>.old-*` 里，列表跳过它，启动也不恢复 | 极小概率丢一套风格的当前版本（旧内容仍在磁盘） | 启动时扫描 `.old-*` 并在正式目录缺失时还原 | 评审 M7 |
+| TD-60 | 2026-10-04 | `features/styles/StyleChatPane.vue`、`StyleEditView.vue`（`sending` 本地锁） | ① 发送成功后「等重取」可能被 SSE 的 `turn_status` 触发的重取取消（TanStack Query 默认 `cancelRefetch`），`refetch` 提前 resolve、`sending(false)` 先于缓存里的 `busy=true`，留下一次 GET 时长的可编辑空档；② 本地锁是布尔值，两次发送重叠（第一条等重取时第二条 409）会提前放开 | 单人本机上空档只有几毫秒，L4 没观察到；输入的字会被 409 丢 | await 之后检查 `isFetching` 或直接等 status 缓存 `busy === true`；锁改计数器 | td-cleanup-style 评审 M1/M2 |
+| TD-61 | 2026-10-04 | `features/styles/useStyleDraft.ts::discard` | 放弃请求在路上时编辑区没锁，用户又敲字；请求失败后重放用的是点放弃那一刻的快照，覆盖这段时间新敲的字。另：重放走 `edit()` 用当前 `styleId`；抽屉在请求期间关闭时重放在已卸载实例上排定时写出 | 窗口只有一次本机请求的时长，且重放写出的是用户自己的编辑 | 放弃期间加 `discarding` 锁；重放按 `item.id` | td-cleanup-style 评审 M3 |
+| TD-62 | 2026-10-04 | `useStyleDraft.ts`、`StyleEditView.vue` | `discardError` 只在下一次点放弃时清空；AI 轮次结束、用户继续编辑后，红字「AI 正在修改…」仍挂着 | 过时的错误提示 | 编辑、保存、轮次结束时清掉 | td-cleanup-style 评审 M4 |
+| TD-63 | 2026-10-04 | `scripts/check_docs.py::check_tech_debt_ids` | 只检查未处理表内部唯一，新条目与「已处理」里的号（如 TD-59）撞号查不出来；正则要求 `\| TD-n \|` 两边各一个空格，手写 `\|TD-60\|` 会漏 | 登记时仍可能撞号 | 把「已处理」表里整号（不含「（部分）」后缀）也并入比较；正则放宽空格 | td-cleanup-style 评审 M5 |
 
 ## 已处理
 
