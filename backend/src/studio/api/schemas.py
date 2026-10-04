@@ -338,58 +338,6 @@ class SettingsPatch(BaseModel):
     default_style_preset_id: str | None = None
 
 
-class StyleFileBody(BaseModel):
-    name: str
-    text: str
-
-
-class StylePresetSummaryOut(BaseModel):
-    id: str
-    name: str
-    category: str
-    description: str | None
-    reference_count: int
-    exemplar_count: int
-    is_default: bool
-
-
-class StylePresetOut(BaseModel):
-    id: str
-    name: str
-    category: str
-    description: str | None
-    content: str
-    """入口 `STYLE.md` 全文。"""
-    references: list[StyleFileBody]
-    exemplars: list[StyleFileBody]
-    is_default: bool
-    created_at: datetime
-
-
-class StylePresetCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str
-    category: str = "未分类"
-    description: str | None = None
-    content: str
-    references: list[StyleFileBody] = []
-    exemplars: list[StyleFileBody] = []
-
-
-class StylePresetPatch(BaseModel):
-    """给了哪些字段就改哪些；`references`/`exemplars` 给了就整体替换。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: str | None = None
-    category: str | None = None
-    description: str | None = None
-    content: str | None = None
-    references: list[StyleFileBody] | None = None
-    exemplars: list[StyleFileBody] | None = None
-
-
 class StyleSummaryOut(BaseModel):
     id: str
     name: str

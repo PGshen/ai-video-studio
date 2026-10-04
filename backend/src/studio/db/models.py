@@ -194,20 +194,6 @@ class ModelProfile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
-class StylePreset(Base):
-    __tablename__ = "style_presets"
-
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    category: Mapped[str] = mapped_column(String, nullable=False)
-    content: Mapped[str] = mapped_column(String, nullable=False)
-    exemplars: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
-    description: Mapped[str | None] = mapped_column(String, nullable=True)
-    reference_files: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
-    """`[{name, text}]`，落盘到 `style/references/<name>`（列名避开 SQL 保留字 `references`）。"""
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-
-
 class Setting(Base):
     __tablename__ = "settings"
 

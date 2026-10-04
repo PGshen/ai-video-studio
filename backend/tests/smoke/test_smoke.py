@@ -805,10 +805,9 @@ def _style_touches(outcome: TurnOutcome) -> list[dict[str, Any]]:
 
 async def test_style_claude_login(tmp_path: Path) -> None:
     from studio.db.legacy_styles import import_export, load_export
-    from studio.db.repo.style_presets import list_style_presets
     from studio.stages.narrative.schema import validate_and_normalize
+    from studio.styles import store as style_store
     from studio.workspace import create_snapshot, init_workspace
-    from studio.workspace.style_files import render_style_files
 
     from .support import M5_EVIDENCE_DIR
 
@@ -818,9 +817,14 @@ async def test_style_claude_login(tmp_path: Path) -> None:
     harness = build_harness(tmp_path, real_stages=True)
     evidence: dict[str, Any] = {"style": _STYLE_NAME}
     try:
-        import_export(harness.engine, load_export(_STYLE_EXPORT))
-        preset = next(p for p in list_style_presets(harness.engine) if p.name == _STYLE_NAME)
-        init_workspace(harness.data_dir, harness.project_id, render_style_files(preset))
+        import_export(harness.data_dir, load_export(_STYLE_EXPORT))
+        style = next(s for s in style_store.list_styles(harness.data_dir) if s.name == _STYLE_NAME)
+        style_files = style_store.read_style_files(harness.data_dir, style.id)
+        init_workspace(
+            harness.data_dir,
+            harness.project_id,
+            {f"style/{path}": text for path, text in style_files.items()},
+        )
         create_snapshot(harness.engine, harness.blobs, harness.project_id, reason="user_edit")
         profile = harness.profile("claude-login", max_steps_per_turn=_M4_STEPS)
 

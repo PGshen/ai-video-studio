@@ -11,10 +11,10 @@
 | `animation_style`（动画风格） | `references/animation-style.md` |
 | `exemplar`（金样本） | `exemplars/exemplar-1.json`（内容不是合法 JSON 时 `.md`） |
 
-每个模板 → 一条预设；组件正文**原样**落盘，不改写。入口 `STYLE.md` 由程序生成：frontmatter、
-简介、文件索引（每个文件什么时候读，与三个阶段的提示词一致）、缺失项和「旧格式」提示。
+每个模板 → 一套风格目录（`data/styles/<id>/`）；组件正文**原样**落盘，不改写。入口 `STYLE.md`
+由程序生成：frontmatter、简介、文件索引（每个文件什么时候读，与三个阶段的提示词一致）、缺失项和「旧格式」提示。
 缺类别、组件 id 悬空、文本为空、类别不符都不阻止导入（报告里列出）；一个可用组件都没有的
-模板才跳过。按名字幂等：同名预设默认跳过（保护使用者在界面里的修改），`--overwrite` 才覆盖。
+模板才跳过。按名字幂等：同名风格默认跳过（保护使用者在界面里的修改），`--overwrite` 才覆盖。
 
 用法：`python -m studio.db.legacy_styles import <export.json> [--overwrite]`
 （`make import-legacy-styles FILE=...`）。旧代码不 import，只读导出的 JSON。
@@ -30,16 +30,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
-from sqlalchemy import Engine
-
-from studio.db.repo.style_presets import (
-    DuplicateStylePresetError,
-    StyleFile,
-    StylePresetValidationError,
-    create_style_preset,
-    list_style_preset_summaries,
-    update_style_preset,
-)
+from studio.styles import store
+from studio.styles.validate import StyleFiles, set_frontmatter_fields
 
 IMPORT_CATEGORY: Final = "旧项目导入"
 
@@ -86,6 +78,12 @@ class ImportReport:
     unused_components: list[str] = field(default_factory=list)
     legacy_format_exemplars: list[str] = field(default_factory=list)
     legacy_field_blueprints: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class StyleFile:
+    name: str
+    text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,13 +279,25 @@ def _convert_template(
 # ---- 导入 -----------------------------------------------------------------
 
 
+def _style_files(converted: _Converted, category: str) -> StyleFiles:
+    files: StyleFiles = {
+        "STYLE.md": set_frontmatter_fields(converted.content, {"category": category})
+    }
+    for reference in converted.references:
+        files[f"references/{reference.name}"] = reference.text
+    for exemplar in converted.exemplars:
+        files[f"exemplars/{exemplar.name}"] = exemplar.text
+    return files
+
+
 def import_export(
-    engine: Engine, export: dict[str, Any], *, overwrite: bool = False
+    data_dir: Path, export: dict[str, Any], *, overwrite: bool = False
 ) -> ImportReport:
-    """把导出内容写进风格库，返回报告。同名预设默认跳过，`overwrite` 时覆盖它的内容和文件。"""
+    """把导出内容写进风格库（`<data_dir>/styles/`），返回报告。同名风格默认跳过，`overwrite` 时
+    覆盖它的内容和文件（保留用户后来改过的分类）。"""
     report = ImportReport()
     components = {str(c.get("id")): c for c in export["components"] if isinstance(c, dict)}
-    existing = {p.name.strip(): p.id for p in list_style_preset_summaries(engine)}
+    existing = {s.name.strip(): s.id for s in store.list_styles(data_dir)}
     used_ids: set[str] = set()
     handled: set[str] = set()
 
@@ -306,25 +316,16 @@ def import_export(
                 report.skipped_existing.append(name)
                 continue
             if name in existing:
-                update_style_preset(
-                    engine,
-                    existing[name],
-                    description=converted.description,
-                    content=converted.content,
-                    references=converted.references,
-                    exemplars=converted.exemplars,
+                kept = store.get_style(data_dir, existing[name]).category
+                store.import_style(
+                    data_dir,
+                    _style_files(converted, kept),
+                    style_id=existing[name],
+                    overwrite=True,
                 )
                 report.overwritten.append(name)
             else:
-                created = create_style_preset(
-                    engine,
-                    name=name,
-                    category=IMPORT_CATEGORY,
-                    description=converted.description,
-                    content=converted.content,
-                    references=converted.references,
-                    exemplars=converted.exemplars,
-                )
+                created = store.import_style(data_dir, _style_files(converted, IMPORT_CATEGORY))
                 existing[name] = created.id
                 report.created.append(name)
             handled.add(name)
@@ -332,19 +333,15 @@ def import_export(
                 report.legacy_format_exemplars.append(name)
             if converted.legacy_blueprint:
                 report.legacy_field_blueprints.append(name)
-        except StylePresetValidationError as exc:
+        except store.StyleValidationError as exc:
             report.problems.append(f"模板「{name}」转换后没有通过风格校验：{exc}")
             report.skipped_unusable.append(name)
-        except DuplicateStylePresetError:
+        except store.DuplicateStyleNameError:
             report.skipped_existing.append(name)
-
     report.unused_components = sorted(
         str(c.get("name") or c.get("id")) for cid, c in components.items() if cid not in used_ids
     )
     return report
-
-
-# ---- 命令行 ---------------------------------------------------------------
 
 
 def _print_report(report: ImportReport) -> None:
@@ -369,7 +366,7 @@ def _print_report(report: ImportReport) -> None:
             print(f"  - {problem}")
 
 
-def main(argv: list[str] | None = None, *, engine: Engine | None = None) -> int:
+def main(argv: list[str] | None = None, *, data_dir: Path | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m studio.db.legacy_styles")
     sub = parser.add_subparsers(dest="command", required=True)
     imp = sub.add_parser("import", help="把旧项目导出的风格 JSON 导入风格库")
@@ -382,13 +379,11 @@ def main(argv: list[str] | None = None, *, engine: Engine | None = None) -> int:
     except LegacyExportError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    if engine is None:
+    if data_dir is None:
         from studio.config import get_settings
-        from studio.db.engine import make_engine, migrate
 
-        engine = make_engine(get_settings().data_dir / "studio.db")
-        migrate(engine)
-    _print_report(import_export(engine, export, overwrite=args.overwrite))
+        data_dir = get_settings().data_dir
+    _print_report(import_export(data_dir, export, overwrite=args.overwrite))
     return 0
 
 

@@ -45,11 +45,12 @@ make setup
 ## 设置页、风格库与语音（M5）
 
 - **设置页**（`/settings`）：模型配置（增改删、单价、每轮预算；API key 的值仍然只放 `backend/.env`，界面只填环境变量的**名字**；由 `STUDIO_*` 网关变量决定的字段界面里只读）、风格库、语音、通用（各阶段默认模型、联网模式）。
+- **风格库的存储**（ADR 0019）：每套风格是 `data/styles/<id>/` 目录（`STYLE.md` + `references/` + `exemplars/`），编辑中的草稿在 `data/style-drafts/<id>/`；SQLite 里没有风格表。**从旧版本升级前先备份 `data/studio.db`**：迁移 0007 会把旧 `style_presets` 表导出成目录（目录名沿用旧 id），成功后删表，没有降级；导出有问题（不合法或重名的行）时迁移失败、旧表保留，按报错修正后重启即可。
 - **旧项目的风格库**（一次性）：先在旧项目目录 `docker compose up -d postgres`，再在本仓库
 
   ```bash
   make export-legacy-styles   # 只读导出到 data/legacy-export/styles.json（不改旧项目任何文件）
-  make import-legacy-styles   # 导入风格库；同名预设默认跳过，IMPORT_ARGS=--overwrite 才覆盖
+  make import-legacy-styles   # 导入风格库（写入 data/styles/）；同名风格默认跳过，IMPORT_ARGS=--overwrite 才覆盖
   ```
 
   在 worktree 里开发时，`data/` 是 worktree 自己的目录，导入的风格不会出现在主检出的数据库里；合并后在主检出再跑一次（导出 JSON 复制过去，或重新导出）。

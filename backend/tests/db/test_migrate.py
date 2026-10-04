@@ -18,15 +18,15 @@ EXPECTED_TABLES = {
     "suggestions",
     "jobs",
     "model_profiles",
-    "style_presets",
     "settings",
 }
 
 
-def test_migrate_creates_all_12_tables(migrated_engine: Engine) -> None:
+def test_migrate_creates_all_11_tables(migrated_engine: Engine) -> None:
     tables = set(inspect(migrated_engine).get_table_names())
     assert EXPECTED_TABLES <= tables
-    assert len(EXPECTED_TABLES) == 12
+    assert len(EXPECTED_TABLES) == 11
+    assert "style_presets" not in tables  # styles live in data/styles/ since 0007
 
 
 def test_migrate_is_idempotent(migrated_engine: Engine) -> None:

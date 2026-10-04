@@ -102,13 +102,13 @@
 - **完成标准**：新接口测试全绿；创建项目的既有测试不改断言仍通过。
 - **验证命令**：`cd backend && uv run pytest tests/api -q`；`make check`
 
-### T4：迁移旧数据、删除旧实现、导入脚本改写目录（待开始）
+### T4：迁移旧数据、删除旧实现、导入脚本改写目录（完成）
 
 - **目标**：旧 `style_presets` 表的数据一次性导出成目录并删表；旧代码清理干净。
-- **涉及文件**：新建 `backend/src/studio/db/legacy_style_table.py`（`export_style_table(engine, data_dir) -> ExportReport`，用原生 SQL 读旧表，不依赖 ORM 模型）；新建 `backend/src/studio/db/migrations/versions/0007_drop_style_presets.py`；`backend/src/studio/main.py`（lifespan 里在 `migrate(engine)` 之前调用导出）；删除 `backend/src/studio/db/repo/style_presets.py`、`backend/src/studio/workspace/style_files.py`、`backend/src/studio/api/style_presets_legacy.py`、`db/models.py` 里的 `StylePreset` 及对应旧 schema；改写 `backend/src/studio/db/legacy_styles.py` 的落库部分，改用 `studio.styles.store`；`Makefile`/`scripts/export_legacy_styles.sh`/`docs/runbooks/dev-setup.md` 里有关命令与说明；测试：`backend/tests/db/test_legacy_style_table.py`（新）、`test_legacy_styles.py`、`test_migrate.py`，删除 `test_repo_style_presets.py`、`tests/workspace/test_style_files.py`。
+- **涉及文件**：新建 `backend/src/studio/db/legacy_style_table.py`；新建 `backend/src/studio/db/migrations/versions/0007_style_presets_to_files.py`；删除 `backend/src/studio/db/repo/style_presets.py`、`backend/src/studio/workspace/style_files.py`、`backend/src/studio/api/style_presets_legacy.py`、`db/models.py` 里的 `StylePreset` 及对应旧 schema；改写 `backend/src/studio/db/legacy_styles.py` 的落库部分，改用 `studio.styles.store`；`Makefile`/`scripts/export_legacy_styles.sh`/`docs/runbooks/dev-setup.md` 里有关命令与说明；测试：`backend/tests/db/test_legacy_style_table.py`（新）、`test_legacy_styles.py`、`test_migrate.py`，删除 `test_repo_style_presets.py`、`tests/workspace/test_style_files.py`。
 - **接口与要点**：
-  - 导出：表不存在则什么都不做；每行目录名沿用旧 id；目录已存在则跳过（幂等）；用 `import_style` 的校验——旧行没有 frontmatter 或缺 `name`/`description` 时，用该行的 name、description、category 合成 frontmatter 再写；`category` 写进 frontmatter；同名行逐条记入报告，不静默丢弃；`ExportReport` 含 `exported`、`skipped_existing`、`synthesized_frontmatter`、`problems`；导出数量与表行数核对，不一致则抛错，启动失败而不是继续删表。
-  - 迁移 0007：`DROP TABLE IF EXISTS style_presets`，不提供降级。因为导出在迁移之前，导出失败时迁移不会执行。
+  - 导出（`export_style_table(connection, data_dir) -> ExportReport`，用原生 SQL 读旧表，不依赖 ORM 模型）：每行目录名沿用旧 id；目录已存在则跳过（幂等）；旧行没有 frontmatter、或名称/简介与列不一致时，以数据库列为准合成或改写 frontmatter（`name` 取 `name` 列、`description` 取 `description` 列再回退到原 frontmatter、`category` 取 `category` 列），正文保持原样；`category` 写进 frontmatter；校验失败、重名的行逐条记入 `problems`，其余行照常导出；`ExportReport` 含 `exported`、`skipped_existing`、`synthesized_frontmatter`、`problems`；存在 `problems` 时抛 `StyleTableExportError`（带报告）。
+  - 迁移 0007 **自己**完成导出再删表：先 `export_style_table(op.get_bind(), <数据库文件所在目录>)`，成功后 `DROP TABLE`；导出抛错则迁移失败、旧表保留，修好数据后再次迁移即可（已导出的目录会被跳过）。数据目录由连接的数据库文件路径推出（与 `make_engine(data_dir / "studio.db")` 的约定一致）；内存数据库且旧表有数据时抛错。不提供降级。这样 api 和 worker 谁先启动都不会在导出前删表。
   - 导入脚本：行为与报告格式不变，「已存在」按目录里的名称判断，「覆盖」直接重写目录。
   - 运行手册里加一条：升级前备份 `data/studio.db`。
 - **测试**：评审关注点 1（无 frontmatter 的行、缺 description 的行、重名行）；重复执行不重复导出；导出数量不一致时抛错且不删表；0007 在没有该表的新库上不报错；导入脚本既有用例迁移到新存储后仍通过。
@@ -193,15 +193,16 @@
 - 2026-10-04 — T1 styles 纯能力模块（校验、frontmatter、布局）+ ADR 0019 — `make check` 绿，新增 52 个后端用例
 - 2026-10-04 — T2 目录存储与草稿（`styles/store.py`；另在 `validate.py` 补 `set_frontmatter_fields`/`split_style_path`/`is_plain_file_name`）— `make check` 绿，`tests/styles` 共 109 个用例
 - 2026-10-04 — T3 `/api/styles*` 接口、创建项目与默认风格设置改读目录 — `make check` 绿，后端 1567 个用例
+- 2026-10-04 — T4 迁移 0007（导出旧表 → 目录，成功后删表）、删除旧 repo/ORM/旧接口/`render_style_files`、导入脚本改写目录、运行手册更新 — `make check` 绿，后端 1531 个用例；对真实库副本实跑导出 9 套风格，原库未动
 
 ## 下一步
 
-- 从 T4 开始：先写 `backend/tests/db/test_legacy_style_table.py`（评审关注点 1：无 frontmatter 的行、缺 description 的行、重名行；幂等；数量不一致抛错且不删表；0007 在无表的新库上不报错），再实现 `backend/src/studio/db/legacy_style_table.py`、迁移 0007、lifespan 里在 `migrate()` 之前调用导出；然后删除旧代码：`db/repo/style_presets.py`、`workspace/style_files.py`、`api/style_presets_legacy.py`（及 main 里的注册）、`db/models.py` 的 `StylePreset`、`api/schemas.py` 里的旧 `StylePreset*`/`StyleFileBody`、`tests/db/test_repo_style_presets.py`、`tests/workspace/test_style_files.py`；改写 `db/legacy_styles.py` 用 `studio.styles.store.import_style`（带 `overwrite`）；更新 Makefile/脚本/dev-setup 说明。
+- 从 T5 开始（前端）：先写 `frontend/src/features/styles/styleView.spec.ts`、`styleFrontmatter.spec.ts` 和路由/侧栏组件测试，再实现 `styleView.ts`、`styleFrontmatter.ts`，改 `AppSidebar.vue`、`router.ts`、`SettingsPage.vue`，替换 `api/endpoints.ts`/`types/api.ts`/`composables/queries.ts` 里的旧风格客户端（后端接口见 `backend/src/studio/api/styles.py`：`GET/POST /api/styles`、`GET/DELETE /api/styles/{id}`、`POST /api/styles/{id}/duplicate`、`POST/DELETE /api/styles/{id}/draft`、`GET /api/styles/{id}/draft/files`、`GET/PUT/DELETE /api/styles/{id}/draft/files/{path}`、`POST /api/styles/{id}/draft/save`）。注意：旧 `/api/style-presets` 已删除，现在前端的风格库页和创建项目的风格选择都是坏的，T5–T7 修好。
 
 ## 决策记录
 
 - 2026-10-04 — 目录存储模块做成只依赖 `config` 的纯能力层 `studio.styles`，而不是放进 `workspace` — `db/legacy_styles.py` 和旧表导出在 `db` 层，`db` 不能 import `workspace`（分层规则）；纯能力层让 `db`、`workspace`、`agent`、`api` 都能用。
-- 2026-10-04 — 旧表导出放在 lifespan 里 `migrate()` 之前，迁移 0007 才删表 — 迁移里拿不到数据目录；导出失败则启动失败，迁移不会执行，数据不会丢。
+- 2026-10-04 — 旧表导出放在迁移 0007 里（先导出、成功后再删表），不放在 lifespan 里 — api 和 worker 两个进程启动时都会 `migrate()`，导出放在 api 的 lifespan 里会让 worker 先删表而丢数据；数据目录由数据库文件路径推出。迁移因此会 import `studio.styles`（只依赖 config 的纯能力层），代价是以后改 `studio.styles` 要留意不改变导出行为。
 - 2026-10-04 — 风格会话复用 `workspaceless` 阶段标记，靠 `sessions.subject_id` 区分绑定目录模式 — 避免给 `StageDefinition` 协议加字段而改动全部阶段。
 - 2026-10-04 — T2：草稿读写只允许 `STYLE.md` 和 `references|exemplars/<普通文件名>`，路径上有符号链接一律拒绝；`import_style` 带 `overwrite` 参数供导入脚本「覆盖」模式用 — 草稿写入时就收紧比保存时才发现更安全，也不需要给导入脚本另开接口。
 - 2026-10-04 — T3：不在接口里预留空的 `_ensure_not_busy` 钩子，写端点直接写成 `async def`，T9 再加忙碌检查 — 一个什么都不做的钩子是死代码；`async def` 已满足「检查与写入之间不 `await`」的前提。
@@ -218,4 +219,4 @@
 
 ## 验证记录
 
-- 无
+- T4（AC1 迁移部分）：2026-10-04 对 `data/studio.db` 的 `sqlite3 .backup` 副本（旧表 9 行，版本 0006）实跑 `migrate()`：旧表已删；`styles/` 下 9 个目录，名称/分类/引用数/金样本数与旧表一致（如「反差心理学·直觉翻案」3 个引用 1 个金样本，frontmatter 含 `category: 旧项目导入`）；再次 `migrate()` 无报错；原库 `style_presets` 仍是 9 行。
