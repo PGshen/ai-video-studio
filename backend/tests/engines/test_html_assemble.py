@@ -46,36 +46,45 @@ def test_html_embeds_timeline_and_orders_scripts(tmp_path: Path) -> None:
     match = re.search(r"window\.__TIMELINE__=(\{.*?\});window", html)
     assert match is not None
     assert json.loads(match.group(1))["sections"][1]["id"] == "s-explain"
-    order = [html.index(token) for token in ("LIB-A", "LIB-B", "HOOK", "EXPLAIN", "GLOBAL")]
-    assert order == sorted(order)
-    assert html.index("GLOBAL") < html.index("window.renderAt")
+    srcs = re.findall(r'<script src="scripts/([^"]+)"', html)
+    assert srcs == [
+        "animation/lib/a.js",
+        "animation/lib/b.js",
+        "animation/scenes/s-hook.js",
+        "animation/scenes/s-explain.js",
+        "animation/global.js",
+        "studio-runtime.js",
+    ]
+    assert "window.renderAt" in page.scripts["studio-runtime.js"]
 
 
 def test_scene_ids_with_hyphen_are_string_keys(tmp_path: Path) -> None:
-    html = assemble(_project(tmp_path), TIMELINE).html
-    assert '__SCENES__["s-hook"]' in html
-    assert '__SCENES__["s-explain"]' in html
+    scripts = assemble(_project(tmp_path), TIMELINE).scripts
+    assert '__SCENES__["s-hook"]' in scripts["animation/scenes/s-hook.js"]
+    assert '__SCENES__["s-explain"]' in scripts["animation/scenes/s-explain.js"]
+    assert "// HOOK" in scripts["animation/scenes/s-hook.js"]
+    assert "// LIB-A" in scripts["animation/lib/a.js"]
+    assert "// GLOBAL" in scripts["animation/global.js"]
 
 
 def test_missing_scene_file_is_skipped_and_global_is_optional(tmp_path: Path) -> None:
     _write(tmp_path, "animation/scenes/s-hook.js", "module.exports = { draw() {} };\n")
-    html = assemble(tmp_path, TIMELINE).html
-    assert '__SCENES__["s-hook"]' in html
-    assert '__SCENES__["s-explain"]' not in html
-    assert "__GLOBAL__=" not in html
+    page = assemble(tmp_path, TIMELINE)
+    assert "animation/scenes/s-hook.js" in page.scripts
+    assert "animation/scenes/s-explain.js" not in page.scripts
+    assert "animation/global.js" not in page.scripts
 
 
-def test_source_urls_name_the_files(tmp_path: Path) -> None:
-    html = assemble(_project(tmp_path), TIMELINE).html
-    for name in ("animation/lib/a.js", "animation/scenes/s-hook.js", "animation/global.js"):
-        assert f"//# sourceURL={name}" in html
+def test_scene_source_keeps_its_own_line_numbers(tmp_path: Path) -> None:
+    _write(tmp_path, "animation/scenes/s-hook.js", "// line1\nmodule.exports = {};\n")
+    wrapped = assemble(tmp_path, TIMELINE).scripts["animation/scenes/s-hook.js"]
+    assert wrapped.splitlines()[0].endswith("// line1")
 
 
-def test_script_close_tag_in_source_cannot_break_the_page(tmp_path: Path) -> None:
-    _write(
-        tmp_path, "animation/scenes/s-hook.js", "const s = '</script><b>'; module.exports = {};\n"
-    )
-    html = assemble(tmp_path, TIMELINE).html
+def test_script_close_tag_in_timeline_cannot_break_the_page(tmp_path: Path) -> None:
+    timeline = json.loads(json.dumps(TIMELINE))
+    timeline["sections"][0]["label"] = "</script><b>x"
+    html = assemble(_project(tmp_path), timeline).html
     assert html.count("</script>") == html.count("<script")
 
 

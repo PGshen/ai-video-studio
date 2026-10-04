@@ -56,18 +56,13 @@ window.__PREVIEW__ = true;
 class AssembledPage:
     html: str
     routes: dict[str, Path]
+    scripts: dict[str, str]
+    """生成的脚本文件（镜头包装、`lib`、`global`、运行时），页面用 `<script src>` 引用；
+    作为独立文件加载，语法错误的报错里才会带文件名和正确的行号。"""
 
 
 def _json_for_script(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
-
-
-def _source_for_script(source: str) -> str:
-    return source.replace("</script", "<\\/script")
-
-
-def _script(source: str, name: str) -> str:
-    return f"<script>{_source_for_script(source)}\n//# sourceURL={name}\n</script>"
 
 
 def _read(path: Path) -> str:
@@ -106,6 +101,12 @@ def assemble(workdir: Path, timeline: Mapping[str, Any], *, preview: bool = Fals
     routes.update({f"style-fonts/{p.name}": p for p in style_fonts})
     routes.update({f"assets/{p.name}": p for p in assets})
 
+    scripts: dict[str, str] = {}
+
+    def add_script(name: str, source: str) -> str:
+        scripts[name] = source
+        return f'<script src="scripts/{name}"></script>'
+
     parts = [
         '<!doctype html><meta charset="utf-8">',
         "<style>",
@@ -120,30 +121,30 @@ def assemble(workdir: Path, timeline: Mapping[str, Any], *, preview: bool = Fals
         f"window.__ASSETS__={_json_for_script([f'assets/{p.name}' for p in assets])};</script>",
     ]
     for lib in sorted((animation / "lib").glob("*.js")):
-        parts.append(_script(_read(lib), f"animation/lib/{lib.name}"))
+        parts.append(add_script(f"animation/lib/{lib.name}", _read(lib)))
     for section in timeline.get("sections", []):
         scene = animation / "scenes" / f"{section['id']}.js"
         if scene.is_file():
             wrapped = (
                 "window.__SCENES__[" + json.dumps(section["id"]) + "]=(function(){"
-                "const module={exports:{}};const exports=module.exports;\n"
+                "const module={exports:{}};const exports=module.exports;"
                 + _read(scene)
                 + "\n;return module.exports;})();"
             )
-            parts.append(_script(wrapped, f"animation/scenes/{scene.name}"))
+            parts.append(add_script(f"animation/scenes/{scene.name}", wrapped))
     global_js = animation / "global.js"
     if global_js.is_file():
         wrapped = (
             "window.__GLOBAL__=(function(){const module={exports:{}};"
-            "const exports=module.exports;\n"
+            "const exports=module.exports;"
             + _read(global_js)
             + "\n;return module.exports.post||module.exports;})();"
         )
-        parts.append(_script(wrapped, "animation/global.js"))
-    parts.append(_script(_read(_RUNTIME), "studio-runtime.js"))
+        parts.append(add_script("animation/global.js", wrapped))
+    parts.append(add_script("studio-runtime.js", _read(_RUNTIME)))
     if preview:
         parts.append(f"<script>{_PREVIEW_SCRIPT}</script>")
-    return AssembledPage(html="".join(parts), routes=routes)
+    return AssembledPage(html="".join(parts), routes=routes, scripts=scripts)
 
 
 def page_hash(workdir: Path, timeline: Mapping[str, Any]) -> str:
