@@ -55,15 +55,18 @@ def create_project(
     title: str,
     idea_id: str | None = None,
     settings: dict[str, Any] | None = None,
+    current_stage: str = "topic",
 ) -> ProjectValue:
-    """创建一个项目，`current_stage` 使用表定义的默认值（`topic`）。
+    """创建一个项目；`current_stage` 默认 `topic`，按类型建项目时传流水线的第一个阶段。
 
     `id` 一般留空，由表定义的默认值（`uuid4().hex`）生成；T7 的项目创建流程
     需要先知道 project id 才能初始化工作区目录（`style/STYLE.md`、`init`
     快照），再插入这一行，所以显式传入。
     """
     with session_scope(engine) as session:
-        project = Project(title=title, idea_id=idea_id, settings=settings or {})
+        project = Project(
+            title=title, idea_id=idea_id, settings=settings or {}, current_stage=current_stage
+        )
         if id is not None:
             project.id = id
         session.add(project)

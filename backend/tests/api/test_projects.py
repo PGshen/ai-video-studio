@@ -6,8 +6,11 @@ from uuid import UUID
 
 import pytest
 from httpx import Response
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from brief_builder import make_brief
+from studio.db.models import Project, ProjectStage, Snapshot
 from studio.db.repo.jobs import claim_next, complete, create_job, get_job
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.projects import get_project
@@ -20,7 +23,150 @@ from studio.styles import store as style_store
 from studio.styles.layout import style_dir
 from studio.workspace import files
 
-from .conftest import ApiEnv, assert_detail
+from .conftest import ApiEnv, assert_detail, register_reel_stages
+
+
+def _row_counts(api_env: ApiEnv) -> tuple[int, int, int]:
+    def count(session: Session, model: type) -> int:
+        return session.scalar(select(func.count()).select_from(model)) or 0
+
+    with Session(api_env.app.state.engine) as session:
+        return (count(session, Project), count(session, ProjectStage), count(session, Snapshot))
+
+
+class TestCreateProjectKinds:
+    async def test_default_kind_is_legacy_manim_explainer(self, api_env: ApiEnv) -> None:
+        body = await api_env.create_project()
+
+        assert body["kind"] == {
+            "video_kind": "explainer_manim",
+            "engine": "manim",
+            "narration": True,
+            "music_source": "none",
+            "pipeline": ["topic", "narrative", "animation"],
+        }
+        stages = list_stages(api_env.app.state.engine, body["id"])
+        assert [(s.stage, s.status) for s in stages] == [
+            ("topic", "active"),
+            ("narrative", "locked"),
+            ("animation", "locked"),
+        ]
+
+    async def test_explicit_kind_writes_settings(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects",
+            json={"title": "t", "engine": "manim", "narration": True, "music_source": "none"},
+        )
+
+        assert response.status_code == 201
+        settings = response.json()["settings"]
+        assert settings["video_kind"] == "explainer_manim"
+        assert settings["engine"] == "manim"
+        assert settings["narration"] is True
+        assert settings["music_source"] == "none"
+        assert settings["pipeline"] == ["topic", "narrative", "animation"]
+
+    async def test_unregistered_stage_is_422_and_leaves_nothing(self, api_env: ApiEnv) -> None:
+        before = _row_counts(api_env)
+        workspaces_root = api_env.workdir("probe").parent
+
+        def workspaces() -> list[str]:
+            return (
+                sorted(p.name for p in workspaces_root.iterdir())
+                if workspaces_root.is_dir()
+                else []
+            )
+
+        workspaces_before = workspaces()
+
+        response = await api_env.client.post(
+            "/api/projects",
+            json={"title": "t", "engine": "manim", "narration": True, "music_source": "synth"},
+        )
+
+        assert response.status_code == 422
+        assert "配乐" in assert_detail(response)
+        assert _row_counts(api_env) == before
+        assert workspaces() == workspaces_before
+
+    async def test_invalid_kind_is_422_with_reason(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects",
+            json={"title": "t", "engine": "html", "narration": False, "music_source": "none"},
+        )
+
+        assert response.status_code == 422
+        assert "无旁白的项目必须配乐" in assert_detail(response)
+
+    async def test_partial_kind_is_422(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post("/api/projects", json={"title": "t", "engine": "html"})
+
+        assert response.status_code == 422
+        assert "同时提供 engine、narration、music_source" in assert_detail(response)
+
+    async def test_client_settings_cannot_smuggle_kind_fields(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/projects",
+            json={
+                "title": "t",
+                "settings": {
+                    "pipeline": ["animation"],
+                    "video_kind": "music_video",
+                    "engine": "html",
+                },
+            },
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["kind"]["video_kind"] == "explainer_manim"
+        assert body["kind"]["pipeline"] == ["topic", "narrative", "animation"]
+        assert body["settings"]["engine"] == "manim"
+        stages = list_stages(api_env.app.state.engine, body["id"])
+        assert [s.stage for s in stages] == ["topic", "narrative", "animation"]
+
+    async def test_music_video_pipeline_stages_and_idea_card(self, api_env: ApiEnv) -> None:
+        from studio.db.repo.ideas import create_idea
+
+        register_reel_stages(api_env.app.state.registry)
+        idea = create_idea(api_env.app.state.engine, title="想法", pitch="p")
+
+        response = await api_env.client.post(
+            "/api/projects",
+            json={
+                "title": "MV",
+                "idea_id": idea.id,
+                "engine": "html",
+                "narration": False,
+                "music_source": "import",
+            },
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["current_stage"] == "concept"
+        assert body["kind"]["video_kind"] == "music_video"
+        stages = list_stages(api_env.app.state.engine, body["id"])
+        assert [(s.stage, s.status) for s in stages] == [
+            ("concept", "active"),
+            ("music", "locked"),
+            ("beatsheet", "locked"),
+            ("animation_html", "locked"),
+        ]
+        assert (api_env.workdir(body["id"]) / "concept/notes/idea-card.md").is_file()
+        assert not (api_env.workdir(body["id"]) / "topic").exists()
+        stored = get_project(api_env.app.state.engine, body["id"])
+        assert stored is not None
+        assert stored.current_stage == "concept"
+
+    async def test_patch_settings_cannot_change_kind(self, api_env: ApiEnv) -> None:
+        body = await api_env.create_project()
+
+        await api_env.client.patch(f"/api/projects/{body['id']}/settings", json={"engine": "html"})
+
+        detail = (await api_env.client.get(f"/api/projects/{body['id']}")).json()
+        assert detail["kind"] == body["kind"]
+        assert detail["settings"]["pipeline"] == ["topic", "narrative", "animation"]
 
 
 class TestCreateProject:
@@ -47,7 +193,9 @@ class TestCreateProject:
             "/api/projects", json={"title": "带设置", "settings": {"aspect_ratio": "16:9"}}
         )
         assert response.status_code == 201
-        assert response.json()["settings"] == {"aspect_ratio": "16:9"}
+        settings = response.json()["settings"]
+        assert settings["aspect_ratio"] == "16:9"
+        assert settings["video_kind"] == "explainer_manim"
 
 
 class TestListAndGetProject:

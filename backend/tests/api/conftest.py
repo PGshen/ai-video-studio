@@ -21,11 +21,14 @@ from httpx import Response as HttpxResponse
 from studio.agent import register_fake
 from studio.agent.fake import FakeRuntime, sleep
 from studio.agent.runtime import UserInput
+from studio.agent.stage import StageRegistry
+from studio.agent.tools import ToolSpec
 from studio.config import Settings
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import create_session
 from studio.main import create_app
 from studio.workspace import project_dir
+from studio.workspace.scope import WriteScope
 
 
 @dataclass
@@ -86,3 +89,49 @@ def assert_detail(response: HttpxResponse) -> str:
     body = response.json()
     assert "detail" in body
     return body["detail"]
+
+
+class FakeStage:
+    """Test-only stand-in for not-yet-implemented stages (concept, beatsheet, ...)."""
+
+    allow_web = False
+    workspaceless = False
+
+    def __init__(self, name: str, reads: list[str], artifact_dir: str) -> None:
+        self.name = name
+        self._reads = reads
+        self._artifact_dir = artifact_dir
+
+    def system_prompt(self) -> str:
+        return self.name
+
+    def tools(self) -> list[ToolSpec]:
+        return []
+
+    def write_scope(self) -> WriteScope:
+        return WriteScope(writable=[f"{self._artifact_dir}/"], tool_managed=[])
+
+    def reads(self) -> list[str]:
+        return list(self._reads)
+
+    def prepare_turn(self, workdir: Path) -> None:
+        return None
+
+    def artifact_dirs(self) -> list[str]:
+        return [self._artifact_dir]
+
+    def status_summary(self, workdir: Path) -> str:
+        return ""
+
+    def finalize_blockers(self, workdir: Path) -> list[str]:
+        return []
+
+
+def register_reel_stages(registry: StageRegistry) -> None:
+    for stage in (
+        FakeStage("concept", [], "concept"),
+        FakeStage("beatsheet", ["concept", "music"], "beatsheet"),
+        FakeStage("music", ["concept", "narrative", "beatsheet"], "music"),
+        FakeStage("animation_html", ["narrative", "beatsheet", "music"], "animation"),
+    ):
+        registry.register(stage)

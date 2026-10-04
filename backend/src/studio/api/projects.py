@@ -29,16 +29,24 @@ from sqlalchemy import Engine
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import EFFORT_LEVELS
 from studio.agent.stage import StageDefinition, StageRegistry
-from studio.agent.stage_flow import StageFlowError, finalize, reopen
+from studio.agent.stage_flow import (
+    StageFlowError,
+    finalize,
+    initial_statuses,
+    project_pipeline,
+    reopen,
+)
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
 from studio.api.schemas import (
     ProjectCreate,
     ProjectDetailOut,
+    ProjectKindOut,
     ProjectOut,
     ProjectSettingsPatch,
     ProjectStatusPatch,
     StageOut,
 )
+from studio.api.video_kinds import unavailable_reason
 from studio.config import Settings
 from studio.db.repo.ideas import IdeaValue, get_idea
 from studio.db.repo.jobs import delete_jobs, has_unfinished_jobs
@@ -58,6 +66,15 @@ from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
 from studio.db.repo.suggestions import delete_suggestions
 from studio.engines.tts.voice_map import voice_aliases
+from studio.stages.pipeline import (
+    KIND_SETTING_KEYS,
+    LEGACY_KIND,
+    ProjectKind,
+    kind_errors,
+    kind_from_settings,
+    kind_settings,
+    video_kind_of,
+)
 from studio.styles import store as style_store
 from studio.workspace import (
     BlobStore,
@@ -69,14 +86,22 @@ from studio.workspace import (
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
-_INITIAL_STAGES: tuple[tuple[str, str], ...] = (
-    ("topic", "active"),
-    ("narrative", "locked"),
-    ("animation", "locked"),
-)
+
+def _project_kind_out(engine: Engine, value: ProjectValue) -> ProjectKindOut:
+    kind = kind_from_settings(value.settings)
+    if kind_errors(kind):
+        # `kind_from_settings` does not validate values; a corrupt stored kind must not break reads.
+        kind = LEGACY_KIND
+    return ProjectKindOut(
+        video_kind=video_kind_of(kind),
+        engine=kind.engine,
+        narration=kind.narration,
+        music_source=kind.music_source,
+        pipeline=project_pipeline(engine, value.id),
+    )
 
 
-def _project_out(value: ProjectValue) -> ProjectOut:
+def _project_out(engine: Engine, value: ProjectValue) -> ProjectOut:
     return ProjectOut(
         id=value.id,
         title=value.title,
@@ -86,6 +111,7 @@ def _project_out(value: ProjectValue) -> ProjectOut:
         completed_at=value.completed_at,
         abandoned_at=value.abandoned_at,
         status=value.status,
+        kind=_project_kind_out(engine, value),
     )
 
 
@@ -105,7 +131,8 @@ _SCORE_LABELS = (
     ("visual", "可视化"),
     ("novelty", "新鲜度"),
 )
-IDEA_CARD_PATH = "topic/notes/idea-card.md"
+IDEA_CARD_NAME = "notes/idea-card.md"
+"""想法卡片放在流水线第一个阶段目录下：`<pipeline[0]>/notes/idea-card.md`。"""
 
 
 def _idea_card_markdown(idea: IdeaValue) -> str:
@@ -168,6 +195,29 @@ def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str)
     delete_project(engine, project_id)
 
 
+def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> ProjectKind:
+    """请求里的类型配置 → 合法且阶段都已注册的 `ProjectKind`，否则 422（在建工作区之前）。"""
+    given = (body.engine, body.narration, body.music_source)
+    if all(value is None for value in given):
+        kind = LEGACY_KIND
+    elif any(value is None for value in given) or body.engine is None:
+        raise HTTPException(
+            status_code=422, detail="类型配置需要同时提供 engine、narration、music_source"
+        )
+    else:
+        assert body.narration is not None and body.music_source is not None
+        kind = ProjectKind(
+            engine=body.engine, narration=body.narration, music_source=body.music_source
+        )
+    errors = kind_errors(kind)
+    if errors:
+        raise HTTPException(status_code=422, detail="；".join(errors))
+    reason = unavailable_reason(kind_settings(kind)["pipeline"], registry)
+    if reason is not None:
+        raise HTTPException(status_code=422, detail=reason)
+    return kind
+
+
 def _require_usable_idea(engine: Engine, idea_id: str) -> IdeaValue:
     idea = get_idea(engine, idea_id)
     if idea is None:
@@ -185,13 +235,19 @@ def create_project_endpoint(
     engine: Engine = Depends(get_engine),
     blobs: BlobStore = Depends(get_blobs),
     settings: Settings = Depends(get_settings),
+    registry: StageRegistry = Depends(get_registry),
 ) -> ProjectOut:
+    kind = _kind_for_new_project(body, registry)
+    kind_values = kind_settings(kind)
+    pipeline: list[str] = kind_values["pipeline"]
     idea = _require_usable_idea(engine, body.idea_id) if body.idea_id is not None else None
     style_files, style_settings = _style_for_new_project(
         engine, settings, body.style_preset_id, body.title
     )
     client_settings = {
-        key: value for key, value in (body.settings or {}).items() if key not in _STYLE_SETTING_KEYS
+        key: value
+        for key, value in (body.settings or {}).items()
+        if key not in _STYLE_SETTING_KEYS and key not in KIND_SETTING_KEYS
     }
     if "effort" in client_settings and client_settings["effort"] not in EFFORT_LEVELS:
         raise HTTPException(status_code=422, detail=f"effort 必须是 {'/'.join(EFFORT_LEVELS)} 之一")
@@ -211,7 +267,11 @@ def create_project_endpoint(
             project_id,
             {
                 **style_files,
-                **({IDEA_CARD_PATH: _idea_card_markdown(idea)} if idea is not None else {}),
+                **(
+                    {f"{pipeline[0]}/{IDEA_CARD_NAME}": _idea_card_markdown(idea)}
+                    if idea is not None
+                    else {}
+                ),
             },
         )
         project = create_project(
@@ -219,14 +279,15 @@ def create_project_endpoint(
             id=project_id,
             title=body.title,
             idea_id=body.idea_id,
-            settings={**tts_defaults, **client_settings, **style_settings},
+            settings={**tts_defaults, **client_settings, **style_settings, **kind_values},
+            current_stage=pipeline[0],
         )
-        for stage, status in _INITIAL_STAGES:
+        for stage, status in initial_statuses(pipeline, registry):
             create_stage(engine, project_id=project_id, stage=stage, status=status)
     except Exception as exc:
         _cleanup_failed_project(engine, settings, project_id)
         raise HTTPException(status_code=500, detail=f"创建项目失败：{exc}") from exc
-    return _project_out(project)
+    return _project_out(engine, project)
 
 
 @router.patch("/projects/{project_id}/settings", response_model=ProjectOut)
@@ -249,7 +310,7 @@ async def patch_project_settings_endpoint(
         raise HTTPException(
             status_code=422, detail=f"语速必须在 {SPEECH_RATE_MIN}–{SPEECH_RATE_MAX} 之间"
         )
-    return _project_out(update_project_settings(engine, project_id, patch))
+    return _project_out(engine, update_project_settings(engine, project_id, patch))
 
 
 @router.patch("/projects/{project_id}/status", response_model=ProjectOut)
@@ -260,12 +321,12 @@ async def patch_project_status_endpoint(
 ) -> ProjectOut:
     """手动把项目标记为进行中/已完成/已废弃。只是项目上的标记，不碰工作区，所以不受项目级串行限制。"""
     _require_project(engine, project_id)
-    return _project_out(set_project_status(engine, project_id, body.status))
+    return _project_out(engine, set_project_status(engine, project_id, body.status))
 
 
 @router.get("/projects", response_model=list[ProjectOut])
 def list_projects_endpoint(engine: Engine = Depends(get_engine)) -> list[ProjectOut]:
-    return [_project_out(p) for p in list_projects(engine)]
+    return [_project_out(engine, p) for p in list_projects(engine)]
 
 
 def _require_project(engine: Engine, project_id: str) -> ProjectValue:
@@ -284,7 +345,7 @@ async def get_project_endpoint(
     project = _require_project(engine, project_id)
     stages = [_stage_out(s) for s in list_stages(engine, project_id)]
     busy = turn_runner.is_project_busy(project_id)
-    return ProjectDetailOut(**_project_out(project).model_dump(), stages=stages, busy=busy)
+    return ProjectDetailOut(**_project_out(engine, project).model_dump(), stages=stages, busy=busy)
 
 
 @router.delete("/projects/{project_id}", status_code=204)

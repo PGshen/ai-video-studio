@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from studio.agent.runtime import Effort
+from studio.stages.pipeline import Engine, MusicSource, VideoKind
 
 
 class ProjectCreate(BaseModel):
@@ -21,6 +22,10 @@ class ProjectCreate(BaseModel):
     """从选题池的想法卡片创建（卡片须为 `idea` 状态，已归档的不行）。同一张卡片可以创建多个项目。"""
     style_preset_id: str | None = None
     """风格库里的预设 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。"""
+    engine: Engine | None = None
+    narration: bool | None = None
+    music_source: MusicSource | None = None
+    """项目类型配置：三者都不给 = 老默认（Manim 讲解）；只给一部分 → 422。"""
 
 
 class ProjectSettingsPatch(BaseModel):
@@ -43,6 +48,20 @@ class StageOut(BaseModel):
     finalized_at: datetime | None
 
 
+class ProjectKindConfig(BaseModel):
+    engine: Engine
+    narration: bool
+    music_source: MusicSource
+
+
+class ProjectKindOut(BaseModel):
+    video_kind: VideoKind
+    engine: Engine
+    narration: bool
+    music_source: MusicSource
+    pipeline: list[str]
+
+
 class ProjectOut(BaseModel):
     id: str
     title: str
@@ -55,6 +74,8 @@ class ProjectOut(BaseModel):
     """手动标记已废弃的时间；与 `completed_at` 互斥。"""
     status: Literal["active", "completed", "abandoned"]
     """由 `completed_at`/`abandoned_at` 推导的项目状态：进行中、已完成、已废弃。"""
+    kind: ProjectKindOut
+    """项目类型与流水线；老项目（settings 里没有类型字段）视为 Manim 讲解。"""
 
 
 class ProjectStatusPatch(BaseModel):
@@ -385,3 +406,26 @@ class DraftFileWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str
+
+
+class PresetOut(BaseModel):
+    video_kind: VideoKind
+    label: str
+    description: str
+    music_choices: list[MusicSource]
+    default: ProjectKindConfig
+
+
+class KindOptionOut(BaseModel):
+    engine: Engine
+    narration: bool
+    music_source: MusicSource
+    video_kind: VideoKind
+    pipeline: list[str]
+    available: bool
+    unavailable_reason: str | None
+
+
+class VideoKindsOut(BaseModel):
+    presets: list[PresetOut]
+    kinds: list[KindOptionOut]
