@@ -28,6 +28,8 @@ class SessionValue:
     status: str
     is_active: bool
     title: str | None
+    subject_id: str | None = None
+    """会话属于的对象：风格对话是风格 id，其余为 `None`。"""
 
 
 def to_session_value(row: Session) -> SessionValue:
@@ -41,6 +43,7 @@ def to_session_value(row: Session) -> SessionValue:
         status=row.status,
         is_active=row.is_active,
         title=row.title,
+        subject_id=row.subject_id,
     )
 
 
@@ -52,17 +55,23 @@ def create_session(
     model_profile_id: str,
     runtime: str,
     title: str | None = None,
+    subject_id: str | None = None,
 ) -> SessionValue:
-    """新建会话并设为活动；同一项目同一阶段的其他会话取消活动（设计 §3.1 说明）。"""
+    """新建会话并设为活动；同一项目同一阶段同一 `subject_id` 的其他会话取消活动（设计 §3.1）。"""
     with session_scope(engine) as db:
         db.execute(
             update(Session)
-            .where(Session.project_id == project_id, Session.stage == stage)
+            .where(
+                Session.project_id == project_id,
+                Session.stage == stage,
+                Session.subject_id == subject_id,
+            )
             .values(is_active=False)
         )
         row = Session(
             project_id=project_id,
             stage=stage,
+            subject_id=subject_id,
             model_profile_id=model_profile_id,
             runtime=runtime,
             title=title,
@@ -106,12 +115,18 @@ def get_session(engine: Engine, session_id: str) -> SessionValue | None:
         return to_session_value(row) if row is not None else None
 
 
-def list_sessions(engine: Engine, project_id: str | None, stage: str) -> list[SessionValue]:
-    """某个项目某个阶段的全部会话，按创建时间升序（`GET .../sessions` 用）。"""
+def list_sessions(
+    engine: Engine, project_id: str | None, stage: str, subject_id: str | None = None
+) -> list[SessionValue]:
+    """某个项目某个阶段（风格对话还要同一个 `subject_id`）的全部会话，按创建时间升序。"""
     with session_scope(engine) as db:
         rows = db.scalars(
             select(Session)
-            .where(Session.project_id == project_id, Session.stage == stage)
+            .where(
+                Session.project_id == project_id,
+                Session.stage == stage,
+                Session.subject_id == subject_id,
+            )
             .order_by(Session.created_at.asc())
         ).all()
         return [to_session_value(row) for row in rows]
@@ -124,3 +139,12 @@ def delete_project_sessions(engine: Engine, project_id: str) -> None:
         db.execute(delete(TurnEvent).where(TurnEvent.session_id.in_(session_ids)))
         db.execute(delete(Turn).where(Turn.session_id.in_(session_ids)))
         db.execute(delete(Session).where(Session.project_id == project_id))
+
+
+def delete_subject_sessions(engine: Engine, subject_id: str) -> None:
+    """删除属于某个对象（风格）的全部会话及其轮次、事件；没有会话时是空操作。"""
+    with session_scope(engine) as db:
+        session_ids = select(Session.id).where(Session.subject_id == subject_id)
+        db.execute(delete(TurnEvent).where(TurnEvent.session_id.in_(session_ids)))
+        db.execute(delete(Turn).where(Turn.session_id.in_(session_ids)))
+        db.execute(delete(Session).where(Session.subject_id == subject_id))

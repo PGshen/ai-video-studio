@@ -83,6 +83,8 @@ class Session(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
     project_id: Mapped[str | None] = mapped_column(String, nullable=True)
     stage: Mapped[str] = mapped_column(String, nullable=False)
+    subject_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    """会话属于的对象：风格对话是风格 id，其余会话为空（0008）。"""
     model_profile_id: Mapped[str] = mapped_column(String, nullable=False)
     runtime: Mapped[str] = mapped_column(String, nullable=False)
     sdk_ref: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -296,6 +296,13 @@ def style_exists(data_dir: Path | str, style_id: str) -> bool:
     return is_valid_style_id(style_id) and style_dir(data_dir, style_id).is_dir()
 
 
+def style_known(data_dir: Path | str, style_id: str) -> bool:
+    """有正式版本或草稿（从未保存的新风格只有草稿）。"""
+    return is_valid_style_id(style_id) and (
+        style_dir(data_dir, style_id).is_dir() or draft_dir(data_dir, style_id).is_dir()
+    )
+
+
 def _ensure_unique_name(data_dir: Path | str, name: str, *, except_id: str | None) -> None:
     for existing in _saved_summaries(data_dir):
         if existing.id != except_id and existing.name.strip() == name:
@@ -482,6 +489,7 @@ __all__ = [
     "read_style_files",
     "save_draft",
     "style_exists",
+    "style_known",
     "validate_draft",
     "write_draft_file",
 ]

@@ -124,6 +124,8 @@ class SessionOut(BaseModel):
     id: str
     project_id: str | None
     stage: str
+    subject_id: str | None = None
+    """会话属于的对象：风格对话是风格 id，其余为空。"""
     model_profile_id: str
     runtime: str
     sdk_ref: str | None

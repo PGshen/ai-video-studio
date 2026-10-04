@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import Engine
+
+from studio.db.repo.profiles import get_model_profile
+from studio.db.repo.sessions import get_session
 from studio.styles import store
 from studio.styles.layout import draft_dir, style_dir
 
@@ -330,3 +334,116 @@ class TestDefaultStyle:
 
         settings = (await api_env.client.get("/api/settings")).json()
         assert settings["default_style_preset_id"] == keep
+
+
+def _is_active(engine: Engine, session_id: str) -> bool:
+    session = get_session(engine, session_id)
+    assert session is not None
+    return session.is_active
+
+
+def _fake_profile_id(api_env: ApiEnv) -> str:
+    profile = get_model_profile(api_env.app.state.engine, "fake")
+    assert profile is not None
+    return profile.id
+
+
+async def _new_session(api_env: ApiEnv, style_id: str) -> dict[str, Any]:
+    response = await api_env.client.post(
+        f"/api/styles/{style_id}/sessions", json={"model_profile_id": _fake_profile_id(api_env)}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+class TestStyleSessions:
+    async def test_create_session_belongs_to_the_style(self, api_env: ApiEnv) -> None:
+        style_id = _make(api_env)
+
+        body = await _new_session(api_env, style_id)
+
+        assert body["subject_id"] == style_id
+        assert body["stage"] == "style"
+        assert body["project_id"] is None
+        assert body["is_active"] is True and body["status"] == "idle"
+
+    async def test_a_never_saved_new_style_can_have_a_session_too(self, api_env: ApiEnv) -> None:
+        style_id = (await api_env.client.post("/api/styles")).json()["id"]
+
+        body = await _new_session(api_env, style_id)
+
+        assert body["subject_id"] == style_id
+
+    async def test_unknown_style_is_404(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post(
+            "/api/styles/missing/sessions", json={"model_profile_id": _fake_profile_id(api_env)}
+        )
+        assert response.status_code == 404
+        listing = await api_env.client.get("/api/styles/missing/sessions")
+        assert listing.status_code == 404
+
+    async def test_unknown_model_profile_is_400(self, api_env: ApiEnv) -> None:
+        style_id = _make(api_env)
+        response = await api_env.client.post(
+            f"/api/styles/{style_id}/sessions", json={"model_profile_id": "nope"}
+        )
+        assert response.status_code == 400
+
+    async def test_a_new_session_deactivates_only_that_styles_older_session(
+        self, api_env: ApiEnv
+    ) -> None:
+        a, b = _make(api_env, "甲"), _make(api_env, "乙")
+        old_a = await _new_session(api_env, a)
+        only_b = await _new_session(api_env, b)
+
+        new_a = await _new_session(api_env, a)
+
+        engine = api_env.app.state.engine
+        flags = {sid: _is_active(engine, sid) for sid in (old_a["id"], new_a["id"], only_b["id"])}
+        assert flags == {old_a["id"]: False, new_a["id"]: True, only_b["id"]: True}
+
+    async def test_list_returns_that_styles_sessions_in_creation_order(
+        self, api_env: ApiEnv
+    ) -> None:
+        a, b = _make(api_env, "甲"), _make(api_env, "乙")
+        first = await _new_session(api_env, a)
+        second = await _new_session(api_env, a)
+        await _new_session(api_env, b)
+
+        response = await api_env.client.get(f"/api/styles/{a}/sessions")
+
+        assert response.status_code == 200
+        assert [s["id"] for s in response.json()] == [first["id"], second["id"]]
+
+    async def test_deleting_the_style_removes_its_sessions(self, api_env: ApiEnv) -> None:
+        style_id = _make(api_env)
+        session = await _new_session(api_env, style_id)
+
+        await api_env.client.delete(f"/api/styles/{style_id}")
+
+        assert (await api_env.client.get(f"/api/sessions/{session['id']}")).status_code == 404
+
+    async def test_discarding_a_never_saved_style_removes_its_sessions_too(
+        self, api_env: ApiEnv
+    ) -> None:
+        style_id = (await api_env.client.post("/api/styles")).json()["id"]
+        session = await _new_session(api_env, style_id)
+
+        await api_env.client.delete(f"/api/styles/{style_id}/draft")
+
+        assert (await api_env.client.get(f"/api/sessions/{session['id']}")).status_code == 404
+
+    async def test_does_not_touch_brainstorm_sessions(self, api_env: ApiEnv) -> None:
+        brainstorm = (
+            await api_env.client.post(
+                "/api/brainstorm/sessions", json={"model_profile_id": _fake_profile_id(api_env)}
+            )
+        ).json()
+        style_id = _make(api_env)
+
+        await _new_session(api_env, style_id)
+
+        listing = (await api_env.client.get("/api/brainstorm/sessions")).json()
+        assert [s["id"] for s in listing] == [brainstorm["id"]]
+        assert listing[0]["is_active"] is True
+        assert listing[0]["subject_id"] is None

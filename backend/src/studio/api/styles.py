@@ -15,17 +15,25 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import Engine
 
-from studio.api.deps import get_engine, get_settings
+from studio.agent.runtime import RuntimeFactory
+from studio.api.deps import get_engine, get_runtime_factory, get_settings
 from studio.api.schemas import (
     DraftFileOut,
     DraftFileWrite,
     DraftStatusOut,
+    SessionCreate,
+    SessionOut,
     StyleOut,
     StyleSummaryOut,
 )
+from studio.api.sessions import session_out
 from studio.config import Settings
+from studio.db.repo.profiles import get_model_profile_by_id
+from studio.db.repo.sessions import create_session, delete_subject_sessions, list_sessions
 from studio.db.repo.settings import get_all_settings, update_settings
 from studio.styles import store
+
+STYLE_STAGE = "style"
 
 router = APIRouter(prefix="/api", tags=["styles"])
 
@@ -119,6 +127,7 @@ async def delete_style_endpoint(
         store.delete_style(settings.data_dir, style_id)
     except _STORE_ERRORS as exc:
         raise _http_error(exc) from exc
+    delete_subject_sessions(engine, style_id)
     if _default_id(engine) == style_id:
         update_settings(engine, {"default_style_preset_id": None})
     return Response(status_code=204)
@@ -148,12 +157,15 @@ async def open_draft_endpoint(
 
 @router.delete("/styles/{style_id}/draft", status_code=204)
 async def discard_draft_endpoint(
-    style_id: str, settings: Settings = Depends(get_settings)
+    style_id: str, engine: Engine = Depends(get_engine), settings: Settings = Depends(get_settings)
 ) -> Response:
     try:
         store.discard_draft(settings.data_dir, style_id)
     except _STORE_ERRORS as exc:
         raise _http_error(exc) from exc
+    if not store.style_known(settings.data_dir, style_id):
+        # 从未保存的新风格整个消失了，它的对话也一起清掉。
+        delete_subject_sessions(engine, style_id)
     return Response(status_code=204)
 
 
@@ -212,3 +224,42 @@ async def save_draft_endpoint(
     except _STORE_ERRORS as exc:
         raise _http_error(exc) from exc
     return _out(detail, _default_id(engine))
+
+
+def _require_known(settings: Settings, style_id: str) -> None:
+    if not store.style_known(settings.data_dir, style_id):
+        raise _http_error(store.StyleNotFoundError(style_id))
+
+
+@router.post("/styles/{style_id}/sessions", response_model=SessionOut, status_code=201)
+async def create_style_session_endpoint(
+    style_id: str,
+    body: SessionCreate,
+    engine: Engine = Depends(get_engine),
+    runtime_factory: RuntimeFactory = Depends(get_runtime_factory),
+    settings: Settings = Depends(get_settings),
+) -> SessionOut:
+    """新建这套风格的对话会话（从未保存的新风格也可以）；同一风格的旧会话取消活动。"""
+    _require_known(settings, style_id)
+    profile = get_model_profile_by_id(engine, body.model_profile_id)
+    if profile is None:
+        raise HTTPException(status_code=400, detail=f"模型配置不存在：{body.model_profile_id}")
+    if not runtime_factory.has(profile.runtime):
+        raise HTTPException(status_code=400, detail=f"运行时未启用：{profile.runtime}")
+    session = create_session(
+        engine,
+        project_id=None,
+        stage=STYLE_STAGE,
+        subject_id=style_id,
+        model_profile_id=profile.id,
+        runtime=profile.runtime,
+    )
+    return session_out(session)
+
+
+@router.get("/styles/{style_id}/sessions", response_model=list[SessionOut])
+async def list_style_sessions_endpoint(
+    style_id: str, engine: Engine = Depends(get_engine), settings: Settings = Depends(get_settings)
+) -> list[SessionOut]:
+    _require_known(settings, style_id)
+    return [session_out(s) for s in list_sessions(engine, None, STYLE_STAGE, subject_id=style_id)]

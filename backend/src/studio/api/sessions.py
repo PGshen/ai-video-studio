@@ -115,6 +115,7 @@ def session_out(value: SessionValue) -> SessionOut:
         id=value.id,
         project_id=value.project_id,
         stage=value.stage,
+        subject_id=value.subject_id,
         model_profile_id=value.model_profile_id,
         runtime=value.runtime,
         sdk_ref=value.sdk_ref,

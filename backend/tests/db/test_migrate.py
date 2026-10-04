@@ -118,3 +118,23 @@ def test_0006_adds_abandoned_at_and_backfills_current_stage(engine: Engine) -> N
         "p-reopened": "topic",
     }
     assert "abandoned_at" in {col["name"] for col in inspect(engine).get_columns("projects")}
+
+
+def test_0008_adds_a_nullable_subject_id_to_sessions_and_keeps_existing_rows(
+    engine: Engine,
+) -> None:
+    config = _alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0007")
+        connection.execute(
+            text(
+                "INSERT INTO sessions (id, project_id, stage, model_profile_id, runtime, status, "
+                "is_active, created_at, updated_at) VALUES ('s1', NULL, 'brainstorm', 'm', 'fake', "
+                "'idle', 1, '2026-10-01', '2026-10-01')"
+            )
+        )
+        command.upgrade(config, "head")
+        rows = connection.execute(text("SELECT id, subject_id FROM sessions")).all()
+    assert rows == [("s1", None)]
+    assert "subject_id" in {col["name"] for col in inspect(engine).get_columns("sessions")}

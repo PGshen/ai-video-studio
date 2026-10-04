@@ -147,7 +147,7 @@
 - **完成标准**：不含对话的完整编辑流程可用；旧设置页组件和 `styleDraft.ts` 已删除，`make check` 绿。
 - **验证命令**：`cd frontend && pnpm vitest run src/features/styles`；`make check`；L4：列表、详情、编辑三张截图（由控制者在 8001/5174 上做）。
 
-### T8：会话归属 `subject_id` 与风格会话接口（待开始）
+### T8：会话归属 `subject_id` 与风格会话接口（完成）
 
 - **目标**：会话可以属于一套风格；创建会话与活动会话切换按 `项目 + 阶段 + subject_id` 区分。
 - **涉及文件**：新建 `backend/src/studio/db/migrations/versions/0008_sessions_subject_id.py`；`backend/src/studio/db/models.py`（`Session.subject_id` 可空）；`backend/src/studio/db/repo/sessions.py`（`SessionValue.subject_id`；`create_session(..., subject_id=None)` 的「取消同组活动」条件加入 `subject_id`；`list_sessions(engine, project_id, stage, subject_id=None)`）；`backend/src/studio/api/styles.py`（`POST/GET /api/styles/{id}/sessions`，风格必须存在，模型配置与运行时检查沿用 `brainstorm.py` 的写法）；`backend/src/studio/api/schemas.py`（`SessionOut.subject_id`）；`backend/tests/db/test_repo_sessions.py`、`backend/tests/api/test_styles.py`、`backend/tests/db/test_migrate.py`。
@@ -197,10 +197,11 @@
 - 2026-10-04 — T5 前端基础：侧栏「风格库」、`/styles` 路由与旧地址重定向、新 API 客户端/类型/query hook、`styleView`/`styleFrontmatter` 纯逻辑；设置页去掉风格库 Tab，并删除旧的 `StylePresetsPanel`/`StylePresetEditor`/`styleDraft` — `make check` 绿（后端 1531、前端 748），`pnpm typecheck` 无错误
 - 2026-10-04 — T6 风格库列表页（`StyleGrid`/`StyleCard`，筛选、分页、新建、点卡片/编辑只改 URL query）— `make check` 绿（前端 766），`pnpm typecheck` 无错误
 - 2026-10-04 — T7 抽屉详情态/编辑态（`StyleDrawer`/`StyleDetailView`/`StyleEditView`/`StyleMetaForm`/`StyleFileTree`/`useStyleDraft`，StylesPage 挂载）；浏览器走查发现并修复：编辑态内容比状态晚到导致空白闪烁、关闭抽屉动画期间空白、深链接 404 重试 7 秒、窄屏编辑器只剩 73px、新建草稿关抽屉后成孤儿（改为列表里标记 `is_new`）— `make check` 绿（后端 1534、前端 850）
+- 2026-10-04 — T8 `sessions.subject_id`（迁移 0008）、`create_session`/`list_sessions` 按 `subject_id` 分组、`delete_subject_sessions`、`POST/GET /api/styles/{id}/sessions`（正式风格和从未保存的新风格都可建会话）、删除风格/放弃新风格时清理会话 — `make check` 绿（后端 1551）
 
 ## 下一步
 
-- 从 T8 开始（后端）：先写 `backend/tests/db/test_repo_sessions.py` 里关于 `subject_id` 的用例（同风格新建会话使旧会话取消活动、不同风格互不影响、与头脑风暴互不影响、`subject_id` 往返、删除风格清理会话）、`backend/tests/db/test_migrate.py` 里 0008 的升级用例、`backend/tests/api/test_styles.py` 里 `POST/GET /api/styles/{id}/sessions` 的用例；再写迁移 `0008_sessions_subject_id.py`、改 `db/models.py`、`db/repo/sessions.py`（`create_session(..., subject_id=None)`、`list_sessions(engine, project_id, stage, subject_id=None)`、`delete_subject_sessions`）、`api/styles.py`、`api/schemas.py`（`SessionOut.subject_id`）。注意：此任务里 `style` 阶段尚未注册，所以创建接口先只做数据层与接口，T9 注册阶段后才能发消息；`styles` 删除接口要顺带清理会话。隔离的 L4 实例（后端 8001/前端 5174，数据目录在 scratchpad `l4data/`）还开着，T10 要用时后端需手动重启（没开热重载），T11 收尾时关掉。
+- 从 T9 开始（后端）：先写 `backend/tests/agent/test_runner_style.py`（用 `agent/fake.py` 的 fake runtime：风格会话一轮后草稿被改写且正式版本不变；同一风格两个会话串行、不同风格并行、与项目轮次互不阻塞；风格在轮次开始前被删除 → 本轮 failed；越界写入被拦；取消和失败后草稿保留）、`backend/tests/stages/test_style_stage.py`（`validate_style` 工具对合法/非法草稿的输出、写范围、提示词要点）、`backend/tests/api/test_styles.py`（运行期间草稿写/保存/放弃/打开/删除风格 409）、`tests/api/test_settings.py`（`stage_default_profile` 接受 `style`）；再实现 `backend/src/studio/stages/style/{__init__,prompt.md,tools}.py`、`agent/runner.py` 的 `_execute_bound_dir`（`job.session.subject_id` 非空时）、`agent/turn_state.py` 的 `busy_key`（`style:<subject_id>`）、`agent/turn_finish.py`（风格会话不删 scratch 以外的东西、发 `workspace_changed`）、`TurnRunner.is_busy_key`、`api/styles.py` 的忙碌检查、`main.py` 注册 `STYLE_STAGE`。可用：`styles.store.draft_dir`/`open_draft`/`validate_draft`，`create_session(..., subject_id=)`，`api/styles.py` 里已有的 `STYLE_STAGE = "style"`。注意先确认 `WriteScope` 的通配语义（`workspace/scope.py`），补一条用例证明 `STYLE.md`、`references/*`、`exemplars/*` 可写而越界路径被拦。
 
 ## 决策记录
 
