@@ -24,6 +24,7 @@ from sqlalchemy import Engine
 from studio.agent.runner import TurnRunner
 from studio.agent.stage import StageRegistry
 from studio.agent.stage_flow import StageFlowError, finalize
+from studio.api.animation_stage import animation_stage
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
 from studio.api.scene_checks import compute_scene_checks
 from studio.api.schemas import SceneCheckOut, SceneChecksOut, SceneChecksResponse, StageOut
@@ -34,8 +35,6 @@ from studio.db.repo.stages import StageValue
 from studio.workspace import BlobStore, project_dir
 
 router = APIRouter(prefix="/api", tags=["animation"])
-
-_ANIMATION_STAGE = "animation"
 
 
 def _require_project(engine: Engine, project_id: str) -> None:
@@ -85,7 +84,7 @@ async def finalize_render_endpoint(
         raise HTTPException(status_code=409, detail="工作区有未纳入成片的改动，请重新渲染")
 
     try:
-        stage = finalize(engine, blobs, registry, project_id, _ANIMATION_STAGE)
+        stage = finalize(engine, blobs, registry, project_id, animation_stage(engine, project_id))
     except StageFlowError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

@@ -30,6 +30,13 @@
 
 `render_preview` 每次只测一个镜头，`ToolCall.args["scene_id"]` 直接给出，
 不需要解析文本，精确到镜头。
+
+## HTML 引擎（`animation_html`）
+
+阶段名由 `api.animation_stage` 按项目流水线解析，两组工具各有一张"档案"（工具名、镜头文件
+路径模板）。`validate_scenes_html` 的归属规则（输出形状见该工具模块顶部文档）：调用参数带
+`scene_id` → 结果只属于该镜头；不带且成功 → 项目级通过；不带且失败 → 按行首 `镜头 <id>：`
+点名失败镜头（`警告 镜头` 行不算），一个也没点名（页面级错误）→ 对所有镜头记为失败。
 """
 
 from __future__ import annotations
@@ -41,17 +48,37 @@ from typing import Literal
 
 from sqlalchemy import Engine
 
+from studio.api.animation_stage import animation_stage
 from studio.db.repo.sessions import list_sessions
 from studio.db.repo.snapshots import get_snapshot, latest_snapshot
 from studio.db.repo.turns import TurnValue, get_turn, list_events
 
-_ANIMATION_STAGE = "animation"
-_VALIDATE_TOOL = "validate_scenes"
-_PREVIEW_TOOL = "render_preview"
-_SCENE_PATH_TEMPLATE = "animation/scenes/{scene_id}.py"
-
 _MISSING_RE = re.compile(r"以下镜头缺少代码或代码为空，需要先写好再(?:校验|预览)：(.+)")
 _SCENE_NAME_RE = re.compile(r"镜头 (\S+?)（scene \d+）")
+_HTML_SCENE_ERROR_RE = re.compile(r"^镜头 (\S+?)：", re.MULTILINE)
+
+
+@dataclass(frozen=True, slots=True)
+class _Profile:
+    stage: str
+    validate_tool: str
+    preview_tool: str
+    scene_path_template: str
+    html: bool
+
+
+_PROFILES = {
+    "animation": _Profile(
+        "animation", "validate_scenes", "render_preview", "animation/scenes/{scene_id}.py", False
+    ),
+    "animation_html": _Profile(
+        "animation_html",
+        "validate_scenes_html",
+        "render_preview_html",
+        "animation/scenes/{scene_id}.js",
+        True,
+    ),
+}
 
 CheckOutcome = Literal["passed", "failed", "not_checked"]
 
@@ -96,21 +123,42 @@ def _image_shas(raw: object) -> tuple[str, ...]:
 @dataclass(frozen=True, slots=True)
 class _RawEvent:
     checked_at: datetime
-    kind: Literal["validate_all_passed", "validate_failure", "preview"]
+    kind: Literal[
+        "validate_all_passed",
+        "validate_scene_passed",
+        "validate_failure",
+        "validate_failure_all",
+        "preview",
+    ]
     scene_id: str | None
     passed: bool
     turn_id: str
     images: tuple[str, ...] = ()
 
 
-def _collect_raw_events(engine: Engine, project_id: str) -> list[_RawEvent]:
+def _html_validate_events(
+    when: datetime, text: str, args: object, is_error: bool, turn_id: str
+) -> list[_RawEvent]:
+    scene_id = args.get("scene_id") if isinstance(args, dict) else None
+    if isinstance(scene_id, str):
+        kind = "validate_failure" if is_error else "validate_scene_passed"
+        return [_RawEvent(when, kind, scene_id, not is_error, turn_id)]
+    if not is_error:
+        return [_RawEvent(when, "validate_all_passed", None, True, turn_id)]
+    named = list(dict.fromkeys(_HTML_SCENE_ERROR_RE.findall(text)))
+    if not named:
+        return [_RawEvent(when, "validate_failure_all", None, False, turn_id)]
+    return [_RawEvent(when, "validate_failure", sid, False, turn_id) for sid in named]
+
+
+def _collect_raw_events(engine: Engine, project_id: str, profile: _Profile) -> list[_RawEvent]:
     events: list[_RawEvent] = []
-    for session in list_sessions(engine, project_id, _ANIMATION_STAGE):
+    for session in list_sessions(engine, project_id, profile.stage):
         pending_calls: dict[str, dict[str, object]] = {}
         for event in list_events(engine, session.id):
             if event.type == "tool_call" and event.payload.get("name") in (
-                _VALIDATE_TOOL,
-                _PREVIEW_TOOL,
+                profile.validate_tool,
+                profile.preview_tool,
             ):
                 pending_calls[str(event.payload["call_id"])] = event.payload
                 continue
@@ -121,7 +169,7 @@ def _collect_raw_events(engine: Engine, project_id: str) -> list[_RawEvent]:
                 continue
             is_error = bool(event.payload["is_error"])
             turn_id = str(event.payload["turn_id"])
-            if call["name"] == _PREVIEW_TOOL:
+            if call["name"] == profile.preview_tool:
                 args = call.get("args")
                 scene_id = args.get("scene_id") if isinstance(args, dict) else None
                 if isinstance(scene_id, str):
@@ -135,6 +183,14 @@ def _collect_raw_events(engine: Engine, project_id: str) -> list[_RawEvent]:
                             _image_shas(event.payload.get("images")),
                         )
                     )
+            elif profile.html:
+                events += _html_validate_events(
+                    event.created_at,
+                    str(event.payload["text"]),
+                    call.get("args"),
+                    is_error,
+                    turn_id,
+                )
             elif is_error:
                 for scene_id in _scene_ids_named_in_validate_failure(str(event.payload["text"])):
                     events.append(
@@ -150,14 +206,22 @@ def _collect_raw_events(engine: Engine, project_id: str) -> list[_RawEvent]:
 def compute_scene_checks(
     engine: Engine, project_id: str, scene_ids: list[str]
 ) -> dict[str, SceneChecks]:
-    events = sorted(_collect_raw_events(engine, project_id), key=lambda e: e.checked_at)
+    profile = _PROFILES[animation_stage(engine, project_id)]
+    events = sorted(_collect_raw_events(engine, project_id, profile), key=lambda e: e.checked_at)
 
     latest_all_passed: tuple[datetime, str] | None = None
+    latest_failure_all: tuple[datetime, str] | None = None
+    latest_scene_passed: dict[str, tuple[datetime, str]] = {}
     latest_validate_failure: dict[str, tuple[datetime, str]] = {}
     latest_preview: dict[str, tuple[datetime, bool, str, tuple[str, ...]]] = {}
     for event in events:
         if event.kind == "validate_all_passed":
             latest_all_passed = (event.checked_at, event.turn_id)
+        elif event.kind == "validate_failure_all":
+            latest_failure_all = (event.checked_at, event.turn_id)
+        elif event.kind == "validate_scene_passed":
+            assert event.scene_id is not None
+            latest_scene_passed[event.scene_id] = (event.checked_at, event.turn_id)
         elif event.kind == "validate_failure":
             assert event.scene_id is not None
             latest_validate_failure[event.scene_id] = (event.checked_at, event.turn_id)
@@ -201,25 +265,30 @@ def compute_scene_checks(
         )
 
     def _validate_status(scene_id: str) -> SceneCheck:
-        path = _SCENE_PATH_TEMPLATE.format(scene_id=scene_id)
+        path = profile.scene_path_template.format(scene_id=scene_id)
+        # (time, passed, turn): the newest verdict wins; on a tie a pass beats a failure.
+        verdicts: list[tuple[datetime, bool, str]] = []
         failure = latest_validate_failure.get(scene_id)
-        is_newer_failure = failure is not None and (
-            latest_all_passed is None or failure[0] > latest_all_passed[0]
-        )
-        if failure is not None and is_newer_failure:
-            checked_at, turn_id = failure
-            return _check_at(path, checked_at, False, turn_id)
+        if failure is not None:
+            verdicts.append((failure[0], False, failure[1]))
+        if latest_failure_all is not None:
+            verdicts.append((latest_failure_all[0], False, latest_failure_all[1]))
         if latest_all_passed is not None:
-            checked_at, turn_id = latest_all_passed
-            return _check_at(path, checked_at, True, turn_id)
-        return _NOT_CHECKED
+            verdicts.append((latest_all_passed[0], True, latest_all_passed[1]))
+        scene_passed = latest_scene_passed.get(scene_id)
+        if scene_passed is not None:
+            verdicts.append((scene_passed[0], True, scene_passed[1]))
+        if not verdicts:
+            return _NOT_CHECKED
+        checked_at, passed, turn_id = max(verdicts, key=lambda v: (v[0], v[1]))
+        return _check_at(path, checked_at, passed, turn_id)
 
     def _preview_status(scene_id: str) -> SceneCheck:
         entry = latest_preview.get(scene_id)
         if entry is None:
             return _NOT_CHECKED
         checked_at, passed, turn_id, images = entry
-        path = _SCENE_PATH_TEMPLATE.format(scene_id=scene_id)
+        path = profile.scene_path_template.format(scene_id=scene_id)
         return _check_at(path, checked_at, passed, turn_id, images)
 
     return {

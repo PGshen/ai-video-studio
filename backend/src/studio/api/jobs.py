@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
 from sqlalchemy import Engine
 
+from studio.api.animation_stage import animation_stage
 from studio.api.deps import get_engine, get_settings
 from studio.api.schemas import JobOut
 from studio.config import Settings
@@ -36,7 +37,6 @@ from studio.workspace import project_dir
 router = APIRouter(prefix="/api", tags=["jobs"])
 
 _RENDER_JOB_TYPE = "final_render"
-_ANIMATION_STAGE = "animation"
 
 
 def _require_project(engine: Engine, project_id: str) -> None:
@@ -71,7 +71,7 @@ def create_render_job_endpoint(
     渲染已经结束、现在要开始新一轮"的正常请求。
     """
     _require_project(engine, project_id)
-    stage = get_stage(engine, project_id, _ANIMATION_STAGE)
+    stage = get_stage(engine, project_id, animation_stage(engine, project_id))
     if stage is None:
         raise HTTPException(status_code=404, detail="项目没有动画阶段")
     if stage.status == "locked":
