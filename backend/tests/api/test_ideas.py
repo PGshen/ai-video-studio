@@ -111,3 +111,48 @@ class TestGet:
         assert response.status_code == 200
         assert response.json()["id"] == idea["id"]
         assert (await api_env.client.get("/api/ideas/nope")).status_code == 404
+
+
+class TestDelete:
+    async def test_deletes_the_card(self, api_env: ApiEnv) -> None:
+        idea = await _create(api_env, title="要删的")
+        keep = await _create(api_env, title="留下的")
+
+        response = await api_env.client.delete(f"/api/ideas/{idea['id']}")
+        assert response.status_code == 204
+
+        assert (await api_env.client.get(f"/api/ideas/{idea['id']}")).status_code == 404
+        listed = await api_env.client.get("/api/ideas", params={"status": "all"})
+        assert [i["id"] for i in listed.json()] == [keep["id"]]
+
+    async def test_archived_card_can_be_deleted(self, api_env: ApiEnv) -> None:
+        idea = await _create(api_env)
+        await api_env.client.patch(f"/api/ideas/{idea['id']}", json={"status": "archived"})
+        response = await api_env.client.delete(f"/api/ideas/{idea['id']}")
+        assert response.status_code == 204
+
+    async def test_title_can_be_reused_after_delete(self, api_env: ApiEnv) -> None:
+        idea = await _create(api_env, title="同名")
+        await api_env.client.delete(f"/api/ideas/{idea['id']}")
+        await _create(api_env, title="同名")
+
+    async def test_unknown_card_is_404(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.delete("/api/ideas/nope")
+        assert response.status_code == 404
+
+    async def test_card_with_projects_is_409_and_kept(self, api_env: ApiEnv) -> None:
+        idea = await _create(api_env)
+        created = await api_env.client.post(
+            "/api/projects", json={"title": "项目", "idea_id": idea["id"]}
+        )
+        assert created.status_code == 201
+
+        response = await api_env.client.delete(f"/api/ideas/{idea['id']}")
+        assert response.status_code == 409
+        assert "项目" in response.json()["detail"]
+        assert (await api_env.client.get(f"/api/ideas/{idea['id']}")).status_code == 200
+
+        # 项目删掉之后，卡片就可以删了。
+        project_id = created.json()["id"]
+        assert (await api_env.client.delete(f"/api/projects/{project_id}")).status_code == 204
+        assert (await api_env.client.delete(f"/api/ideas/{idea['id']}")).status_code == 204

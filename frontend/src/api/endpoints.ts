@@ -70,6 +70,10 @@ export function setProjectStatus(projectId: string, status: ProjectStatus): Prom
   })
 }
 
+export function deleteProject(projectId: string): Promise<void> {
+  return request(`/projects/${encodePathSegment(projectId)}`, { method: 'DELETE' })
+}
+
 export function finalizeStage(projectId: string, stage: string) {
   return request(
     `/projects/${encodePathSegment(projectId)}/stages/${encodePathSegment(stage)}/finalize`,
@@ -381,6 +385,10 @@ export function createIdea(body: IdeaCreate): Promise<IdeaOut> {
 
 export function updateIdea(ideaId: string, body: IdeaUpdate): Promise<IdeaOut> {
   return request(`/ideas/${encodePathSegment(ideaId)}`, { method: 'PATCH', body })
+}
+
+export function deleteIdea(ideaId: string): Promise<void> {
+  return request(`/ideas/${encodePathSegment(ideaId)}`, { method: 'DELETE' })
 }
 
 // ---- topic（M4，对应 `api/topic.py`）-----------------------------------

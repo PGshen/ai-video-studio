@@ -8,9 +8,14 @@ import pytest
 from httpx import Response
 
 from brief_builder import make_brief
+from studio.db.repo.jobs import claim_next, complete, create_job, get_job
+from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.projects import get_project
+from studio.db.repo.sessions import create_session, get_session
 from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.stages import list_stages
+from studio.db.repo.suggestions import create_suggestion, get_suggestion
+from studio.db.repo.turns import append_event, create_turn_if_session_idle, list_events, list_turns
 from studio.workspace import files
 
 from .conftest import ApiEnv, assert_detail
@@ -660,3 +665,95 @@ class TestProjectStatus:
             assert response.status_code == 200
         finally:
             await api_env.release_busy(turn_id)
+
+
+class TestDelete:
+    async def test_removes_workspace_and_every_related_row(self, api_env: ApiEnv) -> None:
+        project = await api_env.create_project()
+        pid = project["id"]
+        engine = api_env.app.state.engine
+        profile = get_model_profile(engine, "fake")
+        assert profile is not None
+        session = create_session(
+            engine, project_id=pid, stage="topic", model_profile_id=profile.id, runtime="fake"
+        )
+        turn = create_turn_if_session_idle(engine, session.id, "你好")
+        assert turn is not None
+        append_event(
+            engine, turn_id=turn.id, session_id=session.id, type="text", payload={"text": "hi"}
+        )
+        assert list_events(engine, session.id)
+        suggestion = create_suggestion(
+            engine, project_id=pid, from_stage="narrative", to_stage="topic", content="改选题"
+        )
+        job = create_job(engine, type="render", project_id=pid)
+        claim_next(engine, type="render")
+        complete(engine, job.id, result={})
+        other = await api_env.create_project("另一个")
+        other_job = create_job(engine, type="render", project_id=other["id"])
+        assert api_env.workdir(pid).exists()
+
+        response = await api_env.client.delete(f"/api/projects/{pid}")
+        assert response.status_code == 204
+
+        assert not api_env.workdir(pid).exists()
+        assert get_project(engine, pid) is None
+        assert list_stages(engine, pid) == []
+        assert list_snapshots(engine, pid) == []
+        assert get_session(engine, session.id) is None
+        assert list_turns(engine, session.id) == []
+        assert list_events(engine, session.id) == []
+        assert get_suggestion(engine, suggestion.id) is None
+        assert get_job(engine, job.id) is None
+        # 别的项目不受影响。
+        assert get_job(engine, other_job.id) is not None
+        assert get_project(engine, other["id"]) is not None
+        assert api_env.workdir(other["id"]).exists()
+        assert (await api_env.client.get(f"/api/projects/{pid}")).status_code == 404
+
+    async def test_unknown_project_is_404(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.delete("/api/projects/nope")
+        assert response.status_code == 404
+
+    async def test_linked_idea_stays_and_can_be_used_again(self, api_env: ApiEnv) -> None:
+        idea = (await api_env.client.post("/api/ideas", json={"title": "选题"})).json()
+        created = await api_env.client.post(
+            "/api/projects", json={"title": "项目", "idea_id": idea["id"]}
+        )
+        pid = created.json()["id"]
+        await api_env.client.delete(f"/api/projects/{pid}")
+        assert (await api_env.client.get(f"/api/ideas/{idea['id']}")).json()["status"] == "idea"
+
+    async def test_running_turn_blocks_delete(self, api_env: ApiEnv) -> None:
+        pid = (await api_env.create_project())["id"]
+        turn_id = await api_env.make_busy(pid)
+        try:
+            response = await api_env.client.delete(f"/api/projects/{pid}")
+            assert response.status_code == 409
+            assert "运行" in assert_detail(response)
+            assert api_env.workdir(pid).exists()
+        finally:
+            await api_env.release_busy(turn_id)
+
+    @pytest.mark.parametrize("job_status", ["queued", "running"])
+    async def test_unfinished_job_blocks_delete(self, api_env: ApiEnv, job_status: str) -> None:
+        pid = (await api_env.create_project())["id"]
+        engine = api_env.app.state.engine
+        job = create_job(engine, type="render", project_id=pid)
+        if job_status == "running":
+            claimed = claim_next(engine, type="render")
+            assert claimed is not None and claimed.id == job.id
+
+        response = await api_env.client.delete(f"/api/projects/{pid}")
+        assert response.status_code == 409
+        assert get_project(engine, pid) is not None
+
+    async def test_finished_job_does_not_block_delete(self, api_env: ApiEnv) -> None:
+        pid = (await api_env.create_project())["id"]
+        engine = api_env.app.state.engine
+        job = create_job(engine, type="render", project_id=pid)
+        claim_next(engine, type="render")
+        complete(engine, job.id, result={})
+
+        response = await api_env.client.delete(f"/api/projects/{pid}")
+        assert response.status_code == 204

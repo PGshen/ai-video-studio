@@ -1,14 +1,16 @@
 <script setup lang="ts">
 /**
  * 一个项目的摘要卡片：标题、当前阶段和状态、关联选题的卖点/标签/总分。整张卡片是进入工作台的链接，
- * 右上角的「⋯」菜单用来设置项目状态（它是链接的兄弟节点，点它不会跳转）。
+ * 右上角的「⋯」菜单用来设置项目状态，旁边的垃圾桶按钮删除项目（都是链接的兄弟节点，点它们不会跳转）。
  * 项目没有关联选题时（旧数据）只显示标题和阶段。
  */
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import ConfirmDeleteButton from '@/components/ConfirmDeleteButton.vue'
 import ProjectStatusMenu from '@/components/ProjectStatusMenu.vue'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { useDeleteProjectMutation } from '@/composables/queries'
 import { STAGE_TITLES } from '@/composables/stageTitles'
 import { ideaTotal } from '@/composables/ideaScores'
 import type { IdeaOut, ProjectOut } from '@/types/api'
@@ -18,6 +20,8 @@ import { projectStatus, statusText } from './projectView'
 const VISIBLE_TAGS = 3
 
 const props = defineProps<{ project: ProjectOut; idea: IdeaOut | null }>()
+
+const deleteMutation = useDeleteProjectMutation()
 
 const status = computed(() => projectStatus(props.project))
 const tags = computed(() => props.idea?.tags ?? [])
@@ -44,7 +48,7 @@ const statusDate = computed(() => {
         :class="{ 'opacity-60': status === 'abandoned' }"
       >
         <CardHeader class="gap-2">
-          <CardTitle class="line-clamp-2 pr-7 text-base leading-snug">
+          <CardTitle class="line-clamp-2 pr-14 text-base leading-snug">
             {{ project.title }}
           </CardTitle>
           <div class="flex items-center gap-1">
@@ -102,11 +106,18 @@ const statusDate = computed(() => {
         </CardFooter>
       </Card>
     </RouterLink>
-    <div class="absolute top-3 right-3">
+    <div class="absolute top-3 right-3 flex items-center gap-0.5">
       <ProjectStatusMenu
         compact
         :project-id="project.id"
         :status="status"
+      />
+      <ConfirmDeleteButton
+        compact
+        :test-id="`project-delete-${project.id}`"
+        :title="`删除项目「${project.title}」？`"
+        description="会删除这个项目的工作区文件、快照和对话记录，不能恢复。关联的选题卡片不受影响。"
+        :action="() => deleteMutation.mutateAsync(project.id)"
       />
     </div>
   </div>

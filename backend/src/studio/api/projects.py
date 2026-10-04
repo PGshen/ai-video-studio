@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
@@ -41,6 +41,7 @@ from studio.api.schemas import (
 )
 from studio.config import Settings
 from studio.db.repo.ideas import IdeaValue, get_idea
+from studio.db.repo.jobs import delete_jobs, has_unfinished_jobs
 from studio.db.repo.projects import (
     ProjectValue,
     clear_project_completed,
@@ -51,10 +52,12 @@ from studio.db.repo.projects import (
     set_project_status,
     update_project_settings,
 )
+from studio.db.repo.sessions import delete_project_sessions
 from studio.db.repo.settings import SPEECH_RATE_MAX, SPEECH_RATE_MIN, get_all_settings
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
 from studio.db.repo.style_presets import get_style_preset
+from studio.db.repo.suggestions import delete_suggestions
 from studio.engines.tts.voice_map import voice_aliases
 from studio.workspace import (
     BlobStore,
@@ -277,6 +280,30 @@ async def get_project_endpoint(
     stages = [_stage_out(s) for s in list_stages(engine, project_id)]
     busy = turn_runner.is_project_busy(project_id)
     return ProjectDetailOut(**_project_out(project).model_dump(), stages=stages, busy=busy)
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+async def delete_project_endpoint(
+    project_id: str,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+    turn_runner: TurnRunner = Depends(get_turn_runner),
+) -> Response:
+    """硬删除项目：工作区目录，以及快照、阶段、会话（含轮次和事件）、建议、任务的记录。
+
+    有运行中的 turn 或 `queued`/`running` 的任务时 409。检查与删除之间不 `await`（项目级串行，
+    见模块说明）。`BlobStore` 里的内容不删（内容寻址，可能被其他项目共用）。选题卡片不受影响。
+    """
+    _require_project(engine, project_id)
+    _require_not_busy(turn_runner, project_id)
+    if has_unfinished_jobs(engine, project_id):
+        raise HTTPException(status_code=409, detail="项目有排队或运行中的任务，请等它结束后再删除")
+    delete_project_sessions(engine, project_id)
+    delete_suggestions(engine, project_id)
+    delete_jobs(engine, project_id)
+    # 创建失败时的回滚正好是"工作区 + 快照 + 阶段 + 项目行"，这里复用。
+    _cleanup_failed_project(engine, settings, project_id)
+    return Response(status_code=204)
 
 
 def _require_stage_definition(stage: str, registry: StageRegistry) -> StageDefinition:

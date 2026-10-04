@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import Engine, select, update
+from sqlalchemy import Engine, delete, select, update
 
 from studio.db.engine import session_scope
-from studio.db.models import Session, Turn
+from studio.db.models import Session, Turn, TurnEvent
 from studio.db.repo.turns import UNFINISHED_TURN_STATUSES
 
 
@@ -115,3 +115,12 @@ def list_sessions(engine: Engine, project_id: str | None, stage: str) -> list[Se
             .order_by(Session.created_at.asc())
         ).all()
         return [to_session_value(row) for row in rows]
+
+
+def delete_project_sessions(engine: Engine, project_id: str) -> None:
+    """删除项目的全部会话及其轮次、事件（删除项目时用）；没有会话时是空操作。"""
+    with session_scope(engine) as db:
+        session_ids = select(Session.id).where(Session.project_id == project_id)
+        db.execute(delete(TurnEvent).where(TurnEvent.session_id.in_(session_ids)))
+        db.execute(delete(Turn).where(Turn.session_id.in_(session_ids)))
+        db.execute(delete(Session).where(Session.project_id == project_id))

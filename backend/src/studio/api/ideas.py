@@ -1,6 +1,7 @@
 """`/api/ideas`：选题池卡片（设计 §5.0；计划 M4 T2）。
 
-不提供 DELETE：卡片只归档（`status=archived`），可以恢复。一张卡片可以创建多个项目
+卡片可以归档（`status=archived`，可恢复），也可以硬删除（`DELETE`，不可恢复）；已经创建过项目的
+卡片不能删（409），避免项目指向一张不存在的卡片。一张卡片可以创建多个项目
 （`POST /api/projects` 带 `idea_id`），关联记在项目上，卡片状态不变。
 """
 
@@ -8,13 +9,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import Engine
 
 from studio.api.deps import get_engine
 from studio.api.schemas import IdeaCreate, IdeaOut, IdeaUpdate
 from studio.db.repo import ideas as repo
 from studio.db.repo.ideas import IdeaValue
+from studio.db.repo.projects import list_projects
 
 router = APIRouter(prefix="/api", tags=["ideas"])
 
@@ -96,3 +98,20 @@ def update_idea_endpoint(
         repo.DuplicateIdeaError,
     ) as exc:
         raise _http_error(exc) from exc
+
+
+@router.delete("/ideas/{idea_id}", status_code=204)
+def delete_idea_endpoint(idea_id: str, engine: Engine = Depends(get_engine)) -> Response:
+    """硬删除一张卡片；已经有项目关联时 409，要先删掉这些项目。"""
+    if repo.get_idea(engine, idea_id) is None:
+        raise HTTPException(status_code=404, detail=f"卡片不存在：{idea_id}")
+    linked = sum(1 for project in list_projects(engine) if project.idea_id == idea_id)
+    if linked:
+        raise HTTPException(
+            status_code=409, detail=f"这张卡片已创建 {linked} 个项目，请先删除这些项目再删除卡片"
+        )
+    try:
+        repo.delete_idea(engine, idea_id)
+    except repo.IdeaNotFoundError as exc:
+        raise _http_error(exc) from exc
+    return Response(status_code=204)

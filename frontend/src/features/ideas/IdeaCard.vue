@@ -1,12 +1,14 @@
 <script setup lang="ts">
 /**
- * 一张想法卡片的摘要（列表里用）：标题、卖点（截断）、少量标签、总分，以及「详情」和主操作。
- * 完整内容和其余操作（编辑/归档）在 `IdeaDetailDialog`。只做展示和事件，不直接调接口。
+ * 一张想法卡片的摘要（列表里用）：标题、卖点（截断）、少量标签、总分和主操作；点卡片本身打开详情。
+ * 完整内容和其余操作（编辑/归档）在 `IdeaDetailDialog`。删除按钮自带确认框，直接调删除接口。
  */
 import { computed } from 'vue'
 import { Badge } from '@/components/ui/badge'
+import ConfirmDeleteButton from '@/components/ConfirmDeleteButton.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { useDeleteIdeaMutation } from '@/composables/queries'
 import type { IdeaOut } from '@/types/api'
 import { ideaTotal, statusLabel } from './ideaView'
 
@@ -21,6 +23,8 @@ const emit = defineEmits<{
   (e: 'restore', idea: IdeaOut): void
 }>()
 
+const deleteMutation = useDeleteIdeaMutation()
+
 const total = computed(() => ideaTotal(props.idea.scores))
 const shownTags = computed(() => props.idea.tags.slice(0, VISIBLE_TAGS))
 const hiddenTags = computed(() => props.idea.tags.length - shownTags.value.length)
@@ -28,9 +32,13 @@ const hiddenTags = computed(() => props.idea.tags.length - shownTags.value.lengt
 
 <template>
   <Card
-    class="flex flex-col"
+    class="hover:border-primary flex cursor-pointer flex-col transition-colors"
     :class="{ 'opacity-60': idea.status === 'archived' }"
     :data-testid="`idea-card-${idea.id}`"
+    role="button"
+    tabindex="0"
+    @click="emit('detail', idea)"
+    @keydown.enter.self="emit('detail', idea)"
   >
     <CardHeader class="gap-2">
       <div class="flex items-start justify-between gap-2">
@@ -68,17 +76,15 @@ const hiddenTags = computed(() => props.idea.tags.length - shownTags.value.lengt
       </span>
     </CardContent>
 
-    <CardFooter class="flex items-center gap-2">
-      <Button
-        size="sm"
-        variant="outline"
-        @click="emit('detail', idea)"
-      >
-        详情
-      </Button>
+    <!-- 点底部的按钮不应该同时打开详情。 -->
+    <CardFooter
+      class="flex items-center gap-2"
+      @click.stop
+    >
       <Button
         v-if="idea.status === 'idea'"
         size="sm"
+        variant="outline"
         :disabled="busy"
         @click="emit('create-project', idea)"
       >
@@ -90,7 +96,7 @@ const hiddenTags = computed(() => props.idea.tags.length - shownTags.value.lengt
         variant="ghost"
         @click="emit('open-projects', idea)"
       >
-        打开项目
+        关联项目
       </Button>
       <Button
         v-else-if="idea.status === 'archived'"
@@ -101,6 +107,16 @@ const hiddenTags = computed(() => props.idea.tags.length - shownTags.value.lengt
       >
         恢复
       </Button>
+      <ConfirmDeleteButton
+        :test-id="`idea-delete-${idea.id}`"
+        :title="`删除选题「${idea.title}」？`"
+        :description="
+          projectCount > 0
+            ? `这张卡片已创建 ${projectCount} 个项目，需要先删除这些项目才能删除卡片。`
+            : '删除后不能恢复。想以后还能找回，请用归档。'
+        "
+        :action="() => deleteMutation.mutateAsync(idea.id)"
+      />
       <span
         v-if="total.count"
         class="text-muted-foreground ml-auto text-xs tabular-nums"

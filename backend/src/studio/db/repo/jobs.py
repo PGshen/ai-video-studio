@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, delete, select
 
 from studio.db.engine import session_scope
 from studio.db.models import Job
@@ -156,3 +156,22 @@ def reap_stale_running(
             row.error = "worker 心跳超时（可能是进程崩溃）"
         db.flush()
         return [_to_value(row) for row in rows]
+
+
+def has_unfinished_jobs(engine: Engine, project_id: str) -> bool:
+    """项目是否有 `queued`/`running` 的任务。"""
+    with session_scope(engine) as db:
+        return (
+            db.scalars(
+                select(Job.id)
+                .where(Job.project_id == project_id, Job.status.in_(("queued", "running")))
+                .limit(1)
+            ).first()
+            is not None
+        )
+
+
+def delete_jobs(engine: Engine, project_id: str) -> None:
+    """删除项目的全部任务行（删除项目时用）；没有任务时是空操作。"""
+    with session_scope(engine) as db:
+        db.execute(delete(Job).where(Job.project_id == project_id))

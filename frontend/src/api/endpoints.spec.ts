@@ -6,7 +6,9 @@ import {
   createProject,
   createRenderJob,
   createSession,
+  deleteIdea,
   deleteModelProfile,
+  deleteProject,
   finalizeRender,
   finalVideoUrl,
   getFileContent,
@@ -50,6 +52,21 @@ describe('endpoints：动态路径段会被正确编码', () => {
     expect(String(url)).toBe('/api/projects/proj%231/status')
     expect(init.method).toBe('PATCH')
     expect(JSON.parse(String(init.body))).toEqual({ status: 'abandoned' })
+  })
+
+  it('deleteProject / deleteIdea 对 id 编码，DELETE 并且 204 返回 undefined', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await deleteProject('proj#1')).toBeUndefined()
+    expect(await deleteIdea('i#1')).toBeUndefined()
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/proj%231')
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'DELETE' })
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/ideas/i%231')
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: 'DELETE' })
   })
 
   it('getFileContent 保留文件路径里的 /，编码每一段里的特殊字符', async () => {

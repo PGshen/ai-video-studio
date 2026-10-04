@@ -125,6 +125,18 @@ export function useSetProjectStatusMutation() {
   })
 }
 
+export function useDeleteProjectMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (projectId: string) => api.deleteProject(projectId),
+    onSuccess: (_data, projectId) => {
+      // 项目没了：它的详情、文件、会话等缓存都丢掉，别再去请求（会 404）。
+      queryClient.removeQueries({ queryKey: queryKeys.project(projectId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects(), exact: true })
+    },
+  })
+}
+
 export function useFinalizeStageMutation(projectId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -583,6 +595,16 @@ export function useUpdateIdeaMutation() {
   return useMutation({
     mutationFn: (args: { id: string; body: IdeaUpdate }): Promise<IdeaOut> =>
       api.updateIdea(args.id, args.body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
+    },
+  })
+}
+
+export function useDeleteIdeaMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ideaId: string) => api.deleteIdea(ideaId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
     },

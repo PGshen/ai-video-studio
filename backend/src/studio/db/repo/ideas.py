@@ -259,3 +259,12 @@ def update_idea(
             setattr(row, name, value)
         db.flush()
         return _to_value(row)
+
+
+def delete_idea(engine: Engine, idea_id: str) -> None:
+    """硬删除一张卡片。卡片不存在抛 `IdeaNotFoundError`；"有没有关联项目"由调用方（api）检查。"""
+    with session_scope(engine) as db:
+        row = db.get(Idea, idea_id)
+        if row is None:
+            raise IdeaNotFoundError(idea_id)
+        db.delete(row)

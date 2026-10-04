@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, delete, func, select
 
 from studio.db.engine import session_scope
 from studio.db.models import Suggestion
@@ -141,3 +141,9 @@ def update_suggestion_status(engine: Engine, suggestion_id: str, status: str) ->
         row.status = status
         db.flush()
         return _to_value(row)
+
+
+def delete_suggestions(engine: Engine, project_id: str) -> None:
+    """删除项目的全部回退建议（删除项目时用）；没有建议时是空操作。"""
+    with session_scope(engine) as db:
+        db.execute(delete(Suggestion).where(Suggestion.project_id == project_id))
