@@ -22,7 +22,11 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
 
 ```bash
 cd backend && uv run pytest -m slow tests/engines/test_html_browser.py tests/stages/test_animation_html_tools.py tests/api/test_animation_html_flow.py
+# 子项目 2B：成片（出帧、混音、worker 端到端）与浏览器池的真实 SIGKILL 恢复
+cd backend && uv run pytest -m slow tests/engines/test_html_video.py tests/engines/test_mix.py tests/engines/test_html_pool_recovery.py tests/api/test_html_final_flow.py
 ```
+
+成片渲染的速度、色域、混音与浏览器内存的实测结论见 [references/html-video-render.md](../references/html-video-render.md)。
 
 ## 在 worktree 里做 L4（浏览器走查）
 
@@ -56,7 +60,11 @@ cd backend && uv run pytest -m slow tests/engines/test_html_browser.py tests/sta
   - 冒烟测试**不限制运行次数**，需要验证时就跑。
   - 用真实模型验证时，**优先使用本机登录的 Claude 订阅账号**（`claude-login`，不产生 API 费用）：`make smoke SMOKE_ARGS="-k claude_login"`。`SMOKE_ARGS` 原样追加到 pytest 命令后面。
   - 只有要验证的内容必须用到某个运行时或服务商时（API key 模式、OpenAI/OpenRouter、DeepSeek/LiteLLM），才跑对应用例或完整的 `make smoke`；这些用例会产生 API 费用，预算上限仍由测试里的 `COST_LIMITS` 强制。
-  - `test_animation_html_claude_login`（子项目 2A）：本机 Claude 登录，经 `TurnRunner` 在 `animation_html` 阶段里真实写镜头（`build_harness(real_stages=True, html=True)`；叙事用 `tests/fixtures/animation_html/sky/` 的 3 镜头“天空为什么是蓝的”夹具，无需配音文件）。要求：3 个镜头文件都写出，最后一次 `validate_scenes_html` 无错误（允许一次“根据校验错误继续”的追加轮），调用过 `render_preview_html`。需要真实 Chromium（`make setup`）。证据（警告、工具调用序列、预览次数）写到 `data/evidence/html-engine/smoke/`。命令：`make smoke SMOKE_ARGS="-k animation_html_claude_login"`（约 10–15 分钟，不产生 API 费用）。
+  - `test_animation_html_claude_login`（子项目 2A）：本机 Claude 登录，经 `TurnRunner` 在 `animation_html` 阶段里真实写镜头（`build_harness(real_stages=True, html=True)`；叙事用 `tests/fixtures/animation_html/sky/` 的 3 镜头“天空为什么是蓝的”夹具，无需配音文件）。要求：3 个镜头文件都写出，最后一次 `validate_scenes_html` 无错误（允许一次“根据校验错误继续”的追加轮），调用过 `render_preview_html`。需要真实 Chromium（`make setup`）。证据（警告、工具调用序列、预览次数）写到 `data/evidence/html-engine/smoke/`。2B 起用例末尾还会用 agent 写出的镜头真实渲染一次成片（旁白用与 timing 等长的静音 wav 代替），断言成片时长等于时间轴、有视频和音频两路流，证据里多一项 `final_render`（成片时长与渲染耗时）。命令：`make smoke SMOKE_ARGS="-k animation_html_claude_login"`（约 10–15 分钟，不产生 API 费用）。
+
+## HTML 动画画布的 L4 走查（子项目 2B）
+
+在隔离实例上做（不碰 8000/5173）：`STUDIO_DATA_DIR` 用临时目录，api 起在 8010、前端起在 5174（`VITE_API_TARGET` 或前端代理指向 8010，以 `vite.config.ts` 为准）。用 `backend/tests` 里的种子函数建项目：`fixtures.animation_html.seed.seed_animation_html_project`（叙事已定稿、配音为静音 wav、动画阶段 `active`），再用 `fixtures.html_engine.projects.write_project` 写入镜头脚本。走查要点：三个标签（镜头 / 实时预览 / 成片）；实时预览的播放、暂停、拖动进度条、点镜头按钮、循环当前镜头；编辑脚本保存后预览自动刷新（`meta.hash` 变化）；故意写错脚本时出现错误横幅且编辑与成片标签不受影响；成片标签渲染、播放、定稿；对比预览与成片里同一 beat 的出现时刻。
 
 ## 风格库的 L4 走查（风格库重构）
 
