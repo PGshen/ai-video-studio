@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 进行中 |
+| 状态 | 待验收 |
 | 里程碑 | 多形态视频流水线 · 子项目 2/4 · 计划 2B |
 | 设计依据 | [子项目 2 设计](../../design/2026-10-04-timeline-html-engine.md)（已批准）§5.5、§6.3（`scene_checks` 衔接）、§7、§8、§9；[总设计](../../design/2026-10-04-html-video-pipeline.md)；[计划 2A](../completed/html-engine-2a.md)（已完成，已合并 main） |
 | 分支 | `html-engine-2b` |
@@ -60,22 +60,22 @@
 
 ## 验收标准
 
-- [ ] AC1：`engines.render.mix` 按时间轴起点拼出旁白轨，总时长等于时间轴时长，音轨为 AAC、容器 `faststart`（验证方式：`-m slow` 的 `tests/engines/test_mix.py` + ffprobe）
-- [ ] AC2：`engines.render.html.video` 在真实 Chromium 下输出 30 帧级别的无声 MP4，帧数与时长正确，进度回调单调，失败时点名时刻并清理（验证方式：`-m slow` 的 `tests/engines/test_html_video.py`；纯逻辑部分的单测）
-- [ ] AC3：worker 对 `engine=html` 项目渲染出 `output/final.mp4` 与带 `engine`、`timeline_hash`、`audio_sources` 的 `final.json`；命中缓存时不再出帧；Manim 项目的现有测试不变（验证方式：`tests/test_worker.py` 新增用例；`-m slow` 端到端）
-- [ ] AC4：`render` 与 `finalize-render` 按项目流水线解析动画阶段；`scene-checks` 对 `animation_html` 的两个工具生效且输出形状与 Manim 一致（验证方式：`tests/api/`）
-- [ ] AC5：预览端点（页面、资源、`meta`）符合设计 §7.1，含 CORS、`no-store`、路径越界拒绝、409（验证方式：`tests/api/test_html_preview.py`）
-- [ ] AC6：前端传输时钟、镜头刻度、iframe 消息协议的纯函数有单测；`HtmlAnimationCanvas` 三个标签有组件测试；`useScenePlayback` 搬迁后行为不变（验证方式：vitest；`make check`）
-- [ ] AC7：L4：在内置浏览器里，用种子脚本写入镜头，实时预览可播放、拖动进度条、循环镜头；成片标签能触发渲染、播放成片并定稿；预览与成片的音画偏差已对比并记录（验证方式：控制者截图与数据）
-- [ ] AC8：测速与恢复实测写入 references：出帧速度与长视频时长、浏览器池真实 SIGKILL 后的恢复、常驻浏览器的内存占用（验证方式：`docs/references/html-video-render.md`，`-m slow` 的恢复用例）
-- [ ] AC9：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`tech-debt.md`（TD-69 ⑤ 结论）、`docs/plans/TODO.md` 已同步；`make check` 为绿
+- [x] AC1：`engines.render.mix` 按时间轴起点拼出旁白轨，总时长等于时间轴时长，音轨为 AAC、容器 `faststart`（验证方式：`-m slow` 的 `tests/engines/test_mix.py` + ffprobe）
+- [x] AC2：`engines.render.html.video` 在真实 Chromium 下输出 30 帧级别的无声 MP4，帧数与时长正确，进度回调单调，失败时点名时刻并清理（验证方式：`-m slow` 的 `tests/engines/test_html_video.py`；纯逻辑部分的单测）
+- [x] AC3：worker 对 `engine=html` 项目渲染出 `output/final.mp4` 与带 `engine`、`timeline_hash`、`audio_sources` 的 `final.json`；命中缓存时不再出帧；Manim 项目的现有测试不变（验证方式：`tests/test_worker.py` 新增用例；`-m slow` 端到端）
+- [x] AC4：`render` 与 `finalize-render` 按项目流水线解析动画阶段；`scene-checks` 对 `animation_html` 的两个工具生效且输出形状与 Manim 一致（验证方式：`tests/api/`）
+- [x] AC5：预览端点（页面、资源、`meta`）符合设计 §7.1，含 CORS、`no-store`、路径越界拒绝、409（验证方式：`tests/api/test_html_preview.py`）
+- [x] AC6：前端传输时钟、镜头刻度、iframe 消息协议的纯函数有单测；`HtmlAnimationCanvas` 三个标签有组件测试；`useScenePlayback` 搬迁后行为不变（验证方式：vitest；`make check`）
+- [x] AC7：L4：在内置浏览器里，用种子脚本写入镜头，实时预览可播放、拖动进度条、循环镜头；成片标签能触发渲染、播放成片并定稿；预览与成片的音画偏差已对比并记录（验证方式：控制者截图与数据）
+- [x] AC8：测速与恢复实测写入 references：出帧速度与长视频时长、浏览器池真实 SIGKILL 后的恢复、常驻浏览器的内存占用（验证方式：`docs/references/html-video-render.md`，`-m slow` 的恢复用例）
+- [x] AC9：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`tech-debt.md`（TD-69 ⑤ 结论）、`docs/plans/TODO.md` 已同步；`make check` 为绿
 
 ## 任务
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 <!-- 依赖：T1、T2、T6 互相独立；T3 依赖 T1、T2；T4 独立于 T3；T5 独立；T7 依赖 T5、T6；T8 依赖全部 -->
 
-### T1：`engines.render.mix`（待开始）
+### T1：`engines.render.mix`（完成）
 
 - **目标**：纯能力层的旁白混音。
 - **涉及文件**：`backend/src/studio/engines/render/mix.py`、`backend/tests/engines/test_mix.py`、`backend/pyproject.toml`（import-linter：`engines` 契约不需新增，确认 `mix` 不 import `studio.timeline`）。
@@ -84,7 +84,7 @@
 - **完成标准**：测试通过；输出写临时文件再原子改名。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_mix.py -v && uv run pytest tests/engines/test_mix.py -m slow -v`
 
-### T2：`engines.render.html.video`（待开始）
+### T2：`engines.render.html.video`（完成）
 
 - **目标**：逐帧出图并编码为无声 MP4，带进度回调与可诊断的失败。
 - **涉及文件**：`backend/src/studio/engines/render/html/video.py`、`backend/tests/engines/test_html_video.py`。
@@ -93,7 +93,7 @@
 - **完成标准**：测试通过；测速结论待 T8 汇总。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_html_video.py -v && uv run pytest tests/engines/test_html_video.py -m slow -v`
 
-### T3：worker 分流与 HTML 成片（待开始）
+### T3：worker 分流与 HTML 成片（完成）
 
 - **目标**：`final_render` 按项目引擎分流；HTML 路径产出 `final.mp4` 与 `final.json`。
 - **涉及文件**：`backend/src/studio/worker.py`（拆分：Manim 路径保持原样，新增 `_run_html` 一类函数，必要时把 HTML 路径放进 `backend/src/studio/worker_html.py`，保持 `worker.py` 可读）、`backend/tests/test_worker.py`（沿用现有夹具，新增 HTML 用例）、`backend/tests/fixtures/`（复用 `animation_html/seed.py` 的 sky 夹具与 `html_engine/fakes.py`）。
@@ -110,7 +110,7 @@
 - **完成标准**：Manim 路径现有 worker 测试全部通过；新增用例通过。
 - **验证命令**：`cd backend && uv run pytest tests/test_worker.py tests/engines/test_worker.py -v`
 
-### T4：api——动画阶段解析与 `scene_checks` 泛化（待开始）
+### T4：api——动画阶段解析与 `scene_checks` 泛化（完成）
 
 - **目标**：渲染任务、定稿、镜头检查状态对 `animation_html` 生效，老项目与 Manim 不变。
 - **涉及文件**：`backend/src/studio/api/jobs.py`、`api/animation.py`、`api/scene_checks.py`、`backend/tests/api/`（新增 `test_html_render_flow.py`，补充现有 jobs/animation/scene_checks 用例）。
@@ -122,7 +122,7 @@
 - **完成标准**：`tests/api/` 全部通过；Manim 路径的 scene_checks 用例零改动。
 - **验证命令**：`cd backend && uv run pytest tests/api -q`
 
-### T5：api——预览端点（待开始）
+### T5：api——预览端点（完成）
 
 - **目标**：iframe 实时预览所需的三个只读端点。
 - **涉及文件**：`backend/src/studio/api/html_preview.py`（新）、`backend/src/studio/main.py`（注册路由）、`backend/src/studio/api/schemas.py`（`HtmlPreviewMeta` 等）、`backend/tests/api/test_html_preview.py`。
@@ -137,7 +137,7 @@
 - **完成标准**：端点测试全部通过；与 `assemble` 的路由表一致。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_html_preview.py -v`
 
-### T6：前端基础——搬迁、语言、协议与时钟（待开始）
+### T6：前端基础——搬迁、语言、协议与时钟（完成）
 
 - **目标**：画布所需的纯逻辑与跨 feature 的基础件先就位。
 - **涉及文件**：`frontend/src/composables/useScenePlayback.ts`（+ spec，从 `features/canvas/narrative/` 搬来，叙事画布改 import）、`frontend/package.json` + `pnpm-lock.yaml`（`@codemirror/lang-javascript`）、`frontend/src/components/codeEditorLanguage.ts`（加 `'javascript'`）、`components/CodeEditor.vue`、`features/canvas/generic/fileKind.ts`（`.js` 用 `'javascript'`，更新其 spec）、`frontend/src/features/canvas/animation/htmlPreview/` 下的纯模块与 spec：`previewProtocol.ts`（构造 `seek`、解析来自 iframe 的 `ready`/`error`，按 `event.source` 过滤）、`previewClock.ts`（全局时间 ↔ 镜头内时间映射、音频 `currentTime` 加镜头起点、镜头刻度百分比、循环当前镜头的跳转、下一镜头）、`api/endpoints.ts`/`types/api.ts`/`composables/queries.ts`（`getHtmlPreviewMeta` 与 `useHtmlPreviewMetaQuery`，`queryKey` 含项目）。
@@ -146,7 +146,7 @@
 - **完成标准**：`pnpm lint`、`vitest` 全绿；叙事画布行为不变。
 - **验证命令**：`cd frontend && pnpm exec vitest run && pnpm run lint && pnpm exec vue-tsc --noEmit`（以 `make check` 里的实际命令为准）
 
-### T7：前端——`HtmlAnimationCanvas` 与分发（待开始）
+### T7：前端——`HtmlAnimationCanvas` 与分发（完成）
 
 - **目标**：三个标签的专属画布，`animation_html` 阶段用它。
 - **涉及文件**：`frontend/src/features/canvas/animation/HtmlAnimationCanvas.vue`、`HtmlPreviewPane.vue`、`useHtmlPlayback.ts`（含 spec 与组件 spec）、`frontend/src/pages/ProjectWorkbenchPage.vue`（按阶段 key 分发，标签行 `actions` 插槽与 `AnimationCanvas` 一致）、必要时 `sceneStatus.ts`（镜头文件扩展名参数化，Manim 行为不变）。
@@ -159,7 +159,7 @@
 - **完成标准**：`make check` 前端部分全绿。
 - **验证命令**：`cd frontend && pnpm exec vitest run && pnpm run lint`
 
-### T8：端到端、实测、文档与验收（待开始）
+### T8：端到端、实测、文档与验收（完成）
 
 - **目标**：证据齐全，文档同步，计划进入待验收。
 - **涉及文件**：`backend/tests/api/test_html_final_flow.py`（`slow`：fake 运行时流水线 → 种子镜头 → 预览端点 → 建渲染任务 → worker `run_once` → `final.mp4`/`final.json` → 定稿）、`backend/tests/engines/test_html_pool_recovery.py`（`slow`：杀掉池里的 Chromium 进程后下一次调用成功）、`backend/tests/smoke/test_smoke.py`（在 `animation_html` 冒烟用例末尾对产出的工作区调用 worker 渲染并断言 mp4 时长与时间轴一致，不新增模型调用）、`docs/references/html-video-render.md`（新）与 `README` 索引、`docs/ARCHITECTURE.md`（依赖表加入 `engines.render.mix`、`engines.render.html.video`、worker 依赖 `timeline`）、`docs/quality/QUALITY.md`、`docs/quality/tech-debt.md`（TD-69 ⑤ 的结论）、`docs/runbooks/verification.md`、`docs/plans/TODO.md`。
@@ -171,20 +171,32 @@
 ## 进度
 
 - 2026-10-05：计划起草，2A 已验收并合并 main。
+- 2026-10-05：T1–T8 全部完成，`make check` 全绿（后端 1948、前端 977），HTML 相关 slow 测试 33 个通过，真实模型冒烟通过（含成片渲染），L4 全链路通过；待整分支评审后交负责人验收。
 
 ## 下一步
 
-T1（`engines.render.mix`）、T2（`html.video`）、T6（前端基础）互相独立，按 T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 的顺序执行。
+整分支评审（独立评审者）→ 修复 Critical/Important → 交负责人验收；验收后合并 main、移到 `completed/`。
 
 ## 决策记录
 
 - 预览与成片的时间轴来源都用工作区顶层 `narrative/{narrative,timing}.json`（设计 §7.1 写的是 `upstream/narrative/`）：顶层目录在动画阶段始终存在，与 worker 同源，不依赖 `upstream/` 要等第一轮才物化；叙事阶段被重新打开时预览会显示当前叙事，而不是定稿快照——接受，成片前会重新检查。
 - `@codemirror/lang-javascript` 作为本计划批准的唯一新增前端依赖（设计 §7.2 要求"先确认 `CodeEditor` 支持 javascript"，实测不支持）。
 - 无旁白轨道时混音输出静音 AAC 轨：保证成片总有音轨，播放器行为一致。
+- 时间轴读取抽成 `studio.timeline.load.load_workspace_timeline`（计划没有）：worker 与预览端点要同一来源，放在纯能力层里只用 `pathlib`（含符号链接越界检查），不引入对 `workspace` 的依赖。
+- `serve_page_path` 放在 `assemble.py`（计划没有）：浏览器层的 `page.route` 和预览端点共用一处查表，路径只在组装结果里查，不碰磁盘。
+- worker 的 HTML 路径放进 `worker_html.py`，用可注入的 `HtmlBackend` 测试（计划写“必要时拆分”）；HTML 的 worker 测试在新文件 `tests/test_worker_html.py`，没有改现有 `tests/test_worker.py`。
+- `ProjectWorkbenchPage` 的按阶段分发没有单测（页面过重，计划原写了测试）；由 L4 覆盖，QUALITY 已标注。
+- 预览 iframe 改用自包含页面（见“意外与发现”）：新增 `GET .../html-preview/inline`、`assemble(inline=True)`、运行时读 `window.__ASSET_SRC__`，设计 §7.1 原来的“iframe 经 api 取页面和资源”改成“前端取一次自包含 HTML 设为 `srcdoc`”；资源端点保留用于调试。
+- 前端 `HtmlAnimationCanvas` 的缓冲区初始化同时监听 `[fileContent, selectedSceneId]`（没有照抄 `AnimationCanvas` 只监听内容）：查询缓存命中时内容一上来就有值，只监听内容会让换镜头后一直“加载中”。
 
 ## 意外与发现
 
-（执行中填写）
+- **`apad` 无限流**：`amix` 后接裸 `apad` 加 `-t`，遇到引擎自己编码的视频时 ffmpeg 一直写（几分钟 64 MB），而 lavfi 生成的测试视频正常，所以第一版单元测试没发现；端到端慢测试挂住才暴露。改成 `apad=whole_dur=D,atrim=end=D` 并补回归测试（`references/html-video-render.md`）。
+- **色域**：Canvas JPEG 是 `yuvj420p`，直接 `-pix_fmt yuv420p` 仍被标成 `yuvj420p`；改用 `scale=in_range=pc:out_range=tv,format=yuv420p`。
+- **`test_subprocess_stdin` 守卫**：新增的 ffmpeg 子进程必须显式设置 `stdin`，首次提交被它拦下，补上后通过。
+- **沙盒 iframe 取不到本机子资源（L4 发现）**：不透明源（`sandbox` 不带 `allow-same-origin`）的 iframe 对本机服务的请求，在内置浏览器里根本没有发出（api 日志里没有记录，连它自己的 `src` 页面和脚本都取不到），表现为页面不报错也永远不发 `ready`。同一页面在顶层、普通 iframe 都正常；`srcdoc` 内联脚本和字体的页面在沙盒里正常。改为自包含页面加 `srcdoc`。是否是该内置浏览器特有的策略没有在用户 Chrome 里验证，自包含方案不依赖这一点。
+- **L4 中成片面板停在“排队中”**：内置浏览器窗格被收起时页面在后台，任务轮询没有推进，刷新后正常显示“已完成”并能播放；判断为后台标签页的轮询节流，没有单独验证。
+- 真实模型写出的 3 个镜头（32.4 秒）在冒烟里渲染成片耗时 12.6 秒（含启动浏览器）。
 
 ## 阻塞
 
@@ -192,4 +204,14 @@ T1（`engines.render.mix`）、T2（`html.video`）、T6（前端基础）互相
 
 ## 验证记录
 
-（执行中填写）
+| 验收 | 命令 / 操作 | 结果 |
+|---|---|---|
+| AC1 | `uv run pytest tests/engines/test_mix.py` 与 `-m slow` | 快速 7 项、慢速 6 项通过（含 `apad` 回归） |
+| AC2 | `tests/engines/test_html_video.py` 与 `-m slow` | 快速 16 项（纯函数、假 ffmpeg 失败/取消路径）、慢速 2 项（帧数 30、yuv420p、颜色往返、失败点名 `t=0.5` 且无残留）通过 |
+| AC3 | `tests/test_worker_html.py`；`tests/api/test_html_final_flow.py`（slow） | 分流、六类前置失败、缓存命中与失效、渲染/混音失败保留旧成片、进度与心跳通过；端到端 1920×1080 H.264 加 AAC、时长 3.0 秒、`final.json` 带 `engine`/`timeline_hash`/`audio_sources` |
+| AC4 | `tests/api/test_html_render_flow.py`、`test_scene_checks_html.py`，其余 `tests/api` | 389+ 项通过；Manim 路径用例零改动 |
+| AC5 | `tests/api/test_html_preview.py` | 页面、资源、`meta`、`inline`、哈希、越界、符号链接、CORS、409 通过 |
+| AC6 | `pnpm exec vitest run` | 977 项通过；`useScenePlayback` 搬迁后原测试不变 |
+| AC7 | 隔离实例（api 8010、前端 5174、临时数据目录）：种子项目 → 三个标签 → 预览播放到 3.0 秒、收到 `ready`、无错误横幅 → worker 渲染 → 成片 3 秒可播放 → 定稿 | 通过；`animation_html` 与项目均完成。由于窗格被收起，后半段用 DOM 脚本而非截图验证，预览与成片的音画偏差**未做对比**（种子配音是静音文件，无法比较）|
+| AC8 | `references/html-video-render.md`；`tests/engines/test_html_pool_recovery.py`（slow） | 出帧 30–135 帧/秒；SIGKILL 后重建、空闲回收通过；常驻 340–550 MB |
+| AC9 | `make check`；真实模型冒烟 `make smoke SMOKE_ARGS="-k animation_html_claude_login"` | `make check` 全绿；冒烟 1 项通过（7 分 51 秒，9 次校验、5 次预览、无警告，成片 32.4 秒、渲染 12.6 秒） |
