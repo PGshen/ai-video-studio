@@ -3,8 +3,9 @@
 与具体阶段无关：上下游关系由项目流水线（`project_pipeline`）和各阶段的
 `StageDefinition.reads()` 经 `upstream_of` 得出，一个阶段可以有多个上游。
 `project_stages` 的状态：`locked` → `active` ⇄ `finalized`；全部上游都定稿后下游解锁；
-任一上游重新定稿且内容变化时下游变为 `stale`，所有上游都对得上时回到 `active`
-（重新定稿改回原样，或下游下一轮成功结束）。下游在 `based_on` 里按上游记录所基于的定稿快照。
+任一上游重新定稿且内容变化时下游变为 `stale`（`stale_from` 记下原状态）；所有上游都对得上时
+恢复：上游改回原样回到原状态（`finalized` 或 `active`），下游下一轮成功结束回到 `active`。
+下游在 `based_on` 里按上游记录所基于的定稿快照；定稿和恢复时刷成各上游当前的定稿。
 """
 
 from __future__ import annotations
@@ -106,6 +107,8 @@ def finalize(
         raise StageFlowError(f"阶段 {stage} 尚未解锁，不能定稿")
 
     snapshot = create_snapshot(engine, blobs, project_id, reason="user_edit")
+    pipeline = project_pipeline(engine, project_id)
+    # Finalizing declares the stage consistent with its upstreams as they are now (TD-64).
     finalized = update_stage(
         engine,
         project_id,
@@ -113,15 +116,15 @@ def finalize(
         status="finalized",
         finalized_snapshot_id=snapshot.id,
         finalized_at=datetime.now(UTC),
+        based_on=_current_based_on(engine, registry, pipeline, project_id, current),
     )
 
-    pipeline = project_pipeline(engine, project_id)
     stages = list_stages(engine, project_id)
     for row in _downstream_of(pipeline, registry, stages, stage):
         if row.status == "locked":
             _unlock_if_ready(engine, registry, pipeline, project_id, row)
         else:
-            _reconcile(engine, registry, project_id, row)
+            _reconcile(engine, registry, pipeline, project_id, row)
     _sync_current_stage(engine, project_id)
     return finalized
 
@@ -147,14 +150,37 @@ def _unlock_if_ready(
     update_stage(engine, project_id, row.stage, status="active", based_on=based_on)
 
 
-def _reconcile(engine: Engine, registry: StageRegistry, project_id: str, row: StageValue) -> None:
+def _current_based_on(
+    engine: Engine,
+    registry: StageRegistry,
+    pipeline: Sequence[str],
+    project_id: str,
+    row: StageValue,
+) -> dict[str, str]:
+    """`row` 的 `based_on` 刷成各上游当前的定稿快照；从未定稿的上游保留原记录。"""
+    based_on = dict(row.based_on)
+    for name in upstream_of(pipeline, registry, row.stage):
+        upstream = get_stage(engine, project_id, name)
+        if upstream is not None and upstream.finalized_snapshot_id is not None:
+            based_on[name] = upstream.finalized_snapshot_id
+    return based_on
+
+
+def _reconcile(
+    engine: Engine,
+    registry: StageRegistry,
+    pipeline: Sequence[str],
+    project_id: str,
+    row: StageValue,
+) -> None:
     """非 `locked` 的下游：逐个上游比较所基于的快照与上游当前定稿（只看上游产物目录）。
 
-    任一上游有变化 → `stale`；全部没有变化且原来是 `stale` → `active`（上游已经改回下游
-    所基于的样子）；否则不动。上游从未定稿时没有可比较的版本，跳过它。
+    任一上游有变化 → `stale`，`stale_from` 记下原状态；全部没有变化且原来是 `stale` →
+    回到 `stale_from`（上游已经改回下游所基于的样子；已定稿的回到 `finalized`，TD-65），
+    `based_on` 刷成各上游当前定稿；否则不动。上游从未定稿时没有可比较的版本，跳过它。
     """
     changed = False
-    for name in upstream_of(project_pipeline(engine, project_id), registry, row.stage):
+    for name in upstream_of(pipeline, registry, row.stage):
         upstream = get_stage(engine, project_id, name)
         if upstream is None or upstream.finalized_snapshot_id is None:
             continue
@@ -169,9 +195,15 @@ def _reconcile(engine: Engine, registry: StageRegistry, project_id: str, row: St
             break
     if changed:
         if row.status != "stale":
-            update_stage(engine, project_id, row.stage, status="stale")
+            update_stage(engine, project_id, row.stage, status="stale", stale_from=row.status)
     elif row.status == "stale":
-        update_stage(engine, project_id, row.stage, status="active")
+        update_stage(
+            engine,
+            project_id,
+            row.stage,
+            status="finalized" if row.stale_from == "finalized" else "active",
+            based_on=_current_based_on(engine, registry, pipeline, project_id, row),
+        )
 
 
 def reopen(engine: Engine, project_id: str, stage: str) -> StageValue:

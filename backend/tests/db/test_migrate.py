@@ -190,3 +190,27 @@ def test_0009_backfills_based_on_from_based_on_snapshot_id_and_downgrade_restore
         "st-animation": "snap-narrative",
     }
     assert "based_on_snapshot_id" in old_columns and "based_on" not in old_columns
+
+
+def test_0010_adds_a_nullable_stale_from_to_project_stages_and_keeps_existing_rows(
+    engine: Engine,
+) -> None:
+    config = _alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0009")
+        connection.execute(
+            text(
+                "INSERT INTO project_stages (id, project_id, stage, status, created_at, "
+                "updated_at) VALUES ('st1', 'p1', 'narrative', 'stale', '2026-10-01', '2026-10-01')"
+            )
+        )
+        command.upgrade(config, "0010")
+        upgraded = connection.execute(
+            text("SELECT id, status, stale_from FROM project_stages")
+        ).all()
+        command.downgrade(config, "0009")
+        old_columns = {col["name"] for col in inspect(connection).get_columns("project_stages")}
+
+    assert upgraded == [("st1", "stale", None)]
+    assert "stale_from" not in old_columns

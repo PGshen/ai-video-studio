@@ -107,6 +107,85 @@ class TestFinalize:
 
         assert _stage(env, "narrative").status == "active"
 
+    def _stale_narrative(self, env: StudioEnv) -> None:
+        """topic v1 定稿 → topic 改成 v2 再定稿，narrative 变 stale。"""
+        env.write("topic/brief.md", "v1")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+        env.write("narrative/script.md", "s1")
+
+    def _refinalize_topic(self, env: StudioEnv, content: str) -> None:
+        reopen(env.engine, env.project_id, "topic")
+        env.write("topic/brief.md", content)
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+
+    def test_finalizing_a_stale_stage_rebases_it_onto_current_upstreams(
+        self, env: StudioEnv
+    ) -> None:
+        """TD-64：定稿 stale 阶段时 `based_on` 刷成各上游当前定稿，
+        之后上游无变化地重新定稿不再让它 stale。"""
+        self._stale_narrative(env)
+        self._refinalize_topic(env, "v2")
+        assert _stage(env, "narrative").status == "stale"
+
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
+        narrative = _stage(env, "narrative")
+        assert narrative.status == "finalized"
+        assert narrative.based_on == {"topic": _stage(env, "topic").finalized_snapshot_id}
+
+        self._refinalize_topic(env, "v2")
+        assert _stage(env, "narrative").status == "finalized"
+
+    def test_stale_finalized_stage_returns_to_finalized_when_upstream_reverts(
+        self, env: StudioEnv
+    ) -> None:
+        """TD-65：已定稿的下游因上游变化而 stale，上游改回原样后回到 `finalized`。"""
+        self._stale_narrative(env)
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
+        self._refinalize_topic(env, "v2")
+        assert _stage(env, "narrative").status == "stale"
+
+        self._refinalize_topic(env, "v1")
+
+        narrative = _stage(env, "narrative")
+        assert narrative.status == "finalized"
+        assert narrative.based_on == {"topic": _stage(env, "topic").finalized_snapshot_id}
+        project = get_project(env.engine, env.project_id)
+        assert project is not None and project.current_stage == "animation"
+
+    def test_stale_reopened_stage_returns_to_active_when_upstream_reverts(
+        self, env: StudioEnv
+    ) -> None:
+        self._stale_narrative(env)
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
+        reopen(env.engine, env.project_id, "narrative")
+        self._refinalize_topic(env, "v2")
+        assert _stage(env, "narrative").status == "stale"
+
+        self._refinalize_topic(env, "v1")
+
+        assert _stage(env, "narrative").status == "active"
+
+    def test_stage_edited_while_stale_returns_to_active_when_upstream_reverts(
+        self, env: StudioEnv
+    ) -> None:
+        """stale 期间跑过一轮（变 `active`）的下游，再次 stale 后恢复时回到 `active`。"""
+        self._stale_narrative(env)
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
+        self._refinalize_topic(env, "v2")
+        after_turn_done(
+            env.engine,
+            env.project_id,
+            "narrative",
+            upstream_snapshot_ids(env.engine, env.registry, env.project_id, "narrative"),
+        )
+        assert _stage(env, "narrative").status == "active"
+
+        self._refinalize_topic(env, "v3")
+        assert _stage(env, "narrative").status == "stale"
+        self._refinalize_topic(env, "v2")
+
+        assert _stage(env, "narrative").status == "active"
+
 
 class TestCurrentStage:
     """`projects.current_stage` 跟着阶段流转走：第一个未定稿的阶段，全部定稿则是最后一个阶段。"""
@@ -378,6 +457,60 @@ class TestMultiUpstream:
 
         reel.edit_and_finalize("beatsheet", "beatsheet/beats.json", "b1")
         assert reel.stage("music").status == "active"
+
+    def test_finalized_stale_stage_is_not_restaled_by_an_unchanged_upstream(
+        self, env: StudioEnv
+    ) -> None:
+        """TD-64（多上游）：stale 的 beatsheet 直接定稿后，concept 无变化地重新定稿不再让它 stale，
+        前言也不再报告 concept 的变化。"""
+        reel = _Reel(env)
+        reel.write("concept/idea.md", "c1")
+        reel.finalize("concept")
+        reel.write("beatsheet/beats.json", "b1")
+        reel.finalize("beatsheet")
+        reel.edit_and_finalize("concept", "concept/idea.md", "c2")
+        assert reel.stage("beatsheet").status == "stale"
+
+        reel.finalize("beatsheet")
+        assert reel.stage("beatsheet").based_on == {
+            "concept": reel.stage("concept").finalized_snapshot_id
+        }
+
+        reel.reopen("concept")
+        reel.write("music/score.py", "outside concept/")
+        reel.finalize("concept")
+        assert reel.stage("beatsheet").status == "finalized"
+        changes = upstream_changes(
+            env.engine, env.blobs, reel.project_id, reel.registry.get("beatsheet"), reel.registry
+        )
+        assert changes == []
+
+    def test_stale_finalized_stage_recovers_to_finalized_when_every_upstream_reverts(
+        self, env: StudioEnv
+    ) -> None:
+        """TD-65（多上游）：两个上游都改回原样后，原来已定稿的 music 回到 `finalized`。"""
+        reel = _Reel(env)
+        reel.write("concept/idea.md", "c1")
+        reel.finalize("concept")
+        reel.write("beatsheet/beats.json", "b1")
+        reel.finalize("beatsheet")
+        reel.write("music/score.py", "m1")
+        reel.finalize("music")
+
+        reel.edit_and_finalize("concept", "concept/idea.md", "c2")
+        reel.edit_and_finalize("beatsheet", "beatsheet/beats.json", "b2")
+        assert reel.stage("music").status == "stale"
+
+        reel.edit_and_finalize("concept", "concept/idea.md", "c1")
+        assert reel.stage("music").status == "stale"
+        reel.edit_and_finalize("beatsheet", "beatsheet/beats.json", "b1")
+
+        music = reel.stage("music")
+        assert music.status == "finalized"
+        assert music.based_on == {
+            "concept": reel.stage("concept").finalized_snapshot_id,
+            "beatsheet": reel.stage("beatsheet").finalized_snapshot_id,
+        }
 
     def test_upstream_snapshot_ids_follow_the_pipeline(self, env: StudioEnv) -> None:
         reel = _Reel(env)
