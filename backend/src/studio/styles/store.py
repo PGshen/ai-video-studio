@@ -22,6 +22,8 @@ from uuid import uuid4
 
 from studio.styles.layout import (
     ENTRY_NAME,
+    EXEMPLARS_DIR,
+    REFERENCES_DIR,
     draft_dir,
     drafts_root,
     is_valid_style_id,
@@ -437,13 +439,57 @@ def discard_draft(data_dir: Path | str, style_id: str) -> None:
         raise StyleNotFoundError(style_id)
 
 
+def validate_tree(root: Path) -> list[str]:
+    """一个风格目录当前的全部问题（读取时发现的 + 内容校验），空列表表示可以保存。
+    目录不存在抛 `StyleNotFoundError`。名称是否与别的风格重复不在这里检查（保存时才查）。"""
+    if not root.is_dir():
+        raise StyleNotFoundError(str(root))
+    files, problems = _read_tree(root)
+    return [*problems, *validate_style_files(files)]
+
+
 def validate_draft(data_dir: Path | str, style_id: str) -> list[str]:
-    """草稿当前的全部问题（读取时发现的 + 内容校验），空列表表示可以保存。"""
+    """草稿当前的全部问题，空列表表示可以保存。"""
+    return validate_tree(_draft_path(data_dir, style_id))
+
+
+def _remove(path: Path) -> None:
+    if path.is_symlink() or not path.is_dir():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
+
+
+def prune_draft(data_dir: Path | str, style_id: str) -> list[str]:
+    """删掉草稿里用户界面和草稿接口够不着的东西，返回删掉的相对路径。
+
+    agent 用 Bash 可能留下符号链接、顶层多余的文件或目录、`references/`/`exemplars/` 下的子目录和
+    文件名不合法的文件：保存只会 422，界面又删不掉它们，所以每轮结束后清掉。其余内容（包括
+    内容不合法的合法路径文件）原样保留，由用户或下一轮对话修。"""
     draft = _draft_path(data_dir, style_id)
     if not draft.is_dir():
         raise StyleNotFoundError(style_id)
-    files, problems = _read_tree(draft)
-    return [*problems, *validate_style_files(files)]
+    removed: list[str] = []
+    for entry in sorted(draft.iterdir()):
+        if entry.name in _IGNORED_FILES:
+            continue
+        if entry.name == ENTRY_NAME and entry.is_file() and not entry.is_symlink():
+            continue
+        if (
+            entry.name in (REFERENCES_DIR, EXEMPLARS_DIR)
+            and entry.is_dir()
+            and not entry.is_symlink()
+        ):
+            for child in sorted(entry.iterdir()):
+                if child.name in _IGNORED_FILES:
+                    continue
+                if child.is_symlink() or not child.is_file() or not is_plain_file_name(child.name):
+                    _remove(child)
+                    removed.append(f"{entry.name}/{child.name}")
+            continue
+        _remove(entry)
+        removed.append(entry.name)
+    return removed
 
 
 def save_draft(data_dir: Path | str, style_id: str) -> StyleDetail:
@@ -486,10 +532,12 @@ __all__ = [
     "list_styles",
     "open_draft",
     "read_draft_file",
+    "prune_draft",
     "read_style_files",
     "save_draft",
     "style_exists",
     "style_known",
     "validate_draft",
+    "validate_tree",
     "write_draft_file",
 ]

@@ -156,7 +156,7 @@
 - **完成标准**：既有会话与头脑风暴测试全绿，不改断言。
 - **验证命令**：`cd backend && uv run pytest tests/db tests/api -q`；`make check`
 
-### T9：`style` 阶段与 `TurnRunner` 绑定目录模式（待开始）
+### T9：`style` 阶段与 `TurnRunner` 绑定目录模式（完成）
 
 - **目标**：在风格会话里发消息，agent 以草稿目录为工作目录修改文件；运行期间草稿写操作被 409 拒绝。
 - **涉及文件**：新建 `backend/src/studio/stages/style/{__init__,prompt.md,tools.py}`；`backend/src/studio/agent/runner.py`（`_execute` 分支：`job.session.subject_id` 非空时走新的 `_execute_bound_dir`）；`backend/src/studio/agent/turn_state.py`（`busy_key` 对风格会话返回 `style:<subject_id>`）；`backend/src/studio/agent/turn_finish.py`（风格会话不删 scratch 也不动草稿目录，只发 `workspace_changed`）；`backend/src/studio/main.py`（注册 `STYLE_STAGE`）；`backend/src/studio/api/styles.py`（接入 `_ensure_not_busy`：新增 `TurnRunner.is_busy_key(key)` 供各写端点使用）；`backend/src/studio/api/settings.py` 与 `frontend/src/features/settings/settingsView.ts`（`stage_default_profile` 接受 `style`）；测试：`backend/tests/agent/test_runner_style.py`、`backend/tests/stages/test_style_stage.py`、`backend/tests/api/test_styles.py`、`backend/tests/api/test_sessions.py`。
@@ -198,10 +198,11 @@
 - 2026-10-04 — T6 风格库列表页（`StyleGrid`/`StyleCard`，筛选、分页、新建、点卡片/编辑只改 URL query）— `make check` 绿（前端 766），`pnpm typecheck` 无错误
 - 2026-10-04 — T7 抽屉详情态/编辑态（`StyleDrawer`/`StyleDetailView`/`StyleEditView`/`StyleMetaForm`/`StyleFileTree`/`useStyleDraft`，StylesPage 挂载）；浏览器走查发现并修复：编辑态内容比状态晚到导致空白闪烁、关闭抽屉动画期间空白、深链接 404 重试 7 秒、窄屏编辑器只剩 73px、新建草稿关抽屉后成孤儿（改为列表里标记 `is_new`）— `make check` 绿（后端 1534、前端 850）
 - 2026-10-04 — T8 `sessions.subject_id`（迁移 0008）、`create_session`/`list_sessions` 按 `subject_id` 分组、`delete_subject_sessions`、`POST/GET /api/styles/{id}/sessions`（正式风格和从未保存的新风格都可建会话）、删除风格/放弃新风格时清理会话 — `make check` 绿（后端 1551）
+- 2026-10-04 — T9 `style` 阶段（写范围 `STYLE.md`/`references/*`/`exemplars/*`、`validate_style` 工具、提示词）、`TurnRunner._execute_bound_dir`（cwd = 草稿目录、无快照/前言）、`busy_key = subject:<id>`、`is_subject_busy`、轮次结束清理草稿里界面够不着的文件并发 `draft_pruned` 通知和一次 `workspace_changed`、草稿改动类接口 409、`stage_default_profile` 接受 `style` — `make check` 绿（后端 1583）
 
 ## 下一步
 
-- 从 T9 开始（后端）：先写 `backend/tests/agent/test_runner_style.py`（用 `agent/fake.py` 的 fake runtime：风格会话一轮后草稿被改写且正式版本不变；同一风格两个会话串行、不同风格并行、与项目轮次互不阻塞；风格在轮次开始前被删除 → 本轮 failed；越界写入被拦；取消和失败后草稿保留）、`backend/tests/stages/test_style_stage.py`（`validate_style` 工具对合法/非法草稿的输出、写范围、提示词要点）、`backend/tests/api/test_styles.py`（运行期间草稿写/保存/放弃/打开/删除风格 409）、`tests/api/test_settings.py`（`stage_default_profile` 接受 `style`）；再实现 `backend/src/studio/stages/style/{__init__,prompt.md,tools}.py`、`agent/runner.py` 的 `_execute_bound_dir`（`job.session.subject_id` 非空时）、`agent/turn_state.py` 的 `busy_key`（`style:<subject_id>`）、`agent/turn_finish.py`（风格会话不删 scratch 以外的东西、发 `workspace_changed`）、`TurnRunner.is_busy_key`、`api/styles.py` 的忙碌检查、`main.py` 注册 `STYLE_STAGE`。可用：`styles.store.draft_dir`/`open_draft`/`validate_draft`，`create_session(..., subject_id=)`，`api/styles.py` 里已有的 `STYLE_STAGE = "style"`。注意先确认 `WriteScope` 的通配语义（`workspace/scope.py`），补一条用例证明 `STYLE.md`、`references/*`、`exemplars/*` 可写而越界路径被拦。
+- 从 T10 开始（前端）：先写测试——`composables/sessionScope.spec.ts`（`{kind:'style', styleId}`）、`composables/queries.spec.ts`（风格会话的 `sessionsFor`/创建/列表）、`composables/useSessionStream.spec.ts`（风格作用域下 `workspace_changed`/文件类 tool_result 失效 `invalidateStyleDraft`）、`features/styles/StyleChatPane.spec.ts`、`StyleEditView.spec.ts`（轮次运行时只读并说明原因、失败后恢复）、`features/settings/settingsView.spec.ts`（`style` 阶段默认模型）、`components/session/noticeText` 对 `draft_pruned` 的文案；再实现。后端接口已就绪：`POST/GET /api/styles/{id}/sessions`（返回 `SessionOut` 含 `subject_id`，`stage = "style"`），发消息/取消/继续/SSE 沿用 `/api/sessions/{id}/*`；运行期间草稿改动类接口返回 409「AI 正在修改这套风格…」；事件 `workspace_changed`（`paths` 可为空 = 整份刷新）和 `notice`（`kind: draft_pruned`，`paths`、`message`）。要改的前端文件见计划 T10 的「涉及文件」；`useEnsureSession.ts` 的 `stageKey`、`api/endpoints.ts` 的风格会话函数、`types/api.ts` 的 `SessionOut.subject_id`。
 
 ## 决策记录
 
@@ -214,6 +215,9 @@
 - 2026-10-04 — T5：旧的 `StylePresetsPanel`/`StylePresetEditor`/`styleDraft` 在 T5 就删除（计划原写在 T7）— 旧 `/api/style-presets` 在 T4 已删，设置页的风格库路由在 T5 移除，这些组件不再有入口，也没有可调用的接口，留着只会让类型检查失败。
 - 2026-10-04 — T7（浏览器走查后改设计）：从未保存的新风格也出现在列表里，标记 `is_new`（卡片「未保存的新风格」，点开直接进编辑态），放弃时整个目录删除；名称唯一性仍只在已保存的风格间检查。设计文档对应条目已改并加了修订记录 — 实测发现关抽屉后草稿成了找不回的孤儿目录，AI 对话写进去的内容也会丢。
 - 2026-10-04 — T7：编辑视图不另存「本地缓冲」，编辑直接写进查询缓存再防抖 PUT；草稿查询设 `staleTime: Infinity`、不随窗口聚焦重取；草稿文件写入直接调接口、不走 mutation — 聚焦重取会冲掉没写出的编辑，卸载（关闭抽屉）时 mutation 不可靠。
+- 2026-10-04 — T9：每轮结束（任何结束方式）清掉草稿里界面和草稿接口够不着的东西（符号链接、顶层多余文件/目录、`references|exemplars/` 下的子目录和文件名不合法的文件），并发 `notice(kind=draft_pruned)`；其余内容不合法的文件保留 — 否则保存只会 422、界面又删不掉，成了死胡同；符号链接还是越界风险。
+- 2026-10-04 — T9：「打开草稿」（`POST …/draft`，幂等）和所有读取在 AI 运行期间不受限，只拒绝改动类操作 — 用户在轮次进行中重新打开抽屉要能看到进展。
+- 2026-10-04 — T9：`STAGES`（`db/repo/settings.py`，`stage_default_profile` 的合法键）加入 `style` — 测试发现 422，计划里「设置里的阶段默认模型加 `style`」的后端部分。
 - 2026-10-04 — 迁移后目录 id 沿用旧表 id，新建的用 `uuid4().hex` — 与旧表 `_new_id` 一致，免去对 `default_style_preset_id` 和项目记录的映射。
 
 ## 意外与发现

@@ -58,6 +58,8 @@ from studio.db.repo.projects import get_project
 from studio.db.repo.sessions import get_session
 from studio.db.repo.settings import effective_web_mode
 from studio.db.repo.snapshots import latest_snapshot
+from studio.styles import store as style_store
+from studio.styles.layout import draft_dir
 from studio.workspace import (
     BlobStore,
     WriteScope,
@@ -172,6 +174,11 @@ class TurnRunner:
         if job is not None:
             await job.done.wait()
 
+    def is_subject_busy(self, subject_id: str) -> bool:
+        """这套风格是否有排队或运行中的对话轮次（草稿的改动类接口据此返回 409）。只能在事件循环
+        线程上调用，约束同 `is_project_busy`。"""
+        return any(job.session.subject_id == subject_id for job in self._jobs.values())
+
     def is_project_busy(self, project_id: str) -> bool:
         """项目是否有 turn 在跑。只能在事件循环线程上调用（I4）：`_running` 和排队
         调度都在事件循环上修改，调用方（api 的 `async def` 端点）在检查与写工作区
@@ -281,7 +288,10 @@ class TurnRunner:
 
     async def _execute(self, job: _Job, state: _State) -> None:
         if job.project_id is None:
-            await self._execute_workspaceless(job, state)
+            if job.session.subject_id is not None:
+                await self._execute_bound_dir(job, state)
+            else:
+                await self._execute_workspaceless(job, state)
             return
         project_id = job.project_id
         engine, blobs = self._engine, self._blobs
@@ -367,6 +377,40 @@ class TurnRunner:
             cancel_token=job.cancel_token,
             budget=Budget(job.profile.max_steps_per_turn, job.profile.max_cost_per_turn),
             write_scope=WriteScope(writable=[], tool_managed=[]),
+            project_id=None,
+            stage=job.stage.name,
+            record_tool_write=lambda _relpath, _sha256: None,
+            allow_web=allow_web,
+            engine=self._engine,
+            session_id=job.session.id,
+            turn_id=job.turn_id,
+            upstream_stages=tuple(job.stage.upstream_stages()),
+            effort=effort_from_settings(None),
+        )
+        await self._run_stream(job, state, ctx)
+
+    async def _execute_bound_dir(self, job: _Job, state: _State) -> None:
+        """风格对话（ADR 0019）：cwd 是这套风格的草稿目录（没有就从正式版本复制，风格已被删除则
+        本轮失败）；没有快照、`upstream/`、前言和越界还原，写入范围由阶段声明，轮次结束后清掉
+        草稿里界面够不着的多余文件（见 `turn_finish`）。"""
+        subject_id = job.session.subject_id
+        assert subject_id is not None
+        style_store.open_draft(self._settings.data_dir, subject_id)
+        workdir = draft_dir(self._settings.data_dir, subject_id)
+        turns_repo.mark_turn_running(self._engine, job.turn_id, start_snapshot_id=None)
+        self._publish_status(job, "running")
+        turn_events.note_model_switch(self, job)
+        tools, allow_web = self._tools_and_web(job)
+        ctx = TurnContext(
+            system_prompt=job.stage.system_prompt(),
+            user_input=job.user_input,
+            tools=tools,
+            workdir=workdir,
+            model_profile=job.profile,
+            resume_ref=job.session.sdk_ref,
+            cancel_token=job.cancel_token,
+            budget=Budget(job.profile.max_steps_per_turn, job.profile.max_cost_per_turn),
+            write_scope=job.stage.write_scope(),
             project_id=None,
             stage=job.stage.name,
             record_tool_write=lambda _relpath, _sha256: None,

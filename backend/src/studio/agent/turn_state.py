@@ -35,9 +35,13 @@ class _Job:
 
     @property
     def busy_key(self) -> str:
-        """串行化的键：项目 turn 按项目串行（共用一个工作区）；无项目 turn 各会话独立，
-        不阻塞项目 turn，也不被项目 turn 阻塞。"""
-        return self.project_id if self.project_id is not None else f"session:{self.session.id}"
+        """串行化的键：项目 turn 按项目串行（共用一个工作区）；风格对话按风格串行（共用一个草稿
+        目录）；其余无项目 turn 各会话独立。三类互不阻塞。"""
+        if self.project_id is not None:
+            return self.project_id
+        if self.session.subject_id is not None:
+            return f"subject:{self.session.subject_id}"
+        return f"session:{self.session.id}"
 
 
 @dataclass

@@ -44,6 +44,7 @@ from studio.db.repo.profiles import seed_model_profiles
 from studio.stages.animation import STAGE as ANIMATION_STAGE
 from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
+from studio.stages.style import STAGE as STYLE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
 from studio.workspace import BlobStore
 
@@ -57,7 +58,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     seed_model_profiles(engine, enable_fake_runtime=settings.enable_fake_runtime, settings=settings)
 
     registry = StageRegistry()
-    for stage in (BRAINSTORM_STAGE, TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE):
+    for stage in (BRAINSTORM_STAGE, TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE, STYLE_STAGE):
         registry.register(stage)
 
     runtime_factory = RuntimeFactory()

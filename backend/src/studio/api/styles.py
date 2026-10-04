@@ -6,8 +6,8 @@
 - 默认风格是 `settings.default_style_preset_id`，删除默认风格时清掉它。
 
 错误映射：404 风格或文件不存在，400 草稿文件路径不合法，422 内容不合法（detail 逐条列出），
-409 名称重复。会写目录的端点都写成 `async def`：同一套风格有对话轮次运行时要在事件循环上拒绝
-写入（计划 T9），检查与写入之间不能 `await`。
+409 名称重复，或这套风格有对话轮次排队/运行中（改草稿的操作被拒绝，读取和打开草稿不受限）。
+会写目录的端点都写成 `async def`：忙碌检查与写入之间不能 `await`（TurnRunner 在事件循环上调度）。
 """
 
 from __future__ import annotations
@@ -15,8 +15,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import Engine
 
+from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
-from studio.api.deps import get_engine, get_runtime_factory, get_settings
+from studio.api.deps import get_engine, get_runtime_factory, get_settings, get_turn_runner
 from studio.api.schemas import (
     DraftFileOut,
     DraftFileWrite,
@@ -55,6 +56,15 @@ _STORE_ERRORS = (
     store.DuplicateStyleNameError,
     store.StyleExistsError,
 )
+
+
+def _ensure_idle(runner: TurnRunner, style_id: str) -> None:
+    """这套风格有对话轮次（排队或运行中）时，改草稿的操作被拒绝：AI 正在改同一份草稿。
+    读取和「打开草稿」（幂等）不受限。写端点都是 `async def`，检查与写入之间不 `await`。"""
+    if runner.is_subject_busy(style_id):
+        raise HTTPException(
+            status_code=409, detail="AI 正在修改这套风格，请等这一轮结束（或先停止它）"
+        )
 
 
 def _default_id(engine: Engine) -> str | None:
@@ -121,8 +131,12 @@ async def get_style_endpoint(
 
 @router.delete("/styles/{style_id}", status_code=204)
 async def delete_style_endpoint(
-    style_id: str, engine: Engine = Depends(get_engine), settings: Settings = Depends(get_settings)
+    style_id: str,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
 ) -> Response:
+    _ensure_idle(runner, style_id)
     try:
         store.delete_style(settings.data_dir, style_id)
     except _STORE_ERRORS as exc:
@@ -157,8 +171,12 @@ async def open_draft_endpoint(
 
 @router.delete("/styles/{style_id}/draft", status_code=204)
 async def discard_draft_endpoint(
-    style_id: str, engine: Engine = Depends(get_engine), settings: Settings = Depends(get_settings)
+    style_id: str,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
 ) -> Response:
+    _ensure_idle(runner, style_id)
     try:
         store.discard_draft(settings.data_dir, style_id)
     except _STORE_ERRORS as exc:
@@ -195,7 +213,9 @@ async def write_draft_file_endpoint(
     path: str,
     body: DraftFileWrite,
     settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
 ) -> DraftStatusOut:
+    _ensure_idle(runner, style_id)
     try:
         store.write_draft_file(settings.data_dir, style_id, path, body.content)
         return _draft_out(store.draft_status(settings.data_dir, style_id))
@@ -205,8 +225,12 @@ async def write_draft_file_endpoint(
 
 @router.delete("/styles/{style_id}/draft/files/{path:path}", status_code=204)
 async def delete_draft_file_endpoint(
-    style_id: str, path: str, settings: Settings = Depends(get_settings)
+    style_id: str,
+    path: str,
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
 ) -> Response:
+    _ensure_idle(runner, style_id)
     try:
         store.delete_draft_file(settings.data_dir, style_id, path)
     except _STORE_ERRORS as exc:
@@ -216,9 +240,13 @@ async def delete_draft_file_endpoint(
 
 @router.post("/styles/{style_id}/draft/save", response_model=StyleOut)
 async def save_draft_endpoint(
-    style_id: str, engine: Engine = Depends(get_engine), settings: Settings = Depends(get_settings)
+    style_id: str,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
 ) -> StyleOut:
     """校验草稿，通过后覆盖（或新建）正式版本并删除草稿；不合法 422，名称重复 409。"""
+    _ensure_idle(runner, style_id)
     try:
         detail = store.save_draft(settings.data_dir, style_id)
     except _STORE_ERRORS as exc:

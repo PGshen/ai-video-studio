@@ -15,6 +15,7 @@ from studio.agent import stage_flow
 from studio.agent.preamble import GUARD_RESTORED_NOTICE
 from studio.agent.turn_state import _Job, _State
 from studio.db.repo import turns as turns_repo
+from studio.styles import store as style_store
 from studio.workspace import (
     create_snapshot,
     guard,
@@ -46,6 +47,8 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
     else:
         # 无项目会话的 scratch 只是这一轮的 cwd，用完即删（下一轮开始时还会重建）。
         remove_scratch(runner._settings.data_dir, job.session.id)
+        if job.session.subject_id is not None:
+            _tidy_style_draft(runner, job)
 
     if status == "failed":
         runner._safe_persist(job, "error", {"message": error or "未知错误"})
@@ -82,6 +85,32 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
         except Exception:
             logger.exception("turn %s 更新阶段状态失败", job.turn_id)
     runner._publish_status(job, status, error)
+
+
+def _tidy_style_draft(runner: TurnRunner, job: _Job) -> None:
+    """风格对话一轮结束（任何结束方式）：清掉草稿里界面够不着的多余文件并通知用户，再发一次
+    `workspace_changed`——Shell 写的文件没有路径可报，前端据此整份刷新草稿。风格或草稿已被删除
+    时什么都不做。"""
+    subject_id = job.session.subject_id
+    assert subject_id is not None
+    try:
+        removed = style_store.prune_draft(runner._settings.data_dir, subject_id)
+    except style_store.StyleNotFoundError:
+        return
+    except Exception:
+        logger.exception("turn %s 清理风格草稿失败", job.turn_id)
+        return
+    if removed:
+        runner._safe_persist(
+            job,
+            "notice",
+            {
+                "kind": "draft_pruned",
+                "paths": removed,
+                "message": "草稿里有不属于风格的文件，已清除：" + "、".join(removed),
+            },
+        )
+    runner._publish(job, "workspace_changed", {"paths": []})
 
 
 def _guard_workspace(

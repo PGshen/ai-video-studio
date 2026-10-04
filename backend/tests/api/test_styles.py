@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from sqlalchemy import Engine
 
+from studio.agent.fake import FakeRuntime, sleep, write
+from studio.agent.runtime import UserInput
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import get_session
 from studio.styles import store
@@ -447,3 +450,85 @@ class TestStyleSessions:
         assert [s["id"] for s in listing] == [brainstorm["id"]]
         assert listing[0]["is_active"] is True
         assert listing[0]["subject_id"] is None
+
+
+async def _make_style_busy(api_env: ApiEnv, style_id: str) -> str:
+    """让这套风格有一个永远不结束的对话轮次；用完要 `release_busy`。"""
+    session = await _new_session(api_env, style_id)
+    api_env.app.state.runtime_factory.register("fake", lambda: FakeRuntime([sleep(30)]))
+    turn_id = await api_env.app.state.turn_runner.start_turn(session["id"], UserInput(text="占位"))
+    for _ in range(200):
+        if api_env.app.state.turn_runner.is_subject_busy(style_id):
+            break
+        await asyncio.sleep(0.01)
+    return turn_id
+
+
+class TestBusyWhileAiIsEditing:
+    """同一套风格有对话轮次运行时，草稿的改动类操作被拒绝；读取和打开草稿仍然可以。"""
+
+    async def test_writes_saves_discards_and_deletes_are_409_but_reads_are_fine(
+        self, api_env: ApiEnv
+    ) -> None:
+        style_id = _make(api_env)
+        base = f"/api/styles/{style_id}/draft"
+        await api_env.client.post(base)
+        turn_id = await _make_style_busy(api_env, style_id)
+        try:
+            writes = [
+                ("PUT", f"{base}/files/references/color-scheme.md", {"json": {"content": "x"}}),
+                ("DELETE", f"{base}/files/references/color-scheme.md", {}),
+                ("POST", f"{base}/save", {}),
+                ("DELETE", base, {}),
+                ("DELETE", f"/api/styles/{style_id}", {}),
+            ]
+            for method, path, kwargs in writes:
+                response = await api_env.client.request(method, path, **kwargs)
+                assert response.status_code == 409, (method, path)
+                assert "AI 正在修改" in assert_detail(response)
+
+            assert (await api_env.client.get(f"{base}/files")).status_code == 200
+            assert (await api_env.client.get(f"{base}/files/STYLE.md")).status_code == 200
+            assert (await api_env.client.post(base)).status_code == 200  # reopening is idempotent
+            assert (await api_env.client.get("/api/styles")).status_code == 200
+        finally:
+            await api_env.release_busy(turn_id)
+
+        assert (
+            await api_env.client.put(
+                f"{base}/files/references/color-scheme.md", json={"content": "x"}
+            )
+        ).status_code == 200
+
+    async def test_another_style_is_not_affected(self, api_env: ApiEnv) -> None:
+        busy_id, other_id = _make(api_env, "甲"), _make(api_env, "乙")
+        await api_env.client.post(f"/api/styles/{other_id}/draft")
+        turn_id = await _make_style_busy(api_env, busy_id)
+        try:
+            response = await api_env.client.put(
+                f"/api/styles/{other_id}/draft/files/references/color-scheme.md",
+                json={"content": "x"},
+            )
+            assert response.status_code == 200
+        finally:
+            await api_env.release_busy(turn_id)
+
+    async def test_a_session_turn_can_actually_edit_the_draft(self, api_env: ApiEnv) -> None:
+        style_id = _make(api_env)
+        session = await _new_session(api_env, style_id)
+        api_env.app.state.runtime_factory.register(
+            "fake", lambda: FakeRuntime([write("references/color-scheme.md", "主色：深蓝")])
+        )
+
+        response = await api_env.client.post(
+            f"/api/sessions/{session['id']}/messages", json={"text": "改配色"}
+        )
+        assert response.status_code == 202
+        await api_env.app.state.turn_runner.wait(response.json()["turn_id"])
+
+        draft = await api_env.client.get(
+            f"/api/styles/{style_id}/draft/files/references/color-scheme.md"
+        )
+        assert draft.json() == {"content": "主色：深蓝"}
+        saved = (await api_env.client.get(f"/api/styles/{style_id}")).json()
+        assert saved["files"]["references/color-scheme.md"] == "主色：暖白"

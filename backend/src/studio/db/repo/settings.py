@@ -24,7 +24,7 @@ from sqlalchemy import Engine, select
 from studio.db.engine import session_scope
 from studio.db.models import Setting
 
-STAGES: Final = ("brainstorm", "topic", "narrative", "animation")
+STAGES: Final = ("brainstorm", "topic", "narrative", "animation", "style")
 WEB_MODES: Final = ("tools", "native")
 SPEECH_RATE_MIN: Final = 0.5
 SPEECH_RATE_MAX: Final = 2.0

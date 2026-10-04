@@ -441,3 +441,51 @@ class TestSave:
         style_id = _saved(tmp_path)
         with pytest.raises(StyleNotFoundError):
             store.save_draft(tmp_path, style_id)
+
+
+class TestPruneDraft:
+    """agent 用 Bash 可能在草稿里留下用户界面够不着的东西：保存只会 422，又删不掉，必须清掉。"""
+
+    def test_removes_everything_the_api_cannot_address_and_keeps_the_rest(
+        self, tmp_path: Path
+    ) -> None:
+        style_id = _saved(tmp_path)
+        store.open_draft(tmp_path, style_id)
+        draft = draft_dir(tmp_path, style_id)
+        outside = tmp_path / "outside.md"
+        outside.write_text("x")
+        (draft / "references" / "link.md").symlink_to(outside)
+        (draft / "notes.md").write_text("顶层多余文件")
+        (draft / "extra").mkdir()
+        (draft / "extra" / "a.md").write_text("多余目录")
+        (draft / "references" / "sub").mkdir()
+        (draft / "references" / "sub" / "b.md").write_text("嵌套目录")
+        (draft / "references" / "a b.md").write_text("文件名不合法")
+        (draft / "references" / "ok.md").write_text("合法的新文件")
+
+        removed = store.prune_draft(tmp_path, style_id)
+
+        assert sorted(removed) == [
+            "extra",
+            "notes.md",
+            "references/a b.md",
+            "references/link.md",
+            "references/sub",
+        ]
+        assert outside.read_text() == "x"
+        assert store.draft_status(tmp_path, style_id).files == [
+            "STYLE.md",
+            "exemplars/e1.json",
+            "references/color.md",
+            "references/ok.md",
+        ]
+        assert store.validate_draft(tmp_path, style_id) == []
+
+    def test_a_clean_draft_is_left_alone(self, tmp_path: Path) -> None:
+        style_id = _saved(tmp_path)
+        store.open_draft(tmp_path, style_id)
+        assert store.prune_draft(tmp_path, style_id) == []
+
+    def test_unknown_draft(self, tmp_path: Path) -> None:
+        with pytest.raises(StyleNotFoundError):
+            store.prune_draft(tmp_path, "nope")
