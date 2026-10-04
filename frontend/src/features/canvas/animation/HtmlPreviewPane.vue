@@ -20,6 +20,7 @@ import { useHtmlPlayback } from './htmlPreview/useHtmlPlayback'
 
 const FRAME_WIDTH = 1920
 const FRAME_HEIGHT = 1080
+const FPS = 30
 
 const props = defineProps<{ projectId: string; meta: HtmlPreviewMeta }>()
 
@@ -35,10 +36,15 @@ function post(message: unknown): void {
   frame.value?.contentWindow?.postMessage(message, '*')
 }
 
+/** 页面只在 `t < 镜头末尾` 时画镜头，`t = 总时长` 会是一帧黑；和成片一样，最后一帧取 `(N-1)/fps`。 */
+function pageTime(t: number): number {
+  return Math.min(t, Math.max(0, props.meta.duration - 1 / FPS))
+}
+
 const playback = useHtmlPlayback({
   meta: () => props.meta,
   onSeek: (t) => {
-    if (frameReady.value) post(seekMessage(t))
+    if (frameReady.value) post(seekMessage(pageTime(t)))
   },
 })
 
@@ -72,7 +78,7 @@ function onMessage(event: MessageEvent): void {
   if (message.type === 'ready') {
     frameReady.value = true
     pageError.value = null
-    post(seekMessage(playback.t.value))
+    post(seekMessage(pageTime(playback.t.value)))
   } else {
     pageError.value = message.message
   }

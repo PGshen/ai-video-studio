@@ -41,6 +41,7 @@ export function useHtmlPlayback(options: PlaybackOptions) {
   let audio: PlaybackAudio | null = null
   let audioDriven = false
   let frameId: number | null = null
+  let startToken = 0
   let lastMs: number | null = null
 
   function ensureAudio(): PlaybackAudio {
@@ -63,6 +64,7 @@ export function useHtmlPlayback(options: PlaybackOptions) {
     if (meta === undefined || section === undefined) return
     currentIndex.value = index
     const clip = meta.audio.find((item) => item.section_id === section.id)
+    const token = ++startToken
     audioDriven = clip !== undefined
     if (clip === undefined) {
       audio?.pause()
@@ -71,8 +73,11 @@ export function useHtmlPlayback(options: PlaybackOptions) {
     const el = ensureAudio()
     if (!el.src.endsWith(clip.url) && el.src !== clip.url) el.src = clip.url
     el.currentTime = localSeconds
-    el.play().catch(() => {
-      audioDriven = false // 浏览器拒绝播放：回退墙钟，不卡在"播放中但没动静"
+    el.play().catch((error: unknown) => {
+      // 换了 src / 重新定位会让上一次还没完成的 play() 以 AbortError 被拒绝，那不代表当前这段
+      // 播不了：只有最新一次启动、且不是被打断的拒绝，才回退墙钟（不卡在"播放中但没动静"）。
+      const aborted = error instanceof DOMException && error.name === 'AbortError'
+      if (token === startToken && !aborted) audioDriven = false
     })
   }
 
@@ -114,7 +119,10 @@ export function useHtmlPlayback(options: PlaybackOptions) {
     if (!playing.value) return
     const meta = options.meta()
     const section = meta?.sections[currentIndex.value]
-    if (meta === undefined || section === undefined) return
+    if (meta === undefined || section === undefined) {
+      finish() // 镜头被改少了，当前镜头已不存在：停下，不要假装在播
+      return
+    }
     const delta = lastMs === null ? 0 : (nowMs - lastMs) / 1000
     lastMs = nowMs
 

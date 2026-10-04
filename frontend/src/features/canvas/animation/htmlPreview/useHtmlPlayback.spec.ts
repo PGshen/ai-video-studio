@@ -9,6 +9,9 @@ class FakeAudio implements PlaybackAudio {
   paused = true
   playRejects = false
   plays = 0
+  /** When set, `play()` stays pending until `settle(index, 'abort')` rejects it or `'ok'` resolves it. */
+  deferPlays = false
+  private pendingPlays: Array<{ resolve: () => void; reject: (e: Error) => void }> = []
   private listeners: Record<string, Array<() => void>> = {}
   addEventListener(type: string, fn: () => void): void {
     ;(this.listeners[type] ??= []).push(fn)
@@ -18,12 +21,21 @@ class FakeAudio implements PlaybackAudio {
   }
   play(): Promise<void> {
     this.plays += 1
+    if (this.deferPlays) {
+      this.paused = false
+      return new Promise<void>((resolve, reject) => this.pendingPlays.push({ resolve, reject }))
+    }
     if (this.playRejects) return Promise.reject(new Error('NotAllowedError'))
     this.paused = false
     return Promise.resolve()
   }
   pause(): void {
     this.paused = true
+  }
+  settle(index: number, how: 'ok' | 'abort'): void {
+    const play = this.pendingPlays[index]
+    if (how === 'ok') play?.resolve()
+    else play?.reject(new DOMException('interrupted by a new load', 'AbortError'))
   }
   emit(type: string): void {
     for (const fn of this.listeners[type] ?? []) fn()
@@ -177,6 +189,49 @@ describe('useHtmlPlayback', () => {
     h.tick(0.5)
     expect(h.playback.playing.value).toBe(true)
     expect(h.playback.t.value).toBeCloseTo(0.5)
+  })
+
+  it('ignores the rejection of an older play() after the audio was switched (fast clicking)', async () => {
+    const h = setup()
+    h.audio.deferPlays = true
+    h.playback.toggle() // play #0 for section a, still pending
+    h.playback.seekTo(5.5) // play #1 for section c replaces it
+    h.audio.settle(0, 'abort') // the browser aborts the older play() because src changed
+    await Promise.resolve()
+    await Promise.resolve()
+    h.tick(0)
+    h.audio.currentTime = 0.7
+    h.tick(0.016)
+    expect(h.playback.t.value).toBeCloseTo(5.7) // still audio-driven, not wall-clock
+  })
+
+  it('stops instead of pretending to play when the sections shrink under it', async () => {
+    let meta: HtmlPreviewMeta | null = META
+    const audio = new FakeAudio()
+    let frame: ((ms: number) => void) | null = null
+    const scope = effectScope()
+    const playback = scope.run(() =>
+      useHtmlPlayback({
+        meta: () => meta ?? undefined,
+        onSeek: () => {},
+        createAudio: () => audio,
+        requestFrame: (cb) => {
+          frame = cb
+          return 1
+        },
+        cancelFrame: () => {
+          frame = null
+        },
+      }),
+    )!
+    playback.seekTo(5.5)
+    playback.toggle()
+    await Promise.resolve()
+    meta = { ...META, sections: META.sections.slice(0, 1), duration: 2 }
+    ;(frame as ((ms: number) => void) | null)?.(16)
+    expect(playback.playing.value).toBe(false)
+    expect(audio.paused).toBe(true)
+    scope.stop()
   })
 
   it('does nothing before the meta is available', () => {

@@ -40,7 +40,7 @@
 - 画面缓存键：引擎版本、场景源码、`lib`、`global`、`assets` 的哈希、`timeline_hash`、分辨率与 fps（同 `page_hash` 再加 `timeline_hash`/分辨率/fps/引擎版本）；缓存目录沿用 `.cache/render_cache/`，`.mp4.tmp` 写完原子改名。
 - worker：不依赖 `agent`/`stages`/`api`/`main`；可以依赖 `timeline`、`engines.render.html`、`engines.render.mix`、`db.repo`。`engines.render.html` 与 `engines.render.mix` 不 import `studio.timeline`，接收 dict 或数据类。worker 每个任务单独启动浏览器，结束即关。
 - 进度回调同时更新 `progress` 与心跳（`update_progress` 不续心跳）；心跳间隔不超过 15 秒（沿用 worker 常量）。
-- 预览端点：`Cache-Control: no-store`、`Access-Control-Allow-Origin: *`；iframe `sandbox="allow-scripts"`、不带 `allow-same-origin`；路径走 `workspace.safe_path`，拒绝越界；预览页追加的脚本只在预览模式出现，导出不含。
+- 预览端点：`Cache-Control: no-store`（不开 CORS，见决策记录）；iframe `sandbox="allow-scripts"`、不带 `allow-same-origin`；路径走 `workspace.safe_path`，拒绝越界；预览页追加的脚本只在预览模式出现，导出不含。
 - 预览端点的页面与 `meta` 用工作区当前内容，不要求先拍快照；时间轴来自工作区顶层 `narrative/{narrative,timing}.json`（与 worker 同一来源，见决策记录）；上游缺失或不一致返回 409 加原因。
 - 前端 `features/*` 之间不许互相 import；跨 feature 复用的放 `components/` 或 `composables/`。新增前端依赖仅 `@codemirror/lang-javascript`（本计划批准）。
 - 老项目与 Manim 项目：`animation` 阶段、`validate_scenes`/`render_preview` 的行为与持久化格式完全不变。
@@ -64,9 +64,9 @@
 - [x] AC2：`engines.render.html.video` 在真实 Chromium 下输出 30 帧级别的无声 MP4，帧数与时长正确，进度回调单调，失败时点名时刻并清理（验证方式：`-m slow` 的 `tests/engines/test_html_video.py`；纯逻辑部分的单测）
 - [x] AC3：worker 对 `engine=html` 项目渲染出 `output/final.mp4` 与带 `engine`、`timeline_hash`、`audio_sources` 的 `final.json`；命中缓存时不再出帧；Manim 项目的现有测试不变（验证方式：`tests/test_worker.py` 新增用例；`-m slow` 端到端）
 - [x] AC4：`render` 与 `finalize-render` 按项目流水线解析动画阶段；`scene-checks` 对 `animation_html` 的两个工具生效且输出形状与 Manim 一致（验证方式：`tests/api/`）
-- [x] AC5：预览端点（页面、资源、`meta`）符合设计 §7.1，含 CORS、`no-store`、路径越界拒绝、409（验证方式：`tests/api/test_html_preview.py`）
+- [x] AC5：预览端点（页面、资源、`meta`）符合设计 §7.1，含 `no-store`、路径越界拒绝、409（验证方式：`tests/api/test_html_preview.py`）
 - [x] AC6：前端传输时钟、镜头刻度、iframe 消息协议的纯函数有单测；`HtmlAnimationCanvas` 三个标签有组件测试；`useScenePlayback` 搬迁后行为不变（验证方式：vitest；`make check`）
-- [x] AC7：L4：在内置浏览器里，用种子脚本写入镜头，实时预览可播放、拖动进度条、循环镜头；成片标签能触发渲染、播放成片并定稿；预览与成片的音画偏差已对比并记录（验证方式：控制者截图与数据）
+- [ ] AC7（未完全达成：预览与成片的音画偏差没有对比，种子配音是静音文件，等负责人决定是否换真实配音补测）：L4：在内置浏览器里，用种子脚本写入镜头，实时预览可播放、拖动进度条、循环镜头；成片标签能触发渲染、播放成片并定稿；预览与成片的音画偏差已对比并记录（验证方式：控制者截图与数据）
 - [x] AC8：测速与恢复实测写入 references：出帧速度与长视频时长、浏览器池真实 SIGKILL 后的恢复、常驻浏览器的内存占用（验证方式：`docs/references/html-video-render.md`，`-m slow` 的恢复用例）
 - [x] AC9：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`tech-debt.md`（TD-69 ⑤ 结论）、`docs/plans/TODO.md` 已同步；`make check` 为绿
 
@@ -189,6 +189,10 @@
 - 预览 iframe 改用自包含页面（见“意外与发现”）：新增 `GET .../html-preview/inline`、`assemble(inline=True)`、运行时读 `window.__ASSET_SRC__`，设计 §7.1 原来的“iframe 经 api 取页面和资源”改成“前端取一次自包含 HTML 设为 `srcdoc`”；资源端点保留用于调试。
 - 前端 `HtmlAnimationCanvas` 的缓冲区初始化同时监听 `[fileContent, selectedSceneId]`（没有照抄 `AnimationCanvas` 只监听内容）：查询缓存命中时内容一上来就有值，只监听内容会让换镜头后一直“加载中”。
 
+- 评审后去掉预览端点的 CORS：设计 §7.1 加它是为了让沙盒 iframe 取字体，改用 `srcdoc` 后没有别的源需要读，保留只会让任何网页都能读到镜头源码和旁白。
+- 评审后缓存键改取自“交给浏览器渲染的那份组装结果”（`AssembledPage` 的页面、脚本、路由文件字节），`render_video` 直接接收这份结果：渲染期间镜头被改，缓存里存的仍是与键对得上的旧内容帧。
+- 评审后每条旁白轨按镜头时长截断（`AudioTrack.max_seconds` → `atrim`）：配音比镜头长（timing 没更新）时不叠进下一镜头，与预览一致。
+
 ## 意外与发现
 
 - **`apad` 无限流**：`amix` 后接裸 `apad` 加 `-t`，遇到引擎自己编码的视频时 ffmpeg 一直写（几分钟 64 MB），而 lavfi 生成的测试视频正常，所以第一版单元测试没发现；端到端慢测试挂住才暴露。改成 `apad=whole_dur=D,atrim=end=D` 并补回归测试（`references/html-video-render.md`）。
@@ -201,6 +205,10 @@
 ## 阻塞
 
 无。
+
+## 整分支评审（独立评审者，opus，2026-10-05）
+
+无 Critical。已修（均先写红测试）：I-1 worker 对未列入的异常（Playwright/ffmpeg/磁盘）兜底为 `failed`，`run_forever` 单次迭代出错不退出；I-2 `docs/temp/` 再次被我的 `git add -A` 带进历史，已重写分支历史移除（备份标签 `backup-html-engine-2b-pre-review`，验收后删）；M-1 内联脚本的 `</script` 转义不区分大小写；M-2 缓存键与渲染同源；M-3 快速点击时旧 `play()` 的 AbortError 不再把时钟错切到墙钟；M-4 镜头变少时停止播放；M-5 预览不再请求时间轴末尾那帧空白；M-6 旁白按镜头截断；M-9 去掉 CORS；M-10 AC7 如实改为未完全达成。延后：M-7（缓存键依赖人工 bump `ENGINE_VERSION`，内置字体未进键）、M-8（自包含预览页约 3 MB，每次哈希变化和切回标签都重取）登记为 TD-70。
 
 ## 验证记录
 

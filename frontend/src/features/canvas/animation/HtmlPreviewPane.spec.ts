@@ -128,6 +128,16 @@ describe('HtmlPreviewPane', () => {
     expect(wrapper.find('[data-testid="preview-time"]').text()).toContain('0:03.5')
   })
 
+  it('never asks the page for the empty frame at exactly the end of the timeline', async () => {
+    const wrapper = await mountPane()
+    fromWindow(frameWindow(wrapper), { type: 'ready', duration: 6 })
+    const post = vi.spyOn(frameWindow(wrapper), 'postMessage')
+    await wrapper.find('[data-testid="preview-scrubber"]').setValue('6')
+    const sent = post.mock.calls.at(-1)?.[0] as { t: number }
+    expect(sent.t).toBeLessThan(6)
+    expect(sent.t).toBeCloseTo(6 - 1 / 30)
+  })
+
   it('draws a tick between each pair of sections and jumps to a section on click', async () => {
     const wrapper = await mountPane()
     expect(wrapper.findAll('[data-testid="preview-tick"]')).toHaveLength(2)
