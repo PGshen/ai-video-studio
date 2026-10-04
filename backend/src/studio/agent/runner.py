@@ -64,6 +64,7 @@ from studio.workspace import (
     BlobStore,
     WriteScope,
     create_snapshot,
+    derived_upstream,
     files,
     materialize_upstream,
     project_dir,
@@ -319,6 +320,7 @@ class TurnRunner:
             job.stage.prepare_turn(workdir)
         except Exception as exc:
             raise RuntimeError(f"阶段 {job.stage.name} 的 prepare_turn 失败：{exc}") from exc
+        state.derived_upstream = derived_upstream(workdir, state.sources)
 
         previous = turns_repo.previous_turn(engine, job.session.id, job.turn_id)
         preamble = build_preamble(

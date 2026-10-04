@@ -15,6 +15,7 @@ from event_asserts import assert_in_order, type_counts
 from studio.agent import events, fake
 from studio.agent.bus import BusEvent, SessionBus
 from studio.agent.fake import FakeRuntime, FakeStep
+from studio.agent.preamble import GUARD_RESTORED_NOTICE
 from studio.agent.runner import TOOL_RESULT_MAX_CHARS, SessionBusyError, TurnRunner
 from studio.agent.runtime import (
     DEFAULT_EFFORT,
@@ -1303,6 +1304,25 @@ class TestPrepareTurn:
         assert stage.calls == [True]
         await h.run(session_id, [fake.say("b")])
         assert stage.calls == [True, True]
+
+    async def test_files_derived_by_prepare_turn_are_not_reported_as_restored(
+        self, h: Harness
+    ) -> None:
+        class _Deriving(_DelegatingStage):
+            def prepare_turn(self, workdir: Path) -> None:
+                derived = workdir / "upstream" / "derived.txt"
+                derived.parent.mkdir(parents=True, exist_ok=True)
+                derived.write_text("derived", encoding="utf-8")
+
+        stage = _Deriving(h.env.registry.get("topic"))
+        h.env.registry.register(stage)
+        session_id = h.session(stage="topic")
+
+        turn = await h.run(session_id, [fake.say("a")])
+
+        assert turn.status == "done"
+        notices = [e for e in list_events(h.env.engine, session_id) if e.type == "notice"]
+        assert [n for n in notices if n.payload.get("kind") == GUARD_RESTORED_NOTICE] == []
 
     async def test_failure_fails_the_turn_with_stage_name_and_message(self, h: Harness) -> None:
         stage = _DelegatingStage(h.env.registry.get("topic"))

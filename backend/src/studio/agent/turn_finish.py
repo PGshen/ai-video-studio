@@ -136,7 +136,7 @@ def _guard_workspace(
             restored = report.restored
         if state.sources is not None:
             # Agent changes to the read-only copy are dropped and reported (R5).
-            restored += upstream_drift(workdir, state.sources)
+            restored += upstream_drift(workdir, state.sources, state.derived_upstream)
             materialize_upstream(workdir, runner._blobs, state.sources)
         if restored:
             runner._persist(job, "notice", {"kind": GUARD_RESTORED_NOTICE, "paths": restored})

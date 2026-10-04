@@ -51,6 +51,8 @@ class _State:
     before: Manifest | None = None
     upstream_ids: dict[str, str | None] = field(default_factory=dict)
     sources: dict[str, Manifest | None] | None = None
+    derived_upstream: dict[str, str] = field(default_factory=dict)
+    """`prepare_turn` 写进 `upstream/` 的派生文件（路径 → 哈希），轮末对账时不算 agent 的改动。"""
     tool_writes: dict[str, str] = field(default_factory=dict)
     pending_tool_paths: list[str] = field(default_factory=list)
     calls: dict[str, events.ToolCall] = field(default_factory=dict)

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from studio.workspace.blobs import BlobStore
 from studio.workspace.snapshot import Manifest
-from studio.workspace.upstream import materialize_upstream, upstream_drift
+from studio.workspace.upstream import derived_upstream, materialize_upstream, upstream_drift
 
 
 def _write(path: Path, content: str | bytes) -> None:
@@ -183,3 +183,45 @@ class TestUpstreamDrift:
         (workdir / "upstream").symlink_to(external, target_is_directory=True)
 
         assert upstream_drift(workdir, sources) == ["upstream", "upstream/topic/brief.md"]
+
+
+class TestDerivedUpstream:
+    """`prepare_turn` 写进 `upstream/` 的派生文件不算 agent 的改动（子项目 2A）。"""
+
+    def _sources(self, blobs: BlobStore) -> dict:
+        return {"topic": {"topic/a.md": blobs.put(b"a")}}
+
+    def test_derived_files_are_reported_by_the_baseline_helper(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        sources = self._sources(blobs)
+        materialize_upstream(workdir, blobs, sources)
+        assert derived_upstream(workdir, sources) == {}
+        _write(workdir / "upstream" / "timeline.json", "{}")
+        derived = derived_upstream(workdir, sources)
+        assert list(derived) == ["upstream/timeline.json"]
+
+    def test_unmodified_derived_files_are_not_drift(self, blobs: BlobStore, workdir: Path) -> None:
+        sources = self._sources(blobs)
+        materialize_upstream(workdir, blobs, sources)
+        _write(workdir / "upstream" / "timeline.json", "{}")
+        _write(workdir / "upstream" / "exemplar" / "x.js", "x")
+        derived = derived_upstream(workdir, sources)
+        assert upstream_drift(workdir, sources, derived) == []
+
+    def test_modified_or_removed_derived_files_and_new_stray_files_are_drift(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        sources = self._sources(blobs)
+        materialize_upstream(workdir, blobs, sources)
+        _write(workdir / "upstream" / "timeline.json", "{}")
+        _write(workdir / "upstream" / "exemplar" / "x.js", "x")
+        derived = derived_upstream(workdir, sources)
+        (workdir / "upstream" / "timeline.json").write_text("changed", encoding="utf-8")
+        (workdir / "upstream" / "exemplar" / "x.js").unlink()
+        _write(workdir / "upstream" / "stray.txt", "x")
+        assert upstream_drift(workdir, sources, derived) == [
+            "upstream/exemplar/x.js",
+            "upstream/stray.txt",
+            "upstream/timeline.json",
+        ]
