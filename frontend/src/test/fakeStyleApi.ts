@@ -16,6 +16,8 @@ export const server = {
   defaultId: null as string | null,
   /** 设置后 `saveStyleDraft` 抛出它。 */
   saveError: null as ApiError | null,
+  /** 设置后 `discardStyleDraft` 抛出它。 */
+  discardError: null as ApiError | null,
   /** 设置后 `writeDraftFile` 抛出它。 */
   writeError: null as ApiError | null,
   /** 有对话轮次在跑的风格 id（草稿状态的 `busy`）。 */
@@ -29,6 +31,7 @@ export function resetServer(): void {
   server.drafts.clear()
   server.defaultId = null
   server.saveError = null
+  server.discardError = null
   server.writeError = null
   server.busy.clear()
   server.writes = []
@@ -179,6 +182,7 @@ export const endpoints = {
     return detail(id)
   },
   async discardStyleDraft(id: string): Promise<void> {
+    if (server.discardError) throw server.discardError
     if (!server.drafts.delete(id) && !server.saved.has(id)) throw notFound(id)
   },
   async patchSettings(patch: { default_style_preset_id?: string | null }) {

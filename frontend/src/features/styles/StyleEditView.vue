@@ -58,8 +58,8 @@ async function save(): Promise<void> {
 
 async function discard(): Promise<void> {
   if (!window.confirm('放弃所有未保存的修改？这套风格会回到上次保存的样子。')) return
-  const { wasNew } = await draft.discard()
-  emit('discarded', wasNew)
+  const result = await draft.discard()
+  if (result) emit('discarded', result.wasNew)
 }
 </script>
 
@@ -135,11 +135,11 @@ async function discard(): Promise<void> {
       </div>
 
       <p
-        v-if="draft.saveError.value"
+        v-if="draft.saveError.value || draft.discardError.value"
         class="text-destructive text-sm"
         data-testid="style-server-error"
       >
-        {{ draft.saveError.value }}
+        {{ draft.saveError.value ?? draft.discardError.value }}
       </p>
       <div class="flex shrink-0 items-center gap-2">
         <Button

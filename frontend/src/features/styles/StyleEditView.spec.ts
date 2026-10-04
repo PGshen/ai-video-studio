@@ -223,6 +223,19 @@ describe('StyleEditView 保存与放弃', () => {
     expect(server.drafts.has('s1')).toBe(true)
     expect(w.emitted('discarded')).toBeUndefined()
   })
+
+  it('后端拒绝放弃（409）时界面显示原因，不触发 discarded，草稿保留', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const w = await mountEdit()
+    server.discardError = new ApiError(409, 'AI 正在修改这套风格，请等这一轮结束（或先停止它）')
+
+    await w.get('[data-testid="discard-style"]').trigger('click')
+    await settle()
+
+    expect(w.get('[data-testid="style-server-error"]').text()).toContain('AI 正在修改这套风格')
+    expect(w.emitted('discarded')).toBeUndefined()
+    expect(server.drafts.has('s1')).toBe(true)
+  })
 })
 
 describe('StyleEditView 只读（AI 正在修改时）', () => {

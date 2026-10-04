@@ -214,13 +214,24 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     }
   }
 
-  /** 放弃草稿；`wasNew` 为真表示这是从未保存过的新风格，整个消失。 */
-  async function discard(): Promise<{ wasNew: boolean }> {
+  const discardError = ref<string | null>(null)
+
+  /** 放弃草稿；`wasNew` 为真表示这是从未保存过的新风格，整个消失。后端拒绝（例如 AI 正在修改）时
+   * 返回 `null`，原因在 `discardError`，草稿和还没写出的编辑都保留。 */
+  async function discard(): Promise<{ wasNew: boolean } | null> {
     const wasNew = isNew.value
+    discardError.value = null
+    const held = [...pending.values()]
     for (const timer of timers.values()) clearTimeout(timer)
     timers.clear()
     pending.clear()
-    await discardMutation.mutateAsync(styleId.value)
+    try {
+      await discardMutation.mutateAsync(styleId.value)
+    } catch (error) {
+      for (const item of held) edit(item.path, item.text)
+      discardError.value = errorMessage(error)
+      return null
+    }
     return { wasNew }
   }
 
@@ -249,5 +260,6 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     saveError,
     save,
     discard,
+    discardError,
   }
 }
