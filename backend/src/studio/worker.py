@@ -32,6 +32,7 @@ from sqlalchemy import Engine
 
 from studio.config import get_settings
 from studio.db.engine import make_engine, migrate
+from studio.db.repo.projects import get_project
 from studio.engines.render.base import (
     RenderEngine,
     RenderRequest,
@@ -43,6 +44,7 @@ from studio.engines.render.base import (
 from studio.engines.render.manim import ManimRenderEngine
 from studio.engines.render.manim.process import failed_scene_index
 from studio.jobs import claim_next, complete, fail, heartbeat, reap_stale_running
+from studio.worker_html import HtmlBackend, HtmlJobError, real_backend, run_html_job
 from studio.workspace import (
     BlobStore,
     ScopeError,
@@ -244,6 +246,7 @@ async def run_once(
     resolution: tuple[int, int] = _DEFAULT_RESOLUTION,
     fps: int = _DEFAULT_FPS,
     heartbeat_timeout_seconds: float = _HEARTBEAT_TIMEOUT_SECONDS,
+    html_backend: HtmlBackend | None = None,
 ) -> bool:
     """主循环的单次迭代（方便测试；`run_forever` 反复调用它）。
 
@@ -259,6 +262,11 @@ async def run_once(
         return False
 
     logger.info("[worker] 领取任务 %s（项目 %s）", job.id, job.project_id)
+    project = get_project(engine, job.project_id)
+    if project is not None and project.settings.get("engine") == "html":
+        await _run_html(engine, blobs, job.id, job.project_id, data_dir, fps, html_backend)
+        return True
+
     engine_instance = render_engine if render_engine is not None else ManimRenderEngine()
     workdir = project_dir(data_dir, job.project_id)
     heartbeat(engine, job.id)
@@ -308,6 +316,34 @@ async def run_once(
     complete(engine, job.id, result={"output_path": "output/final.mp4"})
     logger.info("[worker] 任务 %s 完成", job.id)
     return True
+
+
+async def _run_html(
+    engine: Engine,
+    blobs: BlobStore,
+    job_id: str,
+    project_id: str,
+    data_dir: Path,
+    fps: int,
+    backend: HtmlBackend | None,
+) -> None:
+    heartbeat(engine, job_id)
+    try:
+        await run_html_job(
+            engine,
+            blobs,
+            job_id=job_id,
+            project_id=project_id,
+            workdir=project_dir(data_dir, project_id),
+            backend=backend if backend is not None else real_backend(),
+            fps=fps,
+        )
+    except HtmlJobError as exc:
+        logger.warning("[worker] 任务 %s 失败：%s", job_id, exc)
+        fail(engine, job_id, error=str(exc))
+        return
+    complete(engine, job_id, result={"output_path": "output/final.mp4"})
+    logger.info("[worker] 任务 %s 完成", job_id)
 
 
 async def run_forever(
