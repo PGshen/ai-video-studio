@@ -25,6 +25,8 @@ const TEXT_EXTENSIONS = new Set([
   'markdown',
   'json',
   'py',
+  'js',
+  'svg',
   'txt',
   'yaml',
   'yml',
