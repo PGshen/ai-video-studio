@@ -1,0 +1,85 @@
+{
+  "scenes": [
+    {
+      "id": "s-question",
+      "narration": "抬头看天，晴天的天空是蓝色的。可太阳光明明是白色的，蓝色是从哪来的？答案藏在光和空气分子的碰撞里。",
+      "visual_intent": "提问：天空为什么是蓝的。用一个悬念引出光和空气分子。",
+      "beats": [
+        {
+          "cue_text": "抬头看天，晴天的天空是蓝色的。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        },
+        {
+          "cue_text": "可太阳光明明是白色的，蓝色是从哪来的？",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        },
+        {
+          "cue_text": "答案藏在光和空气分子的碰撞里。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        }
+      ]
+    },
+    {
+      "id": "s-scattering",
+      "narration": "白光其实是所有颜色的混合，从红到紫。它们撞上空气分子时，波长越短，被散射得越厉害。蓝光的波长短，被散射向四面八方。所以整片天空都泛着蓝。",
+      "visual_intent": "瑞利散射：白光分成各色，短波长被散射得更厉害。",
+      "beats": [
+        {
+          "cue_text": "白光其实是所有颜色的混合，从红到紫。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        },
+        {
+          "cue_text": "它们撞上空气分子时，波长越短，被散射得越厉害。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        },
+        {
+          "cue_text": "蓝光的波长短，被散射向四面八方。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        },
+        {
+          "cue_text": "所以整片天空都泛着蓝。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        }
+      ]
+    },
+    {
+      "id": "s-sunset",
+      "narration": "傍晚，阳光要穿过更厚的大气层。蓝光在半路上就被散射光了。剩下的红和橙，把天边染成了晚霞。",
+      "visual_intent": "日落为什么是红的：光穿过更厚的大气，蓝光被散射光了。",
+      "beats": [
+        {
+          "cue_text": "傍晚，阳光要穿过更厚的大气层。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        },
+        {
+          "cue_text": "蓝光在半路上就被散射光了。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        },
+        {
+          "cue_text": "剩下的红和橙，把天边染成了晚霞。",
+          "visual_action": "用画面表达这句话",
+          "emphasis": "无",
+          "transition": "continue"
+        }
+      ]
+    }
+  ]
+}

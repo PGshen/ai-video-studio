@@ -56,6 +56,7 @@ cd backend && uv run pytest -m slow tests/engines/test_html_browser.py tests/sta
   - 冒烟测试**不限制运行次数**，需要验证时就跑。
   - 用真实模型验证时，**优先使用本机登录的 Claude 订阅账号**（`claude-login`，不产生 API 费用）：`make smoke SMOKE_ARGS="-k claude_login"`。`SMOKE_ARGS` 原样追加到 pytest 命令后面。
   - 只有要验证的内容必须用到某个运行时或服务商时（API key 模式、OpenAI/OpenRouter、DeepSeek/LiteLLM），才跑对应用例或完整的 `make smoke`；这些用例会产生 API 费用，预算上限仍由测试里的 `COST_LIMITS` 强制。
+  - `test_animation_html_claude_login`（子项目 2A）：本机 Claude 登录，经 `TurnRunner` 在 `animation_html` 阶段里真实写镜头（`build_harness(real_stages=True, html=True)`；叙事用 `tests/fixtures/animation_html/sky/` 的 3 镜头“天空为什么是蓝的”夹具，无需配音文件）。要求：3 个镜头文件都写出，最后一次 `validate_scenes_html` 无错误（允许一次“根据校验错误继续”的追加轮），调用过 `render_preview_html`。需要真实 Chromium（`make setup`）。证据（警告、工具调用序列、预览次数）写到 `data/evidence/html-engine/smoke/`。命令：`make smoke SMOKE_ARGS="-k animation_html_claude_login"`（约 10–15 分钟，不产生 API 费用）。
 
 ## 风格库的 L4 走查（风格库重构）
 
