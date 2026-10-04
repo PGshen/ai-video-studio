@@ -41,8 +41,11 @@ class NarrativeStage:
     def write_scope(self) -> WriteScope:
         return _WRITE_SCOPE
 
-    def upstream_stages(self) -> list[str]:
+    def reads(self) -> list[str]:
         return ["topic"]
+
+    def prepare_turn(self, workdir: Path) -> None:
+        return None
 
     def artifact_dirs(self) -> list[str]:
         return ["narrative"]

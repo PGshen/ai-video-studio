@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import Engine
 
 from conftest import NarrativeProjectEnv
-from fixtures.narrative.seed import seed_narrative_project
+from fixtures.narrative.seed import fixture_registry, seed_narrative_project
 from studio.agent.stage_flow import upstream_sources
 from studio.db.engine import make_engine, migrate
 from studio.db.repo.stages import get_stage
@@ -57,7 +57,7 @@ class TestSeedNarrativeProject:
         project_id = seed_narrative_project(engine, blobs, data_dir=data_dir)
         workdir = project_dir(data_dir, project_id)
 
-        sources = upstream_sources(engine, project_id, NARRATIVE_STAGE)
+        sources = upstream_sources(engine, fixture_registry(), project_id, NARRATIVE_STAGE.name)
         materialize_upstream(workdir, blobs, sources)
 
         brief = (workdir / "upstream" / "topic" / "brief.md").read_text(encoding="utf-8")

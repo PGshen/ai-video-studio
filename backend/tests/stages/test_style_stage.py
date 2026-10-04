@@ -27,7 +27,7 @@ class TestDefinition:
         assert STAGE.name == "style"
         assert STAGE.workspaceless is True  # no project; the subject is the style
         assert STAGE.allow_web is False
-        assert STAGE.upstream_stages() == []
+        assert STAGE.reads() == []
         assert STAGE.artifact_dirs() == []
         assert STAGE.finalize_blockers(Path(".")) == []
 

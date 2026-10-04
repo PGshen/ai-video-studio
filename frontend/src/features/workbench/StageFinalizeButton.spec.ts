@@ -42,7 +42,7 @@ const stage = (status: string): StageOut => ({
   stage: 'topic',
   status,
   finalized_snapshot_id: null,
-  based_on_snapshot_id: null,
+  based_on: {},
   finalized_at: null,
 })
 

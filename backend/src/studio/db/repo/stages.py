@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, select, text
 from sqlalchemy.orm import Session
 
 from studio.db.engine import session_scope
@@ -24,7 +24,8 @@ class StageValue:
     stage: str
     status: str
     finalized_snapshot_id: str | None
-    based_on_snapshot_id: str | None
+    based_on: dict[str, str]
+    """每个上游所基于的定稿快照 `{上游阶段名: 快照 id}`；没有上游或未解锁时为空。"""
     finalized_at: datetime | None
 
 
@@ -34,7 +35,7 @@ def _to_value(row: ProjectStage) -> StageValue:
         stage=row.stage,
         status=row.status,
         finalized_snapshot_id=row.finalized_snapshot_id,
-        based_on_snapshot_id=row.based_on_snapshot_id,
+        based_on=dict(row.based_on or {}),
         finalized_at=row.finalized_at,
     )
 
@@ -67,7 +68,7 @@ def list_stages(engine: Engine, project_id: str) -> list[StageValue]:
         rows = db.scalars(
             select(ProjectStage)
             .where(ProjectStage.project_id == project_id)
-            .order_by(ProjectStage.created_at.asc())
+            .order_by(ProjectStage.created_at.asc(), text("rowid"))
         ).all()
         return [_to_value(row) for row in rows]
 
@@ -79,10 +80,10 @@ def update_stage(
     *,
     status: str | None = None,
     finalized_snapshot_id: str | None = None,
-    based_on_snapshot_id: str | None = None,
+    based_on: dict[str, str] | None = None,
     finalized_at: datetime | None = None,
 ) -> StageValue:
-    """更新阶段行；参数为 `None` 表示该字段不变。"""
+    """更新阶段行；参数为 `None` 表示该字段不变。`based_on` 整体替换。"""
     with session_scope(engine) as db:
         row = _get_row(db, project_id, stage)
         if row is None:
@@ -91,8 +92,8 @@ def update_stage(
             row.status = status
         if finalized_snapshot_id is not None:
             row.finalized_snapshot_id = finalized_snapshot_id
-        if based_on_snapshot_id is not None:
-            row.based_on_snapshot_id = based_on_snapshot_id
+        if based_on is not None:
+            row.based_on = dict(based_on)
         if finalized_at is not None:
             row.finalized_at = finalized_at
         db.flush()

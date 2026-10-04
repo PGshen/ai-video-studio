@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from alembic import command
@@ -138,3 +139,54 @@ def test_0008_adds_a_nullable_subject_id_to_sessions_and_keeps_existing_rows(
         rows = connection.execute(text("SELECT id, subject_id FROM sessions")).all()
     assert rows == [("s1", None)]
     assert "subject_id" in {col["name"] for col in inspect(engine).get_columns("sessions")}
+
+
+def test_0009_backfills_based_on_from_based_on_snapshot_id_and_downgrade_restores_it(
+    engine: Engine,
+) -> None:
+    config = _alembic_config()
+    rows = (
+        ("st-topic", "topic", None),
+        ("st-narrative", "narrative", "snap-topic"),
+        ("st-animation", "animation", "snap-narrative"),
+    )
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0008")
+        for stage_id, stage, based_on in rows:
+            connection.execute(
+                text(
+                    "INSERT INTO project_stages (id, project_id, stage, status, "
+                    "based_on_snapshot_id, created_at, updated_at) VALUES "
+                    "(:id, 'p1', :stage, 'active', :based_on, '2026-10-01', '2026-10-01')"
+                ),
+                {"id": stage_id, "stage": stage, "based_on": based_on},
+            )
+
+        command.upgrade(config, "0009")
+        upgraded = {
+            stage_id: json.loads(value)
+            for stage_id, value in connection.execute(
+                text("SELECT id, based_on FROM project_stages")
+            ).all()
+        }
+        columns = {col["name"] for col in inspect(connection).get_columns("project_stages")}
+
+        command.downgrade(config, "0008")
+        downgraded = dict(
+            connection.execute(text("SELECT id, based_on_snapshot_id FROM project_stages")).all()
+        )
+        old_columns = {col["name"] for col in inspect(connection).get_columns("project_stages")}
+
+    assert upgraded == {
+        "st-topic": {},
+        "st-narrative": {"topic": "snap-topic"},
+        "st-animation": {"narrative": "snap-narrative"},
+    }
+    assert "based_on" in columns and "based_on_snapshot_id" not in columns
+    assert downgraded == {
+        "st-topic": None,
+        "st-narrative": "snap-topic",
+        "st-animation": "snap-narrative",
+    }
+    assert "based_on_snapshot_id" in old_columns and "based_on" not in old_columns

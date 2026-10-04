@@ -45,6 +45,7 @@ import type {
   SuggestionStatus,
   TopicCheckOut,
   TurnAccepted,
+  VideoKindsOut,
   VoiceOut,
 } from '@/types/api'
 
@@ -52,6 +53,10 @@ import type {
 
 export function createProject(body: ProjectCreate): Promise<ProjectOut> {
   return request('/projects', { method: 'POST', body })
+}
+
+export function getVideoKinds(): Promise<VideoKindsOut> {
+  return request('/video-kinds')
 }
 
 export function listProjects(): Promise<ProjectOut[]> {

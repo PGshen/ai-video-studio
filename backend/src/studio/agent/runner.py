@@ -47,7 +47,7 @@ from studio.agent.runtime import (
     UserInput,
     effort_from_settings,
 )
-from studio.agent.stage import StageRegistry
+from studio.agent.stage import StageRegistry, upstream_of
 from studio.agent.tools import ToolSpec
 from studio.agent.turn_events import TOOL_RESULT_MAX_CHARS
 from studio.agent.turn_state import _Job, _State
@@ -310,9 +310,15 @@ class TurnRunner:
         self._publish_status(job, "running")
         turn_events.note_model_switch(self, job)
 
-        state.upstream_ids = stage_flow.upstream_snapshot_ids(engine, project_id, job.stage)
+        state.upstream_ids = stage_flow.upstream_snapshot_ids(
+            engine, self._registry, project_id, job.stage.name
+        )
         state.sources = stage_flow.manifests_of(engine, state.upstream_ids)
         materialize_upstream(workdir, blobs, state.sources)
+        try:
+            job.stage.prepare_turn(workdir)
+        except Exception as exc:
+            raise RuntimeError(f"阶段 {job.stage.name} 的 prepare_turn 失败：{exc}") from exc
 
         previous = turns_repo.previous_turn(engine, job.session.id, job.turn_id)
         preamble = build_preamble(
@@ -322,6 +328,7 @@ class TurnRunner:
                 workdir=workdir,
                 project_id=project_id,
                 stage=job.stage,
+                registry=self._registry,
                 previous=previous,
                 start_snapshot_id=start_id,
             )
@@ -354,7 +361,13 @@ class TurnRunner:
             engine=engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
-            upstream_stages=tuple(job.stage.upstream_stages()),
+            upstream_stages=tuple(
+                upstream_of(
+                    stage_flow.project_pipeline(engine, project_id),
+                    self._registry,
+                    job.stage.name,
+                )
+            ),
             effort=effort_from_settings(project.settings if project else None),
         )
         await self._run_stream(job, state, ctx)
@@ -384,7 +397,7 @@ class TurnRunner:
             engine=self._engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
-            upstream_stages=tuple(job.stage.upstream_stages()),
+            upstream_stages=(),
             effort=effort_from_settings(None),
         )
         await self._run_stream(job, state, ctx)
@@ -418,7 +431,7 @@ class TurnRunner:
             engine=self._engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
-            upstream_stages=tuple(job.stage.upstream_stages()),
+            upstream_stages=(),
             effort=effort_from_settings(None),
         )
         await self._run_stream(job, state, ctx)

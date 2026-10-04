@@ -53,7 +53,7 @@ def _stage_out(value: StageValue) -> StageOut:
         stage=value.stage,
         status=value.status,
         finalized_snapshot_id=value.finalized_snapshot_id,
-        based_on_snapshot_id=value.based_on_snapshot_id,
+        based_on=value.based_on,
         finalized_at=value.finalized_at,
     )
 

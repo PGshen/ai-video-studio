@@ -26,6 +26,7 @@ import {
   useVoicesQuery,
 } from '@/composables/queries'
 import { DEFAULT_EFFORT, effortFromSettings, type Effort } from '@/composables/effortChoice'
+import { KIND_SUMMARY } from '@/composables/videoKindChoice'
 import { SPEED_MAX, SPEED_MIN, parseSpeed, speedError } from '@/composables/voiceRules'
 
 const props = defineProps<{ projectId: string }>()
@@ -90,6 +91,15 @@ async function save(): Promise<void> {
       </p>
 
       <div class="flex flex-col gap-3">
+        <div
+          v-if="project"
+          class="flex flex-col gap-0.5 text-sm"
+          data-testid="project-kind"
+        >
+          <span class="text-muted-foreground text-xs">视频类型</span>
+          <span>{{ KIND_SUMMARY(project.kind) }}</span>
+          <span class="text-muted-foreground text-xs">创建后不能修改，换类型请新建项目</span>
+        </div>
         <div class="flex flex-col gap-1.5">
           <Label for="project-voice">音色</Label>
           <select

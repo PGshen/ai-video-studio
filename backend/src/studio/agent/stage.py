@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -32,7 +33,13 @@ class StageDefinition(Protocol):
 
     def write_scope(self) -> WriteScope: ...
 
-    def upstream_stages(self) -> list[str]: ...
+    def reads(self) -> list[str]:
+        """本阶段读取的阶段名（全集，不随流水线变化）；实际上游由 `upstream_of` 按流水线过滤。"""
+        ...
+
+    def prepare_turn(self, workdir: Path) -> None:
+        """每轮刷新 `upstream/` 之后调用；只允许写 `upstream/` 下的派生文件。"""
+        ...
 
     def artifact_dirs(self) -> list[str]: ...
 
@@ -58,3 +65,17 @@ class StageRegistry:
             return self._stages[name]
         except KeyError as exc:
             raise KeyError(f"未注册的阶段：{name}") from exc
+
+    def has(self, name: str) -> bool:
+        return name in self._stages
+
+
+def upstream_of(pipeline: Sequence[str], registry: StageRegistry, stage: str) -> list[str]:
+    """`stage` 在流水线中的直接上游：`reads()` 与流水线中排在它之前的阶段的交集（按流水线顺序）。
+
+    `stage` 不在流水线或未注册时返回空列表。
+    """
+    if stage not in pipeline or not registry.has(stage):
+        return []
+    reads = set(registry.get(stage).reads())
+    return [name for name in pipeline[: pipeline.index(stage)] if name in reads]

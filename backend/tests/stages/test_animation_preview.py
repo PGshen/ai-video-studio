@@ -14,6 +14,7 @@ from typing import Protocol
 import pytest
 from sqlalchemy import Engine
 
+from fixtures.animation.seed import fixture_registry
 from studio.agent.stage_flow import upstream_sources
 from studio.agent.tools import ToolContext, invoke_tool
 from studio.engines.render.base import PreviewResult
@@ -44,7 +45,7 @@ _VALID_CODE = {
 
 
 def _materialize(env: AnimationProjectEnv) -> None:
-    sources = upstream_sources(env.engine, env.project_id, ANIMATION_STAGE)
+    sources = upstream_sources(env.engine, fixture_registry(), env.project_id, ANIMATION_STAGE.name)
     materialize_upstream(env.workdir, env.blobs, sources)
 
 
