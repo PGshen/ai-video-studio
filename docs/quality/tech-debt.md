@@ -23,13 +23,9 @@
 | TD-49 | 2026-10-02 | `features/workbench/SnapshotRail.vue`、`SnapshotDetail.vue`、`features/canvas/topic/{TopicCanvas,EditModeToggle}.vue`、`briefStatus.ts` | 画布布局优化独立评审的 Minor，暂不处理：① 窄屏下快照栏的「收起」按钮点了没反应（窄屏始终展开）；② 双选对比两个快照无差异时，文案写成「与上一个快照相比没有变化」；③ `SnapshotTimeline.spec` 的「不残留旧 diff」没有真正造出一份旧 diff；④ 检查查询失败时状态图标一直转圈、写「正在检查简报…」（旧检查条同样）；⑤ `brief.md` 不存在或加载中也能点「编辑」，按钮呈按下态但内容区仍是空提示；⑥ agent 运行中时那个可聚焦的包装元素没有 role/可访问名称；⑦ 折叠快照栏会卸载时间线，再展开时选中的快照丢失 | 都是小瑕疵，不影响数据 | ① 窄屏隐藏按钮；② 按单选/双选分别给文案；③ 测试里先给出一份 diff 再让选中项消失；④ 区分 `isError`；⑤ 文件不存在时禁用切换；⑥ 加 `role="button" aria-disabled aria-label`；⑦ 选择状态上移到 `SnapshotRail` 或用 `v-show` | 画布布局优化独立评审 |
 | TD-50 | 2026-10-03 | `backend/pyproject.toml` 的 `pillow` 依赖 | 成片不再叠字幕（ADR 0016），后端已不再 import Pillow，但依赖和锁文件里还留着（manim 自己仍会带入 pillow） | 只是多声明了一个直接依赖，无运行时影响 | 确认没有其它用途后从 `pyproject.toml` 移除并更新 `uv.lock` | ADR 0016 |
 | TD-52 | 2026-10-04 | `styles/store.py`（`_read_tree`、`prune_draft`）、`StyleFileTree` | 草稿里读不出来的文件（非 UTF-8、超大）只进校验问题，不进 `DraftStatus.files`，`prune_draft` 也不清它们：保存 422 提示「references/x.md 不是 UTF-8 文本」，文件树里却找不到它，界面删不掉 | 只能整份放弃草稿 | 把读不出来的文件也列出来供删除，或清理时一并删除并通知 | 风格库重构整分支评审 M1 |
-| TD-53 | 2026-10-04 | `styles/store.py::_RUNTIME_DIRS` | OpenAI 运行时的 Shell 在草稿里建 `.cache/tmp`，每轮结束弹「已清除：.cache」（同 `.claude` 的噪音，只在官方 OpenAI + macOS 原生 Shell 时出现） | 通知噪音 | `.cache` 加进 `_RUNTIME_DIRS` | 评审 M2 |
 | TD-54 | 2026-10-04 | `agent/recovery.py` | 进程崩溃时风格轮次正在运行，重启恢复不清理草稿：agent 留下的符号链接/多余文件要等下一轮结束才被清，期间保存 422 且界面删不掉 | 崩溃后草稿暂时无法保存 | 恢复流程对 `subject_id` 非空的会话调用 `prune_draft` | 评审 M3 |
-| TD-55 | 2026-10-04 | `queries.ts::useDeleteDraftFileMutation` | 删文件后整份草稿失效，可能把还在防抖中的 `STYLE.md` 编辑冲回旧内容（PLAUSIBLE，未复现） | 600ms 内删文件会丢刚敲的字 | 只失效草稿状态这一个 key | 评审 M4 |
-| TD-56 | 2026-10-04 | `StyleEditView.vue::discard` | 「放弃修改」失败（409、网络错误）时只是未处理的 rejection，界面没有任何提示 | 点了没反应 | 捕获并显示错误 | 评审 M5 |
 | TD-57 | 2026-10-04 | `api/styles.py::_http_error`、`StyleEditView.vue` | 保存 422 的 `detail` 是用「；」拼成的一个字符串，界面放在一个 `<p>` 里，不是逐条显示（设计写的是逐条） | 多个问题时难读 | 后端返回列表，前端逐条渲染 | 评审 M6 |
 | TD-58 | 2026-10-04 | `styles/store.py::_swap` | 原子替换在两次 rename 之间进程被杀（毫秒级窗口）时，正式目录消失、内容留在 `.<id>.old-*` 里，列表跳过它，启动也不恢复 | 极小概率丢一套风格的当前版本（旧内容仍在磁盘） | 启动时扫描 `.old-*` 并在正式目录缺失时还原 | 评审 M7 |
-| TD-59 | 2026-10-04 | `StyleChatPane`/`useStyleDraft` | 点发送到后端返回 `busy` 之间（新会话还要先建会话）编辑区没有本地锁；这段时间敲的字会被 409 丢弃（评审 I2 修复后不再覆盖 AI 成果，但用户的字会消失） | 窗口约几百毫秒，丢几个字 | 点发送起本地锁住编辑区，收到 busy 或发送失败再解锁 | 评审 I2 的残余 |
 
 ## 已处理
 
@@ -72,3 +68,7 @@
 | TD-40 | 2026-09-30 | `IdeasPage.vue`：头脑风暴抽屉第一次打开后用 `v-show` 保持挂载，收起不再断开 SSE |
 | TD-39（设置页提示） | 2026-09-30 | M5 T10：设置页的联网模式选「原生联网」时显示风险说明（Claude 的 WebFetch 受 URL 来源规则约束、OpenAI 托管搜索没有这层限制、提示注入外泄风险自担），并标注 OpenAI 托管搜索经 OpenRouter 未验证；界面覆盖环境变量，下一轮起生效。托管搜索本身是否可用仍未验证（需要 `OPENAI_API_KEY`，会产生费用） |
 | TD-43 | 2026-10-04 | 风格库重构（计划 style-library，ADR 0019）：编辑中的内容是服务端草稿（`data/style-drafts/<id>/`），关闭抽屉、刷新页面、点导航离开都不丢，列表里标「有未保存草稿」/「未保存的新风格」；原来的 `StylePresetsPanel`/`StylePresetEditor` 已删除 |
+| TD-53 | 2026-10-04 | 计划 td-cleanup-style T2：`styles/store.py::_RUNTIME_DIRS` 加 `.cache`，OpenAI Shell 在草稿里建的 `.cache/tmp` 每轮结束静默清除，不再弹「已清除：.cache」；单测 |
+| TD-55 | 2026-10-04 | T3：`useDeleteDraftFileMutation` 只失效草稿状态这一个 key（`exact`），不再按前缀重取各文件内容，防抖中的编辑不会被冲回旧内容；单测复现后修复，L4 在隔离实例上实操通过（`data/evidence/td-cleanup-style/l4.md`） |
+| TD-56 | 2026-10-04 | T3：`useStyleDraft.discard()` 失败时返回 `null` 并写 `discardError`，`StyleEditView` 在保存错误的位置显示原因、保持编辑态；顺带修了失败后清掉的防抖编辑会静默丢失（失败时重新排上写入）；单测 + L4（拦截 409） |
+| TD-59 | 2026-10-04 | T4：`SessionPanel` 新增 `sending` 事件（发送与继续，`beforeSend` 前 true、finally false，继续成功后也发 `sent`）；`StyleChatPane` 在发送成功时等草稿状态重取完成再放开，`StyleEditView` 用本地 `sending` 并入只读；单测 + L4（点发送 44ms 内只读，持续到轮次结束，无空档） |

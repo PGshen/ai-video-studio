@@ -88,7 +88,7 @@
 - **完成标准**：用例通过；`SessionPanel` 的既有测试不变。
 - **验证命令**：`make check`
 
-### T5：收尾与 L4（待开始）
+### T5：收尾与 L4（完成）
 
 - **目标**：AC6，并对 AC3～AC5 做真实浏览器走查。
 - **涉及文件**：`docs/quality/tech-debt.md`（本计划处理的条目移到「已处理」，写明处理方式）、`docs/quality/QUALITY.md`（`styles`、`frontend` 行的日期与说明）、本计划。
@@ -101,11 +101,12 @@
 - 2026-10-04 — T1 登记表 8 条改为 TD-52～TD-59，三处引用同步；`check_docs.py` 新增「未处理条目编号唯一」检查（对旧登记表实测报 7 处重复）— `make check` 绿（59e6294）
 - 2026-10-04 — T2 `_RUNTIME_DIRS` 加 `.cache`；先写失败用例（`removed` 多出 `.cache`），实现后 `tests/styles` 117 个通过（9d5f5ed）
 - 2026-10-04 — T3 `useDeleteDraftFileMutation` 只失效草稿状态（`exact`）；`discard()` 失败返回 `null` 并写 `discardError`，`StyleEditView` 显示；先写 4 个失败用例（含 TD-47 复现：缓存被冲回旧内容），假后端加 `discardError`（1e029ed）
-- 2026-10-04 — T4 `SessionPanel` 新增 `sending` 事件（发送与继续都发，`beforeSend` 之前 true、finally false）；`StyleChatPane` 转发，成功时等草稿状态重取完成再发 false，失败或重取出错立即发 false；`StyleEditView` 本地 `sending` 并入 `locked`，换风格复位；每处先写失败用例
+- 2026-10-04 — T4 `SessionPanel` 新增 `sending` 事件（发送与继续都发，`beforeSend` 之前 true、finally false）；`StyleChatPane` 转发，成功时等草稿状态重取完成再发 false，失败或重取出错立即发 false；`StyleEditView` 本地 `sending` 并入 `locked`，换风格复位；每处先写失败用例（db0f4cc）
+- 2026-10-04 — T5 L4 在隔离实例上走查 AC3/AC4/AC5 通过（`data/evidence/td-cleanup-style/l4.md`）；tech-debt.md 把 TD-53/55/56/59 移到已处理，QUALITY.md 同步
 
 ## 下一步
 
-- T5：更新 tech-debt.md/QUALITY.md，起隔离实例做 L4（见计划 T5），再请新上下文评审整个分支。
+- 新上下文评审整个分支（`git diff main...td-cleanup-style`），处理发现；之后状态改「待验收」，等负责人验收，再移到 `completed/` 并合并（SOP §7、§8）。
 
 ## 决策记录
 
@@ -124,4 +125,7 @@
 
 ## 验证记录
 
-- 无
+- AC1：`python3 scripts/check_docs.py` 通过；新检查对旧登记表（`git show HEAD~4:...`）报 7 处重复，对现在的登记表通过；`grep` 核对 `QUALITY.md`、`style-library.md` 的引用已指向 TD-52～TD-59。
+- AC2：`backend/tests/styles/test_store.py::TestPruneDraft::test_the_openai_shell_cache_directory_is_removed_silently`（先失败：`removed` 多出 `.cache`；实现后通过）。
+- AC3/AC4/AC5：单测见 `useStyleDraft.spec.ts`（删文件不冲掉编辑、放弃失败、失败后编辑不丢）、`StyleEditView.spec.ts`、`StyleChatPane.spec.ts`、`SessionPanel.spec.ts`，均先见失败；L4 见 `data/evidence/td-cleanup-style/l4.md`。
+- AC6：`make check` 绿（2026-10-04，T4 之后：后端 1592、前端 901）。
