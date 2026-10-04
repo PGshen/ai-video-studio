@@ -1,0 +1,205 @@
+"""`validate_scenes_html` 工具（设计 §6.3）：静态检查、冒烟运行、确定性、beat 敏感度等。
+
+输出文本形状固定（2B 的 `scene_checks` 会解析）：错误行 `镜头 <id>：<说明>`，警告行
+`警告 镜头 <id>：<说明>` / `警告：<说明>`；通过时首行 `全部 N 个镜头校验通过。`
+（指定镜头时 `镜头 <id> 校验通过。`）；有错误时末行 `共 E 个错误、W 个警告。`。
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel
+
+from studio.agent.tools import ToolContext, ToolResult, ToolSpec
+from studio.engines.render.html.assemble import assemble
+from studio.engines.render.html.assets import check_assets
+from studio.engines.render.html.glyphs import missing_characters
+from studio.engines.render.html.pool import get_browser_pool
+from studio.engines.render.html.probe import (
+    beat_sensitivity,
+    determinism_check,
+    sample_times,
+    section_info,
+    smoke_run,
+)
+from studio.engines.render.html.static_check import (
+    StaticIssue,
+    font_size_warnings,
+    static_check,
+    strip_comments,
+)
+from studio.stages.animation_html.common import (
+    browser_error_text,
+    load_timeline,
+    scene_exists,
+    scene_ids,
+    scene_path,
+)
+
+_CUE_REFERENCE = re.compile(r"\bcue\s*\(|\bcueEnd\s*\(|\.beats\b")
+_SCENE_FILE = re.compile(r"^animation/scenes/(.+)\.js$")
+_DETERMINISM_SAMPLES = 6
+
+
+class ValidateScenesHtmlArgs(BaseModel):
+    scene_id: str | None = None
+
+
+@dataclass(slots=True)
+class _Report:
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def error(self, message: str, scene: str | None = None) -> None:
+        self.errors.append(f"镜头 {scene}：{message}" if scene else message)
+
+    def warn(self, message: str, scene: str | None = None) -> None:
+        self.warnings.append(f"警告 镜头 {scene}：{message}" if scene else f"警告：{message}")
+
+
+def _issue_scene(issue: StaticIssue) -> str | None:
+    match = _SCENE_FILE.match(issue.path)
+    return match.group(1) if match else None
+
+
+def _relevant(issue: StaticIssue, targets: list[str], single: bool) -> bool:
+    scene = _issue_scene(issue)
+    return not (single and scene is not None and scene not in targets)
+
+
+def _lib_text(workdir: Path) -> str:
+    texts = [
+        p.read_text(encoding="utf-8") for p in sorted((workdir / "animation" / "lib").glob("*.js"))
+    ]
+    return "\n".join(texts)
+
+
+def _pre_browser_checks(
+    workdir: Path, timeline: dict[str, Any], targets: list[str], single: bool, report: _Report
+) -> None:
+    for sid in targets:
+        if not scene_exists(workdir, sid):
+            report.error(f"缺少镜头文件 animation/scenes/{sid}.js（或文件为空）", sid)
+    for issue in static_check(workdir):
+        if _relevant(issue, targets, single):
+            report.error(f"{issue.path}:{issue.line} {issue.message}", _issue_scene(issue))
+    for issue in font_size_warnings(workdir):
+        if _relevant(issue, targets, single):
+            report.warn(f"{issue.path}:{issue.line} {issue.message}", _issue_scene(issue))
+    for message in check_assets(workdir):
+        report.error(message)
+    if not single:
+        known = set(scene_ids(timeline))
+        for path in sorted((workdir / "animation" / "scenes").glob("*.js")):
+            if path.stem not in known:
+                report.warn(f"animation/scenes/{path.name} 不在时间轴的镜头里，不会被渲染")
+
+    lib = _lib_text(workdir)
+    for sid in targets:
+        if not scene_exists(workdir, sid):
+            continue
+        source = scene_path(workdir, sid).read_text(encoding="utf-8")
+        _, _, beats = section_info(timeline, sid)
+        if beats and not _CUE_REFERENCE.search(strip_comments(source) + "\n" + strip_comments(lib)):
+            report.error(
+                "有旁白 beat，但脚本（及 animation/lib/）里没有引用 env.cue / env.cueEnd / "
+                "env.beats：时刻必须由 beat 推出，不能写字面量",
+                sid,
+            )
+        text = "".join(b["cue_text"] for b in beats) + "".join(
+            ch for ch in strip_comments(source) if ord(ch) > 127
+        )
+        missing = missing_characters(text)
+        if missing:
+            report.warn(f"字符 {'、'.join(missing[:10])} 不在内置字体里，可能显示成方框", sid)
+
+
+async def _browser_checks(
+    workdir: Path, timeline: dict[str, Any], targets: list[str], report: _Report
+) -> None:
+    try:
+        async with get_browser_pool().acquire(assemble(workdir, timeline)) as page:
+            for sid in targets:
+                smoke = await smoke_run(page, timeline, sid)
+                for message in smoke.errors:
+                    report.error(message, sid)
+                for message in smoke.warnings:
+                    report.warn(message, sid)
+                if smoke.errors:
+                    continue
+                start, end, beats = section_info(timeline, sid)
+                try:
+                    times = sample_times(start, end, beats)[:_DETERMINISM_SAMPLES]
+                    unstable = await determinism_check(page, times)
+                    if unstable:
+                        report.error(
+                            "渲染结果依赖调用顺序或外部状态（例如 t="
+                            f"{unstable[0]:.2f}s 两次渲染不同）：draw 必须是 lt 的纯函数",
+                            sid,
+                        )
+                        continue
+                    if not beats:
+                        continue
+                    sensitivity = await beat_sensitivity(page, timeline, sid)
+                except Exception as exc:  # 镜头里的异常已带标签
+                    report.error(str(exc), sid)
+                    continue
+                if sensitivity.all_insensitive:
+                    report.error(
+                        "整个镜头对任何旁白 beat 都无反应：疑似把 beat 时刻写成了字面量，"
+                        "请改用 env.cue(i) / env.cueEnd(i)",
+                        sid,
+                    )
+                elif sensitivity.insensitive_beats:
+                    names = "、".join(f"env.cue({i})" for i in sensitivity.insensitive_beats)
+                    report.warn(f"{names} 对应的 beat 没有驱动画面", sid)
+    except Exception as exc:
+        text = browser_error_text(exc)
+        if text is None:
+            raise
+        report.error(text)
+
+
+def _render(report: _Report, targets: list[str], single: bool) -> ToolResult:
+    if report.errors:
+        lines = [*report.errors, *report.warnings]
+        lines.append(f"共 {len(report.errors)} 个错误、{len(report.warnings)} 个警告。")
+        return ToolResult(text="\n".join(lines), is_error=True)
+    head = f"镜头 {targets[0]} 校验通过。" if single else f"全部 {len(targets)} 个镜头校验通过。"
+    return ToolResult(text="\n".join([head, *report.warnings]))
+
+
+async def _handler(ctx: ToolContext, args: ValidateScenesHtmlArgs) -> ToolResult:
+    timeline, failure = load_timeline(ctx)
+    if timeline is None:
+        assert failure is not None
+        return failure
+    ids = scene_ids(timeline)
+    if args.scene_id is not None and args.scene_id not in ids:
+        return ToolResult(
+            text=f"镜头 {args.scene_id} 不在时间轴里。可用的镜头：{'、'.join(ids)}", is_error=True
+        )
+    single = args.scene_id is not None
+    targets = [args.scene_id] if args.scene_id is not None else ids
+
+    report = _Report()
+    _pre_browser_checks(ctx.workdir, timeline, targets, single, report)
+    if not report.errors:
+        await _browser_checks(ctx.workdir, timeline, targets, report)
+    return _render(report, targets, single)
+
+
+VALIDATE_SCENES_HTML_TOOL = ToolSpec(
+    name="validate_scenes_html",
+    description=(
+        "校验 HTML 镜头脚本：静态规则、真实浏览器冒烟运行、确定性、beat 敏感度、字号与字符覆盖、"
+        "资产。不传 scene_id 校验全部镜头。"
+    ),
+    input_model=ValidateScenesHtmlArgs,
+    stages={"animation_html"},
+    handler=_handler,
+)

@@ -12,6 +12,8 @@ from pathlib import Path
 
 from studio.agent.tools import ToolSpec
 from studio.stages.animation_html.prepare import TIMELINE_PATH, prepare_turn
+from studio.stages.animation_html.render_preview_html import RENDER_PREVIEW_HTML_TOOL
+from studio.stages.animation_html.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
 from studio.workspace.scope import WriteScope
 
@@ -25,7 +27,11 @@ _WRITE_SCOPE = WriteScope(
     ],
     tool_managed=[],
 )
-_TOOLS: list[ToolSpec] = [SUGGEST_UPSTREAM_CHANGE_TOOL]
+_TOOLS: list[ToolSpec] = [
+    VALIDATE_SCENES_HTML_TOOL,
+    RENDER_PREVIEW_HTML_TOOL,
+    SUGGEST_UPSTREAM_CHANGE_TOOL,
+]
 
 
 class AnimationHtmlStage:

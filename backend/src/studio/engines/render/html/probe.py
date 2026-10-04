@@ -33,6 +33,7 @@ class SceneSmoke:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     metrics: list[tuple[float, FrameMetrics]] = field(default_factory=list)
+    frames: list[tuple[float, bytes]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +150,7 @@ async def smoke_run(page: PageLike, timeline: Mapping[str, Any], scene_id: str) 
             continue
         metrics = frame_metrics(jpeg)
         report.metrics.append((t, metrics))
+        report.frames.append((t, jpeg))
         if is_flat(metrics):
             flat_times.append(t)
     if flat_times:
