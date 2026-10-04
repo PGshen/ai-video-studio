@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue'
 import { errorMessage } from '@/api/http'
 import CodeEditor from '@/components/CodeEditor.vue'
 import ConfirmDeleteButton from '@/components/ConfirmDeleteButton.vue'
+import SafeMarkdown from '@/components/session/SafeMarkdown.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,7 +18,8 @@ import {
   useStylesQuery,
 } from '@/composables/queries'
 import StyleFileTree from './StyleFileTree.vue'
-import { languageOf } from './styleFiles'
+import { stripFrontmatter } from './styleFrontmatter'
+import { ENTRY_FILE, languageOf } from './styleFiles'
 
 const props = defineProps<{ styleId: string }>()
 const emit = defineEmits<{
@@ -39,6 +41,11 @@ watch(
   () => (active.value = 'STYLE.md'),
 )
 const content = computed(() => style.value?.files[active.value] ?? '')
+/** markdown 文件直接渲染；json 金样本仍用只读编辑器。入口的 frontmatter 已在标题区显示，渲染时去掉。 */
+const isMarkdown = computed(() => languageOf(active.value) === 'markdown')
+const rendered = computed(() =>
+  active.value === ENTRY_FILE ? stripFrontmatter(content.value) : content.value,
+)
 
 const patchSettings = usePatchSettingsMutation()
 const duplicateMutation = useDuplicateStyleMutation()
@@ -129,7 +136,20 @@ async function remove(): Promise<void> {
           readonly
         />
       </div>
-      <div class="flex min-h-0 flex-col">
+      <div
+        v-if="isMarkdown"
+        class="min-h-0 overflow-auto rounded-md border p-4"
+        data-testid="markdown-pane"
+      >
+        <SafeMarkdown
+          :content="rendered"
+          mode="static"
+        />
+      </div>
+      <div
+        v-else
+        class="flex min-h-0 flex-col"
+      >
         <CodeEditor
           :key="active"
           :content="content"

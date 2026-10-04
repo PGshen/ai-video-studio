@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseFrontmatter, readStyleMeta, updateFrontmatter } from './styleFrontmatter'
+import { parseFrontmatter, readStyleMeta, stripFrontmatter, updateFrontmatter } from './styleFrontmatter'
 
 const ENTRY = `---
 name: 暖纸双色
@@ -83,5 +83,17 @@ describe('updateFrontmatter', () => {
   it('与后端 set_frontmatter_fields 的格式一致：值需要引号时用双引号并转义', () => {
     const out = updateFrontmatter('---\nname: n\n---\n', { name: 'say "hi"' })
     expect(out).toContain('name: "say \\"hi\\""')
+  })
+})
+
+describe('stripFrontmatter', () => {
+  it('去掉开头的 frontmatter 块，保留正文（含开头的空行之后的内容）', () => {
+    expect(stripFrontmatter(ENTRY).startsWith('\n# 暖纸双色')).toBe(true)
+    expect(stripFrontmatter(ENTRY)).not.toContain('description:')
+  })
+
+  it('没有 frontmatter 时原样返回；正文里的 --- 分隔线不受影响', () => {
+    expect(stripFrontmatter('# 标题\n\n---\n\n正文\n')).toBe('# 标题\n\n---\n\n正文\n')
+    expect(stripFrontmatter('')).toBe('')
   })
 })

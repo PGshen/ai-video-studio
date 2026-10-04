@@ -33,6 +33,12 @@ export function parseFrontmatter(content: string): Record<string, string> | null
   return result
 }
 
+/** 去掉开头的 frontmatter 块，只留正文（详情页渲染 `STYLE.md` 时用：名称、简介、分类已在标题区显示）。 */
+export function stripFrontmatter(content: string): string {
+  const match = FRONTMATTER.exec(content)
+  return match === null ? content : content.slice(match[0].length)
+}
+
 export function readStyleMeta(content: string): StyleMeta {
   const meta = parseFrontmatter(content) ?? {}
   return {

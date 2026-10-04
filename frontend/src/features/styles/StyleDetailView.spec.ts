@@ -22,6 +22,13 @@ vi.mock('@/components/CodeEditor.vue', () => ({
     },
   },
 }))
+vi.mock('@/components/session/SafeMarkdown.vue', () => ({
+  default: {
+    props: ['content'],
+    setup: (props: Record<string, unknown>) => () =>
+      h('div', { 'data-testid': 'markdown-view' }, String(props.content)),
+  },
+}))
 // 删除按钮自带确认框（走 portal），这里换成点一下就执行 action 的桩。
 vi.mock('@/components/ConfirmDeleteButton.vue', () => ({
   default: {
@@ -58,8 +65,26 @@ describe('StyleDetailView', () => {
     expect(w.text()).toContain('概念传记')
     expect(w.text()).toContain('一套风格')
     expect(w.find('[data-testid="add-references"]').exists()).toBe(false)
+  })
+
+  it('markdown 文件直接渲染，不用编辑器；STYLE.md 去掉 frontmatter（标题区已经显示）', async () => {
+    const w = await mountDetail()
+
+    const view = w.get('[data-testid="markdown-view"]')
+    expect(view.text()).toContain('# 暖纸双色')
+    expect(view.text()).not.toContain('description:')
+    expect(w.find('[data-testid="code-view"]').exists()).toBe(false)
+  })
+
+  it('json 金样本仍用只读编辑器显示', async () => {
+    seedStyle('s2', '带金样本', { 'exemplars/e1.json': '{"a":1}' })
+    const w = await mountDetail('s2')
+
+    await w.get('[data-testid="file-exemplars/e1.json"]').trigger('click')
+
+    expect(w.find('[data-testid="markdown-view"]').exists()).toBe(false)
     expect(w.get('[data-testid="code-view"]').attributes('data-readonly')).toBe('true')
-    expect(w.get('[data-testid="code-view"]').text()).toContain('# 暖纸双色')
+    expect(w.get('[data-testid="code-view"]').text()).toBe('{"a":1}')
   })
 
   it('点文件显示该文件的正式版本内容', async () => {
@@ -67,7 +92,7 @@ describe('StyleDetailView', () => {
 
     await w.get('[data-testid="file-references/color.md"]').trigger('click')
 
-    expect(w.get('[data-testid="code-view"]').text()).toBe('主色：暖白')
+    expect(w.get('[data-testid="markdown-view"]').text()).toBe('主色：暖白')
   })
 
   it('风格不存在时显示提示', async () => {
