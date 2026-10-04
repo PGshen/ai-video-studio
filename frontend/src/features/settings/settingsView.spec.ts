@@ -43,12 +43,13 @@ function settings(overrides: Partial<SettingsOut> = {}): SettingsOut {
 }
 
 describe('DEFAULT_PROFILE_STAGES', () => {
-  it('包含头脑风暴、三个项目阶段和风格对话，顺序与流水线一致（风格对话在最后）', () => {
+  it('包含头脑风暴、各项目阶段（含 HTML 动画）和风格对话，顺序与流水线一致（风格对话在最后）', () => {
     expect(DEFAULT_PROFILE_STAGES.map((s) => s.key)).toEqual([
       'brainstorm',
       'topic',
       'narrative',
       'animation',
+      'animation_html',
       'style',
     ])
   })

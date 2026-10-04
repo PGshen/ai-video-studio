@@ -62,3 +62,22 @@ async def test_startup_seed_uses_gateway_settings(tmp_path: Path) -> None:
     assert gpt is not None and sonnet is not None
     assert (gpt.base_url, gpt.model) == ("https://openrouter.example/api/v1", "openai/gpt-5")
     assert sonnet.base_url == "https://anthropic-gw.example"
+
+
+async def test_lifespan_closes_the_browser_pool(tmp_path: Path) -> None:
+    from studio.engines.render.html.pool import BrowserPool, get_browser_pool, set_browser_pool
+
+    closed: list[bool] = []
+
+    class RecordingPool(BrowserPool):
+        async def close(self) -> None:
+            closed.append(True)
+            await super().close()
+
+    set_browser_pool(RecordingPool())
+    app = create_app(Settings(data_dir=tmp_path / "data", enable_fake_runtime=True))
+    async with app.router.lifespan_context(app):
+        assert closed == []
+    assert closed == [True]
+    assert not isinstance(get_browser_pool(), RecordingPool)
+    set_browser_pool(None)

@@ -16,6 +16,14 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
 - 截图和日志放在 `data/evidence/<计划 id>/`（不进 git），计划里写明路径。
 - 如果某条验收标准无法验证（例如缺少 key），就明确写出"未验证"和原因，不能写成"通过"。
 
+## 慢测试（需要真实 Chromium / ffmpeg / manim）
+
+`make check` 默认排除 `slow` 标记的测试。HTML 引擎的慢测试需要先 `make setup`（会 `uv run playwright install chromium`）。单独运行：
+
+```bash
+cd backend && uv run pytest -m slow tests/engines/test_html_browser.py tests/stages/test_animation_html_tools.py tests/api/test_animation_html_flow.py
+```
+
 ## 在 worktree 里做 L4（浏览器走查）
 
 `.claude/launch.json` 的 `cwd` 是相对路径，`preview_start` 按**主检出**解析，所以在 worktree 里用它起的服务跑的是主检出（通常是旧）的代码。要走查 worktree 里的改动：直接在 worktree 里后台起两个进程——api：先 `set -a; . backend/.env; set +a`（否则读不到真实模型和 TTS/Tavily 的 key），再 `cd backend && STUDIO_ENABLE_FAKE_RUNTIME=true uv run uvicorn studio.main:app --reload --reload-dir src --host 127.0.0.1 --port 8000`；前端：`cd frontend && pnpm run dev`；然后用内置浏览器 `navigate` 到 `http://localhost:5173`。`backend/.env` 被 gitignore，worktree 里没有，可以做一个指向主检出的符号链接。第一次打开刚新增了组件的页面时可能因为热更新出现一次空白，重载即可。
