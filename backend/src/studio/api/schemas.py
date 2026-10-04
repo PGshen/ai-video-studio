@@ -373,6 +373,8 @@ class DraftStatusOut(BaseModel):
     """从未保存过（正式版本不存在）。"""
     dirty: bool
     files: list[str]
+    busy: bool = False
+    """这套风格有对话轮次在排队或运行（AI 正在改草稿）：改动类操作会被拒绝，前端据此只读。"""
 
 
 class DraftFileOut(BaseModel):

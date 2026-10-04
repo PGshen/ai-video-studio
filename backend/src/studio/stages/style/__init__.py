@@ -14,7 +14,8 @@ from studio.stages.style.tools import VALIDATE_STYLE_TOOL
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
-_WRITE_SCOPE = WriteScope(writable=["STYLE.md", "references/*", "exemplars/*"], tool_managed=[])
+# `references/*` 排在最前：fake 运行时的默认脚本把演示文件写在第一个可写目录里。
+_WRITE_SCOPE = WriteScope(writable=["references/*", "exemplars/*", "STYLE.md"], tool_managed=[])
 _TOOLS: list[ToolSpec] = [VALIDATE_STYLE_TOOL]
 
 

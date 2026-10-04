@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
  * 风格编辑态（计划 style-library T7）：名称/分类/简介表单 + 文件树 + 代码编辑器，底部「保存」「放弃修改」。
- * 所有改动先写进服务端草稿（`useStyleDraft`），点「保存」校验通过才成为正式版本。`readonly` 时（AI
- * 正在修改）整个编辑区只读；`chat` 插槽放右侧的对话区（T10）。
+ * 所有改动先写进服务端草稿（`useStyleDraft`），点「保存」校验通过才成为正式版本。右侧是 AI 对话区
+ * （`StyleChatPane`）：AI 改的是同一份草稿；后端报告 AI 正在修改（`busy`）或 `readonly` 时整个
+ * 编辑区只读，轮次结束后恢复。
  */
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import type { StyleOut } from '@/types/api'
+import StyleChatPane from './StyleChatPane.vue'
 import StyleFileTree from './StyleFileTree.vue'
 import StyleMetaForm from './StyleMetaForm.vue'
 import { languageOf } from './styleFiles'
@@ -27,8 +29,14 @@ const emit = defineEmits<{
 
 const draft = useStyleDraft(() => props.styleId)
 
+/** 编辑区只读：外部要求，或 AI 正在修改这份草稿。 */
+const locked = computed(() => (props.readonly ?? false) || draft.busy.value)
+const lockedReason = computed(
+  () => props.readonlyReason ?? (draft.busy.value ? 'AI 正在修改，完成后可以继续编辑' : undefined),
+)
+
 const stateText = computed(() => {
-  if (props.readonly && props.readonlyReason) return props.readonlyReason
+  if (locked.value && lockedReason.value) return lockedReason.value
   switch (draft.saveState.value) {
     case 'pending':
       return '待写入草稿…'
@@ -86,12 +94,12 @@ async function discard(): Promise<void> {
 
   <div
     v-else
-    class="flex min-h-0 flex-1 gap-4"
+    class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto lg:flex-row lg:overflow-visible"
   >
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+    <div class="flex min-h-[28rem] min-w-0 flex-1 flex-col gap-3 lg:min-h-0">
       <StyleMetaForm
         :meta="draft.meta.value"
-        :readonly="readonly"
+        :readonly="locked"
         @update="draft.updateMeta"
       />
 
@@ -102,7 +110,7 @@ async function discard(): Promise<void> {
           <StyleFileTree
             :active="draft.activePath.value"
             :files="draft.files.value"
-            :readonly="readonly"
+            :readonly="locked"
             @update:active="draft.selectFile"
             @add="draft.addFile"
             @remove="draft.removeFile"
@@ -120,7 +128,7 @@ async function discard(): Promise<void> {
             :key="draft.activePath.value"
             :content="draft.content.value"
             :language="languageOf(draft.activePath.value)"
-            :readonly="readonly ?? false"
+            :readonly="locked"
             @update:content="draft.edit(draft.activePath.value, $event)"
           />
         </div>
@@ -135,7 +143,7 @@ async function discard(): Promise<void> {
       </p>
       <div class="flex shrink-0 items-center gap-2">
         <Button
-          :disabled="readonly || draft.saving.value"
+          :disabled="locked || draft.saving.value"
           data-testid="save-style"
           @click="save"
         >
@@ -143,7 +151,7 @@ async function discard(): Promise<void> {
         </Button>
         <Button
           variant="outline"
-          :disabled="readonly || draft.saving.value"
+          :disabled="locked || draft.saving.value"
           data-testid="discard-style"
           @click="discard"
         >
@@ -157,6 +165,10 @@ async function discard(): Promise<void> {
         </span>
       </div>
     </div>
-    <slot name="chat" />
+    <StyleChatPane
+      class="h-[28rem] shrink-0 lg:h-auto lg:w-96"
+      :style-id="styleId"
+      :before-send="draft.ensureWritten"
+    />
   </div>
 </template>

@@ -78,6 +78,11 @@ describe('style queries', () => {
     expect(queryKeys.styles()).toEqual(['styles'])
     expect(queryKeys.style('s1')).toEqual(['styles', 's1'])
     expect(queryKeys.styleDraft('s1')).toEqual(['styles', 's1', 'draft'])
+    expect(queryKeys.sessionsFor({ kind: 'style', styleId: 's1' })).toEqual([
+      'styles',
+      's1',
+      'sessions',
+    ])
     expect(queryKeys.styleDraftFile('s1', 'references/a.md')).toEqual([
       'styles',
       's1',

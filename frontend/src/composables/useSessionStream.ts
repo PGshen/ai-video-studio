@@ -50,7 +50,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import { getSession, sessionStreamUrl } from '@/api/endpoints'
 import { openStream, type SseConnectionStatus } from '@/api/sse'
 import { isIdeaWriteTool } from '@/composables/ideaEvents'
-import { invalidateWorkspace, queryKeys } from '@/composables/queries'
+import { invalidateStyleDraft, invalidateWorkspace, queryKeys } from '@/composables/queries'
 import type { TurnOut } from '@/types/api'
 import type {
   ErrorEventPayload,
@@ -224,6 +224,8 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
 
   let controller: AbortController | null = null
   let projectId: string | null = null
+  /** 风格对话（`stage === 'style'`）属于的风格 id：AI 改了草稿时据此刷新草稿查询。 */
+  let styleId: string | null = null
   const turns = ref(new Map<string, TurnOut>()) as Ref<Map<string, TurnOut>>
   const userMessageInserted = new Set<string>()
   const toolCallIndex = new Map<string, number>()
@@ -254,6 +256,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     toolCallIndex.clear()
     pendingLocalMessages = [] // 上一个会话遗留的占位不能被下一个会话的 turn 认领。
     projectId = null
+    styleId = null
     lastConnectionKind = null
   }
 
@@ -491,6 +494,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
       }
       case 'workspace_changed': {
         if (projectId) void invalidateWorkspace(queryClient, projectId)
+        if (styleId) invalidateStyleDraft(queryClient, styleId)
         break
       }
       case 'turn_status': {
@@ -517,6 +521,13 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
         // the scene-checks read model can only change when a turn ends.
         if (projectId) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.sceneChecksAll(projectId) })
+        } else if (styleId) {
+          // 风格对话：一轮开始和结束都刷新草稿状态（后端的 `busy` 决定编辑区是否只读）；
+          // 结束时列表里的修改时间、引用数也可能变了。
+          invalidateStyleDraft(queryClient, styleId)
+          if (!isBusy(payload.status)) {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.styles(), exact: true })
+          }
         } else if (!isBusy(payload.status)) {
           // 无项目会话（头脑风暴）一轮结束：卡片可能变了（M4 T10）。
           void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
@@ -528,6 +539,7 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
 
   function applyHistory(detail: Awaited<ReturnType<typeof getSession>>): void {
     projectId = detail.project_id
+    styleId = detail.stage === 'style' ? detail.subject_id : null
     for (const turn of detail.turns) {
       turns.value.set(turn.id, turn)
     }

@@ -15,6 +15,13 @@ describe('noticeText', () => {
     expect(noticeText('model_switched')).toBe('模型已切换')
   })
 
+  it('草稿清理的提示自己就是完整的一句话，没有 message 时用兜底文案', () => {
+    expect(noticeText('draft_pruned', '草稿里有不属于风格的文件，已清除：notes.md')).toBe(
+      '草稿里有不属于风格的文件，已清除：notes.md',
+    )
+    expect(noticeText('draft_pruned')).toBe('草稿里不属于风格的文件已被清除')
+  })
+
   it('未知类型显示类型名', () => {
     expect(noticeText('mystery')).toBe('mystery')
     expect(noticeText('mystery', '说明')).toBe('mystery：说明')

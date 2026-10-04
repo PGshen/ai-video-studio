@@ -18,6 +18,8 @@ export const server = {
   saveError: null as ApiError | null,
   /** 设置后 `writeDraftFile` 抛出它。 */
   writeError: null as ApiError | null,
+  /** 有对话轮次在跑的风格 id（草稿状态的 `busy`）。 */
+  busy: new Set<string>(),
   writes: [] as { id: string; path: string; content: string }[],
   nextId: 1,
 }
@@ -28,6 +30,7 @@ export function resetServer(): void {
   server.defaultId = null
   server.saveError = null
   server.writeError = null
+  server.busy.clear()
   server.writes = []
   server.nextId = 1
 }
@@ -52,7 +55,13 @@ function status(id: string): DraftStatusOut {
   if (!draft) throw notFound(id)
   const saved = server.saved.get(id)
   const dirty = !saved || JSON.stringify(sorted(saved)) !== JSON.stringify(sorted(draft))
-  return { id, is_new: !saved, dirty, files: Object.keys(draft).sort() }
+  return {
+    id,
+    is_new: !saved,
+    dirty,
+    files: Object.keys(draft).sort(),
+    busy: server.busy.has(id),
+  }
 }
 
 const sorted = (files: Files) => Object.entries(files).sort(([a], [b]) => a.localeCompare(b))

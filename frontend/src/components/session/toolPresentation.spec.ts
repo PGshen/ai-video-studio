@@ -19,6 +19,9 @@ describe('relativizePath', () => {
   it('没有前缀时按 projects/<id>/ 与 scratch/<id>/ 推断', () => {
     expect(relativizePath('/Users/me/data/projects/abc/style/STYLE.md')).toBe('style/STYLE.md')
     expect(relativizePath('/Users/me/data/scratch/s1/notes.md')).toBe('notes.md')
+    expect(relativizePath('/Users/me/data/style-drafts/s1/references/a.md')).toBe(
+      'references/a.md',
+    )
   })
 
   it('已经是相对路径或无法识别时原样返回', () => {

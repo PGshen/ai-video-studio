@@ -105,3 +105,41 @@ describe('SessionPanel：没有会话时发送', () => {
     expect(state.sentWith).toEqual([])
   })
 })
+
+describe('SessionPanel：beforeSend', () => {
+  beforeEach(() => {
+    state.log = []
+    state.sentWith = []
+    document.body.innerHTML = ''
+  })
+
+  it('发送前先调用 beforeSend（风格编辑用它把还没写出的编辑写进草稿）', async () => {
+    const beforeSend = vi.fn(async () => {
+      state.log.push('before')
+    })
+    const w = mountPanel({ sessionId: 's1', beforeSend })
+
+    await submit(w, '把配色改深一点')
+
+    expect(beforeSend).toHaveBeenCalledTimes(1)
+    expect(state.log).toEqual(['before', 'add:把配色改深一点', 'send'])
+  })
+
+  it('beforeSend 失败时不发送，显示原因', async () => {
+    const beforeSend = vi.fn(async () => {
+      throw new Error('草稿还没有写入成功')
+    })
+    const w = mountPanel({ sessionId: 's1', beforeSend })
+
+    await submit(w, '你好')
+
+    expect(state.sentWith).toEqual([])
+    expect(w.text()).toContain('草稿还没有写入成功')
+  })
+
+  it('没给 beforeSend 时行为不变', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    await submit(w, '你好')
+    expect(state.sentWith).toEqual([{ sessionId: 's1', text: '你好' }])
+  })
+})

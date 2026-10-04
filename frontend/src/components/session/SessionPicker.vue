@@ -20,7 +20,7 @@ import {
   useSettingsQuery,
 } from '@/composables/queries'
 import { ApiError } from '@/api/http'
-import type { SessionScope } from '@/composables/sessionScope'
+import { scopeStageKey, type SessionScope } from '@/composables/sessionScope'
 import ModelSwitcher from './ModelSwitcher.vue'
 import { preselectProfileId } from './modelChoice'
 
@@ -35,8 +35,8 @@ const { data: settings } = useSettingsQuery()
 const { data: sessions } = useSessionsQuery(() => props.scope)
 const createSessionMutation = useCreateSessionMutation(() => props.scope)
 
-/** 默认模型按阶段取：头脑风暴是 `brainstorm`，项目阶段是它自己的阶段名。 */
-const stageKey = computed(() => (props.scope.kind === 'brainstorm' ? 'brainstorm' : props.scope.stage))
+/** 默认模型按阶段取：头脑风暴是 `brainstorm`，风格对话是 `style`，项目阶段是它自己的阶段名。 */
+const stageKey = computed(() => scopeStageKey(props.scope))
 
 // 预选（M5 T12）：该阶段的默认模型（设置页里设的）→ 第一个已配置的。使用者手动选过之后不再
 // 覆盖；切换阶段时重新预选。

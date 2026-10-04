@@ -1,0 +1,63 @@
+<script setup lang="ts">
+/**
+ * 风格编辑态右侧的 AI 对话区（计划 style-library T10）：会话选择 + 消息流 + 输入框，复用
+ * `components/session/`（项目工作台、头脑风暴同一套）。会话属于这套风格（范围 `style`），没有项目；
+ * AI 改的是服务端草稿，`useSessionStream` 在 `workspace_changed` 和轮次开始/结束时刷新草稿。
+ * `beforeSend`：发送前先把编辑器里还没写出的编辑写进草稿（否则轮次开始后写入会被 409 拒绝）。
+ */
+import { useQueryClient } from '@tanstack/vue-query'
+import { computed, ref, watch } from 'vue'
+import SessionPanel from '@/components/session/SessionPanel.vue'
+import SessionPicker from '@/components/session/SessionPicker.vue'
+import { useEnsureSession } from '@/components/session/useEnsureSession'
+import { invalidateStyleDraft } from '@/composables/queries'
+import { styleScope } from '@/composables/sessionScope'
+
+const props = defineProps<{
+  styleId: string
+  beforeSend?: () => Promise<void>
+}>()
+
+const scope = computed(() => styleScope(props.styleId))
+const sessionId = ref<string | null>(null)
+// 换一套风格：上一套风格的会话不能带过来。
+watch(
+  () => props.styleId,
+  () => {
+    sessionId.value = null
+  },
+)
+const createSession = useEnsureSession(scope, sessionId)
+
+const queryClient = useQueryClient()
+/** 消息已被后端接收：这套风格此刻已经 busy。新会话的第一轮时 SSE 可能还没连上，收不到
+ * `turn_status`，所以发送成功后主动刷新一次草稿状态，编辑区才会立刻只读。 */
+function onSent(): void {
+  invalidateStyleDraft(queryClient, props.styleId)
+}
+</script>
+
+<template>
+  <aside
+    class="flex min-h-0 flex-col gap-2 rounded-md border p-3"
+    data-testid="style-chat"
+  >
+    <h3 class="text-sm font-medium">
+      AI 对话
+    </h3>
+    <p class="text-muted-foreground text-xs">
+      告诉 AI 想怎么改这套风格；改动会出现在左边的草稿里，满意了再点「保存」。
+    </p>
+    <SessionPicker
+      v-model:session-id="sessionId"
+      :scope="scope"
+    />
+    <SessionPanel
+      :session-id="sessionId"
+      :project-id="null"
+      :create-session="createSession"
+      :before-send="beforeSend"
+      @sent="onSent"
+    />
+  </aside>
+</template>

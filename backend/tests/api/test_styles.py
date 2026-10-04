@@ -148,6 +148,7 @@ class TestDraftFiles:
             "id": style_id,
             "is_new": False,
             "dirty": False,
+            "busy": False,
             "files": ["STYLE.md", "exemplars/exemplar-1.json", "references/color-scheme.md"],
         }
 
@@ -499,6 +500,26 @@ class TestBusyWhileAiIsEditing:
                 f"{base}/files/references/color-scheme.md", json={"content": "x"}
             )
         ).status_code == 200
+
+    async def test_the_draft_status_says_whether_ai_is_working_on_it(self, api_env: ApiEnv) -> None:
+        busy_id, other_id = _make(api_env, "甲"), _make(api_env, "乙")
+        for style_id in (busy_id, other_id):
+            await api_env.client.post(f"/api/styles/{style_id}/draft")
+
+        async def busy(style_id: str) -> bool:
+            body = (await api_env.client.get(f"/api/styles/{style_id}/draft/files")).json()
+            return body["busy"]
+
+        assert await busy(busy_id) is False
+        turn_id = await _make_style_busy(api_env, busy_id)
+        try:
+            assert await busy(busy_id) is True
+            assert await busy(other_id) is False
+            opened = (await api_env.client.post(f"/api/styles/{busy_id}/draft")).json()
+            assert opened["busy"] is True
+        finally:
+            await api_env.release_busy(turn_id)
+        assert await busy(busy_id) is False
 
     async def test_another_style_is_not_affected(self, api_env: ApiEnv) -> None:
         busy_id, other_id = _make(api_env, "甲"), _make(api_env, "乙")

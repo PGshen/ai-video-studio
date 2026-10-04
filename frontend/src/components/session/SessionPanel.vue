@@ -36,13 +36,15 @@ import SessionTimeline from './SessionTimeline.vue'
  * `projectId` 只用于工具结果图片的地址；头脑风暴会话没有项目，传 `null`。`prefill`（M5 T13）：
  * 往输入框预填文本（处理回退建议时用），`key` 变化才写入；消息发送成功后发出 `sent`。
  * `createSession`：没有会话时第一次发送先用它建会话（它要把新会话 id 写回父组件的 `sessionId`）；
- * 不传则没有会话时输入框禁用。
+ * 不传则没有会话时输入框禁用。`beforeSend`：发送前的准备（风格编辑用它把还没写出的编辑写进草稿）。
  */
 const props = defineProps<{
   sessionId: string | null
   projectId: string | null
   prefill?: { text: string; key: string } | null
   createSession?: () => Promise<string>
+  /** 每次发送（含「继续」）之前先执行；失败（reject）则不发送，错误显示在输入框上方。 */
+  beforeSend?: () => Promise<void>
 }>()
 const emit = defineEmits<{ (e: 'sent'): void }>()
 
@@ -88,6 +90,7 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
   if (!text || (!props.sessionId && !props.createSession)) return
   sendError.value = null
   try {
+    await props.beforeSend?.()
     if (!props.sessionId && props.createSession) {
       creatingSession.value = true
       try {
@@ -120,6 +123,7 @@ async function onStop(): Promise<void> {
 async function onContinue(): Promise<void> {
   sendError.value = null
   try {
+    await props.beforeSend?.()
     // The backend sends the fixed text "继续" as this turn's user message, or re-sends the
     // original message when the last turn never started (TD-19).
     const state = turnStatus.value

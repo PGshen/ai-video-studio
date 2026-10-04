@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, ref } from 'vue'
 import { ApiError } from '@/api/http'
-import { queryKeys } from '@/composables/queries'
+import { invalidateStyleDraft, queryKeys } from '@/composables/queries'
 import { endpoints, entry, resetServer, seedStyle, server } from '@/test/fakeStyleApi'
 
 vi.mock('@/api/endpoints', async () => (await import('@/test/fakeStyleApi')).endpoints)
@@ -92,6 +92,27 @@ describe('打开草稿', () => {
     await settle()
 
     expect(draft.content.value).toBe('主色：暖白')
+  })
+})
+
+describe('AI 正在修改（busy）', () => {
+  it('busy 来自草稿状态；轮次结束后刷新草稿就恢复', async () => {
+    server.busy.add('s1')
+    const { draft, queryClient } = setup()
+    await settle()
+    expect(draft.busy.value).toBe(true)
+
+    server.busy.delete('s1')
+    invalidateStyleDraft(queryClient, 's1')
+    await settle()
+
+    expect(draft.busy.value).toBe(false)
+  })
+
+  it('没有草稿状态时不是 busy', async () => {
+    const { draft } = setup('missing')
+    await settle()
+    expect(draft.busy.value).toBe(false)
   })
 })
 

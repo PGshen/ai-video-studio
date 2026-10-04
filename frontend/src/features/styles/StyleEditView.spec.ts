@@ -3,9 +3,18 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
 import { ApiError } from '@/api/http'
+import { invalidateStyleDraft } from '@/composables/queries'
 import { entry, resetServer, seedStyle, server } from '@/test/fakeStyleApi'
 
 vi.mock('@/api/endpoints', async () => (await import('@/test/fakeStyleApi')).endpoints)
+vi.mock('./StyleChatPane.vue', () => ({
+  default: {
+    name: 'StyleChatPaneStub',
+    props: ['styleId', 'beforeSend'],
+    setup: (props: { styleId?: string }) => () =>
+      h('div', { 'data-testid': 'chat-pane', 'data-style-id': props.styleId }),
+  },
+}))
 vi.mock('@/components/CodeEditor.vue', () => ({
   default: {
     props: ['content', 'language', 'readonly'],
@@ -31,8 +40,11 @@ async function settle() {
   await flushPromises()
 }
 
+let lastClient: QueryClient
+
 async function mountEdit(styleId = 's1', props: Record<string, unknown> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  lastClient = queryClient
   const wrapper = mount(StyleEditView, {
     props: { styleId, ...props },
     global: { plugins: [[VueQueryPlugin, { queryClient }]] },
@@ -223,5 +235,67 @@ describe('StyleEditView 只读（AI 正在修改时）', () => {
     expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeDefined()
     expect(w.get('[data-testid="discard-style"]').attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('AI 正在修改')
+  })
+})
+
+describe('StyleEditView 右侧的 AI 对话区', () => {
+  it('编辑态右侧嵌入这套风格的对话区', async () => {
+    const w = await mountEdit()
+    expect(w.get('[data-testid="chat-pane"]').attributes('data-style-id')).toBe('s1')
+  })
+
+  it('发送消息前先把还没写出的编辑写进草稿（否则轮次开始后写入会被 409 拒绝）', async () => {
+    const w = await mountEdit()
+    await w.get('[data-testid="style-category"]').setValue('科普')
+    expect(server.writes).toEqual([])
+
+    const beforeSend = w.getComponent({ name: 'StyleChatPaneStub' }).props('beforeSend') as () => Promise<void>
+    await beforeSend()
+
+    expect(server.drafts.get('s1')!['STYLE.md']).toContain('category: 科普')
+  })
+
+  it('写不进草稿时发送被拒绝，并给出原因', async () => {
+    const w = await mountEdit()
+    server.writeError = new ApiError(500, '磁盘已满')
+    await w.get('[data-testid="style-category"]').setValue('科普')
+
+    const beforeSend = w.getComponent({ name: 'StyleChatPaneStub' }).props('beforeSend') as () => Promise<void>
+
+    await expect(beforeSend()).rejects.toThrow('磁盘已满')
+  })
+})
+
+describe('StyleEditView AI 正在修改（后端 busy）', () => {
+  it('草稿状态 busy 时整个编辑区只读并说明原因；轮次结束刷新后恢复', async () => {
+    server.busy.add('s1')
+    const w = await mountEdit()
+
+    expect(editor(w).disabled).toBe(true)
+    expect(w.get('[data-testid="style-name"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="save-state"]').text()).toContain('AI 正在修改')
+
+    server.busy.delete('s1')
+    invalidateStyleDraft(lastClient, 's1')
+    await settle()
+
+    expect(editor(w).disabled).toBe(false)
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('AI 改了草稿（刷新草稿后）编辑器和文件树显示新内容', async () => {
+    const w = await mountEdit()
+    server.drafts.get('s1')!['STYLE.md'] = entry('AI 改过的名字')
+    server.drafts.get('s1')!['references/new.md'] = 'AI 新建的文件'
+
+    invalidateStyleDraft(lastClient, 's1')
+    await settle()
+
+    expect(editor(w).value).toContain('AI 改过的名字')
+    expect(w.find('[data-testid="file-references/new.md"]').exists()).toBe(true)
+    expect((w.get('[data-testid="style-name"]').element as HTMLInputElement).value).toBe(
+      'AI 改过的名字',
+    )
   })
 })

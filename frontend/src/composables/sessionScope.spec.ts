@@ -5,6 +5,8 @@ import {
   sameScope,
   scopeProjectId,
   scopeResetKey,
+  scopeStageKey,
+  styleScope,
 } from '@/composables/sessionScope'
 
 describe('sessionScope', () => {
@@ -26,5 +28,32 @@ describe('sessionScope', () => {
     expect(scopeResetKey(projectScope('p1', 'topic'))).not.toBe(scopeResetKey(projectScope('p1', 'narrative')))
     expect(scopeResetKey(brainstormScope)).toBe(scopeResetKey({ kind: 'brainstorm' }))
     expect(scopeResetKey(brainstormScope)).not.toBe(scopeResetKey(projectScope('brainstorm', 'brainstorm')))
+  })
+
+  describe('风格对话范围', () => {
+    it('没有项目，按风格 id 区分', () => {
+      expect(styleScope('s1')).toEqual({ kind: 'style', styleId: 's1' })
+      expect(scopeProjectId(styleScope('s1'))).toBeNull()
+    })
+
+    it('sameScope 比较风格 id，并和另外两种范围区分开', () => {
+      expect(sameScope(styleScope('s1'), styleScope('s1'))).toBe(true)
+      expect(sameScope(styleScope('s1'), styleScope('s2'))).toBe(false)
+      expect(sameScope(styleScope('s1'), brainstormScope)).toBe(false)
+      expect(sameScope(styleScope('s1'), projectScope('s1', 'style'))).toBe(false)
+      expect(sameScope(brainstormScope, styleScope('s1'))).toBe(false)
+    })
+
+    it('scopeResetKey 随风格 id 变化，并和项目、头脑风暴的键不冲突', () => {
+      expect(scopeResetKey(styleScope('s1'))).not.toBe(scopeResetKey(styleScope('s2')))
+      expect(scopeResetKey(styleScope('s1'))).not.toBe(scopeResetKey(brainstormScope))
+      expect(scopeResetKey(styleScope('a'))).not.toBe(scopeResetKey(projectScope('a', 'style')))
+    })
+
+    it('scopeStageKey：默认模型按阶段取——头脑风暴、风格对话各自一项，项目阶段是阶段名', () => {
+      expect(scopeStageKey(brainstormScope)).toBe('brainstorm')
+      expect(scopeStageKey(styleScope('s1'))).toBe('style')
+      expect(scopeStageKey(projectScope('p1', 'narrative'))).toBe('narrative')
+    })
   })
 })

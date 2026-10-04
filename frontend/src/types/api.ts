@@ -46,6 +46,8 @@ export interface DraftStatusOut {
   is_new: boolean
   dirty: boolean
   files: string[]
+  /** 这套风格有对话轮次在排队或运行（AI 正在改草稿）：改动类操作会被拒绝。 */
+  busy: boolean
 }
 
 export interface StageOut {
@@ -128,6 +130,8 @@ export interface SessionOut {
   id: string
   project_id: string | null
   stage: string
+  /** 会话属于的对象：风格对话是风格 id，其余为 `null`。 */
+  subject_id: string | null
   model_profile_id: string
   runtime: string
   sdk_ref: string | null

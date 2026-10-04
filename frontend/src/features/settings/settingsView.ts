@@ -5,12 +5,13 @@
 
 import type { ModelProfileOut, SettingsOut, WebMode } from '@/types/api'
 
-/** 「各阶段默认模型」要列出的阶段，顺序与流水线一致（头脑风暴在最前）。 */
+/** 「各阶段默认模型」要列出的阶段，顺序与流水线一致（头脑风暴在最前，风格对话在最后）。 */
 export const DEFAULT_PROFILE_STAGES = [
   { key: 'brainstorm', label: '头脑风暴' },
   { key: 'topic', label: '选题' },
   { key: 'narrative', label: '叙事' },
   { key: 'animation', label: '动画' },
+  { key: 'style', label: '风格对话' },
 ] as const
 
 /**

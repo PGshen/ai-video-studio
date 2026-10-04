@@ -83,9 +83,10 @@ def _out(detail: store.StyleDetail, default_id: str | None) -> StyleOut:
     )
 
 
-def _draft_out(status: store.DraftStatus) -> DraftStatusOut:
+def _draft_out(status: store.DraftStatus, runner: TurnRunner | None = None) -> DraftStatusOut:
+    busy = runner.is_subject_busy(status.id) if runner is not None else False
     return DraftStatusOut(
-        id=status.id, is_new=status.is_new, dirty=status.dirty, files=status.files
+        id=status.id, is_new=status.is_new, dirty=status.dirty, files=status.files, busy=busy
     )
 
 
@@ -160,11 +161,13 @@ async def duplicate_style_endpoint(
 
 @router.post("/styles/{style_id}/draft", response_model=DraftStatusOut)
 async def open_draft_endpoint(
-    style_id: str, settings: Settings = Depends(get_settings)
+    style_id: str,
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
 ) -> DraftStatusOut:
     """打开草稿：没有就从正式版本复制一份，已有则原样返回。"""
     try:
-        return _draft_out(store.open_draft(settings.data_dir, style_id))
+        return _draft_out(store.open_draft(settings.data_dir, style_id), runner)
     except _STORE_ERRORS as exc:
         raise _http_error(exc) from exc
 
@@ -189,10 +192,12 @@ async def discard_draft_endpoint(
 
 @router.get("/styles/{style_id}/draft/files", response_model=DraftStatusOut)
 async def draft_status_endpoint(
-    style_id: str, settings: Settings = Depends(get_settings)
+    style_id: str,
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
 ) -> DraftStatusOut:
     try:
-        return _draft_out(store.draft_status(settings.data_dir, style_id))
+        return _draft_out(store.draft_status(settings.data_dir, style_id), runner)
     except _STORE_ERRORS as exc:
         raise _http_error(exc) from exc
 
@@ -218,7 +223,7 @@ async def write_draft_file_endpoint(
     _ensure_idle(runner, style_id)
     try:
         store.write_draft_file(settings.data_dir, style_id, path, body.content)
-        return _draft_out(store.draft_status(settings.data_dir, style_id))
+        return _draft_out(store.draft_status(settings.data_dir, style_id), runner)
     except _STORE_ERRORS as exc:
         raise _http_error(exc) from exc
 

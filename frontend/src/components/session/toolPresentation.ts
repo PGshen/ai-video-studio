@@ -29,7 +29,7 @@ export interface ToolView {
 export type ToolStatus = 'running' | 'done' | 'error' | 'interrupted'
 
 const GENERIC_SUMMARY_MAX = 80
-const WORKSPACE_SEGMENT = /\/(?:projects|scratch)\/[^/]+\/(.+)$/
+const WORKSPACE_SEGMENT = /\/(?:projects|scratch|style-drafts)\/[^/]+\/(.+)$/
 
 export function relativizePath(path: string, workdirPrefix?: string): string {
   if (workdirPrefix) {

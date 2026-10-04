@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from studio.agent.fake import Write, default_fake_script
 from studio.agent.stage import StageDefinition
 from studio.agent.tools import ToolContext, invoke_tool
 from studio.stages.style import STAGE, VALIDATE_STYLE_TOOL
@@ -36,6 +37,14 @@ class TestDefinition:
             assert is_writable(scope, path), path
         for path in ("notes.md", "style/STYLE.md", "upstream/x.md", "topic/brief.md", "other/a.md"):
             assert not is_writable(scope, path), path
+
+    def test_the_fake_runtimes_default_script_can_edit_the_draft(self) -> None:
+        """端到端演示（`enable_fake_runtime`）：默认脚本在第一个可写目录里写 `fake-note.md`，
+        对风格阶段必须落在 `references/` 里，而不是被越界拦截。"""
+        script = default_fake_script(STAGE.write_scope(), "你好")
+        writes = [step for step in script if isinstance(step, Write)]
+        assert [w.path for w in writes] == ["references/fake-note.md"]
+        assert is_writable(STAGE.write_scope(), writes[0].path)
 
     def test_the_only_tool_is_validate_style_and_it_is_for_this_stage_only(self) -> None:
         assert [t.name for t in STAGE.tools()] == ["validate_style"]

@@ -80,6 +80,8 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
   )
   const files = computed(() => statusQuery.data.value?.files ?? [])
   const isNew = computed(() => statusQuery.data.value?.is_new ?? false)
+  /** AI 正在改这份草稿（后端的 `busy`）：编辑区只读，轮次结束后刷新草稿即恢复。 */
+  const busy = computed(() => statusQuery.data.value?.busy ?? false)
   const content = computed(() => activeQuery.data.value ?? '')
   const entryText = computed(() => entryQuery.data.value ?? '')
   const meta = computed(() => readStyleMeta(entryText.value))
@@ -148,6 +150,14 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     edit(ENTRY_PATH, updateFrontmatter(base, patch))
   }
 
+  /** 把还没写出的编辑全部写进草稿；写不进去就抛错（发消息给 AI、保存之前都要先过这一关）。 */
+  async function ensureWritten(): Promise<void> {
+    await flush()
+    if (saveState.value === 'error') {
+      throw new Error(`草稿还没有写入成功：${writeError.value ?? '未知错误'}`)
+    }
+  }
+
   onBeforeUnmount(() => void flush())
 
   // ---- 文件与保存 --------------------------------------------------------
@@ -180,9 +190,10 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     saveError.value = null
     saving.value = true
     try {
-      await flush()
-      if (saveState.value === 'error') {
-        saveError.value = `草稿还没有写入成功，没有保存：${writeError.value ?? '未知错误'}`
+      try {
+        await ensureWritten()
+      } catch (error) {
+        saveError.value = `${errorMessage(error)}，没有保存`
         return null
       }
       return await saveMutation.mutateAsync(styleId.value)
@@ -211,6 +222,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     openErrorMessage,
     files,
     isNew,
+    busy,
     activePath,
     selectFile,
     content,
@@ -223,6 +235,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     saveState,
     writeError,
     flush,
+    ensureWritten,
     saving,
     saveError,
     save,

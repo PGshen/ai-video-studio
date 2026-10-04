@@ -170,7 +170,7 @@
 - **完成标准**：风格会话在 fake runtime 下端到端可跑；既有 runner、头脑风暴测试不改断言全绿。
 - **验证命令**：`cd backend && uv run pytest tests/agent tests/stages tests/api -q`；`make check`；真实模型冒烟放在 T11。
 
-### T10：前端接入对话区（待开始）
+### T10：前端接入对话区（完成）
 
 - **目标**：编辑态右侧出现对话区，AI 的改动实时反映到编辑器。
 - **涉及文件**：`frontend/src/composables/sessionScope.ts`（`{kind:'style', styleId}`）；`frontend/src/composables/queries.ts`（`sessionsFor`/`useSessionsQuery`/`useCreateSessionMutation` 的风格分支）；`frontend/src/api/endpoints.ts`（风格会话创建与列表）；`frontend/src/components/session/useEnsureSession.ts`（`stageKey` 为 `style`，用 `stage_default_profile.style` 预选模型）；`frontend/src/composables/useSessionStream.ts`（风格作用域下收到 `workspace_changed`/文件类 tool_result 时失效该风格的草稿文件树与当前文件查询）；`frontend/src/components/session/toolPresentation.ts` 与 `activity/tool-bodies`（`validate_style` 展示）；`frontend/src/features/styles/StyleEditView.vue`、`StyleChatPane.vue`（新建，`SessionPanel` + `SessionPicker` + `ModelSwitcher` 的组合，仿 `features/ideas/BrainstormDrawer.vue`）；`frontend/src/features/settings/settingsView.ts`（通用设置里加 `style` 阶段默认模型）；测试：`useSessionStream` 的风格分支、`StyleEditView` 轮次运行时只读、`StyleChatPane`。
@@ -199,10 +199,11 @@
 - 2026-10-04 — T7 抽屉详情态/编辑态（`StyleDrawer`/`StyleDetailView`/`StyleEditView`/`StyleMetaForm`/`StyleFileTree`/`useStyleDraft`，StylesPage 挂载）；浏览器走查发现并修复：编辑态内容比状态晚到导致空白闪烁、关闭抽屉动画期间空白、深链接 404 重试 7 秒、窄屏编辑器只剩 73px、新建草稿关抽屉后成孤儿（改为列表里标记 `is_new`）— `make check` 绿（后端 1534、前端 850）
 - 2026-10-04 — T8 `sessions.subject_id`（迁移 0008）、`create_session`/`list_sessions` 按 `subject_id` 分组、`delete_subject_sessions`、`POST/GET /api/styles/{id}/sessions`（正式风格和从未保存的新风格都可建会话）、删除风格/放弃新风格时清理会话 — `make check` 绿（后端 1551）
 - 2026-10-04 — T9 `style` 阶段（写范围 `STYLE.md`/`references/*`/`exemplars/*`、`validate_style` 工具、提示词）、`TurnRunner._execute_bound_dir`（cwd = 草稿目录、无快照/前言）、`busy_key = subject:<id>`、`is_subject_busy`、轮次结束清理草稿里界面够不着的文件并发 `draft_pruned` 通知和一次 `workspace_changed`、草稿改动类接口 409、`stage_default_profile` 接受 `style` — `make check` 绿（后端 1583）
+- 2026-10-04 — T10 编辑态右侧 AI 对话区（`StyleChatPane`，复用 `SessionPanel`/`SessionPicker`）、会话范围 `style`、风格会话查询与创建、`useSessionStream` 在 `workspace_changed`/轮次开始结束时刷新草稿、草稿状态带后端 `busy` 驱动只读、发送前先写出未写入的编辑（`SessionPanel.beforeSend`）、设置里 `style` 阶段默认模型、`draft_pruned` 提示文案、风格阶段可写范围 `references/*` 排最前使 fake 默认脚本能改草稿 — `make check` 绿（后端 1585、前端 875）；隔离实例上用 fake 运行时端到端走通
 
 ## 下一步
 
-- 从 T10 开始（前端）：先写测试——`composables/sessionScope.spec.ts`（`{kind:'style', styleId}`）、`composables/queries.spec.ts`（风格会话的 `sessionsFor`/创建/列表）、`composables/useSessionStream.spec.ts`（风格作用域下 `workspace_changed`/文件类 tool_result 失效 `invalidateStyleDraft`）、`features/styles/StyleChatPane.spec.ts`、`StyleEditView.spec.ts`（轮次运行时只读并说明原因、失败后恢复）、`features/settings/settingsView.spec.ts`（`style` 阶段默认模型）、`components/session/noticeText` 对 `draft_pruned` 的文案；再实现。后端接口已就绪：`POST/GET /api/styles/{id}/sessions`（返回 `SessionOut` 含 `subject_id`，`stage = "style"`），发消息/取消/继续/SSE 沿用 `/api/sessions/{id}/*`；运行期间草稿改动类接口返回 409「AI 正在修改这套风格…」；事件 `workspace_changed`（`paths` 可为空 = 整份刷新）和 `notice`（`kind: draft_pruned`，`paths`、`message`）。要改的前端文件见计划 T10 的「涉及文件」；`useEnsureSession.ts` 的 `stageKey`、`api/endpoints.ts` 的风格会话函数、`types/api.ts` 的 `SessionOut.subject_id`。
+- 从 T11 开始（文档、真实模型冒烟、L4 走查收尾）：先写 `backend/tests/smoke/test_smoke.py` 里的 `test_style_chat_claude_login`（创建一套风格草稿，经 `TurnRunner` 用本机 Claude 登录跑一轮「把简介改成……并新增一个 references 文件」，断言草稿内容变化、正式版本未变，再保存后正式版本更新；运行：`make smoke SMOKE_ARGS="-k style_chat_claude_login"`，不产生 API 费用，见 SOP §6 第 7 条例外），跑通后把输出摘要写进「验证记录」；再更新 `docs/ARCHITECTURE.md`（后端模块表加 `styles`、`db`/`workspace`/`api`/`agent`/`stages` 相关描述、`stages.style`、`TurnRunner` 绑定目录模式、`sessions.subject_id`；前端 `features/styles/`、`features/settings/` 的变化、`components/session` 的 `beforeSend`）、`docs/glossary.md`（风格、草稿、正式版本）、`docs/runbooks/verification.md`（风格库验证步骤和新的冒烟用例）、`docs/quality/QUALITY.md`；最后逐条核对 AC1–AC7，把证据写进「验证记录」，计划状态改为「待验收」，关掉隔离的 L4 实例（后端 8001、前端 5174，`pkill -f "uvicorn studio.main:app --host 127.0.0.1 --port 8001"` 和 5174 的 vite）。
 
 ## 决策记录
 
@@ -218,6 +219,9 @@
 - 2026-10-04 — T9：每轮结束（任何结束方式）清掉草稿里界面和草稿接口够不着的东西（符号链接、顶层多余文件/目录、`references|exemplars/` 下的子目录和文件名不合法的文件），并发 `notice(kind=draft_pruned)`；其余内容不合法的文件保留 — 否则保存只会 422、界面又删不掉，成了死胡同；符号链接还是越界风险。
 - 2026-10-04 — T9：「打开草稿」（`POST …/draft`，幂等）和所有读取在 AI 运行期间不受限，只拒绝改动类操作 — 用户在轮次进行中重新打开抽屉要能看到进展。
 - 2026-10-04 — T9：`STAGES`（`db/repo/settings.py`，`stage_default_profile` 的合法键）加入 `style` — 测试发现 422，计划里「设置里的阶段默认模型加 `style`」的后端部分。
+- 2026-10-04 — T10：编辑区是否只读由后端草稿状态的 `busy`（`TurnRunner.is_subject_busy`）决定，不在前端再开第二条 SSE 去推断；`turn_status` 事件、`workspace_changed`、以及消息发送成功后都刷新草稿状态 — 新会话第一轮时 SSE 可能还没连上，实测第一条消息期间 UI 没锁，所以加了发送成功后的主动刷新。
+- 2026-10-04 — T10：`validate_style` 工具沿用通用工具展示（和 `check_brief` 一样），不新增渲染种类；只在 `toolPresentation` 的路径推断里加了 `style-drafts/<id>/` 使行里显示相对路径 — 计划原写「补一个展示」，通用展示已能显示名称和结果。
+- 2026-10-04 — T10：`SessionPanel` 新增可选 `beforeSend`（发送和「继续」之前执行，失败则不发送）— 风格编辑发送前必须先把编辑器里的编辑写进草稿，否则轮次开始后写入会被 409。
 - 2026-10-04 — 迁移后目录 id 沿用旧表 id，新建的用 `uuid4().hex` — 与旧表 `_new_id` 一致，免去对 `default_style_preset_id` 和项目记录的映射。
 
 ## 意外与发现
@@ -230,5 +234,6 @@
 
 ## 验证记录
 
+- T10（AC6 的一部分，fake 运行时）：2026-10-04 在隔离实例（8001/5174，`STUDIO_ENABLE_FAKE_RUNTIME=true`、`STUDIO_FAKE_DELAY_SECONDS=2`）用 JS 派发真实的 input/click 事件驱动页面（浏览器面板被收起，输入类操作不可用）：编辑态右侧显示「AI 对话」和会话选择；先改分类（防抖中）再发消息——草稿里分类已写入（发送前先写出）、正式版本仍是旧分类；AI 运行期间 `GET …/draft/files` 返回 `busy: true`，界面「保存」按钮禁用、状态栏显示「AI 正在修改，完成后可以继续编辑」，约 2 秒后恢复；AI 新建的 `references/fake-note.md` 出现在草稿文件树里；新建风格的第一条消息（新会话）同样立即只读（修了 SSE 未连上时的竞态）。会话 `stage=style`、`subject_id` 为该风格。真实模型冒烟见 T11。
 - T7（AC3/AC4/AC5 的一部分）：2026-10-04 在隔离实例（8001/5174，数据目录 scratchpad `l4data/`，复制自真实库迁移出的 9 套风格）上用内置浏览器：列表渲染 9 张卡片且改过的排最前；点卡片 URL 变 `?style=<id>&mode=view` 抽屉滑出，详情显示真实风格的文件树和入口内容；点「编辑」进编辑态，改名称后编辑器里的 frontmatter 同步、状态「已保存到草稿」；保存前 `GET /api/styles/<id>` 仍是旧名称且草稿 `dirty: true`，保存后正式版本为新名称、草稿 404、回到详情态；Esc 关闭时 URL 立刻清掉、内容在滑出动画期间保留；新建风格出现「未保存的新风格」卡片，点开直接进编辑并带模板；`?style=zzz` 在详情态和编辑态都显示「风格不存在」；375px 窄屏编辑器 309px 宽、保存按钮在视口内、无横向溢出。浏览器面板被收起后改用 DOM 检查，没有保留截图文件。
 - T4（AC1 迁移部分）：2026-10-04 对 `data/studio.db` 的 `sqlite3 .backup` 副本（旧表 9 行，版本 0006）实跑 `migrate()`：旧表已删；`styles/` 下 9 个目录，名称/分类/引用数/金样本数与旧表一致（如「反差心理学·直觉翻案」3 个引用 1 个金样本，frontmatter 含 `category: 旧项目导入`）；再次 `migrate()` 无报错；原库 `style_presets` 仍是 9 行。

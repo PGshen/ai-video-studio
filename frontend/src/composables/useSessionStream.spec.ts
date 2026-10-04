@@ -31,6 +31,7 @@ function sessionDetail(overrides: Partial<SessionDetailOut> = {}): SessionDetail
     status: 'idle',
     is_active: true,
     title: null,
+    subject_id: null,
     turns: [],
     ...overrides,
   }
@@ -226,6 +227,71 @@ describe('useSessionStream', () => {
     expect(invalidatedKeys).toContainEqual(['projects', 'p1', 'files'])
     expect(invalidatedKeys).toContainEqual(['projects', 'p1', 'snapshots'])
     void result
+  })
+
+  describe('风格对话（stage=style，subject_id=风格 id）', () => {
+    const styleSession = () =>
+      sessionDetail({ project_id: null, stage: 'style', subject_id: 'sty1', turns: [] })
+
+    it('workspace_changed 让这套风格的草稿（状态和文件）失效，不碰项目查询', async () => {
+      getSessionMock.mockResolvedValue(styleSession())
+      const { queryClient } = await setup('s1')
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+      onEvent(frame('workspace_changed', { turn_id: 't1', paths: ['references/a.md'], seq: null }))
+      await flushAsync()
+
+      const keys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey)
+      expect(keys).toContainEqual(['styles', 'sty1', 'draft'])
+      expect(keys.some((k) => k?.[0] === 'projects')).toBe(false)
+    })
+
+    it('一轮开始和结束（turn_status）都刷新草稿状态——只读状态来自后端的 busy', async () => {
+      getSessionMock.mockResolvedValue(styleSession())
+      const { queryClient } = await setup('s1')
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+      onEvent(frame('turn_status', { turn_id: 't1', status: 'running', error: null }))
+      await flushAsync()
+      expect(invalidateSpy.mock.calls.map((c) => c[0]?.queryKey)).toContainEqual([
+        'styles',
+        'sty1',
+        'draft',
+      ])
+      invalidateSpy.mockClear()
+
+      onEvent(frame('turn_status', { turn_id: 't1', status: 'done', error: null }))
+      await flushAsync()
+      const keys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey)
+      expect(keys).toContainEqual(['styles', 'sty1', 'draft'])
+      expect(keys).toContainEqual(['styles'])
+    })
+
+    it('不会像头脑风暴那样去失效选题池', async () => {
+      getSessionMock.mockResolvedValue(styleSession())
+      const { queryClient } = await setup('s1')
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+      onEvent(frame('turn_status', { turn_id: 't1', status: 'done', error: null }))
+      await flushAsync()
+
+      expect(invalidateSpy.mock.calls.map((c) => c[0]?.queryKey)).not.toContainEqual(['ideas'])
+    })
+
+    it('项目会话的 workspace_changed 不碰风格查询', async () => {
+      getSessionMock.mockResolvedValue(sessionDetail({ project_id: 'p1', turns: [] }))
+      const { queryClient } = await setup('s1')
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+
+      onEvent(frame('workspace_changed', { turn_id: 't1', paths: [], seq: null }))
+      await flushAsync()
+
+      expect(invalidateSpy.mock.calls.some((c) => c[0]?.queryKey?.[0] === 'styles')).toBe(false)
+    })
   })
 
   it('无项目会话：create_idea/update_idea 的 tool_result 让选题池查询失效，不碰项目查询', async () => {

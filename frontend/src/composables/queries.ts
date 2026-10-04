@@ -51,10 +51,11 @@ export const queryKeys = {
     ['projects', projectId, 'stages', stage, 'sessions'] as const,
   session: (sessionId: string) => ['sessions', sessionId] as const,
   /** 某个范围（项目阶段或头脑风暴）的会话列表。 */
-  sessionsFor: (scope: SessionScope) =>
-    scope.kind === 'brainstorm'
-      ? queryKeys.brainstormSessions()
-      : queryKeys.sessions(scope.projectId, scope.stage),
+  sessionsFor: (scope: SessionScope) => {
+    if (scope.kind === 'brainstorm') return queryKeys.brainstormSessions()
+    if (scope.kind === 'style') return ['styles', scope.styleId, 'sessions'] as const
+    return queryKeys.sessions(scope.projectId, scope.stage)
+  },
   modelProfiles: () => ['model-profiles'] as const,
   settings: () => ['settings'] as const,
   voices: () => ['tts', 'voices'] as const,
@@ -249,9 +250,9 @@ export function useSessionsQuery(scope: MaybeRefOrGetter<SessionScope>) {
     queryKey: computed(() => queryKeys.sessionsFor(toValue(scope))),
     queryFn: () => {
       const value = toValue(scope)
-      return value.kind === 'brainstorm'
-        ? api.listBrainstormSessions()
-        : api.listSessions(value.projectId, value.stage)
+      if (value.kind === 'brainstorm') return api.listBrainstormSessions()
+      if (value.kind === 'style') return api.listStyleSessions(value.styleId)
+      return api.listSessions(value.projectId, value.stage)
     },
   })
 }
@@ -261,9 +262,9 @@ export function useCreateSessionMutation(scope: MaybeRefOrGetter<SessionScope>) 
   return useMutation({
     mutationFn: (body: SessionCreate) => {
       const value = toValue(scope)
-      return value.kind === 'brainstorm'
-        ? api.createBrainstormSession(body)
-        : api.createSession(value.projectId, value.stage, body)
+      if (value.kind === 'brainstorm') return api.createBrainstormSession(body)
+      if (value.kind === 'style') return api.createStyleSession(value.styleId, body)
+      return api.createSession(value.projectId, value.stage, body)
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsFor(toValue(scope)) })

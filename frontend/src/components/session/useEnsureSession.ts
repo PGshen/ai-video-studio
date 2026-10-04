@@ -9,7 +9,7 @@ import {
   useModelProfilesQuery,
   useSettingsQuery,
 } from '@/composables/queries'
-import type { SessionScope } from '@/composables/sessionScope'
+import { scopeStageKey, type SessionScope } from '@/composables/sessionScope'
 import { preselectProfileId } from './modelChoice'
 
 export function useEnsureSession(
@@ -20,9 +20,7 @@ export function useEnsureSession(
   const { data: settings } = useSettingsQuery()
   const createSessionMutation = useCreateSessionMutation(() => scope.value)
 
-  const stageKey = computed(() =>
-    scope.value.kind === 'brainstorm' ? 'brainstorm' : scope.value.stage,
-  )
+  const stageKey = computed(() => scopeStageKey(scope.value))
 
   return async () => {
     const list = profiles.value

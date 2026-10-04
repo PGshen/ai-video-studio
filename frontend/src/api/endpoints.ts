@@ -160,6 +160,15 @@ export function listSessions(projectId: string, stage: string): Promise<SessionO
   )
 }
 
+/** 一套风格的对话会话（对应 `api/styles.py`；从未保存的新风格也可以有）。 */
+export function listStyleSessions(styleId: string): Promise<SessionOut[]> {
+  return request(`/styles/${encodePathSegment(styleId)}/sessions`)
+}
+
+export function createStyleSession(styleId: string, body: SessionCreate): Promise<SessionOut> {
+  return request(`/styles/${encodePathSegment(styleId)}/sessions`, { method: 'POST', body })
+}
+
 /** 头脑风暴会话（没有项目和阶段，对应 `api/brainstorm.py`）。 */
 export function listBrainstormSessions(): Promise<SessionOut[]> {
   return request('/brainstorm/sessions')
