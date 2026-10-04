@@ -75,7 +75,7 @@
 - **完成标准**：新用例通过，既有的 `removeFile`/`discard` 用例不变。
 - **验证命令**：`make check`；L4 见 T5。
 
-### T4：点发送起本地锁住编辑区（待开始）
+### T4：点发送起本地锁住编辑区（完成）
 
 - **目标**：AC5。
 - **涉及文件**：`frontend/src/components/session/SessionPanel.vue`（`onSubmit`、`onContinue`）、`frontend/src/features/styles/StyleChatPane.vue`、`StyleEditView.vue`，及对应 spec。
@@ -100,16 +100,18 @@
 
 - 2026-10-04 — T1 登记表 8 条改为 TD-52～TD-59，三处引用同步；`check_docs.py` 新增「未处理条目编号唯一」检查（对旧登记表实测报 7 处重复）— `make check` 绿（59e6294）
 - 2026-10-04 — T2 `_RUNTIME_DIRS` 加 `.cache`；先写失败用例（`removed` 多出 `.cache`），实现后 `tests/styles` 117 个通过（9d5f5ed）
-- 2026-10-04 — T3 `useDeleteDraftFileMutation` 只失效草稿状态（`exact`）；`discard()` 失败返回 `null` 并写 `discardError`，`StyleEditView` 显示；先写 4 个失败用例（含 TD-47 复现：缓存被冲回旧内容），假后端加 `discardError`
+- 2026-10-04 — T3 `useDeleteDraftFileMutation` 只失效草稿状态（`exact`）；`discard()` 失败返回 `null` 并写 `discardError`，`StyleEditView` 显示；先写 4 个失败用例（含 TD-47 复现：缓存被冲回旧内容），假后端加 `discardError`（1e029ed）
+- 2026-10-04 — T4 `SessionPanel` 新增 `sending` 事件（发送与继续都发，`beforeSend` 之前 true、finally false）；`StyleChatPane` 转发，成功时等草稿状态重取完成再发 false，失败或重取出错立即发 false；`StyleEditView` 本地 `sending` 并入 `locked`，换风格复位；每处先写失败用例
 
 ## 下一步
 
-- 在分支 `td-cleanup-style` 上做 T4（先写 `StyleChatPane.spec.ts`、`StyleEditView.spec.ts` 的失败用例，见计划 T4「测试」）；之后 T5。
+- T5：更新 tech-debt.md/QUALITY.md，起隔离实例做 L4（见计划 T5），再请新上下文评审整个分支。
 
 ## 决策记录
 
 - 2026-10-04：执行方式：本项目计划没有 brief 文件，不使用 SDD 脚本，计划文件的「进度」「决策记录」当账本；分支直接建在当前检出（计划文件未跟踪，建 worktree 会丢它）。
 - 2026-10-04：T3 `discard()` 失败时除了返回 `null` 和显示原因，还把清掉的防抖编辑重新排上（`edit()` 重放）。计划只要求「草稿保留」，但原实现在请求前就清空了待写入编辑，失败后这些字会静默丢失，和 TD-47 同类。代价：多一个用例，失败后若服务端仍 busy，重放的写入会再被 409 丢弃（走既有的 409 路径）。
+- 2026-10-04：T4 `onContinue` 成功后也发 `sent`（计划只提了发送）。理由：[继续]/[重新发送] 同样会启动一轮，不发 `sent` 的话风格编辑区在点继续后没有「等 busy 到达」的保护，空档仍在；其他使用方不监听 `sent`，无影响。已有测试覆盖。
 - 2026-10-04：新编号用 TD-52～TD-59，不去动老的 TD-44～TD-50。理由：老编号已被 `chat-ui-redesign`、`canvas-layout`、ADR 0013 等多处引用，而新那批只被 `QUALITY.md` 和 `style-library.md` 两个文件引用，改动面最小。
 
 ## 意外与发现

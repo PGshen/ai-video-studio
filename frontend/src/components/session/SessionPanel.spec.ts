@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   log: [] as string[],
   sentWith: [] as Array<{ sessionId: string; text: string }>,
+  turnStatus: null as { status: string; turnId: string } | null,
 }))
 
 vi.mock('@/composables/useSessionStream', async () => {
@@ -11,7 +12,7 @@ vi.mock('@/composables/useSessionStream', async () => {
   return {
     useSessionStream: () => ({
       items: vueRef([]),
-      turnStatus: vueRef(null),
+      turnStatus: vueRef(state.turnStatus),
       turns: vueRef(new Map()),
       addLocalUserMessage: (text: string) => {
         state.log.push(`add:${text}`)
@@ -33,7 +34,7 @@ vi.mock('@/composables/queries', () => ({
     },
   }),
   useCancelSessionMutation: () => ({ mutateAsync: async () => {} }),
-  useContinueSessionMutation: () => ({ mutateAsync: async () => {} }),
+  useContinueSessionMutation: () => ({ mutateAsync: async () => ({ turn_id: 't2' }) }),
 }))
 vi.mock('./SessionTimeline.vue', () => ({ default: { name: 'SessionTimeline', render: () => null } }))
 
@@ -103,6 +104,63 @@ describe('SessionPanel：没有会话时发送', () => {
     expect(w.text()).toContain('没有已配置密钥的模型')
     expect(state.log).toEqual([])
     expect(state.sentWith).toEqual([])
+  })
+})
+
+describe('SessionPanel：sending 事件', () => {
+  beforeEach(() => {
+    state.log = []
+    state.sentWith = []
+    document.body.innerHTML = ''
+  })
+
+  const listeners = () => ({
+    onSending: (value: boolean) => state.log.push(`sending:${value}`),
+    onSent: () => state.log.push('sent'),
+  })
+
+  it('点发送起（beforeSend 之前）发 sending(true)，发送成功后先 sent 再 sending(false)', async () => {
+    const beforeSend = vi.fn(async () => {
+      state.log.push('before')
+    })
+    const w = mountPanel({ sessionId: 's1', beforeSend, ...listeners() })
+
+    await submit(w, '你好')
+
+    expect(state.log).toEqual(['sending:true', 'before', 'add:你好', 'send', 'sent', 'sending:false'])
+  })
+
+  it('beforeSend 失败：sending(false) 照发，没有 sent', async () => {
+    const beforeSend = vi.fn(async () => {
+      throw new Error('草稿还没有写入成功')
+    })
+    const w = mountPanel({ sessionId: 's1', beforeSend, ...listeners() })
+
+    await submit(w, '你好')
+
+    expect(state.log).toEqual(['sending:true', 'sending:false'])
+  })
+
+  it('点 [继续] 同样：sending(true) → 乐观消息 → sent → sending(false)', async () => {
+    state.turnStatus = { status: 'interrupted', turnId: 't0' }
+    try {
+      const w = mountPanel({ sessionId: 's1', ...listeners() })
+      const button = w.findAll('button').find((b) => b.text() === '继续')!
+      await button.trigger('click')
+      await flushPromises()
+
+      expect(state.log).toEqual(['sending:true', 'add:继续', 'sent', 'sending:false'])
+    } finally {
+      state.turnStatus = null
+    }
+  })
+
+  it('输入为空什么都不发', async () => {
+    const w = mountPanel({ sessionId: 's1', ...listeners() })
+
+    await submit(w, '   ')
+
+    expect(state.log).toEqual([])
   })
 })
 

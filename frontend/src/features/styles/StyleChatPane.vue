@@ -10,12 +10,16 @@ import { computed, ref, watch } from 'vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
 import SessionPicker from '@/components/session/SessionPicker.vue'
 import { useEnsureSession } from '@/components/session/useEnsureSession'
-import { invalidateStyleDraft } from '@/composables/queries'
+import { queryKeys } from '@/composables/queries'
 import { styleScope } from '@/composables/sessionScope'
 
 const props = defineProps<{
   styleId: string
   beforeSend?: () => Promise<void>
+}>()
+const emit = defineEmits<{
+  /** 点发送起（`true`）到服务端状态接管（`false`）：编辑区据此本地只读，避免这段时间敲的字被 409 丢弃。 */
+  (e: 'sending', value: boolean): void
 }>()
 
 const scope = computed(() => styleScope(props.styleId))
@@ -30,10 +34,24 @@ watch(
 const createSession = useEnsureSession(scope, sessionId)
 
 const queryClient = useQueryClient()
+/** 发送成功后正在重取的草稿状态；`sending(false)` 要等它完成（此时 `busy` 已由服务端给出）。 */
+let refetch: Promise<unknown> | null = null
 /** 消息已被后端接收：这套风格此刻已经 busy。新会话的第一轮时 SSE 可能还没连上，收不到
  * `turn_status`，所以发送成功后主动刷新一次草稿状态，编辑区才会立刻只读。 */
 function onSent(): void {
-  invalidateStyleDraft(queryClient, props.styleId)
+  refetch = queryClient.invalidateQueries({ queryKey: queryKeys.styleDraft(props.styleId) })
+}
+
+async function onSending(value: boolean): Promise<void> {
+  if (value) {
+    emit('sending', true)
+    return
+  }
+  const pending = refetch
+  refetch = null
+  // 重取失败也要解锁：此后编辑区只读与否由服务端的 `busy` 决定。
+  if (pending) await pending.catch(() => undefined)
+  emit('sending', false)
 }
 </script>
 
@@ -58,6 +76,7 @@ function onSent(): void {
       :create-session="createSession"
       :before-send="beforeSend"
       @sent="onSent"
+      @sending="onSending"
     />
   </aside>
 </template>

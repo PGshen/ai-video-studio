@@ -279,6 +279,44 @@ describe('StyleEditView 右侧的 AI 对话区', () => {
   })
 })
 
+describe('StyleEditView 点发送起本地只读', () => {
+  const chat = (w: Awaited<ReturnType<typeof mountEdit>>) =>
+    w.getComponent({ name: 'StyleChatPaneStub' })
+
+  it('对话区发 sending(true) 后编辑区立刻只读，sending(false) 后恢复', async () => {
+    const w = await mountEdit()
+    expect(editor(w).disabled).toBe(false)
+
+    chat(w).vm.$emit('sending', true)
+    await settle()
+
+    expect(editor(w).disabled).toBe(true)
+    expect(w.get('[data-testid="style-name"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="discard-style"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="save-state"]').text()).toContain('AI 正在修改')
+
+    chat(w).vm.$emit('sending', false)
+    await settle()
+
+    expect(editor(w).disabled).toBe(false)
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('换一套风格时本地锁复位', async () => {
+    seedStyle('s2', '另一套')
+    const w = await mountEdit()
+    chat(w).vm.$emit('sending', true)
+    await settle()
+    expect(editor(w).disabled).toBe(true)
+
+    await w.setProps({ styleId: 's2' })
+    await settle()
+
+    expect(editor(w).disabled).toBe(false)
+  })
+})
+
 describe('StyleEditView AI 正在修改（后端 busy）', () => {
   it('草稿状态 busy 时整个编辑区只读并说明原因；轮次结束刷新后恢复', async () => {
     server.busy.add('s1')

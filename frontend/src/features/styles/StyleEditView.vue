@@ -5,7 +5,7 @@
  * （`StyleChatPane`）：AI 改的是同一份草稿；后端报告 AI 正在修改（`busy`）或 `readonly` 时整个
  * 编辑区只读，轮次结束后恢复。
  */
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import type { StyleOut } from '@/types/api'
@@ -29,10 +29,20 @@ const emit = defineEmits<{
 
 const draft = useStyleDraft(() => props.styleId)
 
-/** 编辑区只读：外部要求，或 AI 正在修改这份草稿。 */
-const locked = computed(() => (props.readonly ?? false) || draft.busy.value)
+/** 点发送到服务端 `busy` 接管之间的本地锁（对话区发 `sending`）：这段时间敲的字会被后端 409 丢弃。 */
+const sending = ref(false)
+watch(
+  () => props.styleId,
+  () => {
+    sending.value = false
+  },
+)
+
+/** 编辑区只读：外部要求，或 AI 正在修改这份草稿（含刚点发送、服务端状态还没到）。 */
+const aiWorking = computed(() => draft.busy.value || sending.value)
+const locked = computed(() => (props.readonly ?? false) || aiWorking.value)
 const lockedReason = computed(
-  () => props.readonlyReason ?? (draft.busy.value ? 'AI 正在修改，完成后可以继续编辑' : undefined),
+  () => props.readonlyReason ?? (aiWorking.value ? 'AI 正在修改，完成后可以继续编辑' : undefined),
 )
 
 const stateText = computed(() => {
@@ -169,6 +179,7 @@ async function discard(): Promise<void> {
       class="h-[28rem] shrink-0 lg:h-auto lg:w-96"
       :style-id="styleId"
       :before-send="draft.ensureWritten"
+      @sending="sending = $event"
     />
   </div>
 </template>
