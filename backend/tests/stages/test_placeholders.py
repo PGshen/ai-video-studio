@@ -20,7 +20,7 @@ class TestTopicStage:
         assert is_writable(scope, "style/STYLE.md") is False
 
     def test_upstream_and_artifact_dirs(self) -> None:
-        assert topic_stage.upstream_stages() == []
+        assert topic_stage.reads() == []
         assert topic_stage.artifact_dirs() == ["topic"]
 
     def test_web_is_allowed_and_tools_include_web_tools(self) -> None:
@@ -43,7 +43,7 @@ class TestNarrativeStage:
         assert is_writable(scope, "narrative/timing.json") is False
 
     def test_upstream_and_artifact_dirs(self) -> None:
-        assert narrative_stage.upstream_stages() == ["topic"]
+        assert narrative_stage.reads() == ["topic"]
         assert narrative_stage.artifact_dirs() == ["narrative"]
 
     def test_web_tools_not_allowed(self) -> None:
@@ -61,7 +61,7 @@ class TestAnimationStage:
         assert is_writable(scope, "narrative/narrative.json") is False
 
     def test_upstream_and_artifact_dirs(self) -> None:
-        assert animation_stage.upstream_stages() == ["narrative"]
+        assert animation_stage.reads() == ["narrative"]
         assert animation_stage.artifact_dirs() == ["animation/scenes"]
 
     def test_web_tools_not_allowed(self) -> None:
@@ -78,7 +78,7 @@ class TestBrainstormStage:
     def test_has_no_workspace(self) -> None:
         scope = brainstorm_stage.write_scope()
         assert scope.writable == [] and scope.tool_managed == []
-        assert brainstorm_stage.upstream_stages() == []
+        assert brainstorm_stage.reads() == []
         assert brainstorm_stage.artifact_dirs() == []
 
     def test_prompt_and_summary(self, tmp_path: Path) -> None:

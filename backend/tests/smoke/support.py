@@ -135,8 +135,11 @@ class SmokeStage:
     def write_scope(self) -> WriteScope:
         return self._base.write_scope()
 
-    def upstream_stages(self) -> list[str]:
-        return self._base.upstream_stages()
+    def reads(self) -> list[str]:
+        return self._base.reads()
+
+    def prepare_turn(self, workdir: Path) -> None:
+        return None
 
     def artifact_dirs(self) -> list[str]:
         return self._base.artifact_dirs()

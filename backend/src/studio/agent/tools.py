@@ -54,7 +54,7 @@ class ToolContext:
     turn_id: str | None = None
     """当前这一轮的 id（M5 T9）：`suggest_upstream_change` 用它记录建议是哪一轮产生的。"""
     upstream_stages: tuple[str, ...] = ()
-    """当前阶段的**直接上游**阶段名（`StageDefinition.upstream_stages()`，M5 T9）：
+    """当前阶段的**直接上游**阶段名（`StageDefinition.reads()`，M5 T9）：
     `suggest_upstream_change` 只允许向它们提建议。"""
 
     def require_project(self) -> str:

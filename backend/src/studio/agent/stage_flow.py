@@ -1,6 +1,6 @@
 """阶段流转的通用部分（设计 §5.4）：定稿、重新打开、下游 stale 标记与恢复。
 
-与具体阶段无关：上下游关系只从 `StageDefinition.upstream_stages()` 读取。
+与具体阶段无关：上下游关系只从 `StageDefinition.reads()` 读取。
 `project_stages` 的状态：`locked` → `active` ⇄ `finalized`，上游重新定稿且
 内容变化时下游变为 `stale`，下游下一轮成功结束后回到 `active`。
 """
@@ -38,7 +38,7 @@ def _downstream_of(
             definition = registry.get(row.stage)
         except KeyError:
             continue
-        if stage in definition.upstream_stages():
+        if stage in definition.reads():
             downstream.append(row)
     return downstream
 
@@ -157,7 +157,7 @@ def upstream_snapshot_ids(
 ) -> dict[str, str | None]:
     """每个上游阶段当前的 `finalized_snapshot_id`（未定稿为 `None`）。"""
     ids: dict[str, str | None] = {}
-    for name in stage.upstream_stages():
+    for name in stage.reads():
         row = get_stage(engine, project_id, name)
         ids[name] = row.finalized_snapshot_id if row is not None else None
     return ids

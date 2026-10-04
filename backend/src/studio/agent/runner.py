@@ -354,7 +354,7 @@ class TurnRunner:
             engine=engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
-            upstream_stages=tuple(job.stage.upstream_stages()),
+            upstream_stages=tuple(job.stage.reads()),
             effort=effort_from_settings(project.settings if project else None),
         )
         await self._run_stream(job, state, ctx)
@@ -384,7 +384,7 @@ class TurnRunner:
             engine=self._engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
-            upstream_stages=tuple(job.stage.upstream_stages()),
+            upstream_stages=tuple(job.stage.reads()),
             effort=effort_from_settings(None),
         )
         await self._run_stream(job, state, ctx)
@@ -418,7 +418,7 @@ class TurnRunner:
             engine=self._engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
-            upstream_stages=tuple(job.stage.upstream_stages()),
+            upstream_stages=tuple(job.stage.reads()),
             effort=effort_from_settings(None),
         )
         await self._run_stream(job, state, ctx)

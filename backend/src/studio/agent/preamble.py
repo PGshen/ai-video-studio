@@ -251,7 +251,7 @@ def _upstream_changes(
     if based_on is None:
         return []
     changes: list[UpstreamChange] = []
-    for name in stage.upstream_stages():
+    for name in stage.reads():
         row = get_stage(engine, project_id, name)
         if row is None or row.finalized_snapshot_id in (None, current.based_on_snapshot_id):
             continue
