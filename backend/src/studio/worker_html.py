@@ -18,7 +18,7 @@ from typing import Any
 
 from sqlalchemy import Engine
 
-from studio.engines.render.html.assemble import assemble, page_hash
+from studio.engines.render.html.assemble import AssembledPage, assemble
 from studio.engines.render.html.assets import check_assets
 from studio.engines.render.html.browser import ChromiumUnavailable, HtmlBrowser, PageNotReady
 from studio.engines.render.html.static_check import static_check
@@ -36,7 +36,7 @@ _VIDEO_PROGRESS_SHARE = 0.95
 _BEAT_INTERVAL_SECONDS = 10.0
 """没有整百分比变化时，至少隔这么久也续一次心跳。"""
 
-RenderVideo = Callable[[Path, dict[str, Any], Path, int, ProgressCallback], Awaitable[None]]
+RenderVideo = Callable[[AssembledPage, float, Path, int, ProgressCallback], Awaitable[None]]
 Mix = Callable[[Path, list[AudioTrack], float, Path], Awaitable[None]]
 
 
@@ -51,20 +51,18 @@ class HtmlBackend:
 
 
 async def _render_video(
-    workdir: Path,
-    timeline: dict[str, Any],
+    page: AssembledPage,
+    duration: float,
     output: Path,
     fps: int,
     on_progress: ProgressCallback,
 ) -> None:
     async with HtmlBrowser() as browser:
-        page = await browser.open_page(assemble(workdir, timeline))
+        opened = await browser.open_page(page)
         try:
-            await render_silent_video(
-                page, float(timeline["duration"]), output, fps=fps, on_progress=on_progress
-            )
+            await render_silent_video(opened, duration, output, fps=fps, on_progress=on_progress)
         finally:
-            await page.close()
+            await opened.close()
 
 
 async def _mix(video: Path, tracks: list[AudioTrack], duration: float, output: Path) -> None:
@@ -81,6 +79,7 @@ class _AudioSource:
     path: Path
     hash: str
     start: float
+    length: float
 
 
 def _scene_sources(workdir: Path, scene_ids: Sequence[str], errors: list[str]) -> dict[str, str]:
@@ -113,7 +112,13 @@ def _audio_sources(
             errors.append(f"镜头 {section.id}：音频文件不存在 {relpath}")
             continue
         result.append(
-            _AudioSource(section.id, path, str(entry.get("audio_hash", "")), section.start)
+            _AudioSource(
+                section.id,
+                path,
+                str(entry.get("audio_hash", "")),
+                section.start,
+                section.end - section.start,
+            )
         )
     return result
 
@@ -122,11 +127,17 @@ def _cache_path(workdir: Path, key: str) -> Path:
     return workdir / ".cache" / "render_cache" / f"{key}.mp4"
 
 
-def _cache_key(workdir: Path, timeline: dict[str, Any], timeline_digest: str, fps: int) -> str:
-    raw = "|".join(
-        [ENGINE_VERSION, page_hash(workdir, timeline), timeline_digest, "1920x1080", str(fps)]
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+def _cache_key(page: AssembledPage, timeline_digest: str, fps: int) -> str:
+    """键取自**要交给浏览器渲染的那份组装结果**（页面、脚本、路由文件的字节），不是另读一遍工作区：
+    渲染期间镜头被改了，存进缓存的也是按旧内容渲染出的帧，键与内容始终对得上。"""
+    digest = hashlib.sha256()
+    digest.update(f"{ENGINE_VERSION}|{timeline_digest}|1920x1080|{fps}|".encode())
+    digest.update(page.html.encode("utf-8"))
+    for name, source in sorted(page.scripts.items()):
+        digest.update(f"\0{name}\0".encode() + source.encode("utf-8"))
+    for route, file in sorted(page.routes.items()):
+        digest.update(f"\0{route}\0".encode() + file.read_bytes())
+    return digest.hexdigest()
 
 
 def _progress_reporter(engine: Engine, job_id: str) -> ProgressCallback:
@@ -174,14 +185,15 @@ async def run_html_job(
     snapshot = create_snapshot(engine, blobs, project_id, reason="final_render")
 
     heartbeat(engine, job_id)
-    silent = _cache_path(workdir, _cache_key(workdir, timeline, loaded.hash, fps))
+    page = assemble(workdir, timeline)
+    silent = _cache_path(workdir, _cache_key(page, loaded.hash, fps))
     output_dir = workdir / "output"
     try:
         if not silent.is_file():
             await backend.render_video(
-                workdir, timeline, silent, fps, _progress_reporter(engine, job_id)
+                page, float(timeline["duration"]), silent, fps, _progress_reporter(engine, job_id)
             )
-        tracks = [AudioTrack(source.path, source.start) for source in audio]
+        tracks = [AudioTrack(source.path, source.start, source.length) for source in audio]
         await backend.mix(silent, tracks, float(timeline["duration"]), output_dir / "final.mp4")
     except (VideoRenderError, MixError, ChromiumUnavailable, PageNotReady) as exc:
         raise HtmlJobError(f"成片渲染失败：{exc}") from exc

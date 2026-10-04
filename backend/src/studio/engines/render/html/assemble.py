@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -98,7 +99,8 @@ def _font_faces(style_fonts: list[Path], *, inline: bool) -> str:
 
 def _inline_script_text(source: str) -> str:
     """内联进 `<script>` 的 JS 文本不能提前结束脚本元素，也不能进入 HTML 注释状态。"""
-    return source.replace("</script", "<\\/script").replace("<!--", "<\\!--")
+    # HTML 分词器匹配结束标签不区分大小写（`</SCRIPT`、`</Script ` 同样会结束脚本）。
+    return re.sub(r"</(script)", r"<\\/\1", source, flags=re.IGNORECASE).replace("<!--", "<\\!--")
 
 
 def _style_fonts(workdir: Path) -> list[Path]:

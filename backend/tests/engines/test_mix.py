@@ -29,6 +29,18 @@ def test_command_delays_each_track_by_its_start_in_milliseconds() -> None:
     assert "amix=inputs=2:normalize=0" in graph
 
 
+def test_a_clip_is_cut_at_the_end_of_its_scene_before_it_is_delayed() -> None:
+    cmd = build_mix_command(
+        VIDEO,
+        [AudioTrack(Path("/a/1.mp3"), 0.0, max_seconds=1.4), AudioTrack(Path("/a/2.mp3"), 1.4)],
+        3.0,
+        OUT,
+    )
+    graph = cmd[cmd.index("-filter_complex") + 1]
+    assert "[1:a]atrim=end=1.4,adelay=0|0[a0]" in graph
+    assert "[2:a]adelay=1400|1400[a1]" in graph  # no limit given: untouched
+
+
 def test_command_pins_duration_codec_and_faststart() -> None:
     cmd = build_mix_command(VIDEO, [AudioTrack(Path("/a/1.mp3"), 0.0)], 12.5, OUT)
     assert cmd[cmd.index("-t") + 1] == "12.5"

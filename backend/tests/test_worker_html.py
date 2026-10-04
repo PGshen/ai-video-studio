@@ -29,6 +29,7 @@ from studio.engines.render.base import (
     RenderResult,
     SceneInput,
 )
+from studio.engines.render.html.assemble import AssembledPage
 from studio.engines.render.html.video import VideoRenderError
 from studio.engines.render.mix import AudioTrack, MixError
 from studio.jobs import create_job, get_job
@@ -73,9 +74,9 @@ class FakeBackend:
     on_video: Any = None
 
     async def render_video(
-        self, workdir: Path, timeline: dict[str, Any], output: Path, fps: int, on_progress: Any
+        self, page: AssembledPage, duration: float, output: Path, fps: int, on_progress: Any
     ) -> None:
-        self.video_calls.append({"timeline": timeline, "fps": fps})
+        self.video_calls.append({"page": page, "duration": duration, "fps": fps})
         if self.on_video is not None:
             await self.on_video(on_progress)
         if self.video_error is not None:
@@ -155,9 +156,15 @@ async def test_html_project_is_rendered_mixed_and_described(html_env: HtmlEnv) -
 
     (call,) = backend.mix_calls
     assert [round(t.start, 3) for t in call["tracks"]] == [0.0, 1.4]  # timeline order and starts
+    assert [round(t.max_seconds, 3) for t in call["tracks"]] == [
+        1.4,
+        1.6,
+    ]  # each clip ends with its scene
     assert call["duration"] == pytest.approx(3.0)
     assert all(t.path.is_file() for t in call["tracks"])
-    assert backend.video_calls[0]["timeline"]["duration"] == pytest.approx(3.0)
+    assert backend.video_calls[0]["duration"] == pytest.approx(3.0)
+    # The frames are rendered from the very page the cache key was computed from.
+    assert "animation/scenes/s-hook.js" in backend.video_calls[0]["page"].scripts
     assert backend.video_calls[0]["fps"] == 30
 
 
@@ -324,3 +331,35 @@ def _backdate(engine: Engine, job_id: str, seconds: float) -> None:
         row = db.get(Job, job_id)
         assert row is not None
         row.heartbeat_at = datetime.now(UTC) - timedelta(seconds=seconds)
+
+
+@pytest.mark.parametrize("failing", ["video", "mix"])
+async def test_unexpected_errors_fail_the_job_instead_of_killing_the_worker(
+    html_env: HtmlEnv, failing: str
+) -> None:
+    """Playwright/ffmpeg/disk problems are not among the named render errors; they must not leave
+    the job `running` forever (TD-35 would keep returning it and every later render would stall)."""
+    backend = FakeBackend(
+        video_error=RuntimeError("playwright exploded") if failing == "video" else None,
+        mix_error=FileNotFoundError("ffmpeg") if failing == "mix" else None,
+    )
+    job_id = await _run(html_env, backend)
+    job = _job(html_env, job_id)
+    assert job.status == "failed"
+    assert job.error is not None and "内部错误" in job.error
+
+
+async def test_page_edited_during_the_render_is_not_cached_under_the_old_key(
+    html_env: HtmlEnv,
+) -> None:
+    async def edit_while_rendering(_on_progress: Any) -> None:
+        (html_env.workdir / "animation/scenes/s-hook.js").write_text(fx.PURE_SCENE_PLAIN + "// B\n")
+
+    backend = FakeBackend(on_video=edit_while_rendering)
+    await _run(html_env, backend)
+    page = backend.video_calls[0]["page"]
+    # The page handed to the renderer is the one assembled before the edit, and so is the cache key.
+    assert "// B" not in page.scripts["animation/scenes/s-hook.js"]
+    (html_env.workdir / "animation/scenes/s-hook.js").write_text(fx.PURE_SCENE_PLAIN)
+    await _run(html_env, backend)
+    assert len(backend.video_calls) == 1  # back to content A: A's frames come from the cache

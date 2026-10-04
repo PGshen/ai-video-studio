@@ -342,6 +342,12 @@ async def _run_html(
         logger.warning("[worker] 任务 %s 失败：%s", job_id, exc)
         fail(engine, job_id, error=str(exc))
         return
+    except Exception as exc:
+        # Playwright、ffmpeg、磁盘等没有列进具名错误的问题：任务必须落到 failed，否则它一直是
+        # running，去重逻辑（TD-35）会让之后每次渲染都返回这条旧任务。
+        logger.exception("[worker] 任务 %s 内部错误", job_id)
+        fail(engine, job_id, error=f"成片渲染内部错误：{type(exc).__name__}: {exc}")
+        return
     complete(engine, job_id, result={"output_path": "output/final.mp4"})
     logger.info("[worker] 任务 %s 完成", job_id)
 
@@ -356,7 +362,11 @@ async def run_forever(
     """无限轮询循环：领不到任务时睡一段时间再试。"""
     logger.info("[worker] 已启动，轮询间隔 %.1fs", poll_interval_seconds)
     while True:
-        claimed = await run_once(engine, blobs, data_dir=data_dir)
+        try:
+            claimed = await run_once(engine, blobs, data_dir=data_dir)
+        except Exception:
+            logger.exception("[worker] 迭代出错，稍后重试")
+            claimed = False
         if not claimed:
             await asyncio.sleep(poll_interval_seconds)
 

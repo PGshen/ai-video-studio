@@ -34,7 +34,8 @@ def _base(project_id: str) -> str:
 
 def _assert_preview_headers(response) -> None:
     assert response.headers["cache-control"] == "no-store"
-    assert response.headers["access-control-allow-origin"] == "*"
+    # No CORS: the canvas loads the self-contained page itself, so no other origin needs to read it.
+    assert "access-control-allow-origin" not in response.headers
 
 
 async def test_page_is_assembled_in_preview_mode_from_the_current_workspace(

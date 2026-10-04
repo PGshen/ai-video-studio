@@ -230,6 +230,17 @@ def test_inline_script_text_cannot_close_the_script_tag(tmp_path: Path) -> None:
     assert html.count("</script>") == html.count("<script")
 
 
+def test_inline_script_close_tag_is_matched_case_insensitively(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "animation/scenes/s-hook.js",
+        "module.exports = { draw() { return ['</SCRIPT>', '</Script >', '<!-- x']; } };\n",
+    )
+    html = assemble(tmp_path, TIMELINE, inline=True).html
+    assert len(re.findall(r"</script", html, re.IGNORECASE)) == html.count("<script")
+    assert "<!--" not in html
+
+
 def test_inline_assets_are_data_uris_the_runtime_can_look_up_by_name(tmp_path: Path) -> None:
     _project(tmp_path)
     _write(tmp_path, "animation/assets/logo.svg", "<svg/>")

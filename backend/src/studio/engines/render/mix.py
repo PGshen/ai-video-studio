@@ -26,6 +26,8 @@ class AudioTrack:
     path: Path
     start: float
     """这条轨在成片里的起点（秒）。"""
+    max_seconds: float | None = None
+    """最多播多久（旁白轨传镜头时长）：配音比镜头长时不能叠进下一个镜头。"""
 
 
 def _duration_arg(duration: float) -> str:
@@ -68,7 +70,8 @@ def build_mix_command(
     for index, track in enumerate(tracks):
         inputs += ["-i", str(track.path)]
         millis = round(track.start * 1000)
-        delayed.append(f"[{index + 1}:a]adelay={millis}|{millis}[a{index}]")
+        cut = "" if track.max_seconds is None else f"atrim=end={_duration_arg(track.max_seconds)},"
+        delayed.append(f"[{index + 1}:a]{cut}adelay={millis}|{millis}[a{index}]")
     labels = "".join(f"[a{index}]" for index in range(len(tracks)))
     # 补静音到至少 `duration`、再裁到 `duration`：两端都有限。裸 `apad` 是无限流，遇上
     # 引擎自己编码的视频时 ffmpeg 会一直写下去，`-t` 也拦不住（2B T8 实测）。

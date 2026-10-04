@@ -6,8 +6,8 @@
 
 iframe 使用 `sandbox="allow-scripts"` 且不带 `allow-same-origin`，是不透明源。画布用 `/inline`
 （自包含页面）做 `srcdoc`——实测不透明源的 iframe 对本机服务的请求（连它自己的页面和脚本）会被
-浏览器拦下；`/` 和资源端点保留，用于在标签页里直接打开调试，响应带 `Access-Control-Allow-Origin: *`
-以便沙盒页面也能取字体；`no-store` 保证编辑后立刻生效。
+浏览器拦下；`/` 和资源端点保留，用于在标签页里直接打开调试。不开 CORS（画布自己取自包含页面，
+没有别的源需要读它）；`no-store` 保证编辑后立刻生效。
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from studio.workspace import project_dir
 
 router = APIRouter(prefix="/api", tags=["html-preview"])
 
-_HEADERS = {"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"}
+_HEADERS = {"Cache-Control": "no-store"}
 
 
 def _load(engine: Engine, settings: Settings, project_id: str) -> tuple[LoadedTimeline, Path]:
