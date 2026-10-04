@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成（2026-10-05 验收，已合并 main） |
 | 里程碑 | 多形态视频流水线 · 子项目 2/4 · 计划 2A |
 | 设计依据 | [子项目 2 设计](../../design/2026-10-04-timeline-html-engine.md)（已批准）；[总设计](../../design/2026-10-04-html-video-pipeline.md) §4、§5、§11；[ADR 0021](../../decisions/0021-HTML引擎与配乐阶段.md)；[小试结论](../../references/html-canvas-agent-spike.md) |
 | 分支 | `html-engine-2a` |
