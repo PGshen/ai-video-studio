@@ -124,7 +124,7 @@
 - **完成标准**：`/styles` 可访问；设置页没有风格库 Tab；创建项目选风格仍可用。
 - **验证命令**：`cd frontend && pnpm vitest run`；`make check`
 
-### T6：风格库列表页（待开始）
+### T6：风格库列表页（完成）
 
 - **目标**：卡片列表、顶部筛选、新建按钮、分页。
 - **涉及文件**：`frontend/src/features/styles/StyleGrid.vue`、`StyleCard.vue`；`frontend/src/pages/StylesPage.vue`；对应 `.spec.ts`。
@@ -195,10 +195,11 @@
 - 2026-10-04 — T3 `/api/styles*` 接口、创建项目与默认风格设置改读目录 — `make check` 绿，后端 1567 个用例
 - 2026-10-04 — T4 迁移 0007（导出旧表 → 目录，成功后删表）、删除旧 repo/ORM/旧接口/`render_style_files`、导入脚本改写目录、运行手册更新 — `make check` 绿，后端 1531 个用例；对真实库副本实跑导出 9 套风格，原库未动
 - 2026-10-04 — T5 前端基础：侧栏「风格库」、`/styles` 路由与旧地址重定向、新 API 客户端/类型/query hook、`styleView`/`styleFrontmatter` 纯逻辑；设置页去掉风格库 Tab，并删除旧的 `StylePresetsPanel`/`StylePresetEditor`/`styleDraft` — `make check` 绿（后端 1531、前端 748），`pnpm typecheck` 无错误
+- 2026-10-04 — T6 风格库列表页（`StyleGrid`/`StyleCard`，筛选、分页、新建、点卡片/编辑只改 URL query）— `make check` 绿（前端 766），`pnpm typecheck` 无错误
 
 ## 下一步
 
-- 从 T6 开始：先写 `frontend/src/features/styles/StyleGrid.spec.ts`（筛选、分页、空列表/无结果提示、点击卡片与编辑按钮产生的 URL query、新建流程、草稿标记），再实现 `StyleGrid.vue`、`StyleCard.vue`，替换 `pages/StylesPage.vue` 占位；布局借 `features/ideas/IdeaGrid.vue`、`components/ListPager.vue`、`composables/pagination.ts`；可用的纯逻辑 `features/styles/styleView.ts`（`filterStyles`/`allCategories`/`sortStyles`）和 hook（`useStylesQuery`、`useCreateStyleMutation` 等，见 `composables/queries.ts`）已就绪。
+- 从 T7 开始：先写 `frontend/src/features/styles/` 下的测试——`useStyleDraft.spec.ts`（防抖写草稿、保存/放弃）、`StyleDrawer.spec.ts`（URL query 驱动、详情态/编辑态切换、关闭保留草稿、不存在的 id 显示「风格不存在」）、`StyleMetaForm.spec.ts`（表单读写 frontmatter）、`StyleFileTree.spec.ts`（新增/删除文件）、`StyleEditView.spec.ts`（保存 422/409 展示、readonly）、`StyleDetailView.spec.ts`（设为默认/复制/删除）；再实现 `StyleDrawer.vue`、`StyleDetailView.vue`、`StyleEditView.vue`、`StyleMetaForm.vue`、`StyleFileTree.vue`、`useStyleDraft.ts`，并在 `pages/StylesPage.vue` 挂载抽屉（读 `route.query.style`/`mode`）。可用：`StyleGrid` 已负责写 query；hook 见 `composables/queries.ts`（`useStyleQuery`、`useStyleDraftQuery`、`useDraftFileQuery`、`useOpenStyleDraftMutation`、`useWriteDraftFileMutation`、`useDeleteDraftFileMutation`、`useSaveStyleDraftMutation`、`useDiscardStyleDraftMutation`、`useDuplicateStyleMutation`、`useDeleteStyleMutation`），设默认用 `usePatchSettingsMutation`（`default_style_preset_id`）。完成后由我在 8001/5174 隔离实例上做 L4 截图（列表、详情、编辑；顺便确认 `StylesPage` 的 `h-full` 布局在真实浏览器里撑满高度）。
 
 ## 决策记录
 
