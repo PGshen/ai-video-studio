@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,8 +26,8 @@ from studio.db.repo.settings import (
     update_settings,
     validate_settings_patch,
 )
-from studio.db.repo.style_presets import get_style_preset
 from studio.engines.tts.voice_map import DEFAULT_SPEED, DEFAULT_VOICE, voice_aliases
+from studio.styles.store import style_exists
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
@@ -55,7 +56,9 @@ def _check_profile(engine: Engine, runtimes: RuntimeFactory, stage: str, profile
         raise SettingsValidationError(f"模型配置 {profile.name} 的密钥未配置，不能设为默认")
 
 
-def _check_references(engine: Engine, runtimes: RuntimeFactory, patch: dict[str, Any]) -> None:
+def _check_references(
+    engine: Engine, runtimes: RuntimeFactory, data_dir: Path, patch: dict[str, Any]
+) -> None:
     for stage, profile_id in (patch.get("stage_default_profile") or {}).items():
         if profile_id is not None:
             _check_profile(engine, runtimes, stage, profile_id)
@@ -63,7 +66,7 @@ def _check_references(engine: Engine, runtimes: RuntimeFactory, patch: dict[str,
     if voice is not None and voice not in voice_aliases():
         raise SettingsValidationError(f"音色不可用：{voice}")
     style_id = patch.get("default_style_preset_id")
-    if style_id is not None and get_style_preset(engine, style_id) is None:
+    if style_id is not None and not style_exists(data_dir, style_id):
         raise SettingsValidationError(f"风格不存在：{style_id}")
 
 
@@ -84,7 +87,7 @@ def patch_settings_endpoint(
     patch = body.model_dump(exclude_unset=True)
     try:
         validate_settings_patch(patch)
-        _check_references(engine, runtimes, patch)
+        _check_references(engine, runtimes, env.data_dir, patch)
         return _out(update_settings(engine, patch), env)
     except SettingsValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

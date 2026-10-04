@@ -388,3 +388,46 @@ class StylePresetPatch(BaseModel):
     content: str | None = None
     references: list[StyleFileBody] | None = None
     exemplars: list[StyleFileBody] | None = None
+
+
+class StyleSummaryOut(BaseModel):
+    id: str
+    name: str
+    category: str
+    description: str | None
+    reference_count: int
+    exemplar_count: int
+    is_default: bool
+    has_draft: bool
+    """有未保存的草稿。"""
+    modified_at: datetime
+
+
+class StyleOut(BaseModel):
+    """正式版本：`files` 是 `{相对路径: 文本}`（`STYLE.md`、`references/*`、`exemplars/*`）。"""
+
+    id: str
+    name: str
+    category: str
+    description: str | None
+    files: dict[str, str]
+    is_default: bool
+    modified_at: datetime
+
+
+class DraftStatusOut(BaseModel):
+    id: str
+    is_new: bool
+    """从未保存过（正式版本不存在）。"""
+    dirty: bool
+    files: list[str]
+
+
+class DraftFileOut(BaseModel):
+    content: str
+
+
+class DraftFileWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str

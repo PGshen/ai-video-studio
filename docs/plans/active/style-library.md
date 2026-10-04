@@ -88,7 +88,7 @@
 - **完成标准**：存储层纯文件系统实现，无数据库依赖；上述用例全绿。
 - **验证命令**：`cd backend && uv run pytest tests/styles -q`；`make check`
 
-### T3：`/api/styles` 接口，创建项目与默认风格改读目录（待开始）
+### T3：`/api/styles` 接口，创建项目与默认风格改读目录（完成）
 
 - **目标**：新接口上线并与旧接口并存，创建项目、默认风格设置改用新存储。旧 `/api/style-presets` 暂时保留到 T4。
 - **涉及文件**：重写 `backend/src/studio/api/styles.py` 为新接口（旧路由文件改名为过渡的 `style_presets_legacy.py` 暂存，T4 删除）；`backend/src/studio/api/schemas.py`（新增 `StyleSummaryOut`、`StyleOut`、`DraftStatusOut`、`DraftFileWrite`，旧 schema 暂留）；`backend/src/studio/api/projects.py`（`_style_for_new_project` 改读 `read_style_files`，仍写 `style/` 前缀）；`backend/src/studio/api/settings.py`（默认风格校验改查目录）；`backend/src/studio/main.py`（注册路由）；`backend/tests/api/test_styles.py`（重写）、`backend/tests/api/test_projects.py`、`backend/tests/api/test_settings.py`。
@@ -192,10 +192,11 @@
 
 - 2026-10-04 — T1 styles 纯能力模块（校验、frontmatter、布局）+ ADR 0019 — `make check` 绿，新增 52 个后端用例
 - 2026-10-04 — T2 目录存储与草稿（`styles/store.py`；另在 `validate.py` 补 `set_frontmatter_fields`/`split_style_path`/`is_plain_file_name`）— `make check` 绿，`tests/styles` 共 109 个用例
+- 2026-10-04 — T3 `/api/styles*` 接口、创建项目与默认风格设置改读目录 — `make check` 绿，后端 1567 个用例
 
 ## 下一步
 
-- 从 T3 开始：先重写 `backend/tests/api/test_styles.py`（新 `/api/styles*` 接口全部端点与错误路径，评审关注点 3、5），再把旧 `api/styles.py` 改名为 `api/style_presets_legacy.py` 暂存，新建 `api/styles.py`。可用的存储接口见 `studio.styles.store`（`list_styles`、`get_style`、`read_style_files`、`create_new_draft`、`open_draft`、`draft_status`、`read/write/delete_draft_file`、`validate_draft`、`save_draft`、`discard_draft`、`duplicate_style`、`delete_style`、`import_style`、`style_exists`；异常 `StyleNotFoundError`/`StyleValidationError`/`DuplicateStyleNameError`/`StyleExistsError`/`StylePathError`）。
+- 从 T4 开始：先写 `backend/tests/db/test_legacy_style_table.py`（评审关注点 1：无 frontmatter 的行、缺 description 的行、重名行；幂等；数量不一致抛错且不删表；0007 在无表的新库上不报错），再实现 `backend/src/studio/db/legacy_style_table.py`、迁移 0007、lifespan 里在 `migrate()` 之前调用导出；然后删除旧代码：`db/repo/style_presets.py`、`workspace/style_files.py`、`api/style_presets_legacy.py`（及 main 里的注册）、`db/models.py` 的 `StylePreset`、`api/schemas.py` 里的旧 `StylePreset*`/`StyleFileBody`、`tests/db/test_repo_style_presets.py`、`tests/workspace/test_style_files.py`；改写 `db/legacy_styles.py` 用 `studio.styles.store.import_style`（带 `overwrite`）；更新 Makefile/脚本/dev-setup 说明。
 
 ## 决策记录
 
@@ -203,6 +204,8 @@
 - 2026-10-04 — 旧表导出放在 lifespan 里 `migrate()` 之前，迁移 0007 才删表 — 迁移里拿不到数据目录；导出失败则启动失败，迁移不会执行，数据不会丢。
 - 2026-10-04 — 风格会话复用 `workspaceless` 阶段标记，靠 `sessions.subject_id` 区分绑定目录模式 — 避免给 `StageDefinition` 协议加字段而改动全部阶段。
 - 2026-10-04 — T2：草稿读写只允许 `STYLE.md` 和 `references|exemplars/<普通文件名>`，路径上有符号链接一律拒绝；`import_style` 带 `overwrite` 参数供导入脚本「覆盖」模式用 — 草稿写入时就收紧比保存时才发现更安全，也不需要给导入脚本另开接口。
+- 2026-10-04 — T3：不在接口里预留空的 `_ensure_not_busy` 钩子，写端点直接写成 `async def`，T9 再加忙碌检查 — 一个什么都不做的钩子是死代码；`async def` 已满足「检查与写入之间不 `await`」的前提。
+- 2026-10-04 — T3：`tests/api/test_projects.py` 里准备风格的 helper 改用 `studio.styles.store.import_style`，更新/删除改走 `/api/styles` 草稿接口，断言原样保留（并新增「默认风格被删后退回占位」一条）— 创建项目已改读目录，旧接口建的预设不再可见。
 - 2026-10-04 — 迁移后目录 id 沿用旧表 id，新建的用 `uuid4().hex` — 与旧表 `_new_id` 一致，免去对 `default_style_preset_id` 和项目记录的映射。
 
 ## 意外与发现

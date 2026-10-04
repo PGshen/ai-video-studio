@@ -16,6 +16,7 @@ from studio.db.repo.snapshots import list_snapshots
 from studio.db.repo.stages import list_stages
 from studio.db.repo.suggestions import create_suggestion, get_suggestion
 from studio.db.repo.turns import append_event, create_turn_if_session_idle, list_events, list_turns
+from studio.styles import store as style_store
 from studio.workspace import files
 
 from .conftest import ApiEnv, assert_detail
@@ -307,19 +308,16 @@ description: 暖色纸张质感的双色风格
 
 class TestCreateProjectWithStyle:
     async def _preset(self, api_env: ApiEnv, name: str = "暖纸双色", **extra: object) -> dict:
-        response = await api_env.client.post(
-            "/api/style-presets",
-            json={
-                "name": name,
-                "category": "概念传记",
-                "content": STYLE_ENTRY,
-                "references": [{"name": "color-scheme.md", "text": "主色：暖白"}],
-                "exemplars": [{"name": "exemplar-1.json", "text": "{}"}],
-                **extra,
+        entry = STYLE_ENTRY.replace("name: 暖纸双色", f"name: {name}")
+        detail = style_store.import_style(
+            api_env.data_dir,
+            {
+                "STYLE.md": entry,
+                "references/color-scheme.md": "主色：暖白",
+                "exemplars/exemplar-1.json": "{}",
             },
         )
-        assert response.status_code == 201, response.text
-        return response.json()
+        return {"id": detail.id, "name": detail.name}
 
     def _style_files(self, api_env: ApiEnv, project_id: str) -> dict[str, str]:
         workdir = api_env.workdir(project_id)
@@ -404,13 +402,27 @@ class TestCreateProjectWithStyle:
         ).json()
         before = self._style_files(api_env, project["id"])
 
-        await api_env.client.patch(
-            f"/api/style-presets/{preset['id']}",
-            json={"references": [{"name": "color-scheme.md", "text": "改了"}]},
+        draft = f"/api/styles/{preset['id']}/draft"
+        await api_env.client.post(draft)
+        await api_env.client.put(
+            f"{draft}/files/references/color-scheme.md", json={"content": "改了"}
         )
-        await api_env.client.delete(f"/api/style-presets/{preset['id']}")
+        await api_env.client.post(f"{draft}/save")
+        await api_env.client.delete(f"/api/styles/{preset['id']}")
 
         assert self._style_files(api_env, project["id"]) == before
+
+    async def test_deleted_default_style_falls_back_to_the_placeholder(
+        self, api_env: ApiEnv
+    ) -> None:
+        default = await self._preset(api_env, name="默认")
+        await api_env.client.patch("/api/settings", json={"default_style_preset_id": default["id"]})
+        await api_env.client.delete(f"/api/styles/{default['id']}")
+
+        project = (await api_env.client.post("/api/projects", json={"title": "P"})).json()
+
+        assert list(self._style_files(api_env, project["id"])) == ["style/STYLE.md"]
+        assert "style_preset_id" not in project["settings"]
 
     async def test_unknown_preset_is_404_and_leaves_nothing(self, api_env: ApiEnv) -> None:
         response = await api_env.client.post(
@@ -510,15 +522,11 @@ class TestProjectVoiceSettings:
     async def test_merges_with_existing_settings_and_partial_updates_keep_the_rest(
         self, api_env: ApiEnv
     ) -> None:
-        preset = (
-            await api_env.client.post(
-                "/api/style-presets",
-                json={
-                    "name": "S",
-                    "content": "---\nname: S\ndescription: d\n---\n",
-                },
-            )
-        ).json()
+        preset = {
+            "id": style_store.import_style(
+                api_env.data_dir, {"STYLE.md": "---\nname: S\ndescription: d\n---\n"}
+            ).id
+        }
         project = (
             await api_env.client.post(
                 "/api/projects", json={"title": "P", "style_preset_id": preset["id"]}

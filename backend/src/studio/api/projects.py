@@ -56,9 +56,9 @@ from studio.db.repo.sessions import delete_project_sessions
 from studio.db.repo.settings import SPEECH_RATE_MAX, SPEECH_RATE_MIN, get_all_settings
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
-from studio.db.repo.style_presets import get_style_preset
 from studio.db.repo.suggestions import delete_suggestions
 from studio.engines.tts.voice_map import voice_aliases
+from studio.styles import store as style_store
 from studio.workspace import (
     BlobStore,
     create_snapshot,
@@ -66,7 +66,6 @@ from studio.workspace import (
     project_dir,
     remove_workspace,
 )
-from studio.workspace.style_files import render_style_files
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -127,24 +126,29 @@ _STYLE_SETTING_KEYS = ("style_preset_id", "style_name")
 
 
 def _style_for_new_project(
-    engine: Engine, requested_id: str | None, title: str
+    engine: Engine, settings: Settings, requested_id: str | None, title: str
 ) -> tuple[dict[str, str], dict[str, str]]:
     """新项目的 `style/` 文件和要记进 `project.settings` 的风格信息。
 
     顺序：请求指定的风格（不存在 → 404）→ 设置里的默认风格 → 占位 `STYLE.md`（风格库里没有
-    可用的预设时不报错）。风格是复制进工作区的，之后与风格库脱钩（决策 D5）。
+    可用的风格时不报错）。风格是复制进工作区的，之后与风格库脱钩（决策 D5）。
     """
+    data_dir = settings.data_dir
     if requested_id is not None:
-        preset = get_style_preset(engine, requested_id)
-        if preset is None:
+        if not style_store.style_exists(data_dir, requested_id):
             raise HTTPException(status_code=404, detail=f"风格不存在：{requested_id}")
+        style_id: str | None = requested_id
     else:
         default_id = get_all_settings(engine).default_style_preset_id
-        preset = get_style_preset(engine, default_id) if default_id is not None else None
-    if preset is None:
-        placeholder = f"# {title}\n\n（未选择风格：风格库里没有可用的预设，这是一份占位。）\n"
+        style_id = (
+            default_id if default_id and style_store.style_exists(data_dir, default_id) else None
+        )
+    if style_id is None:
+        placeholder = f"# {title}\n\n（未选择风格：风格库里没有可用的风格，这是一份占位。）\n"
         return {"style/STYLE.md": placeholder}, {}
-    return render_style_files(preset), {"style_preset_id": preset.id, "style_name": preset.name}
+    detail = style_store.get_style(data_dir, style_id)
+    files = {f"style/{path}": text for path, text in detail.files.items()}
+    return files, {"style_preset_id": detail.id, "style_name": detail.name}
 
 
 def _init_workspace(
@@ -184,7 +188,9 @@ def create_project_endpoint(
     settings: Settings = Depends(get_settings),
 ) -> ProjectOut:
     idea = _require_usable_idea(engine, body.idea_id) if body.idea_id is not None else None
-    style_files, style_settings = _style_for_new_project(engine, body.style_preset_id, body.title)
+    style_files, style_settings = _style_for_new_project(
+        engine, settings, body.style_preset_id, body.title
+    )
     client_settings = {
         key: value for key, value in (body.settings or {}).items() if key not in _STYLE_SETTING_KEYS
     }
