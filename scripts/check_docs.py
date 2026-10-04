@@ -7,6 +7,7 @@ Checks:
   3. ADRs in docs/decisions/ follow the naming pattern, have unique numbers
      and contain all required sections.
   4. AGENTS.md stays short enough to be a map.
+  5. Open entries in docs/quality/tech-debt.md have unique TD numbers.
 
 Stdlib only, so it runs before any project dependency is installed.
 """
@@ -95,6 +96,23 @@ def check_sections(path: Path, text: str, required: list[str]) -> list[str]:
     return []
 
 
+TD_ROW = re.compile(r"^\| (TD-\d+) \|")
+
+
+def check_tech_debt_ids(path: Path, text: str) -> list[str]:
+    """Open entries (above the 已处理 heading) must not share a TD number."""
+    seen: set[str] = set()
+    errors: list[str] = []
+    for line in text.split("## 已处理")[0].splitlines():
+        m = TD_ROW.match(line)
+        if not m:
+            continue
+        if m.group(1) in seen:
+            errors.append(f"{path.relative_to(ROOT)}: 技术债编号 {m.group(1)} 重复")
+        seen.add(m.group(1))
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -125,6 +143,9 @@ def main() -> int:
             errors.append(f"{path.relative_to(ROOT)}: ADR 编号 {m.group(1)} 与 {seen[m.group(1)].name} 重复")
         seen[m.group(1)] = path
         errors += check_sections(path, path.read_text(encoding="utf-8"), ADR_SECTIONS)
+
+    debt = ROOT / "docs" / "quality" / "tech-debt.md"
+    errors += check_tech_debt_ids(debt, debt.read_text(encoding="utf-8"))
 
     agents = ROOT / "AGENTS.md"
     lines = len(agents.read_text(encoding="utf-8").splitlines())
