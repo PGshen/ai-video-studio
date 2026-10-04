@@ -297,3 +297,22 @@ forbidden_modules = [
     "studio.api",
     "studio.main",
 ]
+
+[[tool.importlinter.contracts]]
+name = "timeline 是纯能力层（规则 4）：只依赖标准库和 pydantic，不 import 任何其他 studio 模块"
+type = "forbidden"
+source_modules = ["studio.timeline"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.engines",
+    "studio.jobs",
+    "studio.search",
+    "studio.styles",
+    "studio.config",
+    "studio.worker",
+]
