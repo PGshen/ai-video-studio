@@ -91,7 +91,10 @@ async def mix_final(
     temp = output.with_name(f"{output.stem}.tmp{output.suffix}")
     command = build_mix_command(video, tracks, duration, temp)
     process = await asyncio.create_subprocess_exec(
-        *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+        *command,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
     )
     try:
         _, stderr = await process.communicate()
