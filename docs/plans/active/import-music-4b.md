@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 待验收（负责人试听与批准） |
 | 里程碑 | 多形态视频流水线·子项目 4（4B） |
 | 设计依据 | [4B 设计增量](../../design/2026-10-05-import-music-mv-4b.md)（已批准 2026-10-05）；[导入音乐与音乐 MV 设计](../../design/2026-10-05-import-music-mv.md) §7、§8；[4A 计划](../completed/import-music-4a.md) |
 | 分支 | `import-music-4b` |
-| 批准记录 | 待负责人批准计划 |
+| 批准记录 | 计划 2026-10-05 批准（负责人选 native 执行）；成片试听与整体验收待负责人 |
 
 ## 目标
 
@@ -29,21 +29,21 @@
 
 ## 验收标准
 
-- [ ] AC1：`POST /api/projects/{id}/music/source` 的校验——非 `import` 项目、运行中的一轮、非白名单扩展名、超过 150 MB（含恰好等于上限）、内容不是音频、时长不在 5–600 秒——都返回约定的状态码与中文原因；成功时写入 `music/source.<ext>`、旧 `source.*` 被清掉、失败不留临时文件也不动旧文件。（验证：`tests/api/test_music_upload.py`）
-- [ ] AC2：`music/meta` 的导入形态返回源文件、分析摘要、网格、段落、区间、能量、`sections_check`、`stale`；换歌后 `stale=true`；合成形态的响应与既有测试不变；`music/audio` 在导入形态返回源文件并支持 `Range`。（验证：`tests/api/test_music_import_meta.py`、`tests/api/test_music.py`）
-- [ ] AC3：`html-preview/meta` 的 `music` 在导入形态带 `offset`（= 有效截取区间起点）、增益 1.0、地址带源哈希；源文件被换或未分析时为 `null`。（验证：`tests/api/test_html_preview.py`）
-- [ ] AC4：`mix.py` 能从源文件的 `source_start` 秒起截取；用已知音调的音频验证截取起点；淡出起点与补静音按成片时长算；合成形态的既有用例不变。（验证：`tests/engines/test_mix.py`）
-- [ ] AC5：`worker_html` 导入分支：成片时长等于时间轴时长；源文件在检查后被换（哈希不符）报错；缺 `analysis.json`/`sections.json` 报明确原因；缓存键随源哈希与区间变化；`final.json` 记录 `audio_sources.music`；合成形态与讲解的既有用例不变。（验证：`tests/test_worker_html_music.py`、`tests/api/test_html_final_flow.py`）
-- [ ] AC6：前端上传区、导入形态画布、预览 `offset` 同步的单元测试全部通过，`pnpm lint` 与 `pnpm exec vue-tsc`（项目已有的类型检查命令）无错误。（验证：vitest、`make check`）
-- [ ] AC7：`GET /api/video-kinds` 里音乐 MV 预设可选，创建项目对话框能选中并创建 `music_source=import` 的项目。（验证：`tests/api/test_video_kinds.py`、前端 `VideoKindPicker.spec.ts`）
-- [ ] AC8：L4 浏览器验证：上传区、能量曲线与叠加、点击跳转、预览播放与拖动同步（控制者在内置浏览器截图）。
-- [ ] AC9：真实冒烟：`docs/temp/海阔天空.mp3` 走完 `concept → music → beatsheet → animation_html` 并渲染出带原曲音轨的成片；记录出帧耗时、成片大小与拟合读数；强拍相位与段落由负责人试听核对。（验证：`make smoke` 的新用例、`docs/references/import-music-mv.md`）
+- [x] AC1：`POST /api/projects/{id}/music/source` 的校验——非 `import` 项目、运行中的一轮、非白名单扩展名、超过 150 MB（含恰好等于上限）、内容不是音频、时长不在 5–600 秒——都返回约定的状态码与中文原因；成功时写入 `music/source.<ext>`、旧 `source.*` 被清掉、失败不留临时文件也不动旧文件。（验证：`tests/api/test_music_upload.py`）
+- [x] AC2：`music/meta` 的导入形态返回源文件、分析摘要、网格、段落、区间、能量、`sections_check`、`stale`；换歌后 `stale=true`；合成形态的响应与既有测试不变；`music/audio` 在导入形态返回源文件并支持 `Range`。（验证：`tests/api/test_music_import_meta.py`、`tests/api/test_music.py`）
+- [x] AC3：`html-preview/meta` 的 `music` 在导入形态带 `offset`（= 有效截取区间起点）、增益 1.0、地址带源哈希；源文件被换或未分析时为 `null`。（验证：`tests/api/test_html_preview.py`）
+- [x] AC4：`mix.py` 能从源文件的 `source_start` 秒起截取；用已知音调的音频验证截取起点；淡出起点与补静音按成片时长算；合成形态的既有用例不变。（验证：`tests/engines/test_mix.py`）
+- [x] AC5：`worker_html` 导入分支：成片时长等于时间轴时长；源文件在检查后被换（哈希不符）报错；缺 `analysis.json`/`sections.json` 报明确原因；缓存键随源哈希与区间变化；`final.json` 记录 `audio_sources.music`；合成形态与讲解的既有用例不变。（验证：`tests/test_worker_html_music.py`、`tests/api/test_html_final_flow.py`）
+- [x] AC6：前端上传区、导入形态画布、预览 `offset` 同步的单元测试全部通过，`pnpm lint` 与 `pnpm exec vue-tsc`（项目已有的类型检查命令）无错误。（验证：vitest、`make check`）
+- [x] AC7：`GET /api/video-kinds` 里音乐 MV 预设可选，创建项目对话框能选中并创建 `music_source=import` 的项目。（验证：`tests/api/test_video_kinds.py`、前端 `VideoKindPicker.spec.ts`）
+- [x] AC8：L4 浏览器验证：上传区、能量曲线与叠加、点击跳转、预览播放与拖动同步（控制者在内置浏览器截图）。
+- [x] AC9（读数、成片、耗时已记录；强拍相位、段落与淡入淡出待负责人试听）：真实冒烟：`docs/temp/海阔天空.mp3` 走完 `concept → music → beatsheet → animation_html` 并渲染出带原曲音轨的成片；记录出帧耗时、成片大小与拟合读数；强拍相位与段落由负责人试听核对。（验证：`make smoke` 的新用例、`docs/references/import-music-mv.md`）
 
 ## 任务
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：音频探测与上传端点（待开始）
+### T1：音频探测与上传端点（完成）
 
 - **目标**：用户能把一首歌安全地放进项目的 `music/source.<ext>`。
 - **涉及文件**：新建 `backend/src/studio/engines/audio/probe.py`、`backend/src/studio/api/music_import.py`；修改 `backend/src/studio/api/schemas.py`、`backend/src/studio/api/music.py`（`_require_score_project` 按 `music_source` 分流）、`backend/src/studio/main.py`（注册新 router）；测试 `backend/tests/engines/test_audio_probe.py`、`backend/tests/api/test_music_upload.py`
@@ -57,7 +57,7 @@
 - **完成标准**：AC1 满足。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_audio_probe.py tests/api/test_music_upload.py tests/api/test_music.py -q`；`make check`
 
-### T2：`music/meta` 与 `music/audio` 的导入形态（待开始）
+### T2：`music/meta` 与 `music/audio` 的导入形态（完成）
 
 - **目标**：画布和预览能拿到导入形态需要的全部信息，并能播放源文件。
 - **涉及文件**：`backend/src/studio/api/music_import.py`（加 `build_import_meta`）、`backend/src/studio/api/music.py`、`backend/src/studio/api/schemas.py`；测试 `backend/tests/api/test_music_import_meta.py`、`backend/tests/api/test_music.py`
@@ -70,7 +70,7 @@
 - **完成标准**：AC2 满足。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_music_import_meta.py tests/api/test_music.py -q`；`make check`
 
-### T3：预览的 `music.offset`（待开始）
+### T3：预览的 `music.offset`（完成）
 
 - **目标**：画面预览知道导入音乐要从哪一秒开始放。
 - **涉及文件**：`backend/src/studio/api/html_preview.py`、`backend/src/studio/api/schemas.py`；测试 `backend/tests/api/test_html_preview.py`
@@ -81,7 +81,7 @@
 - **完成标准**：AC3 满足。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_html_preview.py -q`；`make check`
 
-### T4：`mix.py` 的 `source_start`（待开始）
+### T4：`mix.py` 的 `source_start`（完成）
 
 - **目标**：混音能从源文件的某一秒起截取配乐。
 - **涉及文件**：`backend/src/studio/engines/render/mix.py`、`backend/tests/engines/test_mix.py`、`docs/references/ffmpeg.md`
@@ -93,7 +93,7 @@
 - **完成标准**：AC4 满足。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_mix.py -q`；`make check`
 
-### T5：`worker_html` 的导入分支（待开始）
+### T5：`worker_html` 的导入分支（完成）
 
 - **目标**：渲染成片时用上传的歌做音轨，并保证混进成片的就是被检查过的那份字节。
 - **涉及文件**：`backend/src/studio/worker_html.py`、`backend/src/studio/worker.py`（若有对 `import` 的拒绝或透传）、`backend/src/studio/api/jobs.py`（先 `grep -rn "music_source"` 确认成片入口是否还在别处拒绝 `import`）；测试 `backend/tests/test_worker_html_music.py`、`backend/tests/api/test_html_final_flow.py`
@@ -106,7 +106,7 @@
 - **完成标准**：AC5 满足。
 - **验证命令**：`cd backend && uv run pytest tests/test_worker_html_music.py tests/api/test_html_final_flow.py -q`；`make check`
 
-### T6：前端的上传请求、类型与查询（待开始）
+### T6：前端的上传请求、类型与查询（完成）
 
 - **目标**：前端能上传文件、读到新的 meta 字段，类型检查通过。
 - **涉及文件**：`frontend/src/api/http.ts`、`frontend/src/api/endpoints.ts`、`frontend/src/types/api.ts`、`frontend/src/composables/queries.ts`、`frontend/src/test/`（现有的夹具）；测试 `frontend/src/api/http.spec.ts`（若无则新建）、`frontend/src/api/endpoints.spec.ts`、`frontend/src/composables/queries.spec.ts`
@@ -119,7 +119,7 @@
 - **完成标准**：类型、lint、单测全部通过。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/api src/composables`；`make check`
 
-### T7：导入形态的音乐画布（待开始）
+### T7：导入形态的音乐画布（完成）
 
 - **目标**：用户能上传歌曲，并看到能量曲线、网格、段落、区间与分析摘要。
 - **涉及文件**：新建 `frontend/src/features/canvas/music/importView.ts`、`SourceUploader.vue`、`EnergyView.vue`、`ImportMusicCanvas.vue`、`AnalysisSummary.vue`；修改 `frontend/src/pages/ProjectWorkbenchPage.vue`（`stage === 'music'` 且项目 `music_source === 'import'` 时渲染 `ImportMusicCanvas`，插槽 `actions` 与 `MusicCanvas` 一致）、`frontend/src/features/canvas/stageActions.ts`（若有按形态的差异，先读）；测试同名 `.spec.ts`
@@ -132,7 +132,7 @@
 - **完成标准**：AC6 中画布部分满足；`ProjectWorkbenchPage` 对合成形态与其他阶段的行为不变（既有页面测试通过）。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas/music src/pages`；`make check`
 
-### T8：预览按 `offset` 同步导入音乐（待开始）
+### T8：预览按 `offset` 同步导入音乐（完成）
 
 - **目标**：拖动、暂停、循环、换源时，预览画面与导入音乐保持对齐。
 - **涉及文件**：`frontend/src/features/canvas/animation/htmlPreview/useHtmlPlayback.ts`、`previewClock.ts`；测试 `useHtmlPlayback.spec.ts`、`previewClock.spec.ts`
@@ -144,7 +144,7 @@
 - **完成标准**：AC6 中预览部分满足。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas/animation/htmlPreview`；`make check`
 
-### T9：放开音乐 MV 入口（待开始）
+### T9：放开音乐 MV 入口（完成）
 
 - **目标**：用户能在创建项目对话框里选择并创建音乐 MV 项目。
 - **涉及文件**：`backend/src/studio/api/video_kinds.py`、`backend/tests/api/test_video_kinds.py`、`backend/tests/api/conftest.py`（若夹具里有"导入不可用"的假设）、`frontend/src/test/videoKindsFixture.ts`、`frontend/src/components/VideoKindPicker.spec.ts`、`frontend/src/features/ideas/CreateProjectDialog.spec.ts`、`docs/design/2026-10-05-import-music-mv-4b.md`（无需改）
@@ -154,7 +154,7 @@
 - **完成标准**：AC7 满足。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_video_kinds.py -q`；`cd frontend && pnpm exec vitest run src/components src/features/ideas`；`make check`
 
-### T10：真实冒烟、文档与收尾（待开始）
+### T10：真实冒烟、文档与收尾（完成）
 
 - **目标**：用真实歌曲走通整条链路，把读数与结论写进文档。
 - **涉及文件**：新建 `backend/tests/smoke/test_music_video_smoke.py`（沿用 `tests/smoke/support.py` 的 `build_harness`/`record_evidence` 约定与 `pytestmark = pytest.mark.smoke`）、`docs/references/import-music-mv.md`、`docs/references/README.md`、`docs/quality/QUALITY.md`、`docs/quality/tech-debt.md`（4A 终审遗留项与本计划新增项）、`docs/glossary.md`、`docs/ARCHITECTURE.md`、`docs/plans/TODO.md`（不在本任务里改，见决策记录）、本计划
@@ -177,11 +177,13 @@
 
 ## 进度
 
-- 无
+- 2026-10-05：T1–T10 全部完成（native 执行）。`make check` 全绿；真实冒烟通过（约 1005 秒）；L4 浏览器验证通过。
+- 提交：T1 `c09feb9`、T2–T9 见 `git log import-music-4b`；T10 冒烟用例与文档收尾。
+- 待办（负责人）：试听 `data/evidence/import-music/smoke/music-video-final.mp4`，核对强拍相位、BPM（76.9 还是 153.9）、段落边界与截断处淡出，结论回填 `docs/references/import-music-mv.md`。
 
 ## 下一步
 
-- 负责人批准计划后，从 T1 开始：先写 `tests/engines/test_audio_probe.py` 与 `tests/api/test_music_upload.py` 的失败测试。
+- 整分支终审（最强模型）→ 修复 → 收尾合并到 main；负责人试听后更新 `TODO.md`（4B 完成、本计划归档）。
 
 ## 决策记录
 
@@ -189,11 +191,19 @@
 - 2026-10-05 — `api/music_import.py` 单独成文件，`music.py` 只做形态分流 — `music.py` 已约 200 行，导入形态的上传、meta 构建、音频解析另放，职责清楚。
 - 2026-10-05 — 导入形态的画布不并入 `MusicCanvas.vue`，由页面按项目的 `music_source` 分流到 `ImportMusicCanvas.vue` — 两种形态的标签与数据完全不同，合并会让合成形态的组件和测试变复杂；项目设置在页面里已有，不必等 meta。
 - 2026-10-05 — 上传进度用 `XMLHttpRequest` — `fetch` 没有上传进度，设计 §4 要求显示进度。
+- 2026-10-05（执行中）— `build_import_meta` 放 `api/music_import_meta.py`，不放 `music_import.py`（避免 `music` ↔ `music_import` 循环 import）；新增公开的 `timeline.imported.effective_range` 作为预览、成片与 meta 共用的区间规则。
+- 2026-10-05（执行中）— 导入音乐只对 `(html, 无旁白)` 放开：计划写"不再阻止 import"，但 `load_timeline` 对旁白加导入直接报错，放开会让用户建出渲染不了的项目；其余两种组合保持不可用，原因文案「「配乐（导入音乐）」目前只支持无旁白的 HTML 音乐视频」（含"配乐"，既有测试依赖）。`unavailable_reason` 增加可选的 `narration` 参数。
+- 2026-10-05（执行中）— 混音取源文件起点用滤镜 `atrim=start`（不用输入端 `-ss`）：实测毫秒级精确；`source_start` 超出文件长度时不报错，输出全静音、总长精确（测试固定）。
+- 2026-10-05（执行中）— 冒烟环境变量用 `STUDIO_SMOKE_SONG`（不是计划里的 `MV_SMOKE_SONG`）：`make smoke` 只放行 `STUDIO_*` 变量；冒烟在 `probe_audio` 之后把歌拷进 `music/source.<ext>`，不经 HTTP 上传端点（端点由 api 测试覆盖）。
 - 2026-10-05 — T10 不改 `docs/plans/TODO.md` — 沿用 4A 收尾的做法，TODO 由负责人确认后在收尾步骤更新。
 
 ## 意外与发现
 
-- 无
+- 流式解析：Starlette 的 `UploadFile` 在进入端点前就把整个文件落盘，无法按上限中途中止，改用 `python_multipart` 的流式解析器（references 已记）。
+- 缓存键不用改：MV 的时间轴哈希（`sha256(timeline + source_hash + range)`）本来就进了 `_cache_key`，测试固定了这一点。
+- `worker` 不能 import `stages`（import-linter）：源文件路径取自时间轴的 `music.file`，区间与源哈希加进 `LoadedTimeline`（`range`、`source_hash`，默认 `None`）。
+- 讲解（有旁白）加导入音乐的组合时间轴读取不支持，所以入口只对无旁白的 HTML 音乐视频放开（见决策）。
+- 冒烟里 agent 把前奏单列为一个段落并从 1.41 秒起；候选边界 11 个、段落边界 9 个，整曲区间不写 `range`。
 
 ## 阻塞
 
@@ -201,4 +211,8 @@
 
 ## 验证记录
 
-- 无
+- `make check`（2026-10-05，T9 之后）：后端 2626 passed（97 deselected 为 `slow`/`smoke`），前端 1121 passed，lint、类型检查、import-linter（25 条契约）、文档检查全部通过。
+- `slow` 用例（真实 Chromium + ffmpeg）：`tests/engines/test_mix.py`、`tests/test_worker_html_music.py`（含音乐 MV 真实成片）、`tests/test_worker_html.py`、`tests/api/test_html_final_flow.py` 全部通过。
+- 真实冒烟：`cd backend && uv run pytest tests/smoke/test_music_video_smoke.py -m smoke`，1 passed，1004.7 秒；读数与耗时见 `docs/references/import-music-mv.md`。
+- L4 浏览器（内置浏览器，隔离的 api:8011 + 临时数据目录）：上传区上传 wav 成功（进度、更换入口）；能量曲线叠加 9 条强拍线与 24 条拍线（区间内）、段落名、区间外遮罩（25/825）、置信度 0.42 与警告标橙、`sections_check` 错误逐条显示；点击能量曲线把 `audio.currentTime` 设到约 10 秒、播放头 499.9；预览 meta 的 `offset` 为 4.5，播放时音频时间减 4.5 与时钟一致，拖动后音频跳到 `offset + t`。
+- 变异检查：T7 组件先写后测，改坏两处（stale 仍显示旧摘要、busy 不禁用）后对应用例变红，恢复后全绿。

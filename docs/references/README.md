@@ -30,4 +30,5 @@ agent SDK 和前端组件库更新很快，AI 的训练知识可能已经过时�
 | [html-canvas-agent-spike.md](html-canvas-agent-spike.md) | 真实模型写 Canvas 场景的小试：稳定性、确定性、暴露的问题 |
 | [html-video-render.md](html-video-render.md) | HTML 成片：出帧速度、编码色域、混音 `apad` 陷阱、浏览器池 SIGKILL 恢复与内存 |
 | [motion-reel-spike.md](motion-reel-spike.md) | 真实模型写短片画面与合成配乐的小试：节拍吸附、谱图自检、暴露的问题与对子项目 3 的影响 |
+| [import-music-mv.md](import-music-mv.md) | 导入音乐与音乐 MV（4B）：真实歌曲冒烟读数、成片耗时与大小、上传解析、预览偏移与混音截取 |
 | [librosa.md](librosa.md) | librosa（歌曲节拍分析）：安装与 numba 冷启动耗时、`beat_track` 返回形状与量化、解码路径 |
