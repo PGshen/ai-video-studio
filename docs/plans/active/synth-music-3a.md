@@ -93,7 +93,7 @@
 - **完成标准**：`tests/timeline` 与受影响的现有测试通过；`lint-imports` 通过。
 - **验证命令**：`cd backend && uv run pytest tests/timeline tests/test_worker_html.py tests/api/test_html_preview.py tests/stages/test_animation_html_stage.py -v && uv run lint-imports`
 
-### T2：`engines.audio` ——WAV、分析、能量曲线（待开始）
+### T2：`engines.audio` ——WAV、分析、能量曲线（完成）
 
 - **目标**：纯能力层的音频读取与分析，不含运行器和画图。
 - **涉及文件**：`backend/pyproject.toml`（`numpy>=2,<3`；import-linter 契约）、`backend/src/studio/engines/audio/{__init__,wav,analysis}.py`、`backend/tests/engines/{test_audio_wav,test_audio_analysis}.py`、`backend/tests/fixtures/audio/`（测试音频的生成函数，不入库二进制）。
@@ -223,11 +223,12 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T2 `engines.audio` WAV 与分析 — 30 个测试（wav 10、analysis 20）
 - 2026-10-05 — T1 时间轴三层与按形态读取 — timeline 78 个测试（含 `test_build_layers`、`test_sources`），`make check` 全绿
 
 ## 下一步
 
-- T2 进行中：`engines.audio.wav` 与 `read_wav` 测试已完成（numpy 已声明为直接依赖）；还差 `analysis.py`（`analyze`、`validate_events`、能量曲线、波形包络）及其测试 `tests/engines/test_audio_analysis.py`；测试夹具在 `tests/fixtures/audio_engine/`。之后是 T3。
+- T3：分析图 `picture.py` 与脚本运行器 `runner.py`。
 
 ## 决策记录
 
@@ -239,6 +240,9 @@
 - 2026-10-05 — T1：`load_workspace_timeline(workdir)` 保留为无配乐讲解的入口（原签名），新入口是 `load_timeline(TimelineSources)`；`LoadedTimeline` 增加 `base_hash`、`beatsheet`。短片的段落与节拍脚本点结构检查在 `layers_from_beatsheet`（`build.py`），内容校验仍在 `build_timeline`。
 - 2026-10-05 — T1：`worker` 不能依赖 `stages`（import-linter 契约），所以不复用 `kind_from_settings`，在 `worker.py` 里用 `_timeline_flags` 取 (有无旁白, 配乐来源) 两个值，缺字段按老项目处理。
 - 2026-10-05 — T1：`run_html_job` 对无旁白或带配乐的项目直接失败，消息"成片渲染尚未实现（配乐混音在子项目 3B）"，避免半成品成片；3B 去掉这条守卫。`api/html_preview` 的 `meta` 对短片可用（无旁白音频、`beats` 为空），读取仍以工作区顶层为准。
+
+- 2026-10-05 — T2：`analyze(samples, timeline, events, *, section_energy=None)` 多一个可选参数，`section_energy` 是 `{段落 id: low|mid|high|peak}`（来自节拍脚本，时间轴里没有），用于"能量走向"警告；`engines.audio` 接收 dict 形式的时间轴，不 import `studio.timeline`。"可检测"事件的第二条规则定为"与更早的另一个 onset 事件相距不足 40 ms 则无法区分"（设计只说被掩蔽，这条是可判定的写法）。WAV 上限：100 MB、240 秒、采样率 22050–96000。
+- 2026-10-05 — T2 发现：测试夹具里的合成底鼓若在 0.18 秒处被硬切，会产生"第二个起音"，对齐率只有约 48%；夹具改为平滑淡出后对齐率超过 90%。真实合成脚本里的硬切同样会拉低对齐率，提示词里要提醒给尾音加淡出。
 
 ## 意外与发现
 

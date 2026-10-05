@@ -26,9 +26,10 @@ def kick_train(
         if length <= 0:
             continue
         t = np.arange(length) / sr
-        out[start : start + length] += (
-            0.8 * np.sin(2 * np.pi * (55 + 90 * np.exp(-t * 35)) * t) * np.exp(-t * 14)
-        )
+        body = 0.8 * np.sin(2 * np.pi * (55 + 90 * np.exp(-t * 35)) * t) * np.exp(-t * 14)
+        fade = min(length, int(0.1 * sr))
+        body[-fade:] *= 0.5 * (1 + np.cos(np.linspace(0, np.pi, fade)))  # a click reads as an onset
+        out[start : start + length] += body
     return out
 
 
