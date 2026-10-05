@@ -16,12 +16,12 @@
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
-| P1 | 多形态视频子项目 3B：混音（含 sidechain）、`/music/*` api、`MusicCanvas`、预览音频、成片 | [synth-music-reel 设计](../design/2026-10-05-synth-music-reel.md)，2026-10-05 | 3A（agent 侧）已完成待验收，见 [synth-music-3a](active/synth-music-3a.md)；3B 计划还没写，3A 验收后再写 |
+| P1 | 多形态视频子项目 3B：混音（含 sidechain）、`/music/*` api、`MusicCanvas`、预览音频、成片 | [synth-music-reel 设计](../design/2026-10-05-synth-music-reel.md)，2026-10-05 | 3A（agent 侧）已完成并合并，见 [synth-music-3a](completed/synth-music-3a.md)；3B 计划还没写，3A 验收后再写 |
 | P2 | 多形态视频子项目 4：导入音乐 + 音乐 MV | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 3 |
 | P2 | 把本地 `main` 推送到 `origin` | 2026-10-04 | 需负责人确认后再推 |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
-| P1 | 3B 开工前修 3A 评审的 Minor：NaN/Inf 校验、`events.json` 的 `offset` 校验、工具返回文本字节上限、输出大小上限（`events.json`/stdout/`RLIMIT_FSIZE`）、"1分30秒"目标时长解析、`preexec_fn` 改法、`analysis.png` 原图是否会超 1 MiB（实测）、脚本快照、`to_thread`、越界写与压缩降质循环的测试 | 3A 整分支评审，2026-10-05 | 明细见 [synth-music-3a 决策记录](active/synth-music-3a.md) |
+| P1 | 3B 开工前修 3A 评审的 Minor：NaN/Inf 校验、`events.json` 的 `offset` 校验、工具返回文本字节上限、输出大小上限（`events.json`/stdout/`RLIMIT_FSIZE`）、"1分30秒"目标时长解析、`preexec_fn` 改法、`analysis.png` 原图是否会超 1 MiB（实测）、脚本快照、`to_thread`、越界写与压缩降质循环的测试 | 3A 整分支评审，2026-10-05 | 明细见 [synth-music-3a 决策记录](completed/synth-music-3a.md) |
 | P2 | manim 阶段 `render_preview` 返回的图片限制大小（≤ 400 kB JPEG，防 Claude SDK 单条消息 1 MiB 上限） | 3A 冒烟发现，2026-10-05 | 见 [claude-agent-sdk](../references/claude-agent-sdk.md) 末节；`stages/animation/render_preview.py:115` |
 | P2 | 真实模型对 `animation/assets/*` 用法的验证 | 同上 | 子项目 2 的小试未覆盖 |
 
@@ -29,6 +29,7 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-05 | 多形态视频子项目 3A：合成配乐 + 动态图形短片（agent 侧） | [synth-music-3a.md](completed/synth-music-3a.md) |
 | 2026-10-05 | 短片形态（`bt/bar/hit/energy`）与合成配乐的真实模型小试 | 无计划，见 [motion-reel-spike](../references/motion-reel-spike.md) |
 | 2026-10-05 | 多形态视频子项目 2B：HTML 成片、实时预览与前端画布 | [html-engine-2b.md](completed/html-engine-2b.md) |
 | 2026-10-05 | 多形态视频子项目 2A：统一时间轴 + HTML 引擎 + animation_html 阶段 | [html-engine-2a.md](completed/html-engine-2a.md) |

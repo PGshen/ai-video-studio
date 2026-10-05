@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 进行中 |
+| 状态 | 已完成（2026-10-05 验收，合并到 main） |
 | 里程碑 | 多形态视频流水线 · 子项目 3/4 · 计划 3A |
 | 设计依据 | [子项目 3 设计](../../design/2026-10-05-synth-music-reel.md)（已批准）；[总设计](../../design/2026-10-04-html-video-pipeline.md) §4–§7；[ADR 0021](../../decisions/0021-HTML引擎与配乐阶段.md)；[ADR 0009](../../decisions/)（沙箱）；[小试结论](../../references/motion-reel-spike.md) |
 | 分支 | `synth-music-3a` |
