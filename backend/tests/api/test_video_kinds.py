@@ -33,19 +33,17 @@ async def test_default_registry_everything_but_imported_music_is_available(api_e
     available = [k for k in kinds if k["available"]]
     assert [(k["engine"], k["narration"], k["music_source"]) for k in available] == [
         ("manim", True, "none"),
-        ("manim", True, "synth"),
         ("html", True, "none"),
         ("html", True, "synth"),
         ("html", False, "synth"),
     ]
     assert available[0]["pipeline"] == ["topic", "narrative", "animation"]
-    assert available[1]["pipeline"] == ["topic", "narrative", "music", "animation"]
-    assert available[2]["pipeline"] == ["topic", "narrative", "animation_html"]
-    assert available[4]["pipeline"] == ["concept", "beatsheet", "music", "animation_html"]
+    assert available[1]["pipeline"] == ["topic", "narrative", "animation_html"]
+    assert available[3]["pipeline"] == ["concept", "beatsheet", "music", "animation_html"]
     assert all(k["unavailable_reason"] is None for k in available)
     for kind in kinds:
         if not kind["available"]:
-            assert "阶段尚未实现" in kind["unavailable_reason"]
+            assert kind["unavailable_reason"].endswith(("阶段尚未实现", "成片不会混入配乐）"))
 
 
 def test_unavailable_reason_lists_missing_stages_in_pipeline_order() -> None:
@@ -70,8 +68,12 @@ async def test_real_stages_make_the_synth_kinds_available_and_import_stays_unava
     body = (await api_env.client.get("/api/video-kinds")).json()
 
     by_kind = {(k["engine"], k["narration"], k["music_source"]): k for k in body["kinds"]}
-    for key in (("html", False, "synth"), ("manim", True, "synth"), ("html", True, "synth")):
+    for key in (("html", False, "synth"), ("html", True, "synth")):
         assert by_kind[key]["available"] is True, key
+    # Manim's animation stage does not read the music, and its render path never mixes it in.
+    manim_synth = by_kind[("manim", True, "synth")]
+    assert manim_synth["available"] is False
+    assert manim_synth["unavailable_reason"] == "「配乐」暂不支持 Manim 动画（成片不会混入配乐）"
     assert by_kind[("html", True, "none")]["available"] is True
     for key in (("html", False, "import"), ("manim", True, "import"), ("html", True, "import")):
         assert by_kind[key]["available"] is False
@@ -85,5 +87,5 @@ async def test_kinds_become_available_when_stages_registered(api_env: ApiEnv) ->
 
     by_kind = {(k["engine"], k["narration"], k["music_source"]): k for k in body["kinds"]}
     assert by_kind[("html", False, "synth")]["available"] is True
-    assert by_kind[("manim", True, "synth")]["available"] is True
+    assert by_kind[("manim", True, "synth")]["available"] is False
     assert by_kind[("html", True, "none")]["available"] is True

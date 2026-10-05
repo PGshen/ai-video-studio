@@ -21,6 +21,7 @@
 | P2 | 把本地 `main` 推送到 `origin` | 2026-10-04 | 需负责人确认后再推 |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
+| P1 | 3B 开工前修 3A 评审的 Minor：NaN/Inf 校验、`events.json` 的 `offset` 校验、工具返回文本字节上限、输出大小上限（`events.json`/stdout/`RLIMIT_FSIZE`）、"1分30秒"目标时长解析、`preexec_fn` 改法、`analysis.png` 原图是否会超 1 MiB（实测）、脚本快照、`to_thread`、越界写与压缩降质循环的测试 | 3A 整分支评审，2026-10-05 | 明细见 [synth-music-3a 决策记录](active/synth-music-3a.md) |
 | P2 | manim 阶段 `render_preview` 返回的图片限制大小（≤ 400 kB JPEG，防 Claude SDK 单条消息 1 MiB 上限） | 3A 冒烟发现，2026-10-05 | 见 [claude-agent-sdk](../references/claude-agent-sdk.md) 末节；`stages/animation/render_preview.py:115` |
 | P2 | 真实模型对 `animation/assets/*` 用法的验证 | 同上 | 子项目 2 的小试未覆盖 |
 

@@ -270,6 +270,9 @@
 
 - 2026-10-05 — T9：**已知局限（记录，不改）**：`music` 阶段的 `finalize_blockers` 比对的是 `upstream/` 里的时间轴，而 `upstream/` 只在每轮开始时按上游定稿版本重建；上游重新定稿后、用户还没再开一轮就直接定稿 `music` 时，blockers 看不到变化——这一段由现有的 stale 机制兜底（下游状态变为 `stale`，测试 `test_changing_the_beatsheet_makes_the_music_stale…` 已覆盖：stale 之后再开一轮，blockers 点名"上游…变了"）。若验收时认为不够，需要让阶段在定稿检查前刷新 `upstream/`，那是 `agent`/`api` 层的接口变化，不在本计划内。
 
+- 2026-10-05 — 整分支评审（opus，无 Critical）：**Important 1** 重定时校验在高 BPM（180 起）拦不住写死速度的脚本 → 已修，`_retimed_onset_share`：重跑后声明的起音事件须有 ≥ 80% 出现在 1.25 倍起点（±60 ms），测试 `test_a_hard_coded_tempo_is_caught_at_any_bpm[100…200]`，180/200 先红后绿。**Important 2** "Manim 讲解 + 合成配乐"可创建、但 Manim 动画阶段不读配乐、成片不混音，会静默丢配乐 → 已修，`unavailable_reason` 加 `engine` 参数，Manim + 非 none 配乐不可用（原因"「配乐」暂不支持 Manim 动画（成片不会混入配乐）"），测试同步改；设计 §1 与计划目标本来只含 HTML 讲解 + 合成配乐。
+- 2026-10-05 — 评审 Minor（未修，进 TODO，3B 开工前处理）：非有限值（NaN/Inf）能通过 WAV 与事件校验；`events.json` 的 `offset` 不校验（字符串、NaN、巨大负数）；工具返回文本无字节上限（大量坏事件或长 stderr）；输出大小上限只有 WAV（`events.json`、stdout 无上限，无 `RLIMIT_FSIZE`）；"1分30秒"被解析成 60 秒；`preexec_fn` 在多线程进程里；越界写与 `allow_read` 缺真实沙箱测试、图片压缩测试没跑到降质循环；`music/analysis.png` 原图可能超 1 MiB（agent 用 Read 看它时）；脚本运行中被改时哈希不一致；分析与画图在事件循环里同步执行。
+
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->

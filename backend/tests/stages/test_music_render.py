@@ -147,6 +147,51 @@ async def test_a_script_with_hard_coded_time_is_rejected_and_old_products_stay(r
     assert _leftovers(reel) == []
 
 
+# Takes bpm/duration from the timeline (so `validate_events` is happy) but lays the hits out
+# on a hard-coded tempo.
+_HARD_TEMPO_SCRIPT = """
+import json, os, wave
+import numpy as np
+SR = 44100
+tl = json.load(open(os.environ["STUDIO_TIMELINE"]))
+duration = tl["duration"]
+n = int(round(duration * SR))
+out = np.zeros(n)
+BEAT = 60 / HARD
+events, i = [], 0
+while i * BEAT < duration - 0.2:
+    start = i * BEAT
+    t = np.arange(int(0.18 * SR)) / SR
+    fade = 0.5 * (1 + np.cos(np.pi * t / t[-1]))
+    body = np.sin(2 * np.pi * (55 + 90 * np.exp(-t * 35)) * t) * np.exp(-t * 14) * fade * 0.8
+    a = int(round(start * SR)); b = min(n, a + len(body)); out[a:b] += body[: b - a]
+    events.append({"name": "kick", "kind": "onset", "start": start, "end": start + 0.18})
+    i += 1
+w = wave.open(os.environ["STUDIO_OUT_WAV"], "wb")
+w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+w.writeframes((np.clip(out, -1, 1) * 32767).astype("<i2").tobytes()); w.close()
+json.dump({"bpm": tl["grid"]["bpm"], "duration": duration, "events": events},
+          open(os.environ["STUDIO_OUT_EVENTS"], "w"))
+"""
+
+
+@pytest.mark.parametrize("bpm", [100, 128, 160, 180, 200])
+async def test_a_hard_coded_tempo_is_caught_at_any_bpm(tmp_path: Path, bpm: int) -> None:
+    """Grid alignment alone lets a hard-coded tempo through at high BPM (the 1/16 grid is dense,
+    so misplaced hits still land near it): the declared onsets must scale by exactly 1.25."""
+    folder = tmp_path / "upstream" / "beatsheet"
+    folder.mkdir(parents=True)
+    sheet = _beatsheet((4, 4))
+    sheet["bpm"] = bpm
+    (folder / "beatsheet.json").write_text(json.dumps(sheet), encoding="utf-8")
+    (tmp_path / "music").mkdir()
+    script = _HARD_TEMPO_SCRIPT.replace("HARD", str(bpm))
+    (tmp_path / "music" / "compose.py").write_text(script)
+    outcome = await _render(tmp_path)
+    assert not outcome.ok
+    assert any("写死" in e for e in outcome.errors), outcome.errors
+
+
 @pytest.mark.parametrize(
     ("script", "needle"),
     [

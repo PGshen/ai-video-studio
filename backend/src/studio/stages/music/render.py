@@ -128,6 +128,10 @@ async def _run_and_check(
     return _Run(samples, doc, report, result.wav_path, result.events_path, analysis_timeline)
 
 
+_MIN_RETIMED_ONSET_SHARE = 0.8
+_RETIME_TOLERANCE = 0.06  # seconds; scripts may round or jitter slightly
+
+
 def _names(run: _Run) -> set[str]:
     return {str(event["name"]) for event in run.doc["events"]}
 
@@ -151,7 +155,39 @@ def _retime_problems(first: _Run, second: _Run | list[str], timeline: dict[str, 
     before, after = first.report.grid_alignment, second.report.grid_alignment
     if reel and before and (after or 0.0) < before * _MIN_ALIGNMENT_RATIO:
         problems.append(f"{head}后起音与网格的对齐率从 {before:.0%} 掉到 {(after or 0.0):.0%}")
+    if reel:
+        share = _retimed_onset_share(first, second)
+        if share < _MIN_RETIMED_ONSET_SHARE:
+            problems.append(
+                f"{head}后只有 {share:.0%} 的起音事件按 {RETIME_FACTOR:g} 倍挪动"
+                "（所有时间应随 BPM 同比例变化）"
+            )
     return problems
+
+
+def _onsets(run: _Run) -> dict[str, list[float]]:
+    found: dict[str, list[float]] = {}
+    for event in run.doc["events"]:
+        if event.get("kind") == "onset":
+            found.setdefault(str(event["name"]), []).append(float(event["start"]))
+    return found
+
+
+def _retimed_onset_share(first: _Run, second: _Run) -> float:
+    """Share of declared onsets that reappear at `RETIME_FACTOR` times their start (per name).
+    Grid alignment alone cannot tell: at high BPM the dense 1/16 grid forgives misplaced hits."""
+    before, after = _onsets(first), _onsets(second)
+    total = sum(len(starts) for starts in before.values())
+    if not total:
+        return 1.0
+    kept = 0
+    for name, starts in before.items():
+        later = after.get(name, [])
+        kept += sum(
+            any(abs(start * RETIME_FACTOR - other) <= _RETIME_TOLERANCE for other in later)
+            for start in starts
+        )
+    return kept / total
 
 
 def _metrics(report: MusicReport) -> dict[str, Any]:
