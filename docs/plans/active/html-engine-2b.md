@@ -66,7 +66,7 @@
 - [x] AC4：`render` 与 `finalize-render` 按项目流水线解析动画阶段；`scene-checks` 对 `animation_html` 的两个工具生效且输出形状与 Manim 一致（验证方式：`tests/api/`）
 - [x] AC5：预览端点（页面、资源、`meta`）符合设计 §7.1，含 `no-store`、路径越界拒绝、409（验证方式：`tests/api/test_html_preview.py`）
 - [x] AC6：前端传输时钟、镜头刻度、iframe 消息协议的纯函数有单测；`HtmlAnimationCanvas` 三个标签有组件测试；`useScenePlayback` 搬迁后行为不变（验证方式：vitest；`make check`）
-- [ ] AC7（未完全达成：预览与成片的音画偏差没有对比，种子配音是静音文件，等负责人决定是否换真实配音补测）：L4：在内置浏览器里，用种子脚本写入镜头，实时预览可播放、拖动进度条、循环镜头；成片标签能触发渲染、播放成片并定稿；预览与成片的音画偏差已对比并记录（验证方式：控制者截图与数据）
+- [x] AC7（成片音画偏差已用点击音轨加白闪实测为 0 毫秒，预览偏差只做了推算，见 references）：L4：在内置浏览器里，用种子脚本写入镜头，实时预览可播放、拖动进度条、循环镜头；成片标签能触发渲染、播放成片并定稿；预览与成片的音画偏差已对比并记录（验证方式：控制者截图与数据）
 - [x] AC8：测速与恢复实测写入 references：出帧速度与长视频时长、浏览器池真实 SIGKILL 后的恢复、常驻浏览器的内存占用（验证方式：`docs/references/html-video-render.md`，`-m slow` 的恢复用例）
 - [x] AC9：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`tech-debt.md`（TD-69 ⑤ 结论）、`docs/plans/TODO.md` 已同步；`make check` 为绿
 
@@ -208,7 +208,7 @@
 
 ## 整分支评审（独立评审者，opus，2026-10-05）
 
-无 Critical。已修（均先写红测试）：I-1 worker 对未列入的异常（Playwright/ffmpeg/磁盘）兜底为 `failed`，`run_forever` 单次迭代出错不退出；I-2 `docs/temp/` 再次被我的 `git add -A` 带进历史，已重写分支历史移除（备份标签 `backup-html-engine-2b-pre-review`，验收后删）；M-1 内联脚本的 `</script` 转义不区分大小写；M-2 缓存键与渲染同源；M-3 快速点击时旧 `play()` 的 AbortError 不再把时钟错切到墙钟；M-4 镜头变少时停止播放；M-5 预览不再请求时间轴末尾那帧空白；M-6 旁白按镜头截断；M-9 去掉 CORS；M-10 AC7 如实改为未完全达成。延后：M-7（缓存键依赖人工 bump `ENGINE_VERSION`，内置字体未进键）、M-8（自包含预览页约 3 MB，每次哈希变化和切回标签都重取）登记为 TD-70。
+无 Critical。负责人随后决定：补测音画偏差（已做）、`docs/temp/` 加入 `.gitignore`（已做）、动画阶段隐藏直接定稿按钮（保留“重新打开”，`StageFinalizeButton` 新增 `reopenOnly`）、`POST /render` 在项目有运行中的一轮时返回 409（均先写红测试）。已修（均先写红测试）：I-1 worker 对未列入的异常（Playwright/ffmpeg/磁盘）兜底为 `failed`，`run_forever` 单次迭代出错不退出；I-2 `docs/temp/` 再次被我的 `git add -A` 带进历史，已重写分支历史移除（备份标签 `backup-html-engine-2b-pre-review`，验收后删）；M-1 内联脚本的 `</script` 转义不区分大小写；M-2 缓存键与渲染同源；M-3 快速点击时旧 `play()` 的 AbortError 不再把时钟错切到墙钟；M-4 镜头变少时停止播放；M-5 预览不再请求时间轴末尾那帧空白；M-6 旁白按镜头截断；M-9 去掉 CORS；M-10 AC7 如实改为未完全达成。延后：M-7（缓存键依赖人工 bump `ENGINE_VERSION`，内置字体未进键）、M-8（自包含预览页约 3 MB，每次哈希变化和切回标签都重取）登记为 TD-70。
 
 ## 验证记录
 
@@ -220,6 +220,6 @@
 | AC4 | `tests/api/test_html_render_flow.py`、`test_scene_checks_html.py`，其余 `tests/api` | 389+ 项通过；Manim 路径用例零改动 |
 | AC5 | `tests/api/test_html_preview.py` | 页面、资源、`meta`、`inline`、哈希、越界、符号链接、CORS、409 通过 |
 | AC6 | `pnpm exec vitest run` | 977 项通过；`useScenePlayback` 搬迁后原测试不变 |
-| AC7 | 隔离实例（api 8010、前端 5174、临时数据目录）：种子项目 → 三个标签 → 预览播放到 3.0 秒、收到 `ready`、无错误横幅 → worker 渲染 → 成片 3 秒可播放 → 定稿 | 通过；`animation_html` 与项目均完成。由于窗格被收起，后半段用 DOM 脚本而非截图验证，预览与成片的音画偏差**未做对比**（种子配音是静音文件，无法比较）|
+| AC7 | 隔离实例（api 8010、前端 5174、临时数据目录）：种子项目 → 三个标签 → 预览播放到 3.0 秒、收到 `ready`、无错误横幅 → worker 渲染 → 成片 3 秒可播放 → 定稿 | 通过；`animation_html` 与项目均完成。由于窗格被收起，后半段用 DOM 脚本而非截图验证，成片音画偏差用“beat 处白闪加 1 kHz 音”的夹具补测：4 个 beat 画面和音频相对期望均为 0 毫秒；预览偏差上限约两帧，为推算、未实测（`references/html-video-render.md`）|
 | AC8 | `references/html-video-render.md`；`tests/engines/test_html_pool_recovery.py`（slow） | 出帧 30–135 帧/秒；SIGKILL 后重建、空闲回收通过；常驻 340–550 MB |
 | AC9 | `make check`；真实模型冒烟 `make smoke SMOKE_ARGS="-k animation_html_claude_login"` | `make check` 全绿；冒烟 1 项通过（7 分 51 秒，9 次校验、5 次预览、无警告，成片 32.4 秒、渲染 12.6 秒） |
