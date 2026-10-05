@@ -16,7 +16,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -39,14 +39,25 @@ router = APIRouter(prefix="/api", tags=["music"])
 _NO_STORE = {"Cache-Control": "no-store"}
 
 
-def _require_score_project(engine: Engine, project_id: str) -> bool:
-    """项目存在且有合成配乐，返回它是否有旁白（决定时间轴的来源）。"""
+def require_music_project(
+    engine: Engine, project_id: str
+) -> tuple[Literal["synth", "import"], bool]:
+    """项目存在且有配乐，返回 (形态, 是否有旁白)；形态决定时间轴的来源。"""
     project = get_project(engine, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail=f"项目不存在：{project_id}")
-    if project.settings.get("music_source") != "synth":
+    source = project.settings.get("music_source")
+    if source not in ("synth", "import"):
+        raise HTTPException(status_code=404, detail="这个项目没有配乐")
+    return source, project.settings.get("narration") is not False
+
+
+def _require_score_project(engine: Engine, project_id: str) -> bool:
+    """项目存在且有合成配乐，返回它是否有旁白（决定时间轴的来源）。"""
+    form, narration = require_music_project(engine, project_id)
+    if form != "synth":
         raise HTTPException(status_code=404, detail="这个项目没有合成配乐")
-    return project.settings.get("narration") is not False
+    return narration
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:

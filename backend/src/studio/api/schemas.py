@@ -500,6 +500,15 @@ class MusicMetaOut(BaseModel):
     metrics: dict[str, Any] | None = None
 
 
+class MusicSourceOut(BaseModel):
+    """`POST .../music/source`：上传成功后的源文件信息（不触发分析）。"""
+
+    filename: str
+    size: int
+    sha256: str
+    duration: float
+
+
 class MusicRenderOut(BaseModel):
     """`POST .../music/render`：和 `render_music` 工具同形的报告。
 
