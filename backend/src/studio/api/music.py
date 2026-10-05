@@ -32,7 +32,7 @@ from studio.stages.music.render import metrics_of, render_music_core
 from studio.stages.music.sources import section_energy
 from studio.timeline import TimelineError
 from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
-from studio.workspace import ScopeError, project_dir, safe_path
+from studio.workspace import ScopeError, file_sha256, project_dir, safe_path
 
 router = APIRouter(prefix="/api", tags=["music"])
 
@@ -98,10 +98,14 @@ def music_meta_endpoint(
         return MusicMetaOut(rendered=False, stale=False, sections=sections)
     try:
         events = [MusicEventOut(**_event(e)) for e in events_doc["events"]]
+        wav_hash = file_sha256(music / "music.wav")
         return MusicMetaOut(
             rendered=True,
-            stale=loaded is None or render.get("base_hash") != loaded.base_hash,
-            hash=str(render["wav_hash"]),
+            # 与实时预览、成片前置检查同一标准：对着当前时间轴渲染的，且 wav 没被换过。
+            stale=loaded is None
+            or render.get("base_hash") != loaded.base_hash
+            or render.get("wav_hash") != wav_hash,
+            hash=wav_hash,
             duration=float(analysis["duration"]),
             bpm=float(render["bpm"]),
             events=events,

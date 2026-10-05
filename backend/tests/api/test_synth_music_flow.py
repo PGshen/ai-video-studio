@@ -437,7 +437,7 @@ async def test_a_reel_final_has_the_score_as_its_only_audio_with_real_ffmpeg(
     assert [a["codec_name"] for a in audio] == ["aac"]
     assert abs(duration - 11.25) <= 0.1
     meta = json.loads((api_env.workdir(pid) / "output" / "final.json").read_text())
-    assert set(meta["audio_sources"]) == {"music"}
+    assert meta["audio_sources"] == {} and len(meta["music_hash"]) == 64
 
 
 @pytest.mark.slow
@@ -449,4 +449,4 @@ async def test_an_explainer_bed_final_has_one_audio_track_with_real_ffmpeg(
     audio, duration = _audio_streams(final)
     assert len(audio) == 1 and abs(duration - 3.0) <= 0.15
     meta = json.loads((api_env.workdir(pid) / "output" / "final.json").read_text())
-    assert {"music", "s-hook", "s-explain"} <= set(meta["audio_sources"])
+    assert set(meta["audio_sources"]) == {"s-hook", "s-explain"} and meta["music_hash"]

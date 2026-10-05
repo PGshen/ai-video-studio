@@ -22,6 +22,7 @@ from fixtures.html_engine.worker_fakes import ExplodingManim, FakeBackend
 from fixtures.synth_music import seed
 from fixtures.synth_music.products import render_products
 from studio.db.engine import make_engine, migrate
+from studio.engines.render.mix import AudioTrack, MusicMix
 from studio.jobs import create_job, get_job
 from studio.worker import run_once
 from studio.workspace import BlobStore, project_dir
@@ -114,10 +115,10 @@ async def test_a_reel_is_mixed_with_only_the_score(reel: Env) -> None:
     [call] = backend.mix_calls
     assert call["tracks"] == []
     music = call["music"]
-    assert music.track.path == reel.workdir / "music" / "music.wav"
     assert music.track.gain_db == 0.0 and music.duck_under_narration is False
     final = json.loads((reel.workdir / "output" / "final.json").read_text())
-    assert final["audio_sources"] == {"music": _sha(reel.workdir / "music" / "music.wav")}
+    assert final["audio_sources"] == {}  # no narration clips
+    assert final["music_hash"] == _sha(reel.workdir / "music" / "music.wav")
     assert (reel.workdir / "output" / "final.mp4").is_file()
 
 
@@ -131,8 +132,8 @@ async def test_an_explainer_bed_is_ducked_under_the_narration(bed: Env) -> None:
     assert music.duck_under_narration is True
     assert (music.track.gain_db, music.fade_in, music.fade_out) == (-8.0, 1.0, 1.5)
     final = json.loads((bed.workdir / "output" / "final.json").read_text())
-    assert final["audio_sources"]["music"] == _sha(bed.workdir / "music" / "music.wav")
-    assert {"s-hook", "s-explain"} <= set(final["audio_sources"])
+    assert final["music_hash"] == _sha(bed.workdir / "music" / "music.wav")
+    assert set(final["audio_sources"]) == {"s-hook", "s-explain"}  # clips only, no "music" key
 
 
 async def test_an_explainer_without_music_is_mixed_as_before(plain: Env) -> None:
@@ -140,7 +141,7 @@ async def test_an_explainer_without_music_is_mixed_as_before(plain: Env) -> None
     assert _job(plain, await _run(plain, backend)).status == "done"
     assert backend.mix_calls[0]["music"] is None
     final = json.loads((plain.workdir / "output" / "final.json").read_text())
-    assert "music" not in final["audio_sources"]
+    assert "music_hash" not in final
 
 
 def _break(env: Env, how: str) -> None:
@@ -279,3 +280,35 @@ async def test_imported_music_is_refused_instead_of_rendering_a_silent_film(reel
     job = _job(reel, await _run(reel, backend))
     assert job.status == "failed" and "导入音乐" in (job.error or "")
     assert backend.video_calls == [] and backend.mix_calls == []
+
+
+async def test_the_mixer_gets_a_private_copy_so_a_render_in_between_cannot_change_what_is_mixed(
+    reel: Env,
+) -> None:
+    """The hash in `final.json` must describe the bytes that were mixed. A manual render (another
+    process) may replace `music/music.wav` after the pre-check, so the worker mixes a copy."""
+    original = reel.workdir / "music" / "music.wav"
+    before = _sha(original)
+    seen: dict[str, object] = {}
+
+    class Swapping(FakeBackend):
+        async def mix(
+            self,
+            video: Path,
+            tracks: list[AudioTrack],
+            duration: float,
+            output: Path,
+            music: MusicMix | None = None,
+        ) -> None:
+            assert music is not None
+            seen["path"] = music.track.path
+            seen["hash"] = _sha(music.track.path)
+            original.write_bytes(b"a different score rendered meanwhile")
+            await super().mix(video, tracks, duration, output, music)
+
+    job = _job(reel, await _run(reel, Swapping()))
+    assert job.status == "done", job.error
+    assert seen["path"] != original and seen["hash"] == before
+    final = json.loads((reel.workdir / "output" / "final.json").read_text())
+    assert final["music_hash"] == before
+    assert not Path(str(seen["path"])).exists()  # the copy is cleaned up

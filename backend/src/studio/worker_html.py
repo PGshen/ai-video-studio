@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import time
+import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -146,8 +148,25 @@ class _Score:
 _MUSIC_FILES = ("music.wav", "events.json", "analysis.json", "render.json")
 
 
-def _music_source(workdir: Path, base_hash: str, errors: list[str]) -> _Score | None:
-    """配乐文件齐全，且是对着当前时间轴渲染的那一份（`render.json` 的哈希对得上）。"""
+def _copy_with_hash(source: Path, target: Path) -> str:
+    """复制并在同一遍读取里算 sha256：哈希描述的就是拷贝里的字节。"""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    with source.open("rb") as reader, target.open("wb") as writer:
+        while chunk := reader.read(1024 * 1024):
+            digest.update(chunk)
+            writer.write(chunk)
+    return digest.hexdigest()
+
+
+def _music_source(
+    workdir: Path, base_hash: str, errors: list[str], scratch: list[Path]
+) -> _Score | None:
+    """配乐文件齐全，且是对着当前时间轴渲染的那一份（`render.json` 的哈希对得上）。
+
+    `music.wav` 先复制到 `.cache/tmp` 下的私有目录（目录登记进 `scratch`，任务结束时清理），哈希与
+    混音都用这份拷贝：手动渲染是另一个进程，可能在检查之后换掉原文件，`final.json` 记的哈希必须
+    就是混进成片的那些字节。"""
     music = workdir / "music"
     missing = [name for name in _MUSIC_FILES if not (music / name).is_file()]
     if missing:
@@ -159,12 +178,14 @@ def _music_source(workdir: Path, base_hash: str, errors: list[str]) -> _Score | 
     except (ValueError, KeyError, TypeError):
         errors.append("music/render.json 损坏或缺字段，需要在配乐阶段重新渲染")
         return None
-    wav_hash = hashlib.sha256((music / "music.wav").read_bytes()).hexdigest()
+    private = workdir / ".cache" / "tmp" / f"mix-{uuid.uuid4().hex[:8]}"
+    scratch.append(private)
+    wav_hash = _copy_with_hash(music / "music.wav", private / "music.wav")
     if recorded_base != base_hash:
         errors.append("配乐与当前时间轴不一致，需要在配乐阶段重新渲染（节拍脚本或旁白变了）")
     if wav_hash != recorded_wav:
         errors.append("music.wav 与 render.json 记录的不一致，需要在配乐阶段重新渲染")
-    return _Score(music / "music.wav", wav_hash)
+    return _Score(private / "music.wav", wav_hash)
 
 
 def _music_mix(path: Path, narration: bool) -> MusicMix:
@@ -224,6 +245,39 @@ async def run_html_job(
     music_source: str = "none",
 ) -> None:
     """成功返回；失败抛 `HtmlJobError`，已有的 `output/final.mp4` 保持不变。"""
+    scratch: list[Path] = []
+    try:
+        await _run_html_job(
+            engine,
+            blobs,
+            job_id=job_id,
+            project_id=project_id,
+            workdir=workdir,
+            backend=backend,
+            fps=fps,
+            narration=narration,
+            music_source=music_source,
+            scratch=scratch,
+        )
+    finally:
+        for folder in scratch:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+async def _run_html_job(
+    engine: Engine,
+    blobs: BlobStore,
+    *,
+    job_id: str,
+    project_id: str,
+    workdir: Path,
+    backend: HtmlBackend,
+    fps: int,
+    narration: bool,
+    music_source: str,
+    scratch: list[Path],
+) -> None:
+    """成功返回；失败抛 `HtmlJobError`，已有的 `output/final.mp4` 保持不变。"""
     if music_source == "import":
         raise HtmlJobError("导入音乐的成片渲染尚未实现（子项目 4）")
     try:
@@ -239,7 +293,11 @@ async def run_html_job(
     errors += [f"{i.path}:{i.line}：{i.message}" for i in static_check(workdir)]
     errors += check_assets(workdir)
     audio = _audio_sources(workdir, loaded.timing, sections, errors) if narration else []
-    score = _music_source(workdir, loaded.base_hash, errors) if music_source == "synth" else None
+    score = (
+        _music_source(workdir, loaded.base_hash, errors, scratch)
+        if music_source == "synth"
+        else None
+    )
     if errors:
         raise HtmlJobError("成片前置检查未通过：\n" + "\n".join(f"- {e}" for e in errors))
 
@@ -271,10 +329,8 @@ async def run_html_job(
             scene_id: hashlib.sha256(text.encode("utf-8")).hexdigest()
             for scene_id, text in scene_sources.items()
         },
-        "audio_sources": {
-            **{source.scene_id: source.hash for source in audio},
-            **({"music": score.hash} if score is not None else {}),
-        },
+        "audio_sources": {source.scene_id: source.hash for source in audio},
+        **({"music_hash": score.hash} if score is not None else {}),
         "rendered_at": datetime.now(UTC).isoformat(),
     }
     (output_dir / "final.json").write_text(

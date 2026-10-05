@@ -26,6 +26,7 @@ from studio.agent.events import ImageData
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.engines.render.base import PreviewRequest, SceneAudio, SceneInput
 from studio.engines.render.manim import ManimRenderEngine
+from studio.stages.common.picture import compress_png, limit_for
 from studio.workspace import files
 
 _SCENES_DIR = "animation/scenes"
@@ -111,10 +112,12 @@ async def _handler(ctx: ToolContext, args: RenderPreviewArgs) -> ToolResult:
     if not result.success:
         return ToolResult(text=result.error_message or "预览渲染失败。", is_error=True)
 
+    # 同一条工具结果里的关键帧共用一份字节预算（Claude SDK 单条消息 1 MiB，见 `common.picture`）。
+    limit = limit_for(len(result.keyframes))
     images = [
         ImageData(
-            media_type="image/png",
-            data_base64=base64.b64encode(keyframe.png_bytes).decode("ascii"),
+            media_type="image/jpeg",
+            data_base64=base64.b64encode(compress_png(keyframe.png_bytes, limit)).decode("ascii"),
         )
         for keyframe in result.keyframes
     ]
