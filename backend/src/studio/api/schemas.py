@@ -451,6 +451,13 @@ class HtmlPreviewAudio(BaseModel):
     """叙事配音文件的下载地址（工作区文件端点），带 `audio_hash` 作缓存标识。"""
 
 
+class HtmlPreviewMusic(BaseModel):
+    url: str
+    """`/music/audio` 的地址，带 `wav_hash` 作版本：重新渲染后换地址，预览不会放旧音。"""
+    gain: float
+    """线性增益：短片 1.0，讲解背景乐比成片里压低的那一档（预览不做侧链）。"""
+
+
 class HtmlPreviewMeta(BaseModel):
     """`GET .../animation/html-preview/meta`：实时预览画布需要的全部时间与配音信息。"""
 
@@ -459,6 +466,8 @@ class HtmlPreviewMeta(BaseModel):
     duration: float
     sections: list[HtmlPreviewSection]
     audio: list[HtmlPreviewAudio]
+    music: HtmlPreviewMusic | None = None
+    """配乐已渲染且对得上当前时间轴才有；否则为 `None`，画面照常。"""
 
 
 class MusicEventOut(BaseModel):

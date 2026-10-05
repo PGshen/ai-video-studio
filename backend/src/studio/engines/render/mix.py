@@ -43,6 +43,12 @@ class MusicMix:
     """首尾淡变（秒）。默认 15 ms 只防爆音；讲解背景乐用 1 秒与 1.5 秒。"""
 
 
+BED_GAIN_DB = -8.0
+BED_FADE_IN = 1.0
+BED_FADE_OUT = 1.5
+"""讲解背景乐的默认混音：压低 8 dB、首淡入 1 秒、尾淡出 1.5 秒（设计 §8.1）；
+成片（worker）与实时预览（api 的 `gain`）共用，保证听到的一致。"""
+
 # 侧链压低参数（实测定值见 docs/references/ffmpeg.md「侧链压低」）。
 _DUCK = "threshold=0.03:ratio=6:attack=10:release=400:makeup=1"
 

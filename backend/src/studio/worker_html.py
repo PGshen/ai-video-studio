@@ -23,7 +23,15 @@ from studio.engines.render.html.assets import check_assets
 from studio.engines.render.html.browser import ChromiumUnavailable, HtmlBrowser, PageNotReady
 from studio.engines.render.html.static_check import static_check
 from studio.engines.render.html.video import ProgressCallback, VideoRenderError, render_silent_video
-from studio.engines.render.mix import AudioTrack, MixError, MusicMix, mix_final
+from studio.engines.render.mix import (
+    BED_FADE_IN,
+    BED_FADE_OUT,
+    BED_GAIN_DB,
+    AudioTrack,
+    MixError,
+    MusicMix,
+    mix_final,
+)
 from studio.jobs import heartbeat, update_progress
 from studio.timeline import TimelineError
 from studio.timeline.load import TimelineSources, load_timeline
@@ -136,9 +144,6 @@ class _Score:
 
 
 _MUSIC_FILES = ("music.wav", "events.json", "analysis.json", "render.json")
-_BED_GAIN_DB = -8.0
-_BED_FADE_IN = 1.0
-_BED_FADE_OUT = 1.5
 
 
 def _music_source(workdir: Path, base_hash: str, errors: list[str]) -> _Score | None:
@@ -167,10 +172,10 @@ def _music_mix(path: Path, narration: bool) -> MusicMix:
     if not narration:
         return MusicMix(AudioTrack(path, 0.0))
     return MusicMix(
-        AudioTrack(path, 0.0, gain_db=_BED_GAIN_DB),
+        AudioTrack(path, 0.0, gain_db=BED_GAIN_DB),
         duck_under_narration=True,
-        fade_in=_BED_FADE_IN,
-        fade_out=_BED_FADE_OUT,
+        fade_in=BED_FADE_IN,
+        fade_out=BED_FADE_OUT,
     )
 
 

@@ -427,10 +427,17 @@ export interface HtmlPreviewAudio {
   url: string
 }
 
+/** 实时预览的配乐：已渲染且对得上当前时间轴才有；`url` 带 `wav_hash` 版本，`gain` 是线性增益。 */
+export interface HtmlPreviewMusic {
+  url: string
+  gain: number
+}
+
 /** `GET /projects/{id}/animation/html-preview/meta`：`hash` 变了才需要刷新 iframe。 */
 export interface HtmlPreviewMeta {
   hash: string
   duration: number
   sections: HtmlPreviewSection[]
   audio: HtmlPreviewAudio[]
+  music: HtmlPreviewMusic | null
 }

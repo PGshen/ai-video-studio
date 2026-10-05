@@ -12,6 +12,8 @@ iframe 使用 `sandbox="allow-scripts"` 且不带 `allow-same-origin`，是不�
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from urllib.parse import quote
 
@@ -23,11 +25,13 @@ from studio.api.schemas import (
     HtmlPreviewAudio,
     HtmlPreviewBeat,
     HtmlPreviewMeta,
+    HtmlPreviewMusic,
     HtmlPreviewSection,
 )
 from studio.config import Settings
 from studio.db.repo.projects import get_project
 from studio.engines.render.html.assemble import assemble, page_hash, serve_page_path
+from studio.engines.render.mix import BED_GAIN_DB
 from studio.stages.pipeline import kind_from_settings
 from studio.timeline import TimelineError
 from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
@@ -51,6 +55,24 @@ def _load(engine: Engine, settings: Settings, project_id: str) -> tuple[LoadedTi
         return load_timeline(sources), workdir
     except TimelineError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _preview_music(
+    project_id: str, workdir: Path, loaded: LoadedTimeline, narration: bool
+) -> HtmlPreviewMusic | None:
+    """配乐已渲染、文件没被换过、且对着当前时间轴渲染的才给预览用（与成片的前置检查同一标准）。"""
+    wav = workdir / "music" / "music.wav"
+    try:
+        render = json.loads((workdir / "music" / "render.json").read_text(encoding="utf-8"))
+        wav_hash = hashlib.sha256(wav.read_bytes()).hexdigest()
+        current = render["base_hash"] == loaded.base_hash and render["wav_hash"] == wav_hash
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not current:
+        return None
+    gain = 10 ** (BED_GAIN_DB / 20) if narration else 1.0
+    url = f"/api/projects/{quote(project_id, safe='')}/music/audio?v={wav_hash}"
+    return HtmlPreviewMusic(url=url, gain=gain)
 
 
 @router.get("/projects/{project_id}/animation/html-preview/meta", response_model=HtmlPreviewMeta)
@@ -97,6 +119,9 @@ def html_preview_meta_endpoint(
             for section in timeline.sections
         ],
         audio=audio,
+        music=_preview_music(
+            project_id, workdir, loaded, loaded.beatsheet is None
+        ),  # a reel has a beatsheet and no narration,
     )
 
 
