@@ -16,18 +16,18 @@
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
-| P1 | 多形态视频子项目 3：合成配乐 + 动态图形短片 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 2 |
+| P1 | 多形态视频子项目 3：合成配乐 + 动态图形短片 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 2；开工前小试已完成，见 [motion-reel-spike](../references/motion-reel-spike.md)，计划需处理其 §暴露的问题（逐镜头敏感度、`env` 取事件起止、指标分类、联调测试） |
 | P2 | 多形态视频子项目 4：导入音乐 + 音乐 MV | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 3 |
 | P2 | 把本地 `main` 推送到 `origin` | 2026-10-04 | 需负责人确认后再推 |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
-| P1 | 短片形态（`bt/bar/hit/energy`）的同类真实模型小试 | 同上 | 子项目 3 开工前做 |
 | P2 | 真实模型对 `animation/assets/*` 用法的验证 | 同上 | 子项目 2 的小试未覆盖 |
 
 ## 已完成
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-05 | 短片形态（`bt/bar/hit/energy`）与合成配乐的真实模型小试 | 无计划，见 [motion-reel-spike](../references/motion-reel-spike.md) |
 | 2026-10-05 | 多形态视频子项目 2B：HTML 成片、实时预览与前端画布 | [html-engine-2b.md](completed/html-engine-2b.md) |
 | 2026-10-05 | 多形态视频子项目 2A：统一时间轴 + HTML 引擎 + animation_html 阶段 | [html-engine-2a.md](completed/html-engine-2a.md) |
 | 2026-10-04 | 修复 TD-64、TD-65（多上游定稿/stale 恢复） | 无计划，见 [tech-debt.md](../quality/tech-debt.md) 已处理 |

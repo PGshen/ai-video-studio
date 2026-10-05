@@ -29,3 +29,4 @@ agent SDK 和前端组件库更新很快，AI 的训练知识可能已经过时�
 | [tavily.md](tavily.md) | Tavily 搜索与网页抓取：端点、字段、错误码 |
 | [html-canvas-agent-spike.md](html-canvas-agent-spike.md) | 真实模型写 Canvas 场景的小试：稳定性、确定性、暴露的问题 |
 | [html-video-render.md](html-video-render.md) | HTML 成片：出帧速度、编码色域、混音 `apad` 陷阱、浏览器池 SIGKILL 恢复与内存 |
+| [motion-reel-spike.md](motion-reel-spike.md) | 真实模型写短片画面与合成配乐的小试：节拍吸附、谱图自检、暴露的问题与对子项目 3 的影响 |
