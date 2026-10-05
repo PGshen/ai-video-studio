@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import io
+import json
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -35,10 +37,12 @@ def beat_starts(timeline: Mapping[str, Any]) -> list[float]:
 
 
 class ScriptedPage:
-    def __init__(self, behaviour: Behaviour) -> None:
+    def __init__(self, behaviour: Behaviour, timeline: Mapping[str, Any] | None = None) -> None:
         self.errors: list[str] = list(behaviour.page_errors)
         self.poisoned = False
-        self.timeline: Mapping[str, Any] = copy.deepcopy(fx.TIMELINE)
+        self.timeline: Mapping[str, Any] = (
+            copy.deepcopy(timeline) if timeline is not None else copy.deepcopy(fx.TIMELINE)
+        )
         self._b = behaviour
 
     async def render_jpeg(self, t: float) -> bytes:
@@ -71,6 +75,7 @@ class Behaviour:
         self.open_error: Exception | None = None
         self.pads: dict[str, float] = {}
         self.opened = 0
+        self.assembled: list[AssembledPage] = []
 
 
 class ScriptedBrowser:
@@ -82,7 +87,17 @@ class ScriptedBrowser:
         if self._b.open_error is not None:
             raise self._b.open_error
         self._b.opened += 1
-        return ScriptedPage(self._b)
+        self._b.assembled.append(page)
+        return ScriptedPage(self._b, _embedded_timeline(page))
 
     async def close(self) -> None:
         self.connected = False
+
+
+_TIMELINE_IN_PAGE = re.compile(r"window\.__TIMELINE__=(\{.*?\});window\.__SCENES__", re.DOTALL)
+
+
+def _embedded_timeline(page: AssembledPage) -> dict[str, Any] | None:
+    """The timeline the real page would run on: the JSON embedded in the assembled HTML."""
+    match = _TIMELINE_IN_PAGE.search(page.html)
+    return json.loads(match.group(1)) if match else None

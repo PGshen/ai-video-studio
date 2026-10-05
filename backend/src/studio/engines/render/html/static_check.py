@@ -108,3 +108,35 @@ def font_size_warnings(workdir: Path) -> list[StaticIssue]:
                     )
                 )
     return warnings
+
+
+_TIME = r"(?:\blt\b|\benv\.t\b)"
+_NUMBER = r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])"
+_TIME_VS_LITERAL = (
+    re.compile(rf"{_TIME}\s*(?:<=|>=|<|>)\s*{_NUMBER}"),
+    re.compile(rf"{_NUMBER}\s*(?:<=|>=|<|>)\s*{_TIME}"),
+)
+
+
+def literal_time_warnings(workdir: Path) -> list[StaticIssue]:
+    """`lt`（或 `env.t`）与非零数字字面量比较：时刻必须由 `env` 推出（短片的音乐平移检查补不到
+    "部分写死"的镜头，靠这条警告提醒）。零不算：`lt > 0` 只是"已经开始"。"""
+    warnings: list[StaticIssue] = []
+    for path in _script_files(workdir):
+        relpath = path.relative_to(workdir).as_posix()
+        for number, line in enumerate(
+            strip_comments(path.read_text(encoding="utf-8")).splitlines(), 1
+        ):
+            for pattern in _TIME_VS_LITERAL:
+                match = next((m for m in pattern.finditer(line) if float(m.group(1)) != 0.0), None)
+                if match is not None:
+                    warnings.append(
+                        StaticIssue(
+                            relpath,
+                            number,
+                            f"拿时间和字面量 {match.group(1)} 比较：时刻必须由 env.bt/bar/hit/"
+                            "moment/cue 推出，不要写字面秒数",
+                        )
+                    )
+                    break
+    return warnings

@@ -23,10 +23,11 @@ import hashlib
 import json
 import logging
 import shutil
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine
 
@@ -264,7 +265,18 @@ async def run_once(
     logger.info("[worker] 领取任务 %s（项目 %s）", job.id, job.project_id)
     project = get_project(engine, job.project_id)
     if project is not None and project.settings.get("engine") == "html":
-        await _run_html(engine, blobs, job.id, job.project_id, data_dir, fps, html_backend)
+        narration, music_source = _timeline_flags(project.settings)
+        await _run_html(
+            engine,
+            blobs,
+            job.id,
+            job.project_id,
+            data_dir,
+            fps,
+            html_backend,
+            narration,
+            music_source,
+        )
         return True
 
     engine_instance = render_engine if render_engine is not None else ManimRenderEngine()
@@ -318,6 +330,17 @@ async def run_once(
     return True
 
 
+def _timeline_flags(settings: Mapping[str, Any]) -> tuple[bool, str]:
+    """项目设置里的 (有无旁白, 配乐来源)；字段缺失或取值不合法时按老项目处理（有旁白、无配乐）。
+
+    `worker` 不依赖 `stages`，所以不复用 `kind_from_settings`，只取成片需要的两个值。
+    """
+    narration, music_source = settings.get("narration"), settings.get("music_source")
+    if not isinstance(narration, bool) or music_source not in ("none", "synth", "import"):
+        return True, "none"
+    return narration, music_source
+
+
 async def _run_html(
     engine: Engine,
     blobs: BlobStore,
@@ -326,6 +349,8 @@ async def _run_html(
     data_dir: Path,
     fps: int,
     backend: HtmlBackend | None,
+    narration: bool,
+    music_source: str,
 ) -> None:
     heartbeat(engine, job_id)
     try:
@@ -337,6 +362,8 @@ async def _run_html(
             workdir=project_dir(data_dir, project_id),
             backend=backend if backend is not None else real_backend(),
             fps=fps,
+            narration=narration,
+            music_source=music_source,
         )
     except HtmlJobError as exc:
         logger.warning("[worker] 任务 %s 失败：%s", job_id, exc)

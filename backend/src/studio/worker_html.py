@@ -26,7 +26,7 @@ from studio.engines.render.html.video import ProgressCallback, VideoRenderError,
 from studio.engines.render.mix import AudioTrack, MixError, mix_final
 from studio.jobs import heartbeat, update_progress
 from studio.timeline import TimelineError
-from studio.timeline.load import load_workspace_timeline
+from studio.timeline.load import TimelineSources, load_timeline
 from studio.workspace import BlobStore, ScopeError, create_snapshot, safe_path
 
 ENGINE_VERSION = "html-v1"
@@ -164,10 +164,14 @@ async def run_html_job(
     workdir: Path,
     backend: HtmlBackend,
     fps: int,
+    narration: bool = True,
+    music_source: str = "none",
 ) -> None:
     """成功返回；失败抛 `HtmlJobError`，已有的 `output/final.mp4` 保持不变。"""
+    if not narration or music_source != "none":
+        raise HtmlJobError("带配乐或无旁白项目的成片渲染尚未实现（配乐混音在子项目 3B）")
     try:
-        loaded = load_workspace_timeline(workdir)
+        loaded = load_timeline(TimelineSources(workdir, narration, music_source))
     except TimelineError as exc:
         raise HtmlJobError(str(exc)) from exc
     timeline = loaded.timeline.model_dump(mode="json")

@@ -363,3 +363,25 @@ async def test_page_edited_during_the_render_is_not_cached_under_the_old_key(
     (html_env.workdir / "animation/scenes/s-hook.js").write_text(fx.PURE_SCENE_PLAIN)
     await _run(html_env, backend)
     assert len(backend.video_calls) == 1  # back to content A: A's frames come from the cache
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"narration": False, "music_source": "synth"},
+        {"narration": True, "music_source": "synth"},
+    ],
+    ids=["reel", "explainer-with-music"],
+)
+async def test_projects_with_music_fail_clearly_until_the_music_mix_exists(
+    html_env: HtmlEnv, patch: dict[str, Any]
+) -> None:
+    from studio.db.repo.projects import update_project_settings
+
+    update_project_settings(html_env.engine, html_env.project_id, patch)
+    backend = FakeBackend()
+    job_id = await _run(html_env, backend)
+    job = _job(html_env, job_id)
+    assert job.status == "failed"
+    assert job.error is not None and "尚未实现" in job.error
+    assert backend.video_calls == [] and backend.mix_calls == []

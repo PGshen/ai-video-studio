@@ -34,13 +34,24 @@ STAGE_TITLES: dict[str, str] = {
 }
 
 
-def unavailable_reason(pipeline: Sequence[str], registry: StageRegistry) -> str | None:
-    """流水线里有未注册阶段时返回中文原因（按流水线顺序列出全部），否则 `None`。"""
+def unavailable_reason(
+    pipeline: Sequence[str],
+    registry: StageRegistry,
+    music_source: str | None = None,
+    engine: str | None = None,
+) -> str | None:
+    """流水线里有未注册阶段时返回中文原因（按流水线顺序列出全部）；配乐阶段只实现了合成形态，
+    导入音乐（子项目 4）即使 `music` 阶段已注册也不可用；Manim 动画阶段不读配乐、成片也不混音，
+    所以 Manim 加配乐不可用。可用返回 `None`。"""
     missing = [name for name in pipeline if not registry.has(name)]
-    if not missing:
-        return None
-    titles = "".join(f"「{STAGE_TITLES.get(name, name)}」" for name in missing)
-    return f"{titles}阶段尚未实现"
+    if missing:
+        titles = "".join(f"「{STAGE_TITLES.get(name, name)}」" for name in missing)
+        return f"{titles}阶段尚未实现"
+    if music_source == "import":
+        return "「配乐（导入音乐）」阶段尚未实现"
+    if engine == "manim" and music_source not in (None, "none"):
+        return "「配乐」暂不支持 Manim 动画（成片不会混入配乐）"
+    return None
 
 
 @router.get("/video-kinds", response_model=VideoKindsOut)
@@ -62,7 +73,7 @@ def list_video_kinds_endpoint(registry: StageRegistry = Depends(get_registry)) -
     kinds: list[KindOptionOut] = []
     for kind in valid_kinds():
         pipeline = build_pipeline(kind)
-        reason = unavailable_reason(pipeline, registry)
+        reason = unavailable_reason(pipeline, registry, kind.music_source, kind.engine)
         kinds.append(
             KindOptionOut(
                 engine=kind.engine,

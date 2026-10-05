@@ -40,7 +40,10 @@ from studio.db.repo.stages import create_stage
 from studio.db.repo.turns import TurnEventValue, TurnValue, get_turn, list_events
 from studio.stages.animation import STAGE as ANIMATION
 from studio.stages.animation_html import STAGE as ANIMATION_HTML
+from studio.stages.beatsheet import STAGE as BEATSHEET
 from studio.stages.brainstorm import STAGE as BRAINSTORM
+from studio.stages.concept import STAGE as CONCEPT
+from studio.stages.music import STAGE as MUSIC
 from studio.stages.narrative import STAGE as NARRATIVE
 from studio.stages.style import STAGE as STYLE
 from studio.stages.topic import STAGE as TOPIC
@@ -56,11 +59,12 @@ M5_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "m5-polish" / "smoke"
 THINKING_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "chat-ui-redesign" / "smoke"
 STYLE_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "style-library" / "smoke"
 HTML_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "html-engine" / "smoke"
+SYNTH_MUSIC_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "synth-music" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}
 
-TURN_TIMEOUT_SECONDS = 1500
+TURN_TIMEOUT_SECONDS = 2400
 
 
 # ---- PNG ---------------------------------------------------------------------
@@ -326,6 +330,7 @@ def build_harness(
     real_stages: bool = False,
     web_mode: Literal["tools", "native"] = "tools",
     html: bool = False,
+    reel: bool = False,
 ) -> SmokeHarness:
     """`real_stages=True`（M4）：注册真实的 brainstorm/topic/narrative/animation 阶段（带联网
     工具、`check_brief` 等），并按 `web_mode` 决定联网方式；默认仍是 M1 的精简阶段。"""
@@ -339,7 +344,17 @@ def build_harness(
     seed_model_profiles(engine, enable_fake_runtime=False, settings=settings)
     registry = StageRegistry()
     if real_stages:
-        for stage in (BRAINSTORM, TOPIC, NARRATIVE, ANIMATION, ANIMATION_HTML, STYLE):
+        for stage in (
+            BRAINSTORM,
+            TOPIC,
+            NARRATIVE,
+            CONCEPT,
+            BEATSHEET,
+            MUSIC,
+            ANIMATION,
+            ANIMATION_HTML,
+            STYLE,
+        ):
             registry.register(stage)
     else:
         registry.register(SmokeStage(TOPIC))
@@ -360,21 +375,36 @@ def build_harness(
         cancel_grace_seconds=cancel_grace_seconds,
     )
 
-    last = "animation_html" if html else "animation"
+    last = "animation_html" if html or reel else "animation"
+    pipeline = (
+        ["concept", "beatsheet", "music", "animation_html"]
+        if reel
+        else ["topic", "narrative", last]
+    )
     project_settings = (
         {
+            "video_kind": "motion_reel",
+            "engine": "html",
+            "narration": False,
+            "music_source": "synth",
+            "pipeline": pipeline,
+        }
+        if reel
+        else {
             "video_kind": "explainer_html",
             "engine": "html",
             "narration": True,
             "music_source": "none",
-            "pipeline": ["topic", "narrative", "animation_html"],
+            "pipeline": pipeline,
         }
         if html
         else None
     )
     project = create_project(engine, title="冒烟测试", settings=project_settings)
-    for stage, status in (("topic", "active"), ("narrative", "locked"), (last, "locked")):
-        create_stage(engine, project_id=project.id, stage=stage, status=status)
+    for index, stage in enumerate(pipeline):
+        create_stage(
+            engine, project_id=project.id, stage=stage, status="active" if index == 0 else "locked"
+        )
     style = project_dir(data_dir, project.id) / "style" / "STYLE.md"
     style.parent.mkdir(parents=True, exist_ok=True)
     style.write_text("# 风格\n", encoding="utf-8")

@@ -38,7 +38,7 @@ module.exports = {
 | `env.cue(i)` / `env.cueEnd(i)` | 第 i 个 beat 的起点 / 终点；越界会抛错 |
 | `env.assets` | 已解码的资产 |
 
-本项目没有节拍网格和配乐：`env.bt`、`env.bar` 会抛错，`env.hit`、`env.energy`、`env.moment` 恒为空。**用旁白 beat 驱动画面的节奏**：画面要在对应 beat 的时刻表达那句话的内容。
+有旁白的项目没有节拍网格：`env.bt`、`env.bar` 会抛错；没有配乐时 `env.hit`、`env.energy` 恒为 0，`env.moment` 为 `undefined`，`env.span` 为空数组。**用旁白 beat 驱动画面的节奏**：画面要在对应 beat 的时刻表达那句话的内容。如果 `upstream/timeline.json` 的 `narration` 为空，这是一支**无旁白的短片**，节奏由音乐驱动，读下面的「短片」一节。
 
 ## 时间规则（最容易出错）
 
@@ -60,6 +60,29 @@ module.exports = {
 - **不画字幕**：旁白文字不要作为字幕画在画面上（成片不叠字幕）。画面里的文字只用于标题、标签、公式等承载内容的元素。
 - 字体只能用下面这些，写 CSS 字体名即可：`Anton`（英文大标题）、`Space Mono`（等宽小标签，400/700）、`Noto Sans SC`（中文，400/700）。中文标题和正文用 `Noto Sans SC`。项目风格目录 `style/fonts/*.woff2` 里的字体也可以用，字体名是文件名去掉扩展名。内置字体覆盖常用汉字，生僻字可能显示成方框，校验会警告。
 
+## 短片（没有旁白，音乐驱动）
+
+`timeline.json` 里 `narration` 为空、有 `grid`（BPM 与节拍）、`moments`（编导写的画面时刻）和 `music`（配乐的命名事件与能量）时，这是一支短片。镜头 = 节拍脚本的段落，时长由小节数决定；`upstream/beatsheet/beatsheet.json` 有每段的意图（`intent`）、能量（`energy`）和要做的动作（`moments`），先读它。**画面里每个动作都要踩在节拍上。**
+
+`env` 里多出这些取数函数（时间都是镜头局部秒，可以直接和 `lt` 比较）：
+
+| 函数 | 含义 |
+|---|---|
+| `env.bt(n)` / `env.bar(n)` | 全局第 n 拍 / 第 n 小节（从 0 数）的时刻 |
+| `env.grid.bpm` | BPM |
+| `env.hit(name)` | 事件 `name`（`onset` 类，如 `kick`、`clap`、`hat`、`impact`）最近一次触发后的衰减包络：触发瞬间为 1，约 0.18 秒衰减到 1/e，触发之前为 0。名字不存在会报错并列出可用名称 |
+| `env.span(name)` | 事件 `name` 的全部 `{ start, end }` 列表。**持续的扫频类事件（`kind` 为 `sweep`，如 `riser`）用它取起止**，对它们调 `env.hit` 会报错 |
+| `env.energy(lt?)` | 本镜头局部时刻 `lt`（缺省为当前时刻）的音乐能量，0–1 |
+| `env.moment(i)` | 本镜头第 i 个节拍脚本点 `{ at, t, action }`，`t` 是局部秒，`action` 是编导写的画面意图 |
+
+可用的事件名看 `upstream/timeline.json` 的 `music.events`。
+
+- **所有时刻只能由 `env.bt / env.bar / env.hit / env.span / env.moment` 推出，不许写字面的秒数**（动画自己的相对时长，如一次弹簧回弹持续 0.4 秒，可以写字面量，起点必须来自节拍）。校验会把整套音乐平移 0.2 秒再渲染一遍，镜头自己的关键帧必须跟着变；还会警告 `lt > 3.5` 这样拿时间和字面量比较的写法。
+- **节拍的可见性不能全靠 `global.js`**：音乐平移检查装配页面时不含 `global.js`，只靠它响应节拍的镜头会被判为"毫无反应"。`global.js` 只做暗角、颗粒、色散这类后期，不承担节奏。
+- 冲击（`impact`）前的最后半拍音乐是静默的：画面也要在那半拍收住（冻结、抽黑或蓄力），冲击点上给足反馈（闪白、震屏、炸开）。
+- 能量曲线用来调节整体强度（亮度、粒子数量、动作幅度），不要用它定时刻。
+- 转场踩在小节线上：用 `pad.in/out` 交叉叠化，或在小节线上硬切；硬切会让边界帧差很大，这是有意的，不是缺陷。
+
 ## 工作流（按这个顺序，控制成本）
 
 1. 先读 `style/STYLE.md` 和它指向的风格文件、金样本。
@@ -70,6 +93,6 @@ module.exports = {
 
 ## 工具
 
-- `validate_scenes_html(scene_id?)`：静态检查、冒烟运行、确定性、beat 敏感度、字号、字符覆盖、资产。不传 `scene_id` 校验全部镜头。
-- `render_preview_html(scene_id)`：对单个镜头抽取关键时刻（镜头首尾、每个 beat 的起点和终点附近、均匀采样），返回一张缩略图拼图和每帧指标。
+- `validate_scenes_html(scene_id?)`：静态检查、冒烟运行、确定性、beat 敏感度（有旁白）或音乐平移敏感度（短片）、字号、字符覆盖、资产。不传 `scene_id` 校验全部镜头。
+- `render_preview_html(scene_id)`：对单个镜头抽取关键时刻（有旁白：镜头首尾、每个 beat 的起点和终点附近；短片：镜头首尾、每个节拍脚本点、每个强拍、最少见的几类事件的起点；都会补均匀采样），返回一张缩略图拼图和每帧指标。
 - `suggest_upstream_change`：发现叙事本身有问题（例如某个镜头的 beat 划分让画面无法表达）时，向叙事阶段提出回退建议，不要自己绕过。

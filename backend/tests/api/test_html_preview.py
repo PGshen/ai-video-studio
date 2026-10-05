@@ -230,3 +230,48 @@ async def test_inline_page_follows_the_workspace_and_reports_unavailable_timelin
     (api_env.workdir(pid) / "narrative/timing.json").unlink()
     response = await api_env.client.get(f"{_base(pid)}/inline")
     assert response.status_code == 409 and "timing.json" in assert_detail(response)
+
+
+async def test_meta_of_a_reel_project_has_music_timeline_sections_and_no_narration_audio(
+    api_env: ApiEnv,
+) -> None:
+    import json
+
+    from studio.db.repo.projects import update_project_settings
+
+    project_id = seed_animation_html_project(
+        api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
+    )
+    update_project_settings(
+        api_env.app.state.engine,
+        project_id,
+        {"narration": False, "music_source": "synth", "video_kind": "motion_reel"},
+    )
+    work = api_env.workdir(project_id)
+    bar = 4 * 60 / 128
+    (work / "beatsheet").mkdir()
+    (work / "beatsheet" / "beatsheet.json").write_text(
+        json.dumps(
+            {
+                "bpm": 128,
+                "sections": [
+                    {"id": "s1-intro", "label": "INTRO", "bars": 2, "moments": []},
+                    {"id": "s2-drop", "label": "DROP", "bars": 2, "moments": []},
+                ],
+            }
+        )
+    )
+    (work / "music").mkdir()
+    (work / "music" / "events.json").write_text(
+        json.dumps({"bpm": 128, "duration": 4 * bar, "events": []})
+    )
+    (work / "music" / "analysis.json").write_text(json.dumps({"hop": 0.1, "energy": [0.5]}))
+    fx.write_project(work, scenes={"s1-intro": fx.PURE_SCENE_PLAIN, "s2-drop": fx.PURE_SCENE_PLAIN})
+
+    response = await api_env.client.get(f"{_base(project_id)}/meta")
+    assert response.status_code == 200, response.text
+    meta = response.json()
+    assert [s["id"] for s in meta["sections"]] == ["s1-intro", "s2-drop"]
+    assert all(s["beats"] == [] for s in meta["sections"])
+    assert meta["audio"] == []
+    assert meta["duration"] == pytest.approx(4 * bar)

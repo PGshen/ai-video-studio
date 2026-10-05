@@ -52,3 +52,10 @@ T9（2026-09-27）核实时安装的版本：`claude-agent-sdk 0.2.160`，内置
 - **Bash 拒读与联网（M1x T8，TD-1，2026-09-28）**：每轮按 `ctx.workdir` 生成 sandbox（`claude_scope.sandbox_settings(workdir, repo_root, data_dir)`）：`filesystem.denyRead=[仓库根, data_dir]`、`filesystem.allowRead=[当前工作区]`（均为解析后的真实路径）。所有阶段 `allow_web=False`（选题阶段原来开着）。M4 起联网由 `STUDIO_WEB_MODE` 决定，默认用自建工具、不开原生联网，见 [ADR 0010](../decisions/0010-联网模式开关.md)。
 - **剩余风险（已知，2026-09-28 最终复核校正措辞）**：① 联网（M4 起）默认走自建工具并带「URL 来源」限制；`STUDIO_WEB_MODE=native` 时开原生 WebSearch/WebFetch，`WebFetch` 由 `PreToolUse` hook 套用同一条「URL 来源」规则（TD-39，2026-09-30），搜索词本身仍会发给搜索服务（ADR 0010）；② Bash 现在读不到仓库、`data/` 下的其他项目和数据库，但仓库和 `data_dir` **以外**的本机文件不在拒读范围内，只有家目录下几处凭据目录（`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.kube`、`~/.docker`、`~/Library/Keychains`，`agent/sandbox_paths.py`，2026-09-30 TD-27 部分处理，登录冒烟实测 `~/.ssh` 下的文件被拒读、工作区内命令不受影响）已拒读；`~/.config`、`~/.claude` 等其余位置按可读对待。**这不是"没有联网就出不去"**——Bash 的命令输出本身作为工具结果回给模型，就是一条不需要网络的外泄通道（与 ADR 0009 对 OpenAI 路径 Shell 的风险判断同一逻辑）：提示注入场景下诱导 Bash `cat ~/.ssh/id_ed25519` 之类命令，内容会经这条通道被模型看到，风险与"读到内容能不能联网发出去"无关。缺网络只是少了"模型之外再主动外发"这一条额外路径。另外登录模式（`auth == "login"`）下 `~/.claude/projects/<按路径编码的目录名>/` 存的是**本机所有** studio 项目的会话 transcript（不只当前项目），同样不在拒读范围内，是比 `~/.ssh` 更窄但同样真实的一个缺口（TD-27）；③ 置空只覆盖"名字像密钥"的变量，值是密钥但名字不像的变量不受影响。
 - **thinking（对话页重做，2026-10-02）**：`ClaudeAgentOptions.thinking={"type": "adaptive", "display": "summarized"}`；`claude_messages.convert_message` 把 `thinking_delta` 转成 `ThinkingDelta`、`ThinkingBlock`（`thinking` 非空白）转成 `ThinkingBlock`，`signature` 不外传不落库，子 agent 的 thinking 与其它子 agent 消息一起丢弃。是否出现取决于模型，见上面 adaptive 的事实行。
+
+## 工具结果的图片大小（单条 JSON 消息上限 1 MiB）
+
+- ✅ 已验证（2026-10-05，子项目 3A 真实模型冒烟）：SDK 与 CLI 之间一条 JSON 消息超过 1048576 字节会抛 `CLIJSONDecodeError: JSON message exceeded maximum buffer size`，整轮失败；追加轮会再带上这条历史消息，所以重试也失败。
+- 工具返回的图片按 base64 内联在这条消息里：约 1800×1000 的 PNG 分析图、4 列的缩略图拼图 PNG 都会超限。假运行时和单测碰不到，只有真实模型暴露。
+- 做法：返回给模型的图用 JPEG，质量 85/70/55/40 逐级降，仍超限就缩小，上限 400 kB（`stages/music/tool.py::compress_picture`、`engines/render/html/probe.py::contact_sheet`）；要给人看的原图另存为文件。
+- ⚠️ 待处理：`stages/animation/render_preview.py`（manim）同样没有限制，已记入 TODO。

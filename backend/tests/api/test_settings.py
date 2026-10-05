@@ -86,6 +86,17 @@ class TestPatchSettings:
         assert response.status_code == 200
         assert response.json()["stage_default_profile"] == {"animation_html": fake_id}
 
+    @pytest.mark.parametrize("stage", ["concept", "beatsheet", "music"])
+    async def test_the_reel_and_music_stages_can_have_a_default_model(
+        self, api_env: ApiEnv, stage: str
+    ) -> None:
+        fake_id = await _profile_id(api_env, "fake")
+
+        response = await _patch(api_env, {"stage_default_profile": {stage: fake_id}})
+
+        assert response.status_code == 200
+        assert response.json()["stage_default_profile"] == {stage: fake_id}
+
     async def test_tts_default_round_trip_and_partial(self, api_env: ApiEnv) -> None:
         response = await _patch(api_env, {"tts_default": {"voice": "xiaohe", "speech_rate": 1.2}})
         assert response.json()["tts_default"] == {"voice": "xiaohe", "speech_rate": 1.2}

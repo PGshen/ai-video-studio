@@ -150,3 +150,46 @@ def write_project(
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def reel_timeline(*, bars: int = 4, sections: int = 2) -> dict[str, Any]:
+    """A motion-reel timeline at 128 BPM with moments, music events and an energy curve.
+
+    Section `s1` starts at 0, `s2` at half the length. Events: `kick` on every beat, one `late`
+    onset and one `riser` sweep, so that `late` is the rarest name.
+    """
+    from fixtures.audio_engine import reel_timeline as base
+
+    timeline = base(128.0, bars, sections=sections)
+    beat = 60 / 128
+    last = timeline["sections"][-1]
+    timeline["moments"] = [
+        {"section_id": "s1", "at": "1.1", "t": 0.0, "visual_action": "开场"},
+        {
+            "section_id": last["id"],
+            "at": "1.3",
+            "t": last["start"] + 2 * beat,
+            "visual_action": "冲击",
+        },
+    ]
+    timeline["music"] = {
+        "file": "music/music.wav",
+        "events": [
+            *(
+                {"name": "kick", "kind": "onset", "start": i * beat, "end": i * beat + 0.18}
+                for i in range(bars * 4)
+            ),
+            {
+                "name": "late",
+                "kind": "onset",
+                "start": last["start"] + 0.9,
+                "end": last["start"] + 1.1,
+            },
+            {"name": "riser", "kind": "sweep", "start": 1.0, "end": 2.0},
+        ],
+        "energy": {
+            "hop": 0.1,
+            "values": [i / 150 for i in range(int(timeline["duration"] / 0.1) + 1)],
+        },
+    }
+    return timeline

@@ -12,6 +12,7 @@ import shutil
 from pathlib import Path
 
 from studio.timeline import TimelineError, TimelineLayers, build_timeline, narration_from_documents
+from studio.timeline.load import TimelineSources, load_timeline
 
 _EXEMPLAR = Path(__file__).parent / "exemplar" / "canvas-techniques.js"
 TIMELINE_PATH = "upstream/timeline.json"
@@ -31,10 +32,36 @@ def _fail(workdir: Path, reason: str) -> None:
     error.write_text(reason + "\n", encoding="utf-8")
 
 
+def _prepare_music_project(workdir: Path) -> None:
+    """短片与"讲解 + 背景乐"：按上游内容选来源，读出带网格与配乐层的时间轴。"""
+    upstream = workdir / "upstream"
+    reel = (upstream / "beatsheet" / "beatsheet.json").is_file()
+    sources = TimelineSources(workdir, narration=not reel, music_source="synth", prefix="upstream/")
+    try:
+        loaded = load_timeline(sources)
+    except TimelineError as exc:
+        _fail(workdir, "；".join(exc.errors))
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        _fail(workdir, f"上游产物的结构不符合预期：{type(exc).__name__}: {exc}")
+    else:
+        (workdir / ERROR_PATH).unlink(missing_ok=True)
+        (workdir / TIMELINE_PATH).write_text(
+            json.dumps(loaded.timeline.model_dump(mode="json"), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+
 def prepare_turn(workdir: Path) -> None:
     exemplar = workdir / "upstream" / "exemplar" / _EXEMPLAR.name
     exemplar.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(_EXEMPLAR, exemplar)
+
+    upstream = workdir / "upstream"
+    if (upstream / "beatsheet" / "beatsheet.json").is_file() or (
+        upstream / "music" / "events.json"
+    ).is_file():
+        _prepare_music_project(workdir)
+        return
 
     narrative_dir = workdir / "upstream" / "narrative"
     try:

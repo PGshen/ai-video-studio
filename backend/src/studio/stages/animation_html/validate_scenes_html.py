@@ -21,15 +21,19 @@ from studio.engines.render.html.browser import BrowserClosed, PageLike
 from studio.engines.render.html.glyphs import missing_characters
 from studio.engines.render.html.pool import get_browser_pool
 from studio.engines.render.html.probe import (
+    SHIFT_MUSIC_SECONDS,
     beat_sensitivity,
     determinism_check,
-    sample_times,
+    is_reel,
+    music_shift_sensitivity,
+    scene_sample_times,
     section_info,
     smoke_run,
 )
 from studio.engines.render.html.static_check import (
     StaticIssue,
     font_size_warnings,
+    literal_time_warnings,
     static_check,
     strip_comments,
 )
@@ -44,6 +48,7 @@ from studio.stages.animation_html.common import (
 _CUE_REFERENCE = re.compile(r"\bcue\s*\(|\bcueEnd\s*\(|\.beats\b")
 _SCENE_FILE = re.compile(r"^animation/scenes/(.+)\.js$")
 _DETERMINISM_SAMPLES = 6
+_MOSTLY_UNCHANGED = 0.5
 
 
 class ValidateScenesHtmlArgs(BaseModel):
@@ -91,6 +96,10 @@ def _pre_browser_checks(
     for issue in font_size_warnings(workdir):
         if _relevant(issue, targets, single):
             report.warn(f"{issue.path}:{issue.line} {issue.message}", _issue_scene(issue))
+    if is_reel(timeline):
+        for issue in literal_time_warnings(workdir):
+            if _relevant(issue, targets, single):
+                report.warn(f"{issue.path}:{issue.line} {issue.message}", _issue_scene(issue))
     for message in check_assets(workdir):
         report.error(message)
     if not single:
@@ -127,9 +136,9 @@ async def _check_scene(page: PageLike, timeline: dict[str, Any], sid: str, repor
         report.warn(message, sid)
     if smoke.errors:
         return
-    start, end, beats = section_info(timeline, sid)
+    _, _, beats = section_info(timeline, sid)
     try:
-        times = sample_times(start, end, beats)[:_DETERMINISM_SAMPLES]
+        times = scene_sample_times(timeline, sid)[:_DETERMINISM_SAMPLES]
         unstable = await determinism_check(page, times)
         if unstable:
             report.error(
@@ -157,6 +166,65 @@ async def _check_scene(page: PageLike, timeline: dict[str, Any], sid: str, repor
         report.warn(f"{names} 对应的 beat 没有驱动画面", sid)
 
 
+def _scene_failed(report: _Report, sid: str) -> bool:
+    return any(error.startswith(f"镜头 {sid}：") for error in report.errors)
+
+
+async def _check_music_shift(
+    page: PageLike, timeline: dict[str, Any], sid: str, report: _Report
+) -> None:
+    """短片：音乐整体平移后，镜头自己的关键帧应当跟着变（设计 §6.3）。"""
+    try:
+        shift = await music_shift_sensitivity(page, timeline, sid)
+    except BrowserClosed:
+        raise
+    except Exception as exc:  # 镜头里的异常已带标签
+        report.error(str(exc), sid)
+        return
+    if not shift.times:
+        return
+    if shift.all_unchanged:
+        report.error(
+            f"整个镜头对音乐平移 {SHIFT_MUSIC_SECONDS:g} 秒毫无反应：疑似把时刻写成了字面量，"
+            "或只靠 global.js 响应节拍；请改用 env.bt / env.bar / env.hit / env.moment",
+            sid,
+        )
+    elif len(shift.unchanged) / len(shift.times) > _MOSTLY_UNCHANGED:
+        report.warn(
+            f"音乐平移 {SHIFT_MUSIC_SECONDS:g} 秒后 {len(shift.unchanged)}/{len(shift.times)} "
+            f"个关键帧没有变化（例如 t={shift.unchanged[0]:.2f}s）：这些位置的动作可能写死了时间",
+            sid,
+        )
+
+
+async def _shift_pass(
+    workdir: Path, timeline: dict[str, Any], targets: list[str], report: _Report
+) -> None:
+    """装配时不含 `global.js` 的页面上做音乐平移检查：全局后期读节拍不能替镜头顶账。"""
+    remaining = list(targets)
+    can_retry = True
+    while remaining:
+        try:
+            page_source = assemble(workdir, timeline, include_global=False)
+            async with get_browser_pool().acquire(page_source) as page:
+                while remaining:
+                    await _check_music_shift(page, timeline, remaining[0], report)
+                    remaining.pop(0)
+                    if page.poisoned:
+                        break
+        except BrowserClosed as exc:
+            if not can_retry:
+                report.error(f"浏览器在校验过程中被关闭（已重试一次仍失败）：{exc}")
+                return
+            can_retry = False
+        except Exception as exc:
+            text = browser_error_text(exc)
+            if text is None:
+                raise
+            report.error(text)
+            return
+
+
 def _report_page_errors(page: PageLike, seen: set[str], report: _Report) -> None:
     """页面加载阶段留下的错误（资源 404、lib 的告警等）不属于某个镜头，只报一次。"""
     for message in dict.fromkeys(page.errors):
@@ -175,12 +243,19 @@ async def _browser_checks(
     remaining = list(targets)
     seen_page_errors: set[str] = set()
     can_retry = True
+    reel = is_reel(timeline)
+    has_global = (workdir / "animation" / "global.js").is_file()
     while remaining:
         try:
             async with get_browser_pool().acquire(assemble(workdir, timeline)) as page:
                 _report_page_errors(page, seen_page_errors, report)
                 while remaining:
-                    await _check_scene(page, timeline, remaining[0], report)
+                    sid = remaining[0]
+                    await _check_scene(page, timeline, sid, report)
+                    if reel and not has_global and not _scene_failed(report, sid):
+                        await _check_music_shift(
+                            page, timeline, sid, report
+                        )  # 同一页面即不含全局后期
                     remaining.pop(0)
                     if page.poisoned:  # 卡死的页面不再使用，剩余镜头换新页面
                         break
@@ -223,14 +298,17 @@ async def _handler(ctx: ToolContext, args: ValidateScenesHtmlArgs) -> ToolResult
     _pre_browser_checks(ctx.workdir, timeline, targets, single, report)
     if not report.errors:
         await _browser_checks(ctx.workdir, timeline, targets, report)
+        if is_reel(timeline) and (ctx.workdir / "animation" / "global.js").is_file():
+            passed = [sid for sid in targets if not _scene_failed(report, sid)]
+            await _shift_pass(ctx.workdir, timeline, passed, report)
     return _render(report, targets, single)
 
 
 VALIDATE_SCENES_HTML_TOOL = ToolSpec(
     name="validate_scenes_html",
     description=(
-        "校验 HTML 镜头脚本：静态规则、真实浏览器冒烟运行、确定性、beat 敏感度、字号与字符覆盖、"
-        "资产。不传 scene_id 校验全部镜头。"
+        "校验 HTML 镜头脚本：静态规则、真实浏览器冒烟运行、确定性、beat 敏感度（有旁白）或"
+        "音乐平移敏感度（短片）、字号与字符覆盖、资产。不传 scene_id 校验全部镜头。"
     ),
     input_model=ValidateScenesHtmlArgs,
     stages={"animation_html"},
