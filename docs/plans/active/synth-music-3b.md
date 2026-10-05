@@ -107,7 +107,7 @@
 - **完成标准**：AC2。
 - **验证命令**：`cd backend && uv run pytest tests/test_worker_html.py tests/api -k "render or worker_html" -v && uv run pytest -m slow tests/test_worker_html.py -v`
 
-### T3：音乐 api——`meta`、`audio`、`render`（待开始）
+### T3：音乐 api——`meta`、`audio`、`render`（完成）
 
 - **目标**：设计 §9.1 的三个端点，行为稳健。
 - **涉及文件**：新建 `backend/src/studio/api/music.py`；`backend/src/studio/api/schemas.py`；`backend/src/studio/main.py`（挂路由）；`backend/tests/api/test_music.py`；读一遍 `api/files.py` 的忙碌检查与安全解析写法后照用。
@@ -191,6 +191,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — T3 音乐 api — `api/music.py`：`meta`（含 `stale`、`sections`，损坏产物当作未渲染）、`audio`（`FileResponse` 的 Range：206、尾部范围、非法 400/416、软链接逃逸 404）、`render`（共用 `render_music_core`；脚本问题 200 + `ok=false`；轮次在跑 / 已有手动渲染 / 无沙箱 / 时间轴不可用 409）；`tests/api/test_music.py` 20 条；`section_energy` 抽到 `stages/music/sources.py`，`metrics_of` 公开
 - 2026-10-05 — T2 `worker_html` 配乐路径 — 去掉守卫；前置检查（四个文件、`base_hash`、`wav_hash`）；短片只有配乐，背景乐 −8 dB + 侧链 + 淡入 1 秒/淡出 1.5 秒；`final.json.audio_sources.music`；新测试 `tests/test_worker_html_music.py`（成功 2、前置检查 7、旧成片保留 2、无配乐回归 1）+ slow 真实 Chromium + ffmpeg 2（短片音轨非静音、时长一致；讲解加配乐）；`FakeBackend` 移到 `fixtures/html_engine/worker_fakes.py`；`finalize-render` 与 `POST /render` 与形态无关，无需改
 - 2026-10-05 — T1 `engines.render.mix` 配乐轨 — `MusicMix`、`AudioTrack.gain_db`、命令构造 7 条（无配乐不变、只有配乐、增益与淡变、侧链、不压低、无旁白不压）+ slow 4 条（时长与非静音与无爆音、配乐长短都钉时长、侧链压低 ≥ 6 dB 且 1 秒后回升、坏文件不留输出）；侧链定值 `0.03:6:10:400`，扫描表写进 `references/ffmpeg.md`
 
@@ -204,6 +205,8 @@
 
 - 2026-10-05 — T2：时间轴本身因配乐声明的 duration 与节拍脚本不符而失败时（改了小节数），`run_html_job` 在错误后追加"到配乐阶段重新渲染"的提示；只改标签等不改时长时由 `base_hash` 前置检查报"配乐与当前时间轴不一致" — 两种都点名原因 — 无风险。
 - 2026-10-05 — 时间轴来源：api 与 worker 都读工作区顶层，不用 `upstream/`（修正设计 §9.1 的措辞）— `upstream/` 只是 agent 某轮开始时的上游副本，在 api 里可能不存在或已过期；顶层与成片一致 — 无代码风险，设计正文不改，仅在此记录。
+- 2026-10-05 — T3：手动渲染成功后不拍快照 — 与 `PUT /files` 保存文件一致（它也不拍）；`finalize_blockers` 以 `upstream/` 为准的局限在 agent 轮次里仍在，但手动渲染后用户再开一轮时 `upstream/` 会重建，影响不大。手动渲染期间用户又开了一轮 agent：两边各自原子发布，交错的话 `render.json` 的 `wav_hash` 对不上，成片前置检查点名 — 单人本地使用，不为此给 `TurnRunner` 加锁。
+- 2026-10-05 — T3：时间轴来源用项目 `settings.narration` 决定（`TimelineSources`），不用 `infer_sources` 的"看有没有 beatsheet 文件"推断 — 推断在 beatsheet 被删时会误判成讲解 — 无。
 - 2026-10-05 — 手动渲染同步返回 — 3A 冒烟里一次合成约 1 秒，加重定时与分析也远小于 60 秒 — 若实际更慢，改成任务并记入 TODO。
 - 2026-10-05 — 讲解 + 背景乐不单独做真实模型冒烟 — 成本高、画面阶段的流程已由 3A 的短片冒烟验证，音轨由 slow 的真实 ffmpeg 测试验证 — 若负责人要求，补一个。
 

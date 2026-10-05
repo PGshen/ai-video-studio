@@ -459,3 +459,49 @@ class HtmlPreviewMeta(BaseModel):
     duration: float
     sections: list[HtmlPreviewSection]
     audio: list[HtmlPreviewAudio]
+
+
+class MusicEventOut(BaseModel):
+    name: str
+    kind: str
+    start: float
+    end: float
+
+
+class MusicSectionOut(BaseModel):
+    id: str
+    label: str
+    start: float
+    end: float
+
+
+class MusicMetaOut(BaseModel):
+    """`GET .../music/meta`：配乐画布和预览需要的全部信息；没有产物时 `rendered=false`。"""
+
+    rendered: bool
+    stale: bool
+    """产物是对着另一版时间轴渲染的（节拍脚本或旁白变了），成片会拒绝它。"""
+    hash: str | None = None
+    """`music.wav` 的哈希；音频地址的版本号。"""
+    duration: float | None = None
+    bpm: float | None = None
+    events: list[MusicEventOut] = []
+    sections: list[MusicSectionOut] = []
+    waveform: list[float] = []
+    metrics: dict[str, Any] | None = None
+
+
+class MusicRenderOut(BaseModel):
+    """`POST .../music/render`：和 `render_music` 工具同形的报告。
+
+    脚本的问题是 `ok=false`，不是 HTTP 错误。
+    """
+
+    ok: bool
+    errors: list[str] = []
+    text: str
+    warnings: list[str] = []
+    retime_note: str = ""
+    metrics: dict[str, Any] | None = None
+    picture_base64: str | None = None
+    picture_media_type: str | None = None
