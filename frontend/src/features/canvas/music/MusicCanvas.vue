@@ -197,7 +197,7 @@ async function onRender(): Promise<void> {
 
     <div
       v-show="tab === 'script'"
-      class="flex min-h-0 flex-1 flex-col gap-2"
+      class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
     >
       <template v-if="buffer">
         <div
@@ -222,7 +222,7 @@ async function onRender(): Promise<void> {
             </Button>
           </div>
         </div>
-        <div class="min-h-0 flex-1">
+        <div class="min-h-72 flex-1">
           <CodeEditor
             :content="buffer.content"
             language="python"
@@ -230,7 +230,7 @@ async function onRender(): Promise<void> {
             @update:content="(text: string) => (buffer = edit(buffer!, text))"
           />
         </div>
-        <div class="flex items-center justify-between gap-2">
+        <div class="flex shrink-0 items-center justify-between gap-2">
           <p
             v-if="saveError"
             class="text-destructive text-xs"
@@ -302,6 +302,7 @@ async function onRender(): Promise<void> {
       <RenderReport
         v-if="report"
         :report="report"
+        class="shrink-0"
       />
     </div>
 

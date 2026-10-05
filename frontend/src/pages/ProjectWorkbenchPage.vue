@@ -49,6 +49,7 @@ import { projectScope } from '@/composables/sessionScope'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
 import HtmlAnimationCanvas from '@/features/canvas/animation/HtmlAnimationCanvas.vue'
+import { STAGES_WITH_OWN_ACTIONS } from '@/features/canvas/stageActions'
 import MusicCanvas from '@/features/canvas/music/MusicCanvas.vue'
 import NarrativeCanvas from '@/features/canvas/narrative/NarrativeCanvas.vue'
 import TopicCanvas from '@/features/canvas/topic/TopicCanvas.vue'
@@ -205,9 +206,9 @@ const canvasBusy = computed(() =>
           <template #canvas="{ railCollapsed: snapshotsHidden, toggleRail, narrow: stacked }">
             <Card class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4">
               <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative、animation 阶段并进标签行（见画布的 actions 插槽）。动画阶段（`animation`/`animation_html`）没有定稿按钮：只能在“成片”标签里渲染后定稿，否则可以绕过成片直接定稿。 -->
+                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative、music、animation 阶段并进标签行（见画布的 actions 插槽）。动画阶段（`animation`/`animation_html`）没有定稿按钮：只能在“成片”标签里渲染后定稿，否则可以绕过成片直接定稿。 -->
                 <div
-                  v-if="stage !== 'topic' && stage !== 'narrative' && stage !== 'animation' && stage !== 'animation_html'"
+                  v-if="!STAGES_WITH_OWN_ACTIONS.includes(stage)"
                   class="flex shrink-0 items-center justify-end gap-2"
                 >
                   <StageFinalizeButton

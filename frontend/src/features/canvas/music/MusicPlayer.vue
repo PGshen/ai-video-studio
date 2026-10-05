@@ -33,7 +33,7 @@ defineExpose({ seek })
 
 <template>
   <div
-    class="flex min-h-0 flex-col gap-3 overflow-y-auto"
+    class="grid min-h-0 content-start gap-3 overflow-y-auto"
     data-testid="music-player"
   >
     <audio
