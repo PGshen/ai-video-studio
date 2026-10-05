@@ -107,3 +107,17 @@ async def test_manim_project_still_renders_and_finalizes_the_animation_stage(
     _write_final_json(api_env, pid, snapshot.id)
     response = await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
     assert response.status_code == 200 and response.json()["stage"] == "animation"
+
+
+async def test_render_is_refused_while_an_agent_turn_is_running(api_env: ApiEnv) -> None:
+    """The worker snapshots the workspace when it starts; a turn still writing files would make the
+    snapshot (and `final.json`) describe a workspace that is about to change."""
+    pid = _html_project(api_env)
+    turn_id = await api_env.make_busy(pid, stage="animation_html")
+    try:
+        response = await api_env.client.post(f"/api/projects/{pid}/render")
+        assert response.status_code == 409
+        assert "运行" in assert_detail(response)
+    finally:
+        await api_env.release_busy(turn_id)
+    assert (await api_env.client.post(f"/api/projects/{pid}/render")).status_code == 201

@@ -25,8 +25,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
 from sqlalchemy import Engine
 
+from studio.agent.runner import TurnRunner
 from studio.api.animation_stage import animation_stage
-from studio.api.deps import get_engine, get_settings
+from studio.api.deps import get_engine, get_settings, get_turn_runner
 from studio.api.schemas import JobOut
 from studio.config import Settings
 from studio.db.repo.projects import get_project
@@ -63,7 +64,10 @@ _UNFINISHED_JOB_STATUSES = ("queued", "running")
 
 @router.post("/projects/{project_id}/render", response_model=JobOut, status_code=201)
 def create_render_job_endpoint(
-    project_id: str, response: Response, engine: Engine = Depends(get_engine)
+    project_id: str,
+    response: Response,
+    engine: Engine = Depends(get_engine),
+    turn_runner: TurnRunner = Depends(get_turn_runner),
 ) -> JobOut:
     """TD-35：重复调用（双击、多个浏览器标签页）不会排进第二条任务——已有
     一条 `queued`/`running` 的同类任务时直接返回它（状态码改成 200，因为
@@ -71,6 +75,8 @@ def create_render_job_endpoint(
     渲染已经结束、现在要开始新一轮"的正常请求。
     """
     _require_project(engine, project_id)
+    if turn_runner.is_project_busy(project_id):
+        raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请等它结束再渲染成片")
     stage = get_stage(engine, project_id, animation_stage(engine, project_id))
     if stage is None:
         raise HTTPException(status_code=404, detail="项目没有动画阶段")
