@@ -9,7 +9,7 @@
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/vue-query'
 import * as api from '@/api/endpoints'
-import { ApiError } from '@/api/http'
+import { ApiError, type UploadOptions } from '@/api/http'
 import type { SessionScope } from '@/composables/sessionScope'
 import type {
   FileWriteResult,
@@ -704,6 +704,24 @@ export function useRenderMusicMutation(projectId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => api.renderMusic(toValue(projectId)),
+    onSettled: () => {
+      void invalidateWorkspace(queryClient, toValue(projectId))
+    },
+  })
+}
+
+/**
+ * 上传导入音乐的源文件。进度由调用方通过 `onProgress` 取（不进查询缓存）；无论成败都刷新工作区
+ * 相关的查询（成功换了 `music/source.*`，配乐 meta 与预览的音乐随之变化）。
+ */
+export function useUploadMusicSourceMutation(projectId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { file: File; onProgress?: UploadOptions['onProgress']; signal?: AbortSignal }) =>
+      api.uploadMusicSource(toValue(projectId), input.file, {
+        onProgress: input.onProgress,
+        signal: input.signal,
+      }),
     onSettled: () => {
       void invalidateWorkspace(queryClient, toValue(projectId))
     },

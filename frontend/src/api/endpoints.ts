@@ -11,6 +11,8 @@ import {
   encodePathSegment,
   request,
   requestText,
+  uploadForm,
+  type UploadOptions,
 } from '@/api/http'
 import type {
   DraftStatusOut,
@@ -33,6 +35,7 @@ import type {
   HtmlPreviewMeta,
   MusicMetaOut,
   MusicRenderOut,
+  MusicSourceOut,
   SceneChecksResponse,
   SessionCreate,
   SettingsOut,
@@ -479,4 +482,15 @@ export function musicAudioUrl(projectId: string, version?: string | null): strin
 /** 不经 agent 渲染配乐（运行 `music/compose.py`）；脚本出错返回 `ok=false`，不抛。 */
 export function renderMusic(projectId: string): Promise<MusicRenderOut> {
   return request(`/projects/${encodePathSegment(projectId)}/music/render`, { method: 'POST' })
+}
+
+/** 上传导入音乐的源文件（multipart，字段 `file`）；不触发分析。 */
+export function uploadMusicSource(
+  projectId: string,
+  file: File,
+  options?: UploadOptions,
+): Promise<MusicSourceOut> {
+  const form = new FormData()
+  form.append('file', file)
+  return uploadForm(`/projects/${encodePathSegment(projectId)}/music/source`, form, options)
 }

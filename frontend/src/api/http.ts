@@ -136,4 +136,60 @@ export async function requestText(
   return response.text()
 }
 
+export interface UploadOptions {
+  /** 上传进度：已传字节与总字节（浏览器给不出总量时不触发）。 */
+  onProgress?: (loaded: number, total: number) => void
+  signal?: AbortSignal
+}
+
+function abortError(): Error {
+  const error = new Error('上传已取消')
+  error.name = 'AbortError'
+  return error
+}
+
+/**
+ * 上传一个 `FormData`（multipart）并解析 JSON 响应。用 `XMLHttpRequest` 而不是 `fetch`：
+ * `fetch` 取不到上传进度。不手设 `Content-Type`——浏览器会带上 boundary。
+ * 非 2xx 抛 `ApiError`（`detail` 的解析同 `request`）；取消抛 `name === 'AbortError'` 的错误。
+ */
+export function uploadForm<T>(path: string, form: FormData, options: UploadOptions = {}): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const { signal, onProgress } = options
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', buildUrl(path))
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(event.loaded, event.total)
+      }
+    }
+    xhr.onload = () => {
+      const text = xhr.responseText
+      let body: unknown = null
+      if (text) {
+        try {
+          body = JSON.parse(text)
+        } catch {
+          body = text
+        }
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as T)
+        return
+      }
+      const detail =
+        body && typeof body === 'object' && 'detail' in body ? (body as { detail: unknown }).detail : body
+      reject(new ApiError(xhr.status, detail))
+    }
+    xhr.onerror = () => reject(new Error('网络错误，上传失败'))
+    xhr.onabort = () => reject(abortError())
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true })
+    xhr.send(form)
+  })
+}
+
 export { BASE_URL }

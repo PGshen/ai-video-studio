@@ -431,6 +431,8 @@ export interface HtmlPreviewAudio {
 export interface HtmlPreviewMusic {
   url: string
   gain: number
+  /** 秒。音频时间 = 预览时间 + offset：导入音乐从有效截取区间的起点放；合成形态恒为 0。 */
+  offset: number
 }
 
 /** `GET /projects/{id}/animation/html-preview/meta`：`hash` 变了才需要刷新 iframe。 */
@@ -458,8 +460,60 @@ export interface MusicSectionOut {
   end: number
 }
 
-/** `GET .../music/meta`：没有产物时 `rendered=false`；`stale` 表示产物对应的是另一版时间轴。 */
+export interface MusicSourceInfo {
+  filename: string
+  size: number
+  sha256: string
+  /** 只有分析对得上当前源文件时才有（取分析里的时长）。 */
+  duration: number | null
+}
+
+export interface MusicAnalysisOut {
+  bpm: number
+  confidence: number
+  residual_ms: number
+  duration: number
+  warnings: string[]
+}
+
+/** 有效网格（`sections.json` 的覆盖优先）；`downbeats` 是整曲内的强拍时刻（秒）。 */
+export interface MusicGridOut {
+  bpm: number
+  offset: number
+  downbeats: number[]
+}
+
+export interface MusicRangeOut {
+  start: number
+  end: number
+}
+
+export interface MusicEnergyOut {
+  hop: number
+  values: number[]
+}
+
+export interface SectionsCheckOut {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+/** `POST .../music/source` 的响应。 */
+export interface MusicSourceOut {
+  filename: string
+  size: number
+  sha256: string
+  duration: number
+}
+
+/**
+ * `GET .../music/meta`：没有产物时 `rendered=false`；`stale` 表示产物对应的是另一版时间轴。
+ * 导入形态（`form === 'import'`）：`rendered` 表示"已上传源文件"，`stale` 表示分析不是对着当前
+ * 源文件做的，`sections` 是整曲秒；其余导入字段在合成形态下恒为 `null`。
+ */
 export interface MusicMetaOut {
+  form: 'synth' | 'import'
   rendered: boolean
   stale: boolean
   hash: string | null
@@ -470,6 +524,12 @@ export interface MusicMetaOut {
   /** 1000 个点的波形包络，取值 0–1。 */
   waveform: number[]
   metrics: Record<string, unknown> | null
+  source: MusicSourceInfo | null
+  analysis: MusicAnalysisOut | null
+  grid: MusicGridOut | null
+  range: MusicRangeOut | null
+  energy: MusicEnergyOut | null
+  sections_check: SectionsCheckOut | null
 }
 
 /** `POST .../music/render`：脚本的问题是 `ok=false`（HTTP 仍是 200）。 */

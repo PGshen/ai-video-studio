@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { FakeXhr } from '@/test/fakeXhr'
 import {
   createBrainstormSession,
   createIdea,
@@ -16,6 +17,7 @@ import {
   getMusicMeta,
   musicAudioUrl,
   renderMusic,
+  uploadMusicSource,
   getProject,
   getSession,
   getSettings,
@@ -294,5 +296,27 @@ describe('endpoints：配乐', () => {
     expect(musicAudioUrl('p1')).toBe('/api/projects/p1/music/audio')
     expect(musicAudioUrl('p1', 'ab/c')).toBe('/api/projects/p1/music/audio?v=ab%2Fc')
     expect(musicAudioUrl('p1', null)).toBe('/api/projects/p1/music/audio')
+  })
+})
+
+describe('endpoints：上传导入音乐', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    FakeXhr.reset()
+  })
+
+  it('uploadMusicSource 把文件放在 file 字段，POST 到编码后的路径，并转发进度', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const file = new File(['abc'], '海阔天空.mp3', { type: 'audio/mpeg' })
+    const seen: number[] = []
+    const promise = uploadMusicSource('proj#1', file, { onProgress: (loaded) => seen.push(loaded) })
+    const xhr = FakeXhr.last
+    expect(xhr.method).toBe('POST')
+    expect(xhr.url).toBe('/api/projects/proj%231/music/source')
+    expect((xhr.body as FormData).get('file')).toBe(file)
+    xhr.progress(3, 3)
+    xhr.respond(200, { filename: 'source.mp3', size: 3, sha256: 'x', duration: 10 })
+    await expect(promise).resolves.toMatchObject({ filename: 'source.mp3', duration: 10 })
+    expect(seen).toEqual([3])
   })
 })
