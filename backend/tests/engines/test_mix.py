@@ -8,9 +8,16 @@ import re
 import subprocess
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from studio.engines.render.mix import AudioTrack, MixError, build_mix_command, mix_final
+from studio.engines.render.mix import (
+    AudioTrack,
+    MixError,
+    MusicMix,
+    build_mix_command,
+    mix_final,
+)
 
 VIDEO = Path("/tmp/v.mp4")
 OUT = Path("/tmp/o.mp4")
@@ -58,9 +65,62 @@ def test_command_without_tracks_adds_a_silent_audio_stream() -> None:
     assert cmd[cmd.index("-t") + 1] == "3"
 
 
-async def test_music_track_is_reserved_for_a_later_sub_project(tmp_path: Path) -> None:
-    with pytest.raises(NotImplementedError):
-        await mix_final(VIDEO, [], 1.0, tmp_path / "o.mp4", music=AudioTrack(Path("/a/m.mp3"), 0.0))
+def _graph(cmd: list[str]) -> str:
+    return cmd[cmd.index("-filter_complex") + 1]
+
+
+MUSIC = Path("/a/music.wav")
+NARRATION = [AudioTrack(Path("/a/1.mp3"), 0.0), AudioTrack(Path("/a/2.mp3"), 2.0)]
+
+
+def test_a_missing_music_mix_leaves_the_command_unchanged() -> None:
+    assert build_mix_command(VIDEO, NARRATION, 6.0, OUT) == build_mix_command(
+        VIDEO, NARRATION, 6.0, OUT, music=None
+    )
+
+
+def test_music_only_is_resampled_trimmed_faded_and_pinned_to_the_duration() -> None:
+    cmd = build_mix_command(VIDEO, [], 7.5, OUT, music=MusicMix(AudioTrack(MUSIC, 0.0)))
+    graph = _graph(cmd)
+    assert cmd.count("-i") == 2 and str(MUSIC) in cmd
+    assert "aresample=44100" in graph and "channel_layouts=stereo" in graph
+    assert "afade=t=in:st=0:d=0.015" in graph and "afade=t=out:st=7.485:d=0.015" in graph
+    assert "apad=whole_dur=7.5" in graph and "atrim=end=7.5" in graph
+    assert "volume=" not in graph  # no gain asked for
+    assert "sidechaincompress" not in graph and "amix" not in graph
+    assert cmd[cmd.index("-map", cmd.index("-map") + 1) + 1] == "[aout]"
+    assert not re.search(r"apad(?!=)", graph)
+
+
+def test_gain_and_long_fades_go_into_the_graph() -> None:
+    music = MusicMix(AudioTrack(MUSIC, 0.0, gain_db=-8.0), fade_in=1.0, fade_out=1.5)
+    graph = _graph(build_mix_command(VIDEO, [], 10.0, OUT, music=music))
+    assert "volume=-8dB" in graph
+    assert "afade=t=in:st=0:d=1" in graph and "afade=t=out:st=8.5:d=1.5" in graph
+
+
+def test_music_under_narration_is_ducked_by_a_sidechain_of_the_narration_bus() -> None:
+    music = MusicMix(AudioTrack(MUSIC, 0.0, gain_db=-8.0), duck_under_narration=True)
+    cmd = build_mix_command(VIDEO, NARRATION, 6.0, OUT, music=music)
+    graph = _graph(cmd)
+    assert cmd.count("-i") == 4  # video, two narration clips, music
+    assert str(MUSIC) in cmd[cmd.index(str(NARRATION[1].path)) :]
+    assert "asplit=2" in graph and "sidechaincompress=" in graph
+    assert graph.count("amix=") == 2  # narration bus, then bus + ducked music
+    assert "amix=inputs=2:normalize=0:duration=longest" in graph.split("sidechaincompress")[1]
+    assert "apad=whole_dur=6" in graph and "atrim=end=6" in graph
+
+
+def test_music_under_narration_without_ducking_is_just_mixed_in() -> None:
+    music = MusicMix(AudioTrack(MUSIC, 0.0), duck_under_narration=False)
+    graph = _graph(build_mix_command(VIDEO, NARRATION, 6.0, OUT, music=music))
+    assert "sidechaincompress" not in graph and "asplit" not in graph
+    assert "amix=inputs=3:normalize=0" in graph
+
+
+def test_ducking_with_no_narration_has_nothing_to_duck_under() -> None:
+    music = MusicMix(AudioTrack(MUSIC, 0.0), duck_under_narration=True)
+    assert "sidechaincompress" not in _graph(build_mix_command(VIDEO, [], 4.0, OUT, music=music))
 
 
 # ---- real ffmpeg -----------------------------------------------------------------
@@ -207,3 +267,116 @@ async def test_mix_terminates_when_the_narration_exactly_fills_the_timeline(tmp_
     )
     assert abs(float(_probe(out)["format"]["duration"]) - 3.0) <= 0.1
     assert out.stat().st_size < 5_000_000
+
+
+# ---- real ffmpeg: music tracks ------------------------------------------------------
+
+
+def _decode(path: Path) -> tuple[np.ndarray, int]:
+    """Stereo AAC/MP4 audio back to mono float samples."""
+    raw = subprocess.run(
+        ["ffmpeg", "-loglevel", "error", "-i", str(path), "-vn", "-f", "s16le", "-ac", "1",
+         "-ar", "44100", "-"],
+        check=True, capture_output=True,
+    ).stdout  # fmt: skip
+    return np.frombuffer(raw, dtype="<i2").astype(float) / 32768.0, 44100
+
+
+def _band_db(samples: np.ndarray, rate: int, start: float, end: float, hz: float) -> float:
+    """Level (dB) of one frequency inside a time window: keeps music and narration apart."""
+    window = samples[int(start * rate) : int(end * rate)] * np.hanning(int((end - start) * rate))
+    spectrum = np.abs(np.fft.rfft(window)) / len(window)
+    freqs = np.fft.rfftfreq(len(window), 1 / rate)
+    peak = spectrum[(freqs > hz - 30) & (freqs < hz + 30)].max()
+    return 20 * float(np.log10(max(peak, 1e-9)))
+
+
+def _make_wav(path: Path, hz: int, seconds: float, amplitude: float) -> None:
+    _ffmpeg(
+        "-f", "lavfi", "-i", f"sine=frequency={hz}:duration={seconds}:sample_rate=44100",
+        "-af", f"volume={amplitude * 8}", "-ac", "2", str(path),  # lavfi sine peaks at 1/8
+    )  # fmt: skip
+
+
+@pytest.mark.slow
+async def test_music_alone_fills_the_video_and_is_not_silent(tmp_path: Path) -> None:
+    video, music, out = (tmp_path / n for n in ("v.mp4", "m.wav", "out.mp4"))
+    _make_video(video, 6.0)
+    _make_wav(music, 1000, 6.0, 0.3)
+    await mix_final(video, [], 6.0, out, music=MusicMix(AudioTrack(music, 0.0)))
+    info = _probe(out)
+    assert [s["codec_name"] for s in info["streams"] if s["codec_type"] == "audio"] == ["aac"]
+    assert abs(float(info["format"]["duration"]) - 6.0) <= 0.1
+    samples, rate = _decode(out)
+    assert _band_db(samples, rate, 1.0, 5.0, 1000) > -30  # the tone is there
+    assert abs(samples[: int(0.001 * rate)]).max() < 0.03  # 15 ms fade-in: no click at t=0
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("music_seconds", [3.0, 9.0])
+async def test_music_shorter_or_longer_than_the_video_still_pins_the_duration(
+    tmp_path: Path, music_seconds: float
+) -> None:
+    video, music, out = (tmp_path / n for n in ("v.mp4", "m.wav", "out.mp4"))
+    _make_video(video, 5.0)
+    _make_wav(music, 500, music_seconds, 0.3)
+    await asyncio.wait_for(
+        mix_final(video, [], 5.0, out, music=MusicMix(AudioTrack(music, 0.0))), timeout=30
+    )
+    assert abs(float(_probe(out)["format"]["duration"]) - 5.0) <= 0.1
+
+
+@pytest.mark.slow
+async def test_music_is_ducked_while_the_narration_speaks_and_recovers_after(
+    tmp_path: Path,
+) -> None:
+    """Narration 200 Hz at about -21 dBFS, 1.0-3.0 s and 5.0-7.0 s; music 2 kHz. The music's own
+    frequency is measured in the mix: down >= 6 dB under speech, back within 2 dB of the free
+    level 1 s after the speech stops. (Sweep behind these parameters: references/ffmpeg.md.)"""
+    video, nar, music, out = (tmp_path / n for n in ("v.mp4", "n.wav", "m.wav", "out.mp4"))
+    _make_video(video, 8.0)
+    _make_wav(music, 2000, 8.0, 0.2)
+    _make_wav(nar, 200, 2.0, 0.126)
+    tracks = [AudioTrack(nar, 1.0, 2.0), AudioTrack(nar, 5.0, 2.0)]
+    ducked = tmp_path / "ducked.mp4"
+    await mix_final(
+        video,
+        tracks,
+        8.0,
+        ducked,
+        music=MusicMix(AudioTrack(music, 0.0), duck_under_narration=True),
+    )
+    plain = tmp_path / "plain.mp4"
+    await mix_final(
+        video,
+        tracks,
+        8.0,
+        plain,
+        music=MusicMix(AudioTrack(music, 0.0), duck_under_narration=False),
+    )
+    d, rate = _decode(ducked)
+    p, _ = _decode(plain)
+    speech = (1.5, 2.8)
+    after = (4.0, 4.9)  # >= 1 s after the first speech ended at 3.0 s
+    drop = _band_db(d, rate, *speech, 2000) - _band_db(p, rate, *speech, 2000)
+    back = _band_db(d, rate, *after, 2000) - _band_db(p, rate, *after, 2000)
+    assert drop <= -6.0, drop
+    assert back >= -2.0, back
+    assert _band_db(d, rate, 1.5, 2.8, 200) == pytest.approx(
+        _band_db(p, rate, 1.5, 2.8, 200), abs=1.5
+    )
+
+
+@pytest.mark.slow
+async def test_a_broken_music_file_fails_without_leaving_output_or_touching_the_old_one(
+    tmp_path: Path,
+) -> None:
+    video, out = tmp_path / "v.mp4", tmp_path / "out.mp4"
+    _make_video(video, 2.0)
+    out.write_bytes(b"old final")
+    bad = tmp_path / "bad.wav"
+    bad.write_bytes(b"not audio at all")
+    with pytest.raises(MixError):
+        await mix_final(video, [], 2.0, out, music=MusicMix(AudioTrack(bad, 0.0)))
+    assert out.read_bytes() == b"old final"
+    assert not list(tmp_path.glob("*.tmp*"))
