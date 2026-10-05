@@ -194,7 +194,7 @@
 - **完成标准**：测试通过；既有 `animation_html` 测试全部通过。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_animation_html_stage.py tests/stages/test_animation_html_tools.py tests/stages/test_animation_html_prompt.py tests/engines/test_html_probe.py tests/engines/test_html_static_check.py -v`；`uv run pytest -m slow tests/stages/test_animation_html_tools.py -v`
 
-### T9：整流水线集成与联调（待开始）
+### T9：整流水线集成与联调（完成）
 
 - **目标**：fake 运行时分别跑通两种形态的整条流水线，并做"真实配乐产物 → 时间轴 → 画面校验"的联调（AC8）。
 - **涉及文件**：`backend/tests/api/test_synth_music_flow.py`；`backend/tests/fixtures/synth_music/`（短片的 `brief.md`、`beatsheet.json`、参考合成脚本 `compose_ref.py`、示范镜头脚本；讲解形态复用 `tests/fixtures/animation/` 与 `tests/fixtures/animation_html/` 夹具）。
@@ -223,6 +223,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T9 整流水线集成与联调 — `tests/api/test_synth_music_flow.py`：假池 3 个（短片整条流水线、改节拍脚本后配乐变旧、讲解 + 背景乐），slow 2 个（真实 Seatbelt + Chromium 的短片流水线；`events.json` → 时间轴 → `env.hit` 在每个 kick 起点为 1、`env.energy` 与 `analysis.json` 一致）
 - 2026-10-05 — T8 `animation_html` 短片分支 — probe 5、静态检查 3 组、阶段 6、工具 8 + 1 slow（真实 Chromium：global.js 的 HUD 不能替镜头顶账）、提示词 11 条规则
 - 2026-10-05 — T7 运行时 `env` 补全与 `include_global` — 慢测 7 个新增（共 24 个通过），assemble 1 个
 - 2026-10-05 — T6 `music` 阶段与注册 — 26 个阶段测试；短片与"讲解 + 合成背景乐"在 `/api/video-kinds` 里可用，导入音乐仍不可用；`make check` 全绿
@@ -234,7 +235,7 @@
 
 ## 下一步
 
-- T9：整流水线集成与联调（`tests/api/test_synth_music_flow.py`）。
+- T10：真实模型冒烟（`test_motion_reel_claude_login`）、L4、文档同步与收尾，之后整分支评审。
 
 ## 决策记录
 
@@ -265,6 +266,8 @@
 - 2026-10-05 — T8：`prepare_turn(workdir)` 拿不到项目设置，按上游内容判断形态：`upstream/beatsheet/beatsheet.json` 存在为短片，否则有 `upstream/music/events.json` 为"讲解 + 背景乐"，两者都没有走原来的纯叙事分支（原有错误文案与测试不动）。短片与背景乐分支读时间轴用 `studio.timeline.load`。
 - 2026-10-05 — T8：采样统一为 `probe.scene_sample_times`（短片按音乐关键时刻，其余按旁白 beat），冒烟、确定性、预览共用；`probe.is_reel(timeline)` = 无旁白且有网格与配乐层。音乐平移检查把能量曲线也后移（插入两格开头值），避免只靠 `env.energy` 的镜头被误判；没有 `global.js` 时在主页面上直接做检查（同一页面即不含全局后期），有 `global.js` 时另开一个 `include_global=False` 的页面。"部分没变"只在超过一半的关键帧没变时给警告（避免离事件远的静止帧制造噪声）。字面量时刻警告只对短片启用，只认 `lt` 与 `env.t`，不认裸 `t`（缓动函数里太常见）。
 - 2026-10-05 — T8：假浏览器（`tests/fixtures/html_engine/fakes.py`）现在从装配页面里解析内嵌的时间轴作为页面的初始时间轴，并记录每次装配的页面（`assembled`）——此前假页面总是用旁白夹具的时间轴，对短片不成立。
+
+- 2026-10-05 — T9：**已知局限（记录，不改）**：`music` 阶段的 `finalize_blockers` 比对的是 `upstream/` 里的时间轴，而 `upstream/` 只在每轮开始时按上游定稿版本重建；上游重新定稿后、用户还没再开一轮就直接定稿 `music` 时，blockers 看不到变化——这一段由现有的 stale 机制兜底（下游状态变为 `stale`，测试 `test_changing_the_beatsheet_makes_the_music_stale…` 已覆盖：stale 之后再开一轮，blockers 点名"上游…变了"）。若验收时认为不够，需要让阶段在定稿检查前刷新 `upstream/`，那是 `agent`/`api` 层的接口变化，不在本计划内。
 
 ## 意外与发现
 
