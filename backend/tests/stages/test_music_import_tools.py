@@ -19,6 +19,10 @@ from studio.stages.music.analyze import ANALYZE_MUSIC_TOOL
 from studio.stages.music.sources import SOURCE_EXTENSIONS, import_source
 
 
+def doc_bpm(workdir: Path) -> float:
+    return float(json.loads((workdir / "music" / "analysis.json").read_text())["bpm"])
+
+
 def _ctx(workdir: Path, writes: list[tuple[str, str]]) -> ToolContext:
     return ToolContext(
         project_id="p",
@@ -77,7 +81,7 @@ def test_success_text_picture_and_files(analyzed: tuple[Path, ToolResult, list])
     assert not result.is_error, result.text
     for needle in ("BPM", "拟合残差", "置信度", "总时长", "候选"):
         assert needle in result.text
-    assert "BPM 119.9" in result.text or "BPM 120" in result.text
+    assert f"BPM {doc_bpm(workdir):g}" in result.text
     assert len(result.images) == 1 and result.images[0].media_type == "image/jpeg"
     assert base64.b64decode(result.images[0].data_base64)[:3] == b"\xff\xd8\xff"
     doc = json.loads((workdir / "music" / "analysis.json").read_text())
@@ -104,8 +108,8 @@ async def test_repeat_call_gives_identical_products(
     assert not again.is_error
     first = (project / "music" / "analysis.json").read_bytes()
     assert (workdir / "music" / "analysis.json").read_bytes() == first
-    assert hashlib.sha256((project / "music" / "analysis.json").read_bytes()).hexdigest()
     assert again.text == result.text
+    assert (project / "music" / "analysis.json").read_bytes() == first
 
 
 async def test_no_source_is_a_clear_error(tmp_path: Path) -> None:
@@ -175,3 +179,21 @@ async def test_low_confidence_suggests_manual_sections(
     result = await invoke_tool(ANALYZE_MUSIC_TOOL, _ctx(project, []), {})
     assert not result.is_error
     assert "手动修正" in result.text and "拍点分散" in result.text
+
+
+async def test_picture_compression_failure_leaves_products_untouched(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (project / "music" / "analysis.json").write_text('{"old": true}')
+    (project / "music" / "analysis.png").write_bytes(b"old-png")
+
+    def boom(png: bytes) -> bytes:
+        raise ValueError("cannot compress")
+
+    monkeypatch.setattr(analyze_module, "compress_picture", boom)
+    writes: list[tuple[str, str]] = []
+    result = await invoke_tool(ANALYZE_MUSIC_TOOL, _ctx(project, writes), {})
+    assert result.is_error and "旧产物没有改动" in result.text
+    assert writes == []
+    assert (project / "music" / "analysis.json").read_text() == '{"old": true}'
+    assert (project / "music" / "analysis.png").read_bytes() == b"old-png"

@@ -91,7 +91,7 @@ async def _handler(ctx: ToolContext, args: AnalyzeMusicArgs) -> ToolResult:
             result = await run_song_analysis(source, temp_dir, timeout=DEFAULT_TIMEOUT)
             doc = json.loads(result.analysis_path.read_text(encoding="utf-8"))
             summary = _summary(doc)
-            picture = result.picture_path.read_bytes()
+            jpeg = compress_picture(result.picture_path.read_bytes())  # before installing
             _install(temp_dir, workdir / "music")
         except SongJobError as exc:
             return ToolResult(text=f"{exc}（music/ 里的旧产物没有改动）", is_error=True)
@@ -102,7 +102,6 @@ async def _handler(ctx: ToolContext, args: AnalyzeMusicArgs) -> ToolResult:
     for name in _PRODUCTS:
         relpath = f"music/{name}"
         ctx.record_tool_write(relpath, hashlib.sha256((workdir / relpath).read_bytes()).hexdigest())
-    jpeg = compress_picture(picture)
     image = ImageData(media_type="image/jpeg", data_base64=base64.b64encode(jpeg).decode("ascii"))
     return ToolResult(text=summary, images=[image])
 

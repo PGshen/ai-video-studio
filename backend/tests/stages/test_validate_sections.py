@@ -56,8 +56,14 @@ def test_range_must_equal_the_section_span() -> None:
 
 
 def test_range_must_be_aligned_to_downbeats() -> None:
-    errors = errors_of(doc(range={"start": 1.0, "end": 24.5}))
-    assert any("range" in e and "2.5" in e or "0.5" in e for e in errors)
+    # Section span and range agree (1.0 → 24.5) so only the alignment rule can object.
+    d = doc(range={"start": 1.0, "end": 24.5})
+    d["sections"][0]["start"] = 1.0
+    errors = errors_of(d)
+    assert any("range 的起点" in e and "强拍" in e and "0.5" in e for e in errors)
+    d = doc(range={"start": 0.5, "end": 25.0})
+    d["sections"][1]["end"] = 25.0
+    assert any("range 的终点" in e and "强拍" in e for e in errors_of(d))
 
 
 def test_gap_between_sections_is_an_error() -> None:
@@ -102,16 +108,51 @@ def test_sections_must_stay_within_the_audio() -> None:
     assert any("超出" in e for e in errors_of(d))
 
 
+def _shifted(target: str, shift: float) -> dict[str, Any]:
+    """Valid doc with one boundary moved by `shift` seconds (a shared one moves on both sides)."""
+    d = doc(range={"start": 0.5, "end": 24.5}) if target.startswith("range") else doc()
+    sections, rng = d["sections"], d.get("range") or {}
+    if target == "first_start":
+        sections[0]["start"] += shift
+    elif target == "middle":
+        sections[0]["end"] += shift
+        sections[1]["start"] += shift
+    elif target == "last_end":
+        sections[1]["end"] += shift
+    elif target == "range_start":
+        rng["start"] += shift
+        sections[0]["start"] += shift
+    elif target == "range_end":
+        rng["end"] += shift
+        sections[1]["end"] += shift
+    return d
+
+
+_WORD = {
+    "first_start": "起点",
+    "middle": "终点",
+    "last_end": "终点",
+    "range_start": "range 的起点",
+    "range_end": "range 的终点",
+}
+
+
+@pytest.mark.parametrize("target", list(_WORD))
 @pytest.mark.parametrize(
-    ("shift", "ok"), [(-0.029, True), (0.029, True), (-0.031, False), (0.031, False)]
+    ("shift", "ok"),
+    [(-0.029, True), (0.029, True), (-0.03, True), (0.03, True), (-0.031, False), (0.031, False)],
 )
-def test_alignment_tolerance_is_30_ms(shift: float, ok: bool) -> None:
-    d = doc()
-    d["sections"][0]["start"] = 0.5 + shift
-    errors = errors_of(d)
-    assert (errors == []) is ok
+def test_alignment_tolerance_is_30_ms(target: str, shift: float, ok: bool) -> None:
+    errors = errors_of(_shifted(target, shift))
+    assert (errors == []) is ok, errors
     if not ok:
-        assert any("强拍" in e and "0.5" in e for e in errors)
+        assert any(_WORD[target] in e and "强拍" in e for e in errors)
+
+
+def test_last_end_must_be_on_a_downbeat() -> None:
+    d = doc()
+    d["sections"][1]["end"] = 25.5  # mid-bar
+    assert any("verse 的终点" in e and "强拍" in e and "24.5" in e for e in errors_of(d))
 
 
 def test_misaligned_start_names_the_nearest_downbeat() -> None:
