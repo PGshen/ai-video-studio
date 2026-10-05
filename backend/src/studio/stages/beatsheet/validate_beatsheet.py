@@ -34,6 +34,7 @@ BEATS_PER_BAR = 4
 
 _ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _EPSILON = 1e-6
+_RANGE_TOLERANCE = 1e-3
 
 
 @dataclass(slots=True)
@@ -210,13 +211,21 @@ def _upstream_sections(sections_doc: Any, check: BeatsheetCheck) -> list[tuple[s
     return result
 
 
-def _mv_total(sections_doc: dict[str, Any], upstream: list[tuple[str, float, float]]) -> float:
+def _check_range_matches_span(
+    sections_doc: dict[str, Any], span: tuple[float, float], check: BeatsheetCheck
+) -> None:
+    """An explicit `range` must equal the section span (music stage rule); no clipping here."""
     explicit = sections_doc.get("range")
-    if isinstance(explicit, dict):
-        start, end = explicit.get("start"), explicit.get("end")
-        if _finite(start) and _finite(end) and start < end:
-            return float(end) - float(start)
-    return upstream[-1][2] - upstream[0][1]
+    if not isinstance(explicit, dict):
+        return
+    start, end = explicit.get("start"), explicit.get("end")
+    if not (_finite(start) and _finite(end)):
+        return
+    if abs(start - span[0]) > _RANGE_TOLERANCE or abs(end - span[1]) > _RANGE_TOLERANCE:
+        check.errors.append(
+            f"music/sections.json 的 range（{start:g}→{end:g}）与段落跨度"
+            f"（{span[0]:g}→{span[1]:g}）不一致，请回到 music 阶段修正"
+        )
 
 
 def check_beatsheet_mv(
@@ -296,7 +305,9 @@ def check_beatsheet_mv(
     if missing:
         check.errors.append(f"还缺少 music/sections.json 的段落：{'、'.join(missing)}")
 
-    total = _mv_total(sections_doc, upstream)
+    span = (upstream[0][1], upstream[-1][2])
+    _check_range_matches_span(sections_doc, span, check)
+    total = span[1] - span[0]
     check.total_seconds = total
     _check_target(total, target_seconds, check)
     return check
@@ -325,7 +336,7 @@ def check_workspace(workdir: Path) -> BeatsheetCheck:
     if error is not None:
         return BeatsheetCheck(errors=[error])
     target = _target_from_workspace(workdir)
-    if not (workdir / MV_SECTIONS_PATH).exists():
+    if not (workdir / MV_SECTIONS_PATH).is_file():
         return check_beatsheet(doc, target_seconds=target)
     sections_doc, error = _read_json(workdir, MV_SECTIONS_PATH)
     if error is not None:

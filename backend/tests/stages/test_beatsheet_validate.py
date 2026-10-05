@@ -287,7 +287,7 @@ def test_mv_id_and_label_are_optional_and_id_must_equal_ref() -> None:
 def test_mv_missing_ref_is_an_error() -> None:
     doc = _mv_doc()
     del doc["sections"][1]["ref"]
-    assert "第 2 个段落缺少字符串 ref" in _mv(doc).errors[0]
+    assert _mv(doc).errors[0] == ("第 2 个段落缺少字符串 ref（music/sections.json 的段落 id）")
 
 
 def test_mv_unknown_and_duplicate_refs() -> None:
@@ -327,7 +327,9 @@ def test_mv_moments_are_relative_to_the_section_and_must_fit() -> None:
     late = _mv_with(
         0, moments=[{"at": "2.1", "visual_action": "a"}, {"at": "1.3", "visual_action": "b"}]
     )
-    assert "比前一个 moment 早" in _mv(late).errors[0]
+    assert _mv(late).errors == [
+        "段落 intro 的第 2 个 moment：at 1.3 比前一个 moment 早，请按时间顺序写"
+    ]
     bad = _mv(_mv_with(0, moments=[{"at": "x", "visual_action": "a"}])).errors[0]
     assert "不是合法的小节.拍写法" in bad
 
@@ -344,7 +346,9 @@ def test_mv_moment_conversion_uses_the_sections_json_bpm_override() -> None:
 
 
 def test_mv_energy_and_visual_action_and_intent_rules() -> None:
-    assert "energy 必须是 low/mid/high/peak 之一" in _mv(_mv_with(0, energy="x")).errors[0]
+    assert _mv(_mv_with(0, energy="x")).errors == [
+        "段落 intro：energy 必须是 low/mid/high/peak 之一（当前 'x'）"
+    ]
     empty = _mv(_mv_with(0, moments=[{"at": "1.1", "visual_action": " "}], intent=""))
     assert empty.errors == []
     assert len(empty.warnings) == 2
@@ -359,29 +363,64 @@ def test_mv_total_uses_the_section_span_or_explicit_range() -> None:
     far = _mv(_mv_doc(), target=20.0)
     assert far.errors == ["总时长 40.00 秒与目标时长 20 秒相差 100%，超过 40%"]
     ranged = _sections_doc(range={"start": 0.0, "end": 40.0})
-    assert _mv(_mv_doc(), ranged).total_seconds == pytest.approx(40.0)
+    positive = _mv(_mv_doc(), ranged)
+    assert positive.errors == [] and positive.total_seconds == pytest.approx(40.0)
     assert _mv(_mv_doc(), target=None).warnings == [
         "没有读到 upstream/concept/brief.md 的目标时长，无法核对总时长"
     ]
 
 
-@pytest.mark.parametrize("doc", [[], "x", {"sections": []}, {"sections": "x"}])
-def test_mv_malformed_beatsheet_is_an_error_not_an_exception(doc: Any) -> None:
-    assert _mv(doc).errors
+def test_mv_range_that_differs_from_the_section_span_is_an_error() -> None:
+    ranged = _sections_doc(range={"start": 0.0, "end": 32.0})
+    assert _mv(_mv_doc(), ranged).errors == [
+        "music/sections.json 的 range（0→32）与段落跨度（0→40）不一致，请回到 music 阶段修正"
+    ]
+    shifted = _sections_doc(range={"start": 8.0, "end": 40.0})
+    assert _mv(_mv_doc(), shifted).errors == [
+        "music/sections.json 的 range（8→40）与段落跨度（0→40）不一致，请回到 music 阶段修正"
+    ]
+    near = _sections_doc(range={"start": 0.0005, "end": 40.0})
+    assert _mv(_mv_doc(), near).errors == []
 
 
 @pytest.mark.parametrize(
-    "sections",
-    [[], {"sections": "x"}, {"sections": [{"id": "a"}]}, _sections_doc(bpm="fast")],
+    ("doc", "message"),
+    [
+        ([], "beatsheet.json 的顶层应为对象 {sections}"),
+        ("x", "beatsheet.json 的顶层应为对象 {sections}"),
+        ({"sections": []}, "sections 必须是非空的段落列表"),
+        ({"sections": "x"}, "sections 必须是非空的段落列表"),
+    ],
 )
-def test_mv_malformed_upstream_sections_is_an_error_not_an_exception(sections: Any) -> None:
+def test_mv_malformed_beatsheet_is_an_error_not_an_exception(doc: Any, message: str) -> None:
+    assert _mv(doc).errors == [message]
+
+
+@pytest.mark.parametrize(
+    ("sections", "message"),
+    [
+        ([], "music/sections.json 的顶层不是对象"),
+        ({"sections": "x"}, "music/sections.json：sections 必须是非空列表"),
+        (
+            {"sections": [{"id": "a"}]},
+            "music/sections.json：第 1 个段落缺少字符串 id 或合法的起止时间",
+        ),
+        (_sections_doc(bpm="fast"), "music/sections.json：bpm 必须是有限的数字（当前 'fast'）"),
+    ],
+)
+def test_mv_malformed_upstream_sections_is_an_error_not_an_exception(
+    sections: Any, message: str
+) -> None:
     result = check_beatsheet_mv(_mv_doc(), sections, _analysis(), target_seconds=None)
-    assert result.errors and all("music/sections.json" in e for e in result.errors[:1])
+    assert result.errors == [message]
 
 
 def test_mv_malformed_analysis_is_an_error_not_an_exception() -> None:
     result = check_beatsheet_mv(_mv_doc(), _sections_doc(), {"bpm": "x"}, target_seconds=None)
-    assert result.errors and "music/analysis.json" in result.errors[0]
+    assert result.errors == [
+        "music/analysis.json：bpm 必须是有限的数字（当前 'x'）",
+        "music/analysis.json：offset 必须是有限的数字（当前 None）",
+    ]
 
 
 def _write_mv(workdir: Path, doc: Any, sections: Any = None, analysis: Any = None) -> None:
