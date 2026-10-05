@@ -301,3 +301,27 @@ class TestSandboxedExecution:
     async def test_std_streams_by_path(self, layout: _Layout) -> None:
         code, out, err = await _sh(layout, "echo o > /dev/stdout; echo e > /dev/stderr")
         assert code == 0 and out == "o\n" and err == "e\n"
+
+
+class TestSeatbeltProfileExtraReads:
+    def test_extra_read_paths_are_allowed_after_the_deny(self, tmp_path: Path) -> None:
+        workdir = tmp_path / "repo" / "data" / "projects" / "p1"
+        workdir.mkdir(parents=True)
+        venv = tmp_path / "repo" / "backend" / ".venv"
+        venv.mkdir(parents=True)
+
+        lines = _lines(seatbelt_profile(workdir, [tmp_path / "repo"], allow_read=[venv]))
+
+        deny = _index(lines, "(deny file-read*")
+        extra = next(
+            i
+            for i, line in enumerate(lines)
+            if str(venv.resolve()) in line and "allow file-read*" in line
+        )
+        assert deny < extra
+
+    def test_no_extra_rule_by_default(self, tmp_path: Path) -> None:
+        workdir = tmp_path / "w"
+        workdir.mkdir()
+        lines = _lines(seatbelt_profile(workdir, []))
+        assert sum(line.startswith("(allow file-read*") for line in lines) == 1

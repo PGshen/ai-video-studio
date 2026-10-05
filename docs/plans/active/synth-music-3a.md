@@ -135,7 +135,7 @@
 - **完成标准**：测试通过；契约生效。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_concept_stage.py tests/stages/test_concept_check.py tests/stages/test_beatsheet_stage.py tests/stages/test_beatsheet_validate.py tests/stages/test_beatsheet_prompt.py tests/api/test_video_kinds.py -v && uv run lint-imports`
 
-### T5：`render_music` 工具核心（待开始）
+### T5：`render_music` 工具核心（完成）
 
 - **目标**：运行脚本、校验、重定时校验、写回产物的完整流程，作为纯函数核心加工具包装（设计 §7.4）；核心将在 3B 被 `POST /music/render` 复用。
 - **涉及文件**：`backend/src/studio/stages/music/{render,tool}.py`；`backend/tests/stages/test_music_render.py`、`test_music_tool.py`。
@@ -223,6 +223,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T5 `render_music` 核心与工具 — 19 个测试（render 13、tool 5 + 真实 Seatbelt 1 slow），`agent.shell_sandbox.seatbelt_profile` 增加 `allow_read` 参数
 - 2026-10-05 — T4 `concept` 与 `beatsheet` 阶段 — 78 个新增测试（target_duration、concept、beatsheet），`make check` 全绿
 - 2026-10-05 — T3 分析图与脚本运行器 — picture 4、runner 8（含超时杀进程组、取消、环境变量隔离），slow 的真实 Seatbelt 用例通过
 - 2026-10-05 — T2 `engines.audio` WAV 与分析 — 30 个测试（wav 10、analysis 20）
@@ -230,7 +231,7 @@
 
 ## 下一步
 
-- T5：`render_music` 工具核心（`stages/music/render.py`、`tool.py`）。
+- T6：`music` 阶段定义、`prepare_turn`、提示词、金样本、注册（`stages/music/__init__.py` 现在只有占位文档字符串）。
 
 ## 决策记录
 
@@ -250,6 +251,10 @@
 - 2026-10-05 — T3：运行器只把 `PATH/LANG/LC_ALL/HOME` 加上 `STUDIO_*`、`TMPDIR`（指向 `out_dir/tmp`）传给脚本，父进程里的 API key 等不会泄给脚本；`RLIMIT_CPU` 为超时 + 10 秒；超时与取消都杀整个进程组。分析图的底部一行画的是能量曲线加检测到的起音（`MusicReport` 不保存逐帧谱流量），不是设计里的"起音强度"曲线。
 
 - 2026-10-05 — T4：目标时长的解析（`parse_target_seconds`、`target_seconds_from_brief`）放进 `stages.common.target_duration`，因为 `concept` 与 `beatsheet` 互不 import 又都要用；`beatsheet` 从 `upstream/concept/brief.md` 读目标，读不到只给警告。`visual_action`/`intent`/`label` 为空只是警告。注册 `concept`、`beatsheet` 后短片的不可用原因变为"「配乐」阶段尚未实现"（`test_video_kinds` 随之更新），不会出现半成品入口。
+
+- 2026-10-05 — T5：`render_music_core(workdir, *, timeline, base_hash, section_energy, wrap_command, timeout)` 接收已构建好的时间轴字典与 `base_hash`，不自己读文件；工具从 `upstream/`（`infer_sources`：有 `upstream/beatsheet/beatsheet.json` 为短片，否则为有旁白）读时间轴，3B 的 api 端点可复用核心。`stages/music/sources.py` 的推断规则也用于 T6 的 `finalize_blockers`（顶层前缀）。
+- 2026-10-05 — T5：**计划外的公共接口新增**：`agent.shell_sandbox.seatbelt_profile` 增加关键字参数 `allow_read`（拒读之后放回的只读路径），工具用它放回虚拟环境（`sys.prefix`）；先写了红测试（`tests/agent/test_shell_sandbox.py`）。重定时校验：全部时间 ×1.25（短片 BPM ×0.8），失败条件为再跑一次出错、事件名集合变了、短片起音对齐率低于原来的一半。写回用"全部先写临时文件再依次改名"。
+- 2026-10-05 — T5：工具里的沙箱包装通过模块变量 `studio.stages.music.tool.sandbox_wrapper` 注入（测试替换成恒等包装或 `None`）；真实沙箱用例（slow）用参考脚本跑通整个流程。
 
 ## 意外与发现
 

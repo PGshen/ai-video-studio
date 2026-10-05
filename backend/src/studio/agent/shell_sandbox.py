@@ -55,8 +55,13 @@ def _subpaths(paths: Sequence[Path]) -> str:
     return " ".join(f"(subpath {_quote(path)})" for path in paths)
 
 
-def seatbelt_profile(workdir: Path, deny_read: Sequence[Path]) -> str:
-    """生成本轮 Shell 的 Seatbelt 配置（SBPL）。`deny_read` 通常是 `[仓库根, data_dir]`。"""
+def seatbelt_profile(
+    workdir: Path, deny_read: Sequence[Path], *, allow_read: Sequence[Path] = ()
+) -> str:
+    """生成本轮 Shell 的 Seatbelt 配置（SBPL）。`deny_read` 通常是 `[仓库根, data_dir]`。
+
+    `allow_read` 是在拒读之后额外放回的只读路径（例如运行合成脚本需要的虚拟环境，它在仓库内）。
+    """
     work = workdir.resolve()
     rules = [
         "(version 1)",
@@ -73,7 +78,9 @@ def seatbelt_profile(workdir: Path, deny_read: Sequence[Path]) -> str:
     if deny_read:
         rules.append(f"(deny file-read* {_subpaths([path.resolve() for path in deny_read])})")
     # Later rules win in Seatbelt: re-allow the workspace after denying its ancestors.
-    rules.append(f"(allow file-read* {_subpaths([work])})")
+    rules.append(
+        f"(allow file-read* {_subpaths([work, *[path.resolve() for path in allow_read]])})"
+    )
     rules.append("(deny file-write*)")
     writable = " ".join([_subpaths([work, sandbox_tmpdir(work)]), *_WRITABLE_DEVICES])
     rules.append(f"(allow file-write* {writable})")
