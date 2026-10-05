@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 进行中 |
+| 状态 | 已完成（2026-10-05 验收，合并到 main） |
 | 里程碑 | 多形态视频流水线 · 子项目 3/4 · 计划 3B |
 | 设计依据 | [子项目 3 设计](../../design/2026-10-05-synth-music-reel.md)（已批准）§8、§9、§10；[ADR 0021](../../decisions/0021-HTML引擎与配乐阶段.md)；[3A 计划](../completed/synth-music-3a.md)（已合并）的决策记录；[ffmpeg 记录](../../references/ffmpeg.md) |
 | 分支 | `synth-music-3b`（从 `main` 切出，3A 与其遗留修复合并之后） |
@@ -175,7 +175,7 @@
 - **完成标准**：AC7、AC8（附耗时、费用、各阶段轮数、警告）。
 - **验证命令**：`cd backend && uv run pytest -m slow tests/api/test_synth_music_flow.py -v`；`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`
 
-### T9：L4、文档同步与收尾（进行中：L4 与文档完成，待冒烟结果与整分支评审）
+### T9：L4、文档同步与收尾（完成）
 
 - **目标**：完成 L4（AC9）与文档同步（AC10）。
 - **涉及文件**：`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`、`docs/runbooks/verification.md`（L4 步骤与冒烟命令）、`docs/references/ffmpeg.md`、`docs/design/2026-10-05-synth-music-reel.md` 的"对总设计的补充"处只追加、不改正文（若需改正文走升级流程）、`docs/plans/TODO.md`、本计划的验证记录。
@@ -236,4 +236,7 @@
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 待填
+- **AC1–AC7、AC10**：`make check` 后端 2295、前端 1056 个测试通过；slow（真实 ffmpeg、Chromium、Seatbelt）`tests/engines/test_mix.py`、`tests/test_worker_html_music.py`、`tests/api/test_synth_music_flow.py` 共 18 条通过；各项见进度行。
+- **AC8**：真实模型冒烟通过，7 分 26 秒，$1.03，成片 11.267 秒、AAC 一条音轨（见进度行）。
+- **AC9**：L4 见进度行（三处界面问题已修）。
+- **整分支评审**：opus，无 Critical，两条 Important 已修（先红后绿），Minor 进 TODO。
