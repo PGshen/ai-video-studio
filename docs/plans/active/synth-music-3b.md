@@ -175,7 +175,7 @@
 - **完成标准**：AC7、AC8（附耗时、费用、各阶段轮数、警告）。
 - **验证命令**：`cd backend && uv run pytest -m slow tests/api/test_synth_music_flow.py -v`；`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`
 
-### T9：L4、文档同步与收尾（待开始）
+### T9：L4、文档同步与收尾（进行中：L4 与文档完成，待冒烟结果与整分支评审）
 
 - **目标**：完成 L4（AC9）与文档同步（AC10）。
 - **涉及文件**：`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`、`docs/runbooks/verification.md`（L4 步骤与冒烟命令）、`docs/references/ffmpeg.md`、`docs/design/2026-10-05-synth-music-reel.md` 的"对总设计的补充"处只追加、不改正文（若需改正文走升级流程）、`docs/plans/TODO.md`、本计划的验证记录。
@@ -191,6 +191,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — T9 L4（隔离实例 api 8010 / 前端 5174，种子短片项目，真实 Seatbelt）— 配乐画布：播放器可放、点波形跳转（click 5.6 秒后播放到结尾）、播放位置与时间标签跟随、真实沙箱里手动渲染得到报告（重定时校验通过、指标、256 色分析图）；动画阶段实时预览：静音按钮在、无"缺失"提示、点播放后配乐（URL 带 `wav_hash`）在放且预览时钟跟着配乐。**L4 发现并修掉三处**：配乐阶段定稿按钮与快照开关重复（页面通用头部也渲染一份，改为 `STAGES_WITH_OWN_ACTIONS` 统一判断并加单测）；播放器被 flex 压成 0 高（改 grid）；脚本标签里渲染报告压住编辑器且不能滚动（编辑器给最小高度、容器可滚动）。jsdom 看不到布局问题，已写进 runbook。未单独走查：讲解加配乐项目的画布与成片标签的 UI 渲染（后端与前端逻辑均有测试，成片由 slow 与冒烟覆盖）。
 - 2026-10-05 — T8 集成 — `test_synth_music_flow.py` 新增：短片与讲解加背景乐从配乐到成片再到 `finalize-render`（假后端，3 条含"成片前配乐过期被拦"）+ slow 真实 Chromium/ffmpeg 2 条（短片音轨 aac、时长 11.25 秒、`audio_sources` 只有 `music`；讲解加配乐一条音轨、3 秒）；冒烟用例已扩展到出成片（`_render_reel_final`），待真实运行
 - 2026-10-05 — T7 `MusicCanvas` — 播放/脚本/事件三标签（`v-show`，切换不打断播放）；`MusicPlayer`（播放器、`WaveformView` SVG 波形与段落/事件/播放位置、指标、分析图、固定的"需要试听"提示）、`EventTable`、`RenderReport`、`musicView.ts`；脚本标签编辑 `music/compose.py`（保存走阶段 `music`），手动渲染在忙碌、未保存、无脚本时禁用并说明原因；`ProjectWorkbenchPage` 新增 `music` 分支（定稿按钮沿用）；组件与纯函数测试 40 条
 - 2026-10-05 — T6 预览播放的配乐来源 — `useHtmlPlayback`：短片以配乐 `currentTime` 为时钟（贴合容差 0.05 秒、拒绝自动播放回退墙钟）；讲解里旁白是时钟、配乐 −8 dB 跟随（漂移 > 0.3 秒才重设，拒绝不影响旁白）；URL 变了换源并保持位置、配乐没了就停；`setMuted`；`HtmlPreviewPane` 加静音按钮与"配乐未渲染或已过期"提示，`HtmlAnimationCanvas` 按项目 `music_source` 计算 `scoreMissing`；新增 composable 测试 18 条、组件测试 3 条
