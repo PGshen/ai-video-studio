@@ -354,9 +354,11 @@ async def _bed_through_animation(api_env: ApiEnv) -> str:
 async def _render_final(api_env: ApiEnv, pid: str, backend: FakeBackend | None = None) -> Path:
     created = await api_env.client.post(f"/api/projects/{pid}/render")
     assert created.status_code == 201, created.text
-    extra = {"html_backend": backend.as_backend()} if backend is not None else {}
+    html_backend = backend.as_backend() if backend is not None else None
     engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
-    assert await run_once(engine, blobs, data_dir=api_env.data_dir, **extra) is True
+    assert (
+        await run_once(engine, blobs, data_dir=api_env.data_dir, html_backend=html_backend) is True
+    )
     job = (await api_env.client.get(f"/api/projects/{pid}/jobs/{created.json()['id']}")).json()
     assert job["status"] == "done", job["error"]
     return api_env.workdir(pid) / "output" / "final.mp4"
