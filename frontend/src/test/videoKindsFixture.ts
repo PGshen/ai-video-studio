@@ -1,4 +1,4 @@
-/** 测试用的 `GET /api/video-kinds` 响应：与后端默认注册表一致，只有 manim/true/none 可用。 */
+/** 测试用的 `GET /api/video-kinds` 响应：manim/true/none 与音乐视频（html/false/import）可用，其余按"阶段尚未实现"禁用。 */
 import type { KindOptionOut, PresetOut, VideoKindsOut } from '@/types/api'
 
 const REASON = '该类型的阶段尚未实现'
@@ -63,6 +63,13 @@ export const VIDEO_KINDS_FIXTURE: VideoKindsOut = {
     kind('explainer_html', 'html', true, 'synth', [...EXPLAINER, 'music', 'animation_html']),
     kind('explainer_html', 'html', true, 'import', [...EXPLAINER, 'music', 'animation_html']),
     kind('motion_reel', 'html', false, 'synth', ['concept', 'beatsheet', 'music', 'animation_html']),
-    kind('music_video', 'html', false, 'import', ['concept', 'music', 'beatsheet', 'animation_html']),
+    kind(
+      'music_video',
+      'html',
+      false,
+      'import',
+      ['concept', 'music', 'beatsheet', 'animation_html'],
+      true,
+    ),
   ],
 }

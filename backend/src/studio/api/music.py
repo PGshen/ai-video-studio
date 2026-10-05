@@ -16,7 +16,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -24,9 +24,11 @@ from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
 from studio.api.deps import get_engine, get_settings, get_turn_runner
+from studio.api.music_import_meta import build_import_meta
 from studio.api.schemas import MusicEventOut, MusicMetaOut, MusicRenderOut, MusicSectionOut
 from studio.config import Settings
 from studio.db.repo.projects import get_project
+from studio.stages.common.music_source import find_source
 from studio.stages.music import tool as music_tool
 from studio.stages.music.render import metrics_of, render_music_core
 from studio.stages.music.sources import section_energy
@@ -37,16 +39,34 @@ from studio.workspace import ScopeError, file_sha256, project_dir, safe_path
 router = APIRouter(prefix="/api", tags=["music"])
 
 _NO_STORE = {"Cache-Control": "no-store"}
+_SOURCE_MEDIA = {
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "m4a": "audio/mp4",
+    "flac": "audio/flac",
+    "ogg": "audio/ogg",
+}
+
+
+def require_music_project(
+    engine: Engine, project_id: str
+) -> tuple[Literal["synth", "import"], bool]:
+    """项目存在且有配乐，返回 (形态, 是否有旁白)；形态决定时间轴的来源。"""
+    project = get_project(engine, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在：{project_id}")
+    source = project.settings.get("music_source")
+    if source not in ("synth", "import"):
+        raise HTTPException(status_code=404, detail="这个项目没有配乐")
+    return source, project.settings.get("narration") is not False
 
 
 def _require_score_project(engine: Engine, project_id: str) -> bool:
     """项目存在且有合成配乐，返回它是否有旁白（决定时间轴的来源）。"""
-    project = get_project(engine, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail=f"项目不存在：{project_id}")
-    if project.settings.get("music_source") != "synth":
-        raise HTTPException(status_code=404, detail="这个项目没有合成配乐")
-    return project.settings.get("narration") is not False
+    form, narration = require_music_project(engine, project_id)
+    if form != "synth":
+        raise HTTPException(status_code=404, detail="导入形态没有合成渲染")
+    return narration
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -74,8 +94,10 @@ def music_meta_endpoint(
     engine: Engine = Depends(get_engine),
     settings: Settings = Depends(get_settings),
 ) -> MusicMetaOut:
-    narration = _require_score_project(engine, project_id)
+    form, narration = require_music_project(engine, project_id)
     workdir = project_dir(settings.data_dir, project_id)
+    if form == "import":
+        return build_import_meta(workdir)
     loaded = _load_base(workdir, narration)
     sections = (
         [
@@ -127,8 +149,17 @@ def music_audio_endpoint(
     engine: Engine = Depends(get_engine),
     settings: Settings = Depends(get_settings),
 ) -> FileResponse:
-    _require_score_project(engine, project_id)
+    form, _ = require_music_project(engine, project_id)
     workdir = project_dir(settings.data_dir, project_id)
+    if form == "import":
+        source = find_source(workdir / "music")
+        if source is None:
+            raise HTTPException(status_code=404, detail="还没有上传音乐")
+        try:
+            path = safe_path(workdir, f"music/{source.name}")
+        except ScopeError as exc:
+            raise HTTPException(status_code=404, detail="还没有上传音乐") from exc
+        return FileResponse(path, media_type=_SOURCE_MEDIA[source.suffix[1:]], headers=_NO_STORE)
     try:
         path = safe_path(workdir, "music/music.wav")
     except ScopeError as exc:

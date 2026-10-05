@@ -1,11 +1,15 @@
-import { QueryClient } from '@tanstack/vue-query'
-import { describe, expect, it, vi } from 'vitest'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent } from 'vue'
+import { FakeXhr } from '@/test/fakeXhr'
 import {
   invalidateAfterWrite,
   invalidateStyleDraft,
   invalidateWorkspace,
   jobRefetchIntervalMs,
   queryKeys,
+  useUploadMusicSourceMutation,
 } from '@/composables/queries'
 
 describe('queryKeys', () => {
@@ -136,5 +140,43 @@ describe('style queries', () => {
     expect(stale(queryKeys.styles())).toBe(false)
     expect(stale(queryKeys.style('s1'))).toBe(false)
     expect(stale(queryKeys.styleDraft('s2'))).toBe(false)
+  })
+})
+
+describe('useUploadMusicSourceMutation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    FakeXhr.reset()
+  })
+
+  it('上传成功后失效配乐 meta、预览 meta 与文件树；进度由调用方的 onProgress 取', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const queryClient = new QueryClient()
+    const spy = vi.spyOn(queryClient, 'invalidateQueries')
+    let mutation!: ReturnType<typeof useUploadMusicSourceMutation>
+    const Probe = defineComponent({
+      setup() {
+        mutation = useUploadMusicSourceMutation('p1')
+        return () => null
+      },
+    })
+    mount(Probe, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } })
+
+    const seen: number[] = []
+    const promise = mutation.mutateAsync({
+      file: new File(['abc'], 'a.mp3'),
+      onProgress: (loaded) => seen.push(loaded),
+    })
+    await flushPromises() // the mutation function runs on a later tick
+    FakeXhr.last.progress(2, 3)
+    FakeXhr.last.respond(200, { filename: 'source.mp3', size: 3, sha256: 'x', duration: 10 })
+    await promise
+    await flushPromises()
+
+    expect(seen).toEqual([2])
+    const keys = spy.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(['projects', 'p1', 'music', 'meta'])
+    expect(keys).toContainEqual(['projects', 'p1', 'animation', 'html-preview-meta'])
+    expect(keys).toContainEqual(['projects', 'p1', 'files'])
   })
 })

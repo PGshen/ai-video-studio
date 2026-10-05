@@ -216,7 +216,7 @@ def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> Proje
     if errors:
         raise HTTPException(status_code=422, detail="；".join(errors))
     reason = unavailable_reason(
-        kind_settings(kind)["pipeline"], registry, kind.music_source, kind.engine
+        kind_settings(kind)["pipeline"], registry, kind.music_source, kind.engine, kind.narration
     )
     if reason is not None:
         raise HTTPException(status_code=422, detail=reason)

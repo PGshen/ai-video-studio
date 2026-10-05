@@ -74,6 +74,21 @@ export function musicClockTime(audioTime: number, duration: number): number {
   return Math.min(duration, Math.max(0, audioTime))
 }
 
+/**
+ * 预览时间 `t` 与配乐元素时间 `a` 的关系：`a = t + offset`（导入音乐从截取区间的起点放；合成形态
+ * `offset` 为 0 或缺省，两个函数都是恒等）。用到配乐 `currentTime` 的每个地方都经由它们。
+ */
+export function toScoreTime(t: number, music: { offset?: number } | null | undefined): number {
+  return t + (music?.offset ?? 0)
+}
+
+export function fromScoreTime(
+  audioTime: number,
+  music: { offset?: number } | null | undefined,
+): number {
+  return audioTime - (music?.offset ?? 0)
+}
+
 /** 配乐比目标位置偏了多少秒以上才重设 `currentTime`，避免跟随时不停地抖。 */
 export const REALIGN_THRESHOLD_SECONDS = 0.3
 

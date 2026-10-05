@@ -50,7 +50,9 @@ import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
 import HtmlAnimationCanvas from '@/features/canvas/animation/HtmlAnimationCanvas.vue'
 import { STAGES_WITH_OWN_ACTIONS } from '@/features/canvas/stageActions'
+import ImportMusicCanvas from '@/features/canvas/music/ImportMusicCanvas.vue'
 import MusicCanvas from '@/features/canvas/music/MusicCanvas.vue'
+import { isImportMusic } from '@/features/canvas/music/importView'
 import NarrativeCanvas from '@/features/canvas/narrative/NarrativeCanvas.vue'
 import TopicCanvas from '@/features/canvas/topic/TopicCanvas.vue'
 
@@ -260,6 +262,24 @@ const canvasBusy = computed(() =>
                     />
                   </template>
                 </HtmlAnimationCanvas>
+                <ImportMusicCanvas
+                  v-else-if="stage === 'music' && isImportMusic(project.settings)"
+                  :project-id="projectId"
+                  :busy="canvasBusy"
+                >
+                  <template #actions>
+                    <StageFinalizeButton
+                      :project-id="projectId"
+                      :stages="project.stages"
+                      :current-stage="stage"
+                    />
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </ImportMusicCanvas>
                 <MusicCanvas
                   v-else-if="stage === 'music'"
                   :project-id="projectId"

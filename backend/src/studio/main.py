@@ -31,6 +31,7 @@ from studio.api.html_preview import router as html_preview_router
 from studio.api.ideas import router as ideas_router
 from studio.api.jobs import router as jobs_router
 from studio.api.music import router as music_router
+from studio.api.music_import import router as music_import_router
 from studio.api.profiles import router as profiles_router
 from studio.api.projects import router as projects_router
 from studio.api.sessions import router as sessions_router
@@ -97,6 +98,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.bus = bus
     app.state.turn_runner = turn_runner
     app.state.music_renders = set()  # 项目 id：正在手动渲染配乐的项目
+    app.state.music_uploads = set()  # 项目 id：正在上传导入音乐的项目
 
     try:
         yield
@@ -132,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(animation_router)
     app.include_router(html_preview_router)
     app.include_router(music_router)
+    app.include_router(music_import_router)
     app.include_router(blobs_router)
     app.include_router(ideas_router)
     app.include_router(brainstorm_router)

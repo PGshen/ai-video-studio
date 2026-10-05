@@ -88,6 +88,21 @@ def effective_grid(analysis: dict[str, Any], sections_doc: dict[str, Any]) -> tu
     return grid
 
 
+def effective_range(sections_doc: dict[str, Any]) -> tuple[float, float]:
+    """有效截取区间（全局秒）：`range` 给出的优先，否则取段落的整体跨度。
+
+    预览、成片与 `music/meta` 共用这一条规则；文档不合法时抛 `TimelineError`。
+    """
+    errors: list[str] = []
+    sections = _raw_sections(sections_doc, errors)
+    explicit = _explicit_range(sections_doc, errors)
+    if errors or not sections:
+        raise TimelineError(errors or ["music/sections.json 没有段落"])
+    if explicit is not None:
+        return explicit
+    return sections[0].start, sections[-1].end
+
+
 def downbeat_times(bpm: float, offset: float, duration: float) -> list[float]:
     """`[0, duration]` 内的全部强拍时刻（全局秒）：`offset + k·小节`，`k` 可为负。"""
     if not _is_number(bpm) or bpm <= 0:
@@ -318,6 +333,7 @@ def import_hash(timeline_digest: str, source_hash: str, range_: tuple[float, flo
 
 
 __all__ = [
+    "effective_range",
     "ALIGN_TOLERANCE",
     "ImportLayers",
     "downbeat_times",

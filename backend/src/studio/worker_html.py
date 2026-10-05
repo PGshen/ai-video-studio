@@ -33,6 +33,7 @@ from studio.engines.render.mix import (
     MixError,
     MusicMix,
     mix_final,
+    music_video_mix,
 )
 from studio.jobs import heartbeat, update_progress
 from studio.timeline import TimelineError
@@ -143,6 +144,8 @@ def _audio_sources(
 class _Score:
     path: Path
     hash: str
+    source_start: float = 0.0
+    """导入音乐：从原曲的这一秒起读（有效截取区间的起点）；合成配乐恒为 0。"""
 
 
 _MUSIC_FILES = ("music.wav", "events.json", "analysis.json", "render.json")
@@ -188,8 +191,40 @@ def _music_source(
     return _Score(private / "music.wav", wav_hash)
 
 
-def _music_mix(path: Path, narration: bool) -> MusicMix:
-    """短片只有配乐；讲解的背景乐压低、被旁白侧链压住，并带长淡入淡出。"""
+def _import_score(
+    workdir: Path,
+    source_file: str,
+    analysis_hash: str,
+    start: float,
+    errors: list[str],
+    scratch: list[Path],
+) -> _Score | None:
+    """导入的原曲：复制到私有目录并边拷边算哈希，哈希要与分析记录的 `source_hash` 一致。
+
+    与合成形态同一套防"检查之后又被换"的做法：混音与 `final.json` 用的是被检查过的这份拷贝。
+    `analysis.json`/`sections.json`/源文件缺失已由时间轴读取报出，这里只管哈希。"""
+    try:
+        source = safe_path(workdir, source_file)  # `music/source.<ext>`, picked by the timeline
+    except ScopeError:
+        errors.append(f"音乐源文件路径不合法：{source_file}")
+        return None
+    private = workdir / ".cache" / "tmp" / f"mix-{uuid.uuid4().hex[:8]}"
+    scratch.append(private)
+    try:
+        digest = _copy_with_hash(source, private / source.name)
+    except OSError:
+        errors.append("源文件已更换，需要在配乐阶段重新分析")
+        return None
+    if digest != analysis_hash:
+        errors.append("源文件已更换，需要在配乐阶段重新分析")
+    return _Score(private / source.name, digest, start)
+
+
+def _music_mix(score: _Score, narration: bool, music_source: str) -> MusicMix:
+    """短片只有配乐；讲解的背景乐压低、被旁白侧链压住，并带长淡入淡出；MV 取原曲的截取区间。"""
+    path = score.path
+    if music_source == "import":
+        return music_video_mix(path, score.source_start)
     if not narration:
         return MusicMix(AudioTrack(path, 0.0))
     return MusicMix(
@@ -278,8 +313,6 @@ async def _run_html_job(
     scratch: list[Path],
 ) -> None:
     """成功返回；失败抛 `HtmlJobError`，已有的 `output/final.mp4` 保持不变。"""
-    if music_source == "import":
-        raise HtmlJobError("导入音乐的成片渲染尚未实现（子项目 4）")
     try:
         loaded = load_timeline(TimelineSources(workdir, narration, music_source))
     except TimelineError as exc:
@@ -293,11 +326,20 @@ async def _run_html_job(
     errors += [f"{i.path}:{i.line}：{i.message}" for i in static_check(workdir)]
     errors += check_assets(workdir)
     audio = _audio_sources(workdir, loaded.timing, sections, errors) if narration else []
-    score = (
-        _music_source(workdir, loaded.base_hash, errors, scratch)
-        if music_source == "synth"
-        else None
-    )
+    score: _Score | None = None
+    if music_source == "synth":
+        score = _music_source(workdir, loaded.base_hash, errors, scratch)
+    elif music_source == "import":
+        assert loaded.range is not None and loaded.source_hash is not None
+        assert loaded.timeline.music is not None
+        score = _import_score(
+            workdir,
+            loaded.timeline.music.file,
+            loaded.source_hash,
+            loaded.range[0],
+            errors,
+            scratch,
+        )
     if errors:
         raise HtmlJobError("成片前置检查未通过：\n" + "\n".join(f"- {e}" for e in errors))
 
@@ -314,7 +356,7 @@ async def _run_html_job(
                 page, float(timeline["duration"]), silent, fps, _progress_reporter(engine, job_id)
             )
         tracks = [AudioTrack(source.path, source.start, source.length) for source in audio]
-        music = _music_mix(score.path, narration) if score is not None else None
+        music = _music_mix(score, narration, music_source) if score is not None else None
         await backend.mix(
             silent, tracks, float(timeline["duration"]), output_dir / "final.mp4", music
         )
@@ -329,8 +371,15 @@ async def _run_html_job(
             scene_id: hashlib.sha256(text.encode("utf-8")).hexdigest()
             for scene_id, text in scene_sources.items()
         },
-        "audio_sources": {source.scene_id: source.hash for source in audio},
-        **({"music_hash": score.hash} if score is not None else {}),
+        "audio_sources": {
+            **{source.scene_id: source.hash for source in audio},
+            **(
+                {"music": {"hash": score.hash, "range": list(loaded.range)}}
+                if music_source == "import" and score is not None and loaded.range is not None
+                else {}
+            ),
+        },
+        **({"music_hash": score.hash} if score is not None and music_source == "synth" else {}),
         "rendered_at": datetime.now(UTC).isoformat(),
     }
     (output_dir / "final.json").write_text(

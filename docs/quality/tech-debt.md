@@ -40,6 +40,10 @@
 | TD-73 | 2026-10-05 | `engines/audio/song.py`（librosa 首次调用） | 进程内首次调用 librosa 约 27 秒（numba JIT 编译），每次歌曲分析都起新子进程，等于每次都付这个代价的一部分（缓存命中后更短） | 导入歌曲的第一次分析等待较久，超时预算要留余量 | 预热或持久化 numba 缓存目录；或常驻分析进程 | import-music-4a |
 | TD-74 | 2026-10-05 | `timeline/imported.py`、`timeline/build.py` | `imported.py` 复制了 `build.py` 里的少量常量与辅助函数（网格/容差/取整等），两处各自维护 | 改一处忘改另一处会让导入形态与短片的时间轴口径不一致 | 抽成 `timeline` 内部共用模块，两处引用 | import-music-4a |
 | TD-75 | 2026-10-05 | `engines/audio/song.py`（置信度的覆盖率） | 检测到的拍速低于 60 BPM 时网格按倍频折叠（`_fold`，`FOLD_MIN`）成两倍 BPM、周期减半，但覆盖率的分子 `beats_used` 是折叠前（按原慢拍速）检测到的拍点数，分母却按折叠后的周期算（时长 ÷ 折叠后周期），覆盖率约为 0.5，会误报“拍点不稳”警告 | 慢歌（< 60 BPM）分析结果总带一条不准确的警告，用户可能不信任正常的网格 | 覆盖率按折叠后的拍点（或折叠后的网格）计算，补慢歌的测试 | import-music-4a |
+| TD-76 | 2026-10-05 | `timeline/load.py: _source_file`、`stages/common/music_source.py: find_source` | 两处各自实现"找 `music/source.*`"：时间轴读取用 glob 且要求恰好一个，`find_source` 按扩展名白名单取第一个；`music` 阶段定稿不拦截多个源文件 | 4B 的上传端点只留一个源文件，**仅手工往工作区放文件时**才会出现多个，此时时间轴报错而阶段不拦 | 把两处规则对齐到同一个函数，定稿时点名多个源文件 | import-music-4a / 4B |
+| TD-77 | 2026-10-05 | `api/music_import.py` | 流式解析 multipart 时在事件循环里同步写文件与算哈希；150 MB 上限内每个数据块很小，但整次上传会占用事件循环一段时间 | 单人本地使用，上传期间别的请求会略有延迟 | 把写入与哈希放到线程里，或分块让出事件循环 | import-music-4b |
+| TD-78 | 2026-10-05 | `frontend/.../importView.ts`、`api/music_import.py` | 上传上限 150 MB 与扩展名白名单在前后端各写一份（前端注释注明与后端一致） | 改一处忘改另一处时，前端提示与服务端判断不一致（服务端为准，只是提示不准） | 由接口下发上限与白名单，前端不写死 | import-music-4b |
+| TD-79 | 2026-10-05 | `frontend/.../ImportMusicCanvas.vue` | 导入音乐画布的双栏布局用视口断点（`lg:`），不是容器宽度；工作台右侧画布窄时，分析摘要栏会被挤得很窄 | 窄画布下摘要换行多、不好读 | 改用容器查询，或让摘要栏在窄宽度时落到曲线下方 | import-music-4b L4 |
 
 ## 已处理
 

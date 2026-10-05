@@ -21,6 +21,7 @@ from studio.timeline.imported import (
     ImportLayers,
     downbeat_times,
     effective_grid,
+    effective_range,
     layers_from_import,
 )
 
@@ -352,3 +353,15 @@ def test_moments_resolve_against_timed_sections() -> None:
         )
     )
     assert tl.moments[0].t == pytest.approx(2.0 + 2.0 + 0.5)
+
+
+def test_effective_range_prefers_explicit_range_else_section_span() -> None:
+    sections = [
+        {"id": "a", "label": "a", "start": 1.0, "end": 5.0},
+        {"id": "b", "label": "b", "start": 5.0, "end": 9.0},
+    ]
+    assert effective_range({"sections": sections}) == (1.0, 9.0)
+    explicit = {"sections": sections, "range": {"start": 1.0, "end": 5.0}}
+    assert effective_range(explicit) == (1.0, 5.0)
+    with pytest.raises(TimelineError):
+        effective_range({"sections": []})

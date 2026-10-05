@@ -15,11 +15,13 @@ import {
   advanceClock,
   globalTime,
   loopedTime,
+  fromScoreTime,
   musicClockTime,
   needsRealign,
   nextSection,
   playbackMode,
   sectionAt,
+  toScoreTime,
 } from './previewClock'
 
 export interface PlaybackAudio {
@@ -58,11 +60,19 @@ export function useHtmlPlayback(options: PlaybackOptions) {
   let audioDriven = false
   let score: PlaybackAudio | null = null
   let scoreUrl: string | null = null
+  /** 当前装在配乐元素里的那首歌所用的 offset：meta 同时换源和 offset 时，换源之前仍按旧的换算。 */
+  let scoreOffset = 0
   /** 短片：配乐的 `currentTime` 是时钟。 */
   let scoreDriven = false
   let frameId: number | null = null
   let startToken = 0
   let lastMs: number | null = null
+
+  /** 配乐元素此刻的时间对应的 offset：地址没变就跟 meta（只改区间会重新对齐），换源前用旧的。 */
+  function offsetFor(meta: HtmlPreviewMeta): { offset: number } {
+    const music = meta.music
+    return { offset: music !== null && music.url === scoreUrl ? (music.offset ?? 0) : scoreOffset }
+  }
 
   function ensureAudio(): PlaybackAudio {
     if (audio === null) {
@@ -102,11 +112,13 @@ export function useHtmlPlayback(options: PlaybackOptions) {
       el.src = music.url
       scoreUrl = music.url
     }
+    scoreOffset = music.offset ?? 0
     applyVolume(music.gain)
+    const playedAt = fromScoreTime(el.currentTime, music)
     const off = clock
-      ? Math.abs(el.currentTime - at) > CLOCK_TOLERANCE_SECONDS
-      : needsRealign(el.currentTime, at)
-    if (off) el.currentTime = at
+      ? Math.abs(playedAt - at) > CLOCK_TOLERANCE_SECONDS
+      : needsRealign(playedAt, at)
+    if (off) el.currentTime = toScoreTime(at, music)
     el.play().catch((error: unknown) => {
       const aborted = error instanceof DOMException && error.name === 'AbortError'
       // 短片：配乐放不了就回退墙钟；讲解：背景乐放不了不影响旁白。
@@ -128,13 +140,15 @@ export function useHtmlPlayback(options: PlaybackOptions) {
       const resume = !score.paused
       score.src = music.url
       scoreUrl = music.url
-      score.currentTime = shown
+      scoreOffset = music.offset ?? 0
+      score.currentTime = toScoreTime(shown, music)
       applyVolume(music.gain)
       if (resume) void score.play().catch(() => undefined)
       return
     }
-    if (!scoreDriven && !score.paused && needsRealign(score.currentTime, shown)) {
-      score.currentTime = shown
+    scoreOffset = music.offset ?? 0
+    if (!scoreDriven && !score.paused && needsRealign(fromScoreTime(score.currentTime, music), shown)) {
+      score.currentTime = toScoreTime(shown, music)
     }
   }
 
@@ -225,7 +239,7 @@ export function useHtmlPlayback(options: PlaybackOptions) {
 
     let next: number
     if (scoreDriven && score !== null && !score.paused) {
-      next = musicClockTime(score.currentTime, meta.duration)
+      next = musicClockTime(fromScoreTime(score.currentTime, offsetFor(meta)), meta.duration)
     } else if (audioDriven && audio !== null && !audio.paused) {
       next = globalTime(section, audio.currentTime)
     } else {

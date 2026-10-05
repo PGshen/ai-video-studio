@@ -6,7 +6,9 @@ import {
   errorMessage,
   request,
   requestText,
+  uploadForm,
 } from '@/api/http'
+import { FakeXhr } from '@/test/fakeXhr'
 
 describe('request', () => {
   afterEach(() => {
@@ -145,5 +147,83 @@ describe('errorMessage', () => {
   it('普通 Error 用它的 message，其他值是未知错误', () => {
     expect(errorMessage(new Error('断网了'))).toBe('断网了')
     expect(errorMessage('boom')).toBe('未知错误')
+  })
+})
+
+describe('uploadForm', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    FakeXhr.reset()
+  })
+
+  function form(): FormData {
+    const data = new FormData()
+    data.append('file', new File(['abc'], 'a.mp3'))
+    return data
+  }
+
+  it('POST 到 /api 前缀，不手设 Content-Type，2xx 解析 JSON', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const data = form()
+    const promise = uploadForm<{ ok: boolean }>('/projects/p1/music/source', data)
+    const xhr = FakeXhr.last
+    expect(xhr.method).toBe('POST')
+    expect(xhr.url).toBe('/api/projects/p1/music/source')
+    expect(xhr.body).toBe(data)
+    expect(xhr.headers).toEqual({})
+    xhr.respond(200, { ok: true })
+    await expect(promise).resolves.toEqual({ ok: true })
+  })
+
+  it('上传进度回调给出已传与总量', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const seen: Array<[number, number]> = []
+    const promise = uploadForm('/x', form(), { onProgress: (loaded, total) => seen.push([loaded, total]) })
+    FakeXhr.last.progress(10, 40)
+    FakeXhr.last.progress(40, 40)
+    FakeXhr.last.respond(200, {})
+    await promise
+    expect(seen).toEqual([
+      [10, 40],
+      [40, 40],
+    ])
+  })
+
+  it('非 2xx 抛 ApiError，detail 沿用后端的 detail', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const promise = uploadForm('/x', form())
+    FakeXhr.last.respond(422, { detail: '文件大小超过上限 150 MB' })
+    const error = await promise.catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(422)
+    expect((error as ApiError).detail).toBe('文件大小超过上限 150 MB')
+  })
+
+  it('网络错误抛 Error，不是 ApiError', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const promise = uploadForm('/x', form())
+    FakeXhr.last.fail()
+    const error = await promise.catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(ApiError)
+  })
+
+  it('signal 触发时中止请求并以 AbortError 结束', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const controller = new AbortController()
+    const promise = uploadForm('/x', form(), { signal: controller.signal })
+    controller.abort()
+    expect(FakeXhr.last.aborted).toBe(true)
+    const error = await promise.catch((e: unknown) => e)
+    expect((error as Error).name).toBe('AbortError')
+  })
+
+  it('已经中止的 signal 不发请求', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const controller = new AbortController()
+    controller.abort()
+    const error = await uploadForm('/x', form(), { signal: controller.signal }).catch((e: unknown) => e)
+    expect((error as Error).name).toBe('AbortError')
+    expect(FakeXhr.instances).toHaveLength(0)
   })
 })

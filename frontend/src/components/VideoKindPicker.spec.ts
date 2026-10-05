@@ -28,6 +28,14 @@ describe('VideoKindPicker', () => {
     expect(w.get('[data-testid="kind-reason-motion_reel"]').text()).toContain('尚未实现')
   })
 
+  it('音乐视频卡片可选：配置为无旁白的 HTML 加导入音乐', () => {
+    w = mountPicker('music_video', 'import')
+    const card = w.get('[data-testid="kind-card-music_video"]')
+    expect(card.attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-testid="kind-reason-music_video"]').exists()).toBe(false)
+    expect(w.get('[data-testid="kind-pipeline"]').text()).toContain('创意 → 配乐 → 节拍脚本 → 动画')
+  })
+
   it('当前是 Manim 讲解时有配乐下拉，合成和导入禁用', () => {
     w = mountPicker()
     const options = w.findAll('[data-testid="music-select"] option')

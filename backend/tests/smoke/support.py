@@ -60,6 +60,7 @@ THINKING_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "chat-ui-redesign" / "
 STYLE_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "style-library" / "smoke"
 HTML_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "html-engine" / "smoke"
 SYNTH_MUSIC_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "synth-music" / "smoke"
+IMPORT_MUSIC_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "import-music" / "smoke"
 
 SMOKE_COLOURS: dict[str, tuple[int, int, int]] = {"blue": (0, 0, 255), "yellow": (255, 255, 0)}
 _COLOUR_WORDS = {"blue": ("blue", "蓝"), "yellow": ("yellow", "黄")}
@@ -331,6 +332,7 @@ def build_harness(
     web_mode: Literal["tools", "native"] = "tools",
     html: bool = False,
     reel: bool = False,
+    music_video: bool = False,
 ) -> SmokeHarness:
     """`real_stages=True`（M4）：注册真实的 brainstorm/topic/narrative/animation 阶段（带联网
     工具、`check_brief` 等），并按 `web_mode` 决定联网方式；默认仍是 M1 的精简阶段。"""
@@ -375,14 +377,24 @@ def build_harness(
         cancel_grace_seconds=cancel_grace_seconds,
     )
 
-    last = "animation_html" if html or reel else "animation"
+    last = "animation_html" if html or reel or music_video else "animation"
     pipeline = (
-        ["concept", "beatsheet", "music", "animation_html"]
+        ["concept", "music", "beatsheet", "animation_html"]
+        if music_video
+        else ["concept", "beatsheet", "music", "animation_html"]
         if reel
         else ["topic", "narrative", last]
     )
     project_settings = (
         {
+            "video_kind": "music_video",
+            "engine": "html",
+            "narration": False,
+            "music_source": "import",
+            "pipeline": pipeline,
+        }
+        if music_video
+        else {
             "video_kind": "motion_reel",
             "engine": "html",
             "narration": False,
