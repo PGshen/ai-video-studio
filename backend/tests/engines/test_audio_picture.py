@@ -61,3 +61,14 @@ def test_picture_survives_silence_and_very_short_audio() -> None:
 def test_picture_works_without_a_grid() -> None:
     timeline = {**reel_timeline(BPM, 2), "grid": None}
     assert _render(kick_train(BPM, 2), timeline, []).size == (1800, 1000)
+
+
+def test_even_a_noisy_picture_stays_small_enough_to_be_read_by_the_agent() -> None:
+    """The agent may open `analysis.png` with the built-in Read: its base64 must stay under the
+    SDK's 1 MiB message limit (a 12 s white-noise track used to give ~0.9 MB of PNG)."""
+    timeline = reel_timeline(BPM, 6)
+    noise = np.random.default_rng(1).normal(0, 0.2, int(timeline["duration"] * SR))
+    samples = Samples(data=noise, sample_rate=SR)
+    png = render_analysis_png(analyze(samples, timeline, []), timeline, [], samples)
+    assert len(png) <= 600_000
+    assert Image.open(io.BytesIO(png)).size == (1800, 1000)

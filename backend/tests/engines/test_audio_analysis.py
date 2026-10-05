@@ -161,3 +161,40 @@ def test_narration_projects_do_not_compare_bpm_but_need_one() -> None:
     }
     assert validate_events(_doc(bpm=100.0), timeline) == []
     assert any("bpm" in p for p in validate_events(_doc(bpm="fast"), timeline))
+
+
+def _event(**overrides):
+    return {"name": "k", "kind": "onset", "start": 0.0, "end": 0.5, **overrides}
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        _doc(bpm=float("nan")),
+        _doc(duration=float("nan")),
+        _doc(events=[_event(start=float("nan"), end=float("nan"))]),
+        _doc(events=[_event(end=float("inf"))]),
+    ],
+)
+def test_non_finite_declared_values_are_reported(doc) -> None:
+    assert validate_events(doc, reel_timeline(BPM, 2))
+
+
+@pytest.mark.parametrize(
+    "offset", ["0.1", None, True, float("nan"), float("inf"), -1e7, -0.5, 99.0]
+)
+def test_an_unusable_offset_is_reported(offset) -> None:
+    problems = validate_events(_doc(offset=offset), reel_timeline(BPM, 2))
+    assert any("offset" in p for p in problems), problems
+
+
+def test_a_sensible_offset_is_accepted() -> None:
+    assert validate_events(_doc(offset=0.12), reel_timeline(BPM, 2)) == []
+
+
+def test_a_flood_of_bad_events_gives_a_short_report() -> None:
+    """Tool results travel in one SDK message (1 MiB): list the first problems, count the rest."""
+    bad = [{"name": "k" * 500, "kind": "boom", "start": 0, "end": 1}] * 5000
+    problems = validate_events(_doc(events=bad), reel_timeline(BPM, 2))
+    assert len(problems) <= 21 and any("还有" in p for p in problems)
+    assert sum(len(p) for p in problems) < 6000

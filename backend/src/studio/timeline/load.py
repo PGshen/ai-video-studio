@@ -120,8 +120,14 @@ def load_timeline(sources: TimelineSources) -> LoadedTimeline:
         bpm, offset = events_doc.get("bpm"), events_doc.get("offset", 0.0)
         if isinstance(bpm, bool) or not isinstance(bpm, int | float):
             raise TimelineError(["music/events.json：有旁白的项目必须声明数字 bpm"])
-        if isinstance(offset, bool) or not isinstance(offset, int | float):
-            raise TimelineError(["music/events.json：offset 必须是数字"])
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int | float)
+            or not 0 <= offset < max(base_timeline.duration, 0.001)
+        ):
+            raise TimelineError(
+                [f"music/events.json：offset 必须是 [0, {base_timeline.duration:.3f}) 秒内的数字"]
+            )
         grid_input = GridInput(float(bpm), float(offset))
     full = TimelineLayers(
         base.narration,

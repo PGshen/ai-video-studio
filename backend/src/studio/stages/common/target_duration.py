@@ -17,7 +17,14 @@ def parse_target_seconds(text: str) -> float | None:
     if match is None:
         return None
     value = float(match.group("value"))
-    seconds = value * 60.0 if match.group("unit").lower() in _MINUTE_UNITS else value
+    if match.group("unit").lower() in _MINUTE_UNITS:
+        seconds = value * 60.0
+        start = match.end() + len(text[match.end() :]) - len(text[match.end() :].lstrip())
+        rest = _PATTERN.match(text, start)  # "1分30秒": the seconds follow the minutes
+        if rest is not None and rest.group("unit").lower() not in _MINUTE_UNITS:
+            seconds += float(rest.group("value"))
+    else:
+        seconds = value
     return seconds if seconds > 0 else None
 
 

@@ -76,7 +76,9 @@ async def test_the_wrapper_sees_the_command_and_environment(tmp_path: Path) -> N
 
     script, timeline, out_dir = _script(tmp_path, GOOD)
     await run_compose(script, timeline, out_dir, timeout=30, wrap_command=spy)
-    assert seen["argv"] == [sys.executable, str(script)]
+    argv = seen["argv"]
+    assert isinstance(argv, list) and argv[-2:] == [sys.executable, str(script)]
+    assert argv[0] == "/bin/sh"  # resource limits are applied by `ulimit` here, not `preexec_fn`
     env = seen["env"]
     assert isinstance(env, dict)
     assert env["STUDIO_TIMELINE"] == str(timeline)
@@ -195,8 +197,12 @@ async def test_real_seatbelt_allows_the_run_but_not_reading_secrets_or_the_netwo
         socket.create_connection(("127.0.0.1", 9), timeout=1); net = "open"
     except OSError:
         net = "denied"
+    try:
+        open({str(tmp_path / "outside.txt")!r}, "w").write("x"); wrote = "wrote"
+    except OSError:
+        wrote = "denied"
     import numpy
-    probe = {{"secret": read, "net": net, "numpy": numpy.__version__}}
+    probe = {{"secret": read, "net": net, "write": wrote, "numpy": numpy.__version__}}
     open("probe.json", "w").write(json.dumps(probe))
     """
     )
@@ -208,3 +214,42 @@ async def test_real_seatbelt_allows_the_run_but_not_reading_secrets_or_the_netwo
     await run_compose(script, timeline, out_dir, timeout=60, wrap_command=wrap)
     probe = json.loads((out_dir / "probe.json").read_text())
     assert probe["secret"] == "denied" and probe["net"] == "denied" and probe["numpy"]
+    assert probe["write"] == "denied" and not (tmp_path / "outside.txt").exists()
+
+
+async def test_a_huge_single_line_of_stderr_stays_bounded(tmp_path: Path) -> None:
+    body = "import sys\nsys.stderr.write('x' * 3_000_000)\nraise SystemExit(3)\n"
+    script, timeline, out_dir = _script(tmp_path, body)
+    with pytest.raises(ComposeError) as info:
+        await run_compose(script, timeline, out_dir, timeout=30, wrap_command=identity)
+    assert len(str(info.value)) < 6000
+
+
+async def test_unbounded_stdout_is_cut_to_a_tail(tmp_path: Path) -> None:
+    body = GOOD + "    for _ in range(30000):\n        print('z' * 1000)\n    print('the end')\n"
+    script, timeline, out_dir = _script(tmp_path, body)
+    result = await run_compose(script, timeline, out_dir, timeout=60, wrap_command=identity)
+    assert len(result.stdout) <= 4000 and result.stdout.rstrip().endswith("the end")
+
+
+async def test_an_oversized_events_file_is_refused(tmp_path: Path) -> None:
+    body = GOOD.replace(
+        'json.dump(doc, open(os.environ["STUDIO_OUT_EVENTS"], "w"))',
+        'open(os.environ["STUDIO_OUT_EVENTS"], "w").write(" " * 6_000_000 + json.dumps(doc))',
+    )
+    script, timeline, out_dir = _script(tmp_path, body)
+    with pytest.raises(ComposeError, match="events.json.*过大"):
+        await run_compose(script, timeline, out_dir, timeout=30, wrap_command=identity)
+
+
+async def test_a_script_cannot_fill_the_disk(tmp_path: Path) -> None:
+    body = (
+        "import os\n"
+        "with open(os.path.join(os.environ['TMPDIR'], 'big.bin'), 'wb') as f:\n"
+        "    for _ in range(300):\n"
+        "        f.write(b'\\0' * 1_000_000)\n"
+    )
+    script, timeline, out_dir = _script(tmp_path, body)
+    with pytest.raises(ComposeError):
+        await run_compose(script, timeline, out_dir, timeout=60, wrap_command=identity)
+    assert sum(p.stat().st_size for p in out_dir.rglob("*") if p.is_file()) < 260_000_000

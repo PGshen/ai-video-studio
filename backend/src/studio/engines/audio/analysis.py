@@ -270,10 +270,26 @@ def _warnings(
 
 
 def _number(value: Any) -> TypeGuard[float]:
-    return isinstance(value, int | float) and not isinstance(value, bool)
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+_MAX_PROBLEMS = 20
+_MAX_PROBLEM_CHARS = 200
+
+
+def _capped(problems: list[str]) -> list[str]:
+    """Tool results share one SDK message (1 MiB): keep the first problems, count the rest."""
+    shown = [p if len(p) <= _MAX_PROBLEM_CHARS else p[:_MAX_PROBLEM_CHARS] + "…" for p in problems]
+    if len(shown) <= _MAX_PROBLEMS:
+        return shown
+    return [*shown[:_MAX_PROBLEMS], f"……还有 {len(shown) - _MAX_PROBLEMS} 条同类问题未列出"]
 
 
 def validate_events(doc: Any, timeline: Mapping[str, Any]) -> list[str]:
+    return _capped(_event_problems(doc, timeline))
+
+
+def _event_problems(doc: Any, timeline: Mapping[str, Any]) -> list[str]:
     """`events.json` 的结构与声明值检查；有旁白的项目不核对 bpm（网格取自它），但必须声明。"""
     if not isinstance(doc, dict):
         return ["events.json 的顶层应为对象 {bpm, duration, events}"]
@@ -290,6 +306,13 @@ def validate_events(doc: Any, timeline: Mapping[str, Any]) -> list[str]:
     declared = doc.get("duration")
     if not _number(declared) or abs(declared - duration) > DURATION_TOLERANCE:
         problems.append(f"声明的 duration {declared!r} 与时间轴 {duration:.3f} 相差超过 0.05 秒")
+    if "offset" in doc:
+        offset = doc["offset"]
+        if not _number(offset) or not 0 <= offset < max(duration, 0.001):
+            problems.append(
+                f"offset 必须是 [0, 总长 {duration:.3f}) 秒内的数字（当前 {offset!r}）；"
+                "它是第一拍相对音频起点的偏移"
+            )
     events = doc.get("events")
     if not isinstance(events, list):
         problems.append("events 必须是列表")

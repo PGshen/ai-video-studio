@@ -36,3 +36,17 @@ def test_target_is_read_from_the_named_section_only() -> None:
     assert target_seconds_from_brief(text) == pytest.approx(45.0)
     assert target_seconds_from_brief("## 主题\n\n30 秒\n") is None
     assert target_seconds_from_brief("## 目标时长\n\n很短\n") is None
+
+
+@pytest.mark.parametrize(
+    ("text", "seconds"),
+    [
+        ("1分30秒", 90.0),
+        ("1 分 30 秒", 90.0),
+        ("2分钟15秒钟", 135.0),
+        ("1 min 30 s", 90.0),
+        ("3分", 180.0),
+    ],
+)
+def test_minutes_and_seconds_in_one_phrase_add_up(text: str, seconds: float) -> None:
+    assert parse_target_seconds(text) == seconds

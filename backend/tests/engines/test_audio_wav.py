@@ -74,3 +74,14 @@ def test_size_and_duration_limits(tmp_path: Path) -> None:
 def test_empty_audio_is_refused(tmp_path: Path) -> None:
     with pytest.raises(AudioError, match="没有"):
         read_wav(write_wav(tmp_path / "e.wav", np.zeros(0)))
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_float_samples_are_refused(tmp_path: Path, bad: float) -> None:
+    data = 0.3 * np.sin(np.arange(SR) * 0.05)
+    path = write_wav(tmp_path / "bad.wav", data, kind="float32")
+    raw = bytearray(path.read_bytes())  # `write_wav` clips, so patch the bad sample in by hand
+    raw[44 + 1000 * 4 : 44 + 1001 * 4] = np.float32(bad).tobytes()
+    path.write_bytes(bytes(raw))
+    with pytest.raises(AudioError, match="NaN|无穷"):
+        read_wav(path)

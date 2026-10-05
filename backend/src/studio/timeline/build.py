@@ -10,7 +10,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 from studio.timeline.notation import parse_at
 from studio.timeline.schema import (
@@ -35,10 +35,16 @@ class LayerNotSupported(ValueError):
     """传入了尚未实现的层（歌词）。"""
 
 
+_MAX_SHOWN_ERRORS = 20  # the message ends up in one tool result (SDK limit: 1 MiB)
+
+
 class TimelineError(ValueError):
     def __init__(self, errors: list[str] | tuple[str, ...]):
         self.errors = tuple(errors)
-        details = "\n".join(f"- {error}" for error in self.errors)
+        shown = [e if len(e) <= 300 else e[:300] + "…" for e in self.errors[:_MAX_SHOWN_ERRORS]]
+        if len(self.errors) > _MAX_SHOWN_ERRORS:
+            shown.append(f"……还有 {len(self.errors) - _MAX_SHOWN_ERRORS} 个问题未列出")
+        details = "\n".join(f"- {error}" for error in shown)
         super().__init__(f"时间轴不可用，共 {len(self.errors)} 个问题：\n{details}")
 
 
@@ -47,6 +53,12 @@ BPM_RANGE = (40.0, 240.0)
 EVENT_KINDS = ("onset", "sweep")
 _BEATS_PER_BAR = 4
 _DURATION_TOLERANCE = 0.05
+
+
+def _finite(value: Any) -> TypeGuard[float]:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
 _BPM_TOLERANCE = 0.01
 _EPSILON = 1e-6
 
@@ -212,7 +224,7 @@ def _music(
         if kind not in EVENT_KINDS:
             errors.append(f"{label}：kind 必须是 onset 或 sweep（当前 {kind!r}）")
             continue
-        if not isinstance(start, int | float) or not isinstance(end, int | float) or end < start:
+        if not _finite(start) or not _finite(end) or end < start:
             errors.append(f"{label}：起止必须是数字且 start ≤ end（{start!r}→{end!r}）")
             continue
         if start < -_DURATION_TOLERANCE or end > duration + _DURATION_TOLERANCE:
@@ -221,7 +233,7 @@ def _music(
         events.append(MusicEvent(name=name, kind=kind, start=float(start), end=float(end)))
     if (
         music.declared_duration is not None
-        and abs(music.declared_duration - duration) > _DURATION_TOLERANCE
+        and not abs(music.declared_duration - duration) <= _DURATION_TOLERANCE
     ):
         errors.append(
             f"配乐声明的 duration {music.declared_duration} 与时间轴 {duration:.3f} "
@@ -230,7 +242,7 @@ def _music(
     if (
         grid_bpm is not None
         and music.declared_bpm is not None
-        and abs(music.declared_bpm - grid_bpm) > _BPM_TOLERANCE
+        and not abs(music.declared_bpm - grid_bpm) <= _BPM_TOLERANCE
     ):
         errors.append(f"配乐声明的 bpm {music.declared_bpm} 与节拍脚本的 {grid_bpm} 不一致")
     if (
