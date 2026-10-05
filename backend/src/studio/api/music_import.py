@@ -51,6 +51,7 @@ class _Receiver:
     def __init__(self, target_dir: Path) -> None:
         self.target_dir = target_dir
         self.header_name = b""
+        self.header_value = b""
         self.headers: dict[bytes, bytes] = {}
         self.ext: str | None = None
         self.path: Path | None = None
@@ -61,13 +62,22 @@ class _Receiver:
 
     def on_part_begin(self) -> None:
         self.headers = {}
+        self.header_name = b""
+        self.header_value = b""
         self._skipping = False
 
+    # A header name or value cut by a read-chunk boundary arrives in several calls: accumulate
+    # them and commit the pair in `on_header_end`.
     def on_header_field(self, data: bytes, start: int, end: int) -> None:
-        self.header_name = data[start:end].lower()
+        self.header_name += data[start:end].lower()
 
     def on_header_value(self, data: bytes, start: int, end: int) -> None:
-        self.headers[self.header_name] = data[start:end]
+        self.header_value += data[start:end]
+
+    def on_header_end(self) -> None:
+        self.headers[self.header_name] = self.header_value
+        self.header_name = b""
+        self.header_value = b""
 
     def on_headers_finished(self) -> None:
         _, params = parse_options_header(self.headers.get(b"content-disposition", b""))
@@ -117,6 +127,7 @@ def _callbacks(receiver: _Receiver) -> MultipartCallbacks:
         "on_part_begin": receiver.on_part_begin,
         "on_header_field": receiver.on_header_field,
         "on_header_value": receiver.on_header_value,
+        "on_header_end": receiver.on_header_end,
         "on_headers_finished": receiver.on_headers_finished,
         "on_part_data": receiver.on_part_data,
         "on_part_end": receiver.on_part_end,

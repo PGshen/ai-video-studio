@@ -195,6 +195,7 @@
 - 2026-10-05（执行中）— 导入音乐只对 `(html, 无旁白)` 放开：计划写"不再阻止 import"，但 `load_timeline` 对旁白加导入直接报错，放开会让用户建出渲染不了的项目；其余两种组合保持不可用，原因文案「「配乐（导入音乐）」目前只支持无旁白的 HTML 音乐视频」（含"配乐"，既有测试依赖）。`unavailable_reason` 增加可选的 `narration` 参数。
 - 2026-10-05（执行中）— 混音取源文件起点用滤镜 `atrim=start`（不用输入端 `-ss`）：实测毫秒级精确；`source_start` 超出文件长度时不报错，输出全静音、总长精确（测试固定）。
 - 2026-10-05（执行中）— 冒烟环境变量用 `STUDIO_SMOKE_SONG`（不是计划里的 `MV_SMOKE_SONG`）：`make smoke` 只放行 `STUDIO_*` 变量；冒烟在 `probe_audio` 之后把歌拷进 `music/source.<ext>`，不经 HTTP 上传端点（端点由 api 测试覆盖）。
+- 2026-10-05（执行中）— `tests/api/test_music_upload.py` 的断开用例里 `pytest.raises(Exception)` 带 `noqa: B017,PT011`：客户端一侧抛出的异常类型取决于传输层（httpx/ASGI），不是这条用例要断言的；断言重点是服务端不留残留、释放上传登记。
 - 2026-10-05 — T10 不改 `docs/plans/TODO.md` — 沿用 4A 收尾的做法，TODO 由负责人确认后在收尾步骤更新。
 
 ## 意外与发现
@@ -203,6 +204,7 @@
 - 缓存键不用改：MV 的时间轴哈希（`sha256(timeline + source_hash + range)`）本来就进了 `_cache_key`，测试固定了这一点。
 - `worker` 不能 import `stages`（import-linter）：源文件路径取自时间轴的 `music.file`，区间与源哈希加进 `LoadedTimeline`（`range`、`source_hash`，默认 `None`）。
 - 讲解（有旁白）加导入音乐的组合时间轴读取不支持，所以入口只对无旁白的 HTML 音乐视频放开（见决策）。
+- 终审（opus）发现并修复两处：multipart 头部被读块边界截断时解析失败（现累加分段、在 `on_header_end` 落定，补分块请求测试）；上传期间开始新一轮会让一轮结束时的写入范围检查静默还原上传（现 `messages`/`continue` 端点在项目上传中返回 409）。
 - 冒烟里 agent 把前奏单列为一个段落并从 1.41 秒起；候选边界 11 个、段落边界 9 个，整曲区间不写 `range`。
 
 ## 阻塞

@@ -262,14 +262,22 @@ def get_session_endpoint(session_id: str, engine: Engine = Depends(get_engine)) 
     return SessionDetailOut(**session_out(session).model_dump(), turns=turns)
 
 
+def _refuse_during_upload(request: Request, session: SessionValue) -> None:
+    """上传导入音乐期间不开新的一轮：一轮结束时的写入范围检查会把这次上传当成越权改动还原。"""
+    project_id = getattr(session, "project_id", None)
+    if project_id is not None and project_id in request.app.state.music_uploads:
+        raise HTTPException(status_code=409, detail="项目正在上传音乐，请等上传结束再发消息")
+
+
 @router.post("/sessions/{session_id}/messages", response_model=TurnAccepted, status_code=202)
 async def send_message_endpoint(
     session_id: str,
     body: MessageCreate,
+    request: Request,
     engine: Engine = Depends(get_engine),
     turn_runner: TurnRunner = Depends(get_turn_runner),
 ) -> TurnAccepted:
-    _require_session(engine, session_id)
+    _refuse_during_upload(request, _require_session(engine, session_id))
     try:
         turn_id = await turn_runner.start_turn(session_id, UserInput(text=body.text))
     except SessionBusyError as exc:
@@ -295,10 +303,11 @@ async def cancel_session_endpoint(
 @router.post("/sessions/{session_id}/continue", response_model=TurnAccepted, status_code=202)
 async def continue_session_endpoint(
     session_id: str,
+    request: Request,
     engine: Engine = Depends(get_engine),
     turn_runner: TurnRunner = Depends(get_turn_runner),
 ) -> TurnAccepted:
-    _require_session(engine, session_id)
+    _refuse_during_upload(request, _require_session(engine, session_id))
     turn = turns_repo.latest_turn(engine, session_id)
     if turn is None or turn.status not in _RESUMABLE_TURN_STATUSES:
         raise HTTPException(status_code=409, detail="当前会话没有可以继续的一轮")

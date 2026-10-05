@@ -209,3 +209,59 @@ async def test_disconnect_mid_upload_leaves_no_temp_file(api_env: ApiEnv, tmp_pa
 
 def test_fixture_tools_exist() -> None:
     assert shutil.which("ffmpeg") and shutil.which("ffprobe")
+
+
+@pytest.mark.parametrize("piece", [7, 10, 30, 60])
+async def test_headers_split_across_read_chunks_still_upload(
+    api_env: ApiEnv, tmp_path: Path, piece: int
+) -> None:
+    """The request body may arrive in tiny pieces; a part header cut in two must still parse."""
+    pid, workdir = _mv(api_env)
+    data = _wav_bytes(tmp_path)
+    boundary = "xBOUNDARYx"
+    body = (
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
+            "Content-Type: audio/wav\r\n\r\n"
+        ).encode()
+        + data
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for start in range(0, len(body), piece if piece > 7 else 7):
+            yield body[start : start + piece]
+
+    response = await api_env.client.post(
+        _url(pid),
+        content=chunks(),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    assert response.status_code == 200, response.text
+    assert (workdir / "music" / "source.wav").read_bytes() == data
+
+
+async def test_a_turn_cannot_start_while_a_song_is_uploading(api_env: ApiEnv) -> None:
+    """Otherwise the turn's end-of-turn guard would silently revert the uploaded `source.*`."""
+    from studio.db.repo.profiles import get_model_profile
+    from studio.db.repo.sessions import create_session
+
+    pid, _ = _mv(api_env)
+    profile = get_model_profile(api_env.app.state.engine, "fake")
+    assert profile is not None
+    session = create_session(
+        api_env.app.state.engine,
+        project_id=pid,
+        stage="concept",
+        model_profile_id=profile.id,
+        runtime="fake",
+    )
+    api_env.app.state.music_uploads.add(pid)
+    response = await api_env.client.post(
+        f"/api/sessions/{session.id}/messages", json={"text": "hi"}
+    )
+    assert response.status_code == 409 and "上传" in assert_detail(response)
+    api_env.app.state.music_uploads.discard(pid)
+    assert (
+        await api_env.client.post(f"/api/sessions/{session.id}/messages", json={"text": "hi"})
+    ).status_code == 202
