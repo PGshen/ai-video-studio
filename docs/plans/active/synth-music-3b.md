@@ -138,7 +138,7 @@
 - **完成标准**：AC5 的纯函数部分。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas src/api`
 
-### T6：`useHtmlPlayback` 的配乐来源（待开始）
+### T6：`useHtmlPlayback` 的配乐来源（完成）
 
 - **目标**：实时预览能放配乐（设计 §9.2）。
 - **涉及文件**：`frontend/src/features/canvas/animation/htmlPreview/useHtmlPlayback.ts`（及 spec）、`HtmlPreviewPane.vue`、`HtmlAnimationCanvas.vue`（传入 `meta.music`、显示"配乐未渲染"提示与静音开关）。
@@ -191,6 +191,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — T6 预览播放的配乐来源 — `useHtmlPlayback`：短片以配乐 `currentTime` 为时钟（贴合容差 0.05 秒、拒绝自动播放回退墙钟）；讲解里旁白是时钟、配乐 −8 dB 跟随（漂移 > 0.3 秒才重设，拒绝不影响旁白）；URL 变了换源并保持位置、配乐没了就停；`setMuted`；`HtmlPreviewPane` 加静音按钮与"配乐未渲染或已过期"提示，`HtmlAnimationCanvas` 按项目 `music_source` 计算 `scoreMissing`；新增 composable 测试 18 条、组件测试 3 条
 - 2026-10-05 — T5 前端基础 — 类型（`MusicMetaOut`、`MusicRenderOut`）、endpoints（`getMusicMeta`、`musicAudioUrl`、`renderMusic`）、`queryKeys.musicMeta` 与 `useMusicMetaQuery`/`useRenderMusicMutation`（工作区失效时一并刷新配乐 meta）；纯函数 `waveform.ts`（`timeToX`/`xToTime`/`waveformPeaks`/`eventMarkers`/`sectionBands`）与 `previewClock.ts`（`playbackMode`/`musicClockTime`/`needsRealign`）及单测
 - 2026-10-05 — T4 `html-preview/meta.music` — `{url, gain}`，URL 带 `wav_hash`；只在产物存在、`base_hash` 与 `wav_hash` 都对得上时给，否则 `null`；短片 gain 1.0、讲解 −8 dB 线性值；讲解背景乐的默认混音常量（−8 dB、淡入 1 秒/淡出 1.5 秒）移到 `engines.render.mix` 让成片与预览共用；前端 `HtmlPreviewMeta.music` 类型；`test_html_preview.py` 新增 4 条
 - 2026-10-05 — T3 音乐 api — `api/music.py`：`meta`（含 `stale`、`sections`，损坏产物当作未渲染）、`audio`（`FileResponse` 的 Range：206、尾部范围、非法 400/416、软链接逃逸 404）、`render`（共用 `render_music_core`；脚本问题 200 + `ok=false`；轮次在跑 / 已有手动渲染 / 无沙箱 / 时间轴不可用 409）；`tests/api/test_music.py` 20 条；`section_energy` 抽到 `stages/music/sources.py`，`metrics_of` 公开
