@@ -16,11 +16,12 @@
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
-| P1 | 多形态视频子项目 3：合成配乐 + 动态图形短片 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 2；开工前小试已完成，见 [motion-reel-spike](../references/motion-reel-spike.md)，计划需处理其 §暴露的问题（逐镜头敏感度、`env` 取事件起止、指标分类、联调测试） |
+| P1 | 多形态视频子项目 3B：混音（含 sidechain）、`/music/*` api、`MusicCanvas`、预览音频、成片 | [synth-music-reel 设计](../design/2026-10-05-synth-music-reel.md)，2026-10-05 | 3A（agent 侧）已完成待验收，见 [synth-music-3a](active/synth-music-3a.md)；3B 计划还没写，3A 验收后再写 |
 | P2 | 多形态视频子项目 4：导入音乐 + 音乐 MV | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 依赖子项目 3 |
 | P2 | 把本地 `main` 推送到 `origin` | 2026-10-04 | 需负责人确认后再推 |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
+| P2 | manim 阶段 `render_preview` 返回的图片限制大小（≤ 400 kB JPEG，防 Claude SDK 单条消息 1 MiB 上限） | 3A 冒烟发现，2026-10-05 | 见 [claude-agent-sdk](../references/claude-agent-sdk.md) 末节；`stages/animation/render_preview.py:115` |
 | P2 | 真实模型对 `animation/assets/*` 用法的验证 | 同上 | 子项目 2 的小试未覆盖 |
 
 ## 已完成
