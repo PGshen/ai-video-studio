@@ -441,3 +441,45 @@ export interface HtmlPreviewMeta {
   audio: HtmlPreviewAudio[]
   music: HtmlPreviewMusic | null
 }
+
+// ---- 配乐（`/projects/{id}/music/*`）-----------------------------------------
+
+export interface MusicEventOut {
+  name: string
+  kind: 'onset' | 'sweep' | string
+  start: number
+  end: number
+}
+
+export interface MusicSectionOut {
+  id: string
+  label: string
+  start: number
+  end: number
+}
+
+/** `GET .../music/meta`：没有产物时 `rendered=false`；`stale` 表示产物对应的是另一版时间轴。 */
+export interface MusicMetaOut {
+  rendered: boolean
+  stale: boolean
+  hash: string | null
+  duration: number | null
+  bpm: number | null
+  events: MusicEventOut[]
+  sections: MusicSectionOut[]
+  /** 1000 个点的波形包络，取值 0–1。 */
+  waveform: number[]
+  metrics: Record<string, unknown> | null
+}
+
+/** `POST .../music/render`：脚本的问题是 `ok=false`（HTTP 仍是 200）。 */
+export interface MusicRenderOut {
+  ok: boolean
+  errors: string[]
+  text: string
+  warnings: string[]
+  retime_note: string
+  metrics: Record<string, unknown> | null
+  picture_base64: string | null
+  picture_media_type: string | null
+}

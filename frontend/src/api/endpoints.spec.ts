@@ -13,6 +13,9 @@ import {
   finalVideoUrl,
   getFileContent,
   getJob,
+  getMusicMeta,
+  musicAudioUrl,
+  renderMusic,
   getProject,
   getSession,
   getSettings,
@@ -267,5 +270,29 @@ describe('endpoints：动态路径段会被正确编码', () => {
       method: 'PATCH',
       body: JSON.stringify({ web_mode: null, stage_default_profile: { topic: null } }),
     })
+  })
+})
+
+describe('endpoints：配乐', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('getMusicMeta 与 renderMusic 的路径、方法与编码', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getMusicMeta('proj#1')
+    expect(fetchMock.mock.calls[0]![0]).toContain('/projects/proj%231/music/meta')
+
+    await renderMusic('proj#1')
+    expect(fetchMock.mock.calls[1]![0]).toContain('/projects/proj%231/music/render')
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('musicAudioUrl 带版本号作缓存标识', () => {
+    expect(musicAudioUrl('p1')).toBe('/api/projects/p1/music/audio')
+    expect(musicAudioUrl('p1', 'ab/c')).toBe('/api/projects/p1/music/audio?v=ab%2Fc')
+    expect(musicAudioUrl('p1', null)).toBe('/api/projects/p1/music/audio')
   })
 })

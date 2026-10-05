@@ -5,7 +5,10 @@ import {
   globalTime,
   hasAudio,
   loopedTime,
+  musicClockTime,
+  needsRealign,
   nextSection,
+  playbackMode,
   sectionAt,
   sectionTicks,
   shouldReloadPreview,
@@ -92,5 +95,42 @@ describe('shouldReloadPreview', () => {
     expect(shouldReloadPreview('h1', 'h1')).toBe(false)
     expect(shouldReloadPreview('h1', 'h2')).toBe(true)
     expect(shouldReloadPreview('h1', undefined)).toBe(false)
+  })
+})
+
+describe('playbackMode', () => {
+  const base = { hash: 'h', duration: 6, sections, audio: [], music: null }
+  const music = { url: '/m.wav', gain: 1 }
+
+  it('uses the score as the clock when there is no narration', () => {
+    expect(playbackMode({ ...base, music })).toBe('music')
+  })
+
+  it('keeps the narration as the clock and lets the score follow it', () => {
+    const audio = [{ section_id: 'a', url: '/a.mp3' }]
+    expect(playbackMode({ ...base, audio, music })).toBe('narration')
+    expect(playbackMode({ ...base, audio })).toBe('narration')
+  })
+
+  it('falls back to the wall clock with neither', () => {
+    expect(playbackMode(base)).toBe('wall')
+  })
+})
+
+describe('musicClockTime', () => {
+  it('is the audio time clamped to the piece', () => {
+    expect(musicClockTime(2.5, 6)).toBe(2.5)
+    expect(musicClockTime(-1, 6)).toBe(0)
+    expect(musicClockTime(99, 6)).toBe(6)
+    expect(musicClockTime(Number.NaN, 6)).toBe(0)
+  })
+})
+
+describe('needsRealign', () => {
+  it('only moves the score when it drifted past the threshold', () => {
+    expect(needsRealign(2.0, 2.2)).toBe(false)
+    expect(needsRealign(2.0, 2.31)).toBe(true)
+    expect(needsRealign(5.0, 2.0)).toBe(true)
+    expect(needsRealign(2.0, 2.2, 0.1)).toBe(true)
   })
 })

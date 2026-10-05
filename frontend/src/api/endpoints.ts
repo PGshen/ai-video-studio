@@ -31,6 +31,8 @@ import type {
   ProjectSettingsPatch,
   ProjectStatus,
   HtmlPreviewMeta,
+  MusicMetaOut,
+  MusicRenderOut,
   SceneChecksResponse,
   SessionCreate,
   SettingsOut,
@@ -459,4 +461,22 @@ export function deleteIdea(ideaId: string): Promise<void> {
 /** `topic/brief.md` 的结构检查结果（和 `check_brief` 工具同一份逻辑）。 */
 export function getTopicCheck(projectId: string): Promise<TopicCheckOut> {
   return request(`/projects/${encodePathSegment(projectId)}/topic/check`)
+}
+
+// ---- music --------------------------------------------------------------
+
+/** 配乐的元数据（没有产物时 `rendered=false`）。 */
+export function getMusicMeta(projectId: string): Promise<MusicMetaOut> {
+  return request(`/projects/${encodePathSegment(projectId)}/music/meta`)
+}
+
+/** 配乐音频地址（支持 `Range`），给 `<audio>` 当 `src`；`version` 用 `meta.hash`，重新渲染后换地址。 */
+export function musicAudioUrl(projectId: string, version?: string | null): string {
+  const base = `/api/projects/${encodePathSegment(projectId)}/music/audio`
+  return version ? `${base}?v=${encodeURIComponent(version)}` : base
+}
+
+/** 不经 agent 渲染配乐（运行 `music/compose.py`）；脚本出错返回 `ok=false`，不抛。 */
+export function renderMusic(projectId: string): Promise<MusicRenderOut> {
+  return request(`/projects/${encodePathSegment(projectId)}/music/render`, { method: 'POST' })
 }

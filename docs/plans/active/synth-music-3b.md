@@ -129,7 +129,7 @@
 - **完成标准**：AC4。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_html_preview.py -v`
 
-### T5：前端基础——类型、endpoints、查询与纯函数（待开始）
+### T5：前端基础——类型、endpoints、查询与纯函数（完成）
 
 - **目标**：把 api 接进前端，并把所有换算写成有测试的纯函数。
 - **涉及文件**：`frontend/src/types/api.ts`（`MusicMeta`、`MusicRenderReport`、`HtmlPreviewMeta.music`）、`frontend/src/api/endpoints.ts`（及 `endpoints.spec.ts`）、`frontend/src/features/canvas/music/musicQueries.ts`（查询与渲染 mutation，沿用现有 query 写法）、`frontend/src/features/canvas/music/waveform.ts`（波形点 → 画布坐标、事件与段落标记坐标、点击 x → 时间）、`frontend/src/features/canvas/animation/htmlPreview/previewClock.ts`（配乐时钟换算）及各自 spec。
@@ -191,6 +191,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — T5 前端基础 — 类型（`MusicMetaOut`、`MusicRenderOut`）、endpoints（`getMusicMeta`、`musicAudioUrl`、`renderMusic`）、`queryKeys.musicMeta` 与 `useMusicMetaQuery`/`useRenderMusicMutation`（工作区失效时一并刷新配乐 meta）；纯函数 `waveform.ts`（`timeToX`/`xToTime`/`waveformPeaks`/`eventMarkers`/`sectionBands`）与 `previewClock.ts`（`playbackMode`/`musicClockTime`/`needsRealign`）及单测
 - 2026-10-05 — T4 `html-preview/meta.music` — `{url, gain}`，URL 带 `wav_hash`；只在产物存在、`base_hash` 与 `wav_hash` 都对得上时给，否则 `null`；短片 gain 1.0、讲解 −8 dB 线性值；讲解背景乐的默认混音常量（−8 dB、淡入 1 秒/淡出 1.5 秒）移到 `engines.render.mix` 让成片与预览共用；前端 `HtmlPreviewMeta.music` 类型；`test_html_preview.py` 新增 4 条
 - 2026-10-05 — T3 音乐 api — `api/music.py`：`meta`（含 `stale`、`sections`，损坏产物当作未渲染）、`audio`（`FileResponse` 的 Range：206、尾部范围、非法 400/416、软链接逃逸 404）、`render`（共用 `render_music_core`；脚本问题 200 + `ok=false`；轮次在跑 / 已有手动渲染 / 无沙箱 / 时间轴不可用 409）；`tests/api/test_music.py` 20 条；`section_energy` 抽到 `stages/music/sources.py`，`metrics_of` 公开
 - 2026-10-05 — T2 `worker_html` 配乐路径 — 去掉守卫；前置检查（四个文件、`base_hash`、`wav_hash`）；短片只有配乐，背景乐 −8 dB + 侧链 + 淡入 1 秒/淡出 1.5 秒；`final.json.audio_sources.music`；新测试 `tests/test_worker_html_music.py`（成功 2、前置检查 7、旧成片保留 2、无配乐回归 1）+ slow 真实 Chromium + ffmpeg 2（短片音轨非静音、时长一致；讲解加配乐）；`FakeBackend` 移到 `fixtures/html_engine/worker_fakes.py`；`finalize-render` 与 `POST /render` 与形态无关，无需改
