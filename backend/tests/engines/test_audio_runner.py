@@ -197,8 +197,12 @@ async def test_real_seatbelt_allows_the_run_but_not_reading_secrets_or_the_netwo
         socket.create_connection(("127.0.0.1", 9), timeout=1); net = "open"
     except OSError:
         net = "denied"
+    try:
+        open({str(tmp_path / "outside.txt")!r}, "w").write("x"); wrote = "wrote"
+    except OSError:
+        wrote = "denied"
     import numpy
-    probe = {{"secret": read, "net": net, "numpy": numpy.__version__}}
+    probe = {{"secret": read, "net": net, "write": wrote, "numpy": numpy.__version__}}
     open("probe.json", "w").write(json.dumps(probe))
     """
     )
@@ -210,6 +214,7 @@ async def test_real_seatbelt_allows_the_run_but_not_reading_secrets_or_the_netwo
     await run_compose(script, timeline, out_dir, timeout=60, wrap_command=wrap)
     probe = json.loads((out_dir / "probe.json").read_text())
     assert probe["secret"] == "denied" and probe["net"] == "denied" and probe["numpy"]
+    assert probe["write"] == "denied" and not (tmp_path / "outside.txt").exists()
 
 
 async def test_a_huge_single_line_of_stderr_stays_bounded(tmp_path: Path) -> None:

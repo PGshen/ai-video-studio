@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 import json
@@ -108,7 +109,7 @@ async def _run_and_check(
         result = await run_compose(
             script, timeline_path, run_dir, timeout=timeout, wrap_command=wrap_command
         )
-        samples = read_wav(result.wav_path)
+        samples = await asyncio.to_thread(read_wav, result.wav_path)
     except (ComposeError, AudioError) as exc:
         return [str(exc)]
     try:
@@ -124,7 +125,9 @@ async def _run_and_check(
     if problems:
         return problems
     analysis_timeline = _with_declared_grid(timeline, doc)
-    report = analyze(samples, analysis_timeline, doc["events"], section_energy=section_energy)
+    report = await asyncio.to_thread(
+        analyze, samples, analysis_timeline, doc["events"], section_energy=section_energy
+    )
     return _Run(samples, doc, report, result.wav_path, result.events_path, analysis_timeline)
 
 
@@ -247,6 +250,9 @@ async def render_music_core(
     script_bytes = script.read_bytes()
     run_root = workdir / ".cache" / "tmp" / f"music-run-{uuid.uuid4().hex[:8]}"
     try:
+        run_root.mkdir(parents=True, exist_ok=True)
+        script = run_root / "compose.py"  # run the bytes that get hashed, whoever edits meanwhile
+        script.write_bytes(script_bytes)
         first = await _run_and_check(
             script, timeline, run_root / "main",
             section_energy=section_energy, wrap_command=wrap_command, timeout=timeout,
@@ -266,8 +272,12 @@ async def render_music_core(
 
         wav_bytes = first.wav_path.read_bytes()
         events_bytes = first.events_path.read_bytes()
-        png = render_analysis_png(
-            first.report, first.analysis_timeline, first.doc["events"], first.samples
+        png = await asyncio.to_thread(
+            render_analysis_png,
+            first.report,
+            first.analysis_timeline,
+            first.doc["events"],
+            first.samples,
         )
         wav_hash = _sha256(wav_bytes)
         report = first.report

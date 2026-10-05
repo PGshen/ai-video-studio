@@ -186,6 +186,10 @@ def render_analysis_png(
         t += step
     draw.text((6, HEIGHT - 20), "orange = sections, blue = bars/beats", fill=(0, 0, 0))
 
+    # 256-colour palette: the spectrogram is a smooth colour map, and a truecolour PNG of noisy
+    # audio is ~0.9 MB (too big for the agent to open with Read, SDK limit 1 MiB per message).
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    image.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(
+        buffer, format="PNG", optimize=True
+    )
     return buffer.getvalue()

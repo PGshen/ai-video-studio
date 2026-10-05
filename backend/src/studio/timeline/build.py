@@ -10,7 +10,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 from studio.timeline.notation import parse_at
 from studio.timeline.schema import (
@@ -55,7 +55,7 @@ _BEATS_PER_BAR = 4
 _DURATION_TOLERANCE = 0.05
 
 
-def _finite(value: Any) -> bool:
+def _finite(value: Any) -> TypeGuard[float]:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 

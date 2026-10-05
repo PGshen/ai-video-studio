@@ -128,3 +128,19 @@ async def test_the_attached_picture_stays_well_under_the_sdk_message_limit(
     raw = base64.b64decode(image.data_base64)
     assert raw[:3] == b"\xff\xd8\xff" and len(raw) <= 400_000
     assert (reel / "music" / "analysis.png").read_bytes()[:4] == b"\x89PNG"
+
+
+def test_a_noisy_picture_is_lowered_in_quality_then_shrunk_until_it_fits() -> None:
+    """Exercises the loop, not just the first quality step: noise does not fit at any quality of
+    the full size."""
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    pixels = np.random.default_rng(3).integers(0, 256, (1000, 1800, 3), dtype=np.uint8)
+    buffer = io.BytesIO()
+    Image.fromarray(pixels).save(buffer, format="PNG")
+    out = music_tool.compress_picture(buffer.getvalue())
+    assert len(out) <= 400_000
+    assert Image.open(io.BytesIO(out)).width < 1800  # had to shrink

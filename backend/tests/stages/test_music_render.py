@@ -285,3 +285,51 @@ async def test_energy_trend_warning_uses_the_beatsheet_labels(reel: Path) -> Non
     flat_outcome = await _render(reel)
     assert flat_outcome.report is not None
     assert any("要求能量上升" in w for w in flat_outcome.report.warnings)
+
+
+async def test_the_run_uses_a_snapshot_of_the_script_taken_when_it_started(reel: Path) -> None:
+    """A script edited while a render is running (the agent, or the 3B api) must not leave the
+    hash describing one program and the audio coming from another."""
+    original = reel / "music" / "compose.py"
+    source = original.read_text()
+    original.write_text(
+        f"import pathlib\npathlib.Path({str(original)!r}).write_text('raise SystemExit(9)')\n"
+        + source
+    )
+    started = original.read_bytes()
+    outcome = await _render(reel)
+    assert outcome.ok, outcome.errors
+    render = json.loads((reel / "music" / "render.json").read_text())
+    assert render["script_hash"] == hashlib.sha256(started).hexdigest()
+
+
+async def test_analysis_does_not_block_the_event_loop(
+    reel: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+    import time
+
+    from studio.stages.music import render as render_module
+
+    real = render_module.analyze
+
+    def slow(*args: Any, **kwargs: Any) -> Any:
+        time.sleep(0.4)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(render_module, "analyze", slow)
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    task = asyncio.create_task(ticker())
+    try:
+        outcome = await _render(reel)
+    finally:
+        task.cancel()
+    assert outcome.ok, outcome.errors
+    assert ticks > 40  # two analyses of 0.4 s each ran off the loop
