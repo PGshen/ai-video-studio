@@ -64,6 +64,22 @@ describe('CreateProjectDialog 视频类型', () => {
     wrapper.unmount()
   })
 
+  it('选中音乐视频后创建的是导入音乐项目，并跳到它的第一个阶段', async () => {
+    state.mutateAsync.mockResolvedValue({ id: 'p10', current_stage: 'concept' })
+    const wrapper = await mountOpen()
+    const card = document.body.querySelector('[data-testid="kind-card-music_video"]') as HTMLButtonElement
+    expect(card.disabled).toBe(false)
+    card.click()
+    await flushPromises()
+    submitButton().click()
+    await flushPromises()
+    expect(state.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: 'html', narration: false, music_source: 'import', idea_id: 'i1' }),
+    )
+    expect(state.push).toHaveBeenCalledWith('/projects/p10/concept')
+    wrapper.unmount()
+  })
+
   it('video-kinds 加载失败时显示错误并禁用提交', async () => {
     state.kindsError = true
     const wrapper = await mountOpen()
