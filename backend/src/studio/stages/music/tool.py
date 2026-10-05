@@ -18,12 +18,16 @@ from studio.engines.audio.analysis import MusicReport
 from studio.engines.audio.runner import WrapCommand
 from studio.stages.common.picture import compress_png
 from studio.stages.music.render import RenderOutcome, render_music_core
-from studio.stages.music.sources import infer_sources, section_energy
+from studio.stages.music.sources import import_source, infer_sources, section_energy
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 
 LISTEN_NOTE = "音色、和声、混响量与声像无法由这些指标判断，需要用户试听。"
 _MAX_LISTED = 8
+IMPORT_FORM_MESSAGE = (
+    "导入形态不用合成脚本：工作区里有用户上传的 music/source.*，"
+    "请用 analyze_music 分析歌曲、写 music/sections.json 并用 validate_sections 校验"
+)
 
 
 def compress_picture(png: bytes) -> bytes:
@@ -111,6 +115,8 @@ class RenderMusicArgs(BaseModel):
 
 
 async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
+    if import_source(ctx.workdir) is not None:
+        return ToolResult(text=IMPORT_FORM_MESSAGE, is_error=True)
     wrap = sandbox_wrapper(ctx.workdir)
     if wrap is None:
         return ToolResult(text="当前平台没有沙箱，不能运行合成脚本。", is_error=True)
@@ -148,6 +154,7 @@ RENDER_MUSIC_TOOL = ToolSpec(
         "会自动用另一套 BPM 或总长重跑一遍，抓写死秒数的脚本。"
         "你听不到声音，只能靠这张图（波形、谱图、能量、起音）和指标判断；"
         "指标只证明对齐，不证明好听。每次改动脚本后都调用一次并看图。"
+        "只用于合成形态；导入形态（有 music/source.*）会报错。"
     ),
     input_model=RenderMusicArgs,
     stages={"music"},

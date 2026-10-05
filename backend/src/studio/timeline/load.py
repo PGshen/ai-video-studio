@@ -24,6 +24,7 @@ from studio.timeline.build import (
     narration_from_documents,
     timeline_hash,
 )
+from studio.timeline.imported import import_hash, layers_from_import
 from studio.timeline.schema import Timeline
 
 _NARRATIVE = "narrative/narrative.json"
@@ -31,6 +32,8 @@ _TIMING = "narrative/timing.json"
 _BEATSHEET = "beatsheet/beatsheet.json"
 _EVENTS = "music/events.json"
 _ANALYSIS = "music/analysis.json"
+_SECTIONS = "music/sections.json"
+_SOURCE_STEM = "source"
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +41,7 @@ class TimelineSources:
     root: Path
     narration: bool
     music_source: str
-    """`none` / `synth` / `import`；只有 `synth` 会读配乐文件。"""
+    """`none` / `synth` / `import`；`synth` 读配乐文件，`import`（MV）读分析与段落。"""
     prefix: str = ""
     with_music: bool = True
     """`False` 给配乐阶段自己用：不含 `music` 层的时间轴，是合成脚本的输入。"""
@@ -49,7 +52,9 @@ class LoadedTimeline:
     timeline: Timeline
     hash: str
     base_hash: str
-    """不含 `music` 层的时间轴哈希；`music/render.json` 用它判断配乐是否对应当前时间轴。"""
+    """不含 `music` 层的时间轴哈希；`music/render.json` 用它判断配乐是否对应当前时间轴。
+
+    MV 里两者相同：`sha256(timeline_hash + source_hash + range)`。"""
     narrative: dict[str, Any]
     timing: dict[str, Any]
     beatsheet: dict[str, Any] | None
@@ -91,7 +96,42 @@ def _music_input(events_doc: dict[str, Any], analysis_doc: dict[str, Any]) -> Mu
     )
 
 
+def _source_file(root: Path, prefix: str) -> str:
+    """`music/source.<ext>`（相对工作区，不含 `prefix`）；必须恰好一个。"""
+    music_dir = root / f"{prefix}music"
+    found = sorted(
+        path.name
+        for path in (music_dir.glob(f"{_SOURCE_STEM}.*") if music_dir.is_dir() else [])
+        if path.is_file() and path.resolve().is_relative_to(root.resolve())
+    )
+    if not found:
+        raise TimelineError([f"{prefix}music/{_SOURCE_STEM}.* 不存在（需要先导入音乐）"])
+    if len(found) > 1:
+        raise TimelineError([f"{prefix}music/ 下有多个音乐源文件：{', '.join(found)}"])
+    return f"music/{found[0]}"
+
+
+def _load_import(sources: TimelineSources) -> LoadedTimeline:
+    root, prefix = sources.root, sources.prefix
+    if sources.narration:
+        raise TimelineError(["导入音乐（MV）的项目不支持旁白"])
+    hint = "音乐阶段需要先分析并定稿段落"
+    analysis = _read_document(root, f"{prefix}{_ANALYSIS}", hint)
+    sections_doc = _read_document(root, f"{prefix}{_SECTIONS}", hint)
+    beatsheet_rel = f"{prefix}{_BEATSHEET}"
+    beatsheet: dict[str, Any] | None = None
+    if sources.with_music or (root / beatsheet_rel).exists():
+        beatsheet = _read_document(root, beatsheet_rel, "节拍脚本阶段需要先定稿")
+    source_file = _source_file(root, prefix) if sources.with_music else None
+    imported = layers_from_import(analysis, sections_doc, beatsheet, source_file=source_file)
+    timeline = build_timeline(imported.layers)
+    digest = import_hash(timeline_hash(timeline), imported.source_hash, imported.range)
+    return LoadedTimeline(timeline, digest, digest, {}, {}, beatsheet)
+
+
 def load_timeline(sources: TimelineSources) -> LoadedTimeline:
+    if sources.music_source == "import":
+        return _load_import(sources)
     root, prefix = sources.root, sources.prefix
     narrative: dict[str, Any] = {}
     timing: dict[str, Any] = {}

@@ -11,6 +11,7 @@ import json
 import shutil
 from pathlib import Path
 
+from studio.stages.common.music_source import find_source
 from studio.timeline import TimelineError, TimelineLayers, build_timeline, narration_from_documents
 from studio.timeline.load import TimelineSources, load_timeline
 
@@ -32,11 +33,25 @@ def _fail(workdir: Path, reason: str) -> None:
     error.write_text(reason + "\n", encoding="utf-8")
 
 
+def _is_music_video(upstream: Path) -> bool:
+    """MV = 上游音乐是导入形态：有 `music/source.<ext>`（与 `music` 阶段同一信号）
+    且有 `sections.json`。只有 `sections.json`（合成形态也允许写它）不算 MV。
+    """
+    music = upstream / "music"
+    return (music / "sections.json").is_file() and find_source(music) is not None
+
+
 def _prepare_music_project(workdir: Path) -> None:
-    """短片与"讲解 + 背景乐"：按上游内容选来源，读出带网格与配乐层的时间轴。"""
+    """短片、MV 与"讲解 + 背景乐"：按上游内容选来源，读出带网格与配乐层的时间轴。"""
     upstream = workdir / "upstream"
     reel = (upstream / "beatsheet" / "beatsheet.json").is_file()
-    sources = TimelineSources(workdir, narration=not reel, music_source="synth", prefix="upstream/")
+    mv = _is_music_video(upstream)
+    sources = TimelineSources(
+        workdir,
+        narration=not reel and not mv,
+        music_source="import" if mv else "synth",
+        prefix="upstream/",
+    )
     try:
         loaded = load_timeline(sources)
     except TimelineError as exc:
@@ -57,9 +72,11 @@ def prepare_turn(workdir: Path) -> None:
     shutil.copyfile(_EXEMPLAR, exemplar)
 
     upstream = workdir / "upstream"
-    if (upstream / "beatsheet" / "beatsheet.json").is_file() or (
-        upstream / "music" / "events.json"
-    ).is_file():
+    if (
+        (upstream / "beatsheet" / "beatsheet.json").is_file()
+        or (upstream / "music" / "events.json").is_file()
+        or _is_music_video(upstream)
+    ):
         _prepare_music_project(workdir)
         return
 

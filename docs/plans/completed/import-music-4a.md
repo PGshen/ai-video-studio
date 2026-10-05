@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 已完成（2026-10-05 验收，合并到 main） |
 | 里程碑 | 多形态视频流水线·子项目 4（4A） |
 | 设计依据 | [导入音乐与音乐 MV](../../design/2026-10-05-import-music-mv.md)（已批准 2026-10-05）；总设计 [§4、§6.2、§7.2](../../design/2026-10-04-html-video-pipeline.md) |
 | 分支 | `import-music-4a` |
-| 批准记录 | 待负责人批准计划 |
+| 批准记录 | 2026-10-05：设计已批准；负责人批准计划，采用 subagent-driven 执行 |
 
 ## 目标
 
@@ -33,18 +33,18 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 
 ## 验收标准
 
-- [ ] AC1：对已知 BPM、offset 的合成节拍音频，`analyze_song` 拟合 BPM 误差 < 0.5%、offset 误差 < 30 ms；散拍或变速音频置信度低且不抛异常；同一文件两次分析的 `analysis.json` 逐字节一致。（验证：`tests/engines/test_audio_song.py`）
-- [ ] AC2：`analyze_music` 工具对夹具歌曲写出 `music/analysis.json` 与 `analysis.png`，返回带图的结果；不可解码或静音文件返回明确错误且不写 `analysis.*`。（验证：`tests/stages/test_music_import_tools.py`）
-- [ ] AC3：`validate_sections` 能报出：段落重叠、乱序、不对齐强拍（并给出最近强拍）、越出音频、首尾或相邻段落有空隙、`range` 不对齐或不包含段落、`id` 重复或不合法。（验证：`tests/stages/test_validate_sections.py`）
-- [ ] AC4：`load_timeline(TimelineSources(..., music_source="import"))` 产出的 MV 时间轴：以 `range` 起点为 0；`sections.json` 的 `bpm`/`offset` 覆盖分析值；`moments` 的 `at` 正确换算；`music.energy` 按 `range` 截取；哈希随 `range`、网格、`source_hash` 变化。（验证：`tests/timeline/test_import_timeline.py`）
-- [ ] AC5：`music` 阶段在导入形态下：源文件换了或 `sections.json` 校验不通过即不可定稿；两种形态互不影响（合成形态的既有测试不改动全部通过）。（验证：`tests/stages/test_music_stage.py`、`tests/stages/test_music_import_stage.py`）
-- [ ] AC6：MV 版 `beatsheet`：`ref` 缺失、顺序不一致、遗漏段落、出现 `bpm`/`bars`、`at` 越出本段均报错；短片校验的既有测试不改动全部通过。（验证：`tests/stages/test_beatsheet_validate.py`）
-- [ ] AC7：`animation_html` 的 `prepare_turn` 在 MV 工作区写出带 `grid/sections/moments/music.energy` 的 `upstream/timeline.json`；上游缺失时写 `timeline.error.txt`。（验证：`tests/stages/test_animation_html_stage.py`）
-- [ ] AC8：fake 运行时跑通四阶段，每阶段定稿后下游走 stale；`make check` 全绿，import-linter 契约不变。（验证：`tests/stages/test_music_video_pipeline.py`、`make check`）
+- [x] AC1：对已知 BPM、offset 的合成节拍音频，`analyze_song` 拟合 BPM 误差 < 0.5%、offset 误差 < 30 ms；散拍或变速音频置信度低且不抛异常；同一文件两次分析的 `analysis.json` 逐字节一致。（验证：`tests/engines/test_audio_song.py`）
+- [x] AC2：`analyze_music` 工具对夹具歌曲写出 `music/analysis.json` 与 `analysis.png`，返回带图的结果；不可解码或静音文件返回明确错误且不写 `analysis.*`。（验证：`tests/stages/test_music_import_tools.py`）
+- [x] AC3：`validate_sections` 能报出：段落重叠、乱序、不对齐强拍（并给出最近强拍）、越出音频、首尾或相邻段落有空隙、`range` 不对齐或不包含段落、`id` 重复或不合法。（验证：`tests/stages/test_validate_sections.py`）
+- [x] AC4：`load_timeline(TimelineSources(..., music_source="import"))` 产出的 MV 时间轴：以 `range` 起点为 0；`sections.json` 的 `bpm`/`offset` 覆盖分析值；`moments` 的 `at` 正确换算；`music.energy` 按 `range` 截取；哈希随 `range`、网格、`source_hash` 变化。（验证：`tests/timeline/test_import_timeline.py`）
+- [x] AC5：`music` 阶段在导入形态下：源文件换了或 `sections.json` 校验不通过即不可定稿；两种形态互不影响（合成形态的既有测试不改动全部通过）。（验证：`tests/stages/test_music_stage.py`、`tests/stages/test_music_import_stage.py`）
+- [x] AC6：MV 版 `beatsheet`：`ref` 缺失、顺序不一致、遗漏段落、出现 `bpm`/`bars`、`at` 越出本段均报错；短片校验的既有测试不改动全部通过。（验证：`tests/stages/test_beatsheet_validate.py`）
+- [x] AC7：`animation_html` 的 `prepare_turn` 在 MV 工作区写出带 `grid/sections/moments/music.energy` 的 `upstream/timeline.json`；上游缺失时写 `timeline.error.txt`。（验证：`tests/stages/test_animation_html_stage.py`）
+- [x] AC8：fake 运行时跑通四阶段，每阶段定稿后下游走 stale；`make check` 全绿，import-linter 契约不变。（验证：`tests/stages/test_music_video_pipeline.py`、`make check`）
 
 ## 任务
 
-### T1：依赖与歌曲分析核心——解码与网格拟合（待开始）
+### T1：依赖与歌曲分析核心——解码与网格拟合（完成）
 
 - **目标**：加入 `librosa`，并实现 `analyze_song` 的前半：解码、检测拍点、拟合恒定网格。
 - **涉及文件**：`backend/pyproject.toml`、`backend/uv.lock`、新建 `backend/src/studio/engines/audio/song.py`、`backend/tests/engines/test_audio_song.py`、`backend/tests/engines/audio_fixtures.py`（合成节拍音频生成器，T2/T3/后续任务共用）、`docs/references/librosa.md`、`docs/references/README.md`
@@ -58,7 +58,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：上述测试通过，`docs/references/librosa.md` 有实测记录。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_audio_song.py -q`；`make check`
 
-### T2：歌曲分析核心——强拍相位、候选段落、能量、置信度（待开始）
+### T2：歌曲分析核心——强拍相位、候选段落、能量、置信度（完成）
 
 - **目标**：补全 `analyze_song`，产出 `analysis.json` 的全部字段。
 - **涉及文件**：`backend/src/studio/engines/audio/song.py`、`backend/src/studio/engines/audio/analysis.py`（把 `_energy` 对外公开为 `energy_curve`，沿用 `ENERGY_HOP`，原调用点同步改名）、`backend/tests/engines/test_audio_song.py`
@@ -72,7 +72,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：AC1 全部满足。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_audio_song.py tests/engines/test_audio_analysis.py -q`；`make check`
 
-### T3：分析图与隔离运行（待开始）
+### T3：分析图与隔离运行（完成）
 
 - **目标**：画 `analysis.png`，并让分析在子进程里带超时与资源上限运行。
 - **涉及文件**：`backend/src/studio/engines/audio/picture.py`（新增 `render_song_png`，复用谱图与波形绘制）、新建 `backend/src/studio/engines/audio/song_job.py`、`backend/src/studio/engines/audio/runner.py`（把 `_limited` 公开为 `limited_argv`，原调用点同步改）、`backend/tests/engines/test_audio_picture.py`、`backend/tests/engines/test_audio_song_job.py`
@@ -84,7 +84,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：隔离运行可复用于 T5 的工具与 4B 的 api。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_audio_picture.py tests/engines/test_audio_song_job.py -q`；`make check`
 
-### T4：时间轴的 MV 来源（待开始）
+### T4：时间轴的 MV 来源（完成）
 
 - **目标**：`studio.timeline` 能从 `analysis.json`、`sections.json`、`beatsheet.json` 构建 MV 时间轴并算出哈希。
 - **涉及文件**：`backend/src/studio/timeline/build.py`、新建 `backend/src/studio/timeline/imported.py`、`backend/src/studio/timeline/load.py`、`backend/src/studio/timeline/__init__.py`、`backend/tests/timeline/test_import_timeline.py`、`backend/tests/timeline/test_load.py`
@@ -97,7 +97,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：AC4 满足。
 - **验证命令**：`cd backend && uv run pytest tests/timeline -q`；`make check`
 
-### T5：`analyze_music` 与 `validate_sections` 工具（待开始）
+### T5：`analyze_music` 与 `validate_sections` 工具（完成）
 
 - **目标**：导入形态的两个 agent 工具，以及 `sections.json` 的校验逻辑。
 - **涉及文件**：新建 `backend/src/studio/stages/music/analyze.py`、`backend/src/studio/stages/music/validate_sections.py`、`backend/tests/stages/test_music_import_tools.py`、`backend/tests/stages/test_validate_sections.py`、`backend/tests/fixtures/import_music/`（由 `audio_fixtures` 生成的短夹具，生成脚本入库，音频不入库）
@@ -110,7 +110,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：AC2、AC3 满足。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_music_import_tools.py tests/stages/test_validate_sections.py -q`；`make check`
 
-### T6：`music` 阶段的导入分支与提示词（待开始）
+### T6：`music` 阶段的导入分支与提示词（完成）
 
 - **目标**：把 T5 的工具接进阶段，按工作区内容分流定稿条件、状态摘要和 `prepare_turn`，写导入形态的提示词。
 - **涉及文件**：`backend/src/studio/stages/music/__init__.py`、`backend/src/studio/stages/music/sources.py`、`backend/src/studio/stages/music/prepare.py`、`backend/src/studio/stages/music/tool.py`、`backend/src/studio/stages/music/prompt.md`、`backend/tests/stages/test_music_import_stage.py`、`backend/tests/stages/test_music_stage.py`、`backend/tests/stages/test_music_prompt.py`
@@ -126,7 +126,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：AC5 满足。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_music_stage.py tests/stages/test_music_import_stage.py tests/stages/test_music_prompt.py tests/stages/test_music_tool.py -q`；`make check`
 
-### T7：`beatsheet` 的 MV 分支（待开始）
+### T7：`beatsheet` 的 MV 分支（完成）
 
 - **目标**：节拍脚本能为 MV 校验和定稿。
 - **涉及文件**：`backend/src/studio/stages/beatsheet/validate_beatsheet.py`、`backend/src/studio/stages/beatsheet/__init__.py`、`backend/src/studio/stages/beatsheet/prompt.md`、`backend/tests/stages/test_beatsheet_validate.py`、`backend/tests/stages/test_beatsheet_stage.py`
@@ -140,7 +140,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：AC6 满足。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_beatsheet_validate.py tests/stages/test_beatsheet_stage.py -q`；`make check`
 
-### T8：`animation_html` 认得 MV（待开始）
+### T8：`animation_html` 认得 MV（完成）
 
 - **目标**：画面阶段在 MV 工作区读到完整的 MV 时间轴，运行时在没有命名事件时不出错。
 - **涉及文件**：`backend/src/studio/stages/animation_html/prepare.py`、`backend/src/studio/stages/animation_html/prompt.md`、`backend/src/studio/stages/animation_html/common.py`（如预览/校验里读时间轴的地方）、`backend/src/studio/engines/render/html/`（运行时 `env.hit/span` 的实现，先读代码确认位置）、`backend/tests/stages/test_animation_html_stage.py`、`backend/tests/stages/test_animation_html_prompt.py`、`backend/tests/engines/test_html_*.py`（相关用例）
@@ -153,7 +153,7 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - **完成标准**：AC7 满足。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_animation_html_stage.py tests/stages/test_animation_html_prompt.py tests/engines -q -k "html or animation"`；`make check`
 
-### T9：端到端阶段层测试与文档收尾（待开始）
+### T9：端到端阶段层测试与文档收尾（完成）
 
 - **目标**：用 fake 运行时验证四阶段的联动，补文档，归档计划前的准备。
 - **涉及文件**：新建 `backend/tests/stages/test_music_video_pipeline.py`、`docs/quality/QUALITY.md`、`docs/ARCHITECTURE.md`（若模块地图列了 `engines.audio` 的文件）、`docs/glossary.md`（`sections.json`、拟合网格、`range`）、`docs/plans/TODO.md`、本计划
@@ -176,11 +176,21 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 
 ## 进度
 
-- 无
+- T1 完成：eb1982d（librosa 依赖、歌曲解码与恒定网格拟合）
+- T2 完成：b5aa7c9（强拍相位、候选段落、能量曲线、置信度）
+- T3 完成：f9383b2（分析图与 `song_job` 隔离运行）
+- T4 完成：de875ac（时间轴的 MV 来源）
+- T5 完成：919b259、741c2e1（`analyze_music` 与 `validate_sections`；压缩分析图先于写入）
+- T6 完成：fad9c99、e303f90（`music` 阶段导入分支与提示词）
+- T7 完成：dc6c58b、cc1cde8（`beatsheet` 的 MV 分支）
+- T8 完成：16c41aa（`animation_html` 认得 MV）
+- T9 完成：e142072（四阶段端到端测试、质量缺口、技术债、术语与架构文档）
+- 整分支评审的修复：2df796b、463d100（MV 判定与音乐阶段共用同一个源文件信号；段落至少一小节；歌曲哈希分块读取；文档措辞）
 
 ## 下一步
 
-- 负责人批准计划后，从 T1 开始：先加 `librosa` 依赖并写 `tests/engines/audio_fixtures.py` 与 `test_audio_song.py` 的失败测试。
+- 4A 已完成。下一步是 4B（上传端点、音乐画布的导入形态、预览播放、worker 截取与混音），依据设计 §7、§8，需要先写计划。
+- 4B 计划要带上：上传前清理旧的 `music/source.*`；`music` 定稿时拦截多个源文件；`timeline/load.py` 的 `_source_file`（`source.*` glob）与 `stages.common.music_source` 的取源规则对齐；`html_preview`/`api/music.py`/worker 对 import 形态的泛化。
 
 ## 决策记录
 
@@ -191,9 +201,18 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 - 2026-10-05 — `sections.json` 要求段落首尾相接并覆盖整个 `range`，`beatsheet` 的段落与它一一对应 — 设计只写"不重叠、对齐强拍"与"ref 存在且顺序一致"；这里收紧，因为每一秒都要属于某个场景，否则画面阶段会出现无场景的空白帧。想裁掉前奏或尾声，只要不写那几段（缺省的有效区间取段落跨度），显式 `range` 必须与段落跨度一致，主要供 4B 的画布展示与成片截取使用。属于对设计的细化，若负责人不同意可放宽为警告。
 - 2026-10-05 — MV 的 `hash` = `sha256(timeline_hash + source_hash + range)` — 设计 §5 要求哈希覆盖 `source_hash`，而时间轴 schema 不改字段（设计 §5），所以在加载层合成。
 
+- 2026-10-05 — 歌曲 BPM 边界取 `timeline.build.BPM_RANGE`（40–240），折叠优先区间 60–200 — 计划原写 60–200，那是短片节拍脚本的范围，写错了。
+- 2026-10-05 — 歌曲分析不设内存上限 — 设计 §2 写了"内存上限"，但 runner 只有 CPU 与文件大小限制，macOS 的 `RLIMIT_AS` 不可靠；内存由 `MAX_SONG_SECONDS` 的输入上限兜底（约 106 MB），登记为 TD-71。属于对已批准设计的偏离，已向负责人说明。
+- 2026-10-05 — MV 的节拍脚本不套用短片的 8–180 秒总长与 12 段上限 — 歌曲可达数分钟，设计 §6.2 只要求 `ref` 合法与 `at` 在本段内。
+- 2026-10-05 — 节拍脚本校验遇到 `sections.json` 的 `range` 与段落跨度不一致时直接报错，不在校验器里裁剪 — 与 `music` 阶段的规则一致，时间轴构建仍宽松裁剪作为兜底。
+- 2026-10-05 — 没有命名事件时 `env.span` 返回 `[]`，不是 `0` — 沿用运行时既有契约，`0` 会让 `.forEach`/`.length` 出错。
+- 2026-10-05 — `animation_html` 判断 MV 要求上游同时有 `sections.json` 与白名单内的源文件（`stages.common.music_source`，与 `music` 阶段共用）— 整分支评审发现只看 `sections.json` 时，合成项目里残留一个该文件会被误判成 MV。
+- 2026-10-05 — `sections.json` 的每个段落至少跨一小节（起止吸附到不同强拍）— 整分支评审发现两端各贴一个强拍的几十毫秒"段落"能通过校验。
+
 ## 意外与发现
 
-- 无
+- 首次 `librosa` 的 `beat_track` 在新环境里约 27 秒（numba 即时编译），之后的新进程约 2 秒；`beat_track` 返回的速度被量化（120 BPM 会变成约 117.45），所以网格从拍点时刻拟合。记录在 [librosa.md](../../references/librosa.md)。
+- 强拍相位的检测窗口要取拍点前 3 帧到后 1 帧，窗口只取 ±1 帧时合成节拍音频会选错相位。
 
 ## 阻塞
 
@@ -201,4 +220,9 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 
 ## 验证记录
 
-- 无
+- 2026-10-05，分支末端 `463d100`：`make check` 全绿（后端、前端 1056 个用例、import-linter、文档检查）。
+- AC1–AC3：`tests/engines/test_audio_song.py`、`tests/stages/test_music_import_tools.py`、`tests/stages/test_validate_sections.py`；每个任务经独立评审，评审指出的"永远不会失败"的断言均已改成有区分力的断言，并做过变异检查。
+- AC4：`tests/timeline/test_import_timeline.py`、`tests/timeline/test_load.py`。
+- AC5、AC6、AC7：`tests/stages/test_music_import_stage.py`、`test_beatsheet_validate.py`、`test_animation_html_stage.py`（含"合成项目带残留 `sections.json`"的分流用例）。
+- AC8：`tests/stages/test_music_video_pipeline.py`，用真实 `analyze_music` 与真实 `stage_flow`，含"歌曲更换后下游 stale"与"music 不变则不 stale"的对照。
+- 没有真实模型冒烟，也没有真实歌曲实测（设计 §2、§11：已确认跳过，记入 QUALITY.md 的已知缺口）。

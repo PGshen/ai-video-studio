@@ -9,9 +9,17 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from studio.stages.common.music_source import SOURCE_EXTENSIONS, find_source
 from studio.timeline.load import TimelineSources
 
+__all__ = ["SOURCE_EXTENSIONS", "import_source", "infer_sources", "section_energy"]
+
 _BEATSHEET = "beatsheet/beatsheet.json"
+
+
+def import_source(workdir: Path) -> Path | None:
+    """工作区里的 `music/source.<ext>`（导入形态的标志）；没有返回 `None`。"""
+    return find_source(workdir / "music")
 
 
 def infer_sources(workdir: Path, prefix: str, *, with_music: bool) -> TimelineSources:

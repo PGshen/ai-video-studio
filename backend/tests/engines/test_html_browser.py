@@ -439,3 +439,20 @@ module.exports = { draw(ctx, lt, env) {
     await page.render_hash(1.0)
     assert (await page.evaluate("window.__neutral"))[0] == [0, 0, True, 0]
     await page.close()
+
+
+async def test_an_mv_timeline_without_named_events_keeps_hit_and_span_neutral(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    """Imported songs have `music.events == []`: hit/span must not throw; energy still works."""
+    timeline = _reel_timeline()
+    timeline["music"]["events"] = []
+    page = await _probe(browser, tmp_path, timeline)
+    await page.render_hash(5.0)
+    probe = (await page.evaluate("window.__probe"))["s2@5.000"]
+    assert probe["kick"] == 0
+    assert probe["late"] == 0
+    assert probe["span"] == []
+    assert probe["energy"] == pytest.approx(5.0 / 15, abs=1e-3)
+    assert probe["bt1"] == pytest.approx(timeline["grid"]["beats"][0] + _BEAT - 3.75)
+    await page.close()

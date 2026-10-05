@@ -46,3 +46,6 @@
 | 预览渲染 | preview render | 低清渲染单个镜头并抽取关键帧，供视觉自检使用 |
 | 视觉自检 | visual self-check | agent 查看预览关键帧，自己发现并修复画面问题 |
 | 成片 | final render | worker 以最终画质一次渲染全部镜头，合成音频（不叠字幕，见 ADR 0016） |
+| sections.json | sections.json | 导入音乐形态下 `music/sections.json`：音乐阶段手写的段落（`id`、`label`、`start`、`end`，可选 `range`），起止对齐强拍、首尾相接；节拍脚本用 `ref` 引用它的 `id` |
+| 拟合网格 | fitted grid | 歌曲分析给歌曲拟合出的恒定节拍网格（`bpm` + `offset`，`offset` 是第一个强拍的时刻）；与实际拍点的偏差记为拟合残差，变速或散拍的歌残差大、置信度低 |
+| 有效截取区间 | `range` / effective range | MV 取用歌曲的哪一段，`{start, end}`（秒）；缺省取 `sections.json` 的段落跨度，显式写出时必须与段落跨度一致；时间轴的 0 秒就是 `range` 起点；`range` 起点处或之后的第一个强拍只决定网格的 offset（相对区间起点） |

@@ -54,7 +54,12 @@ def test_stage_protocol_values() -> None:
     assert STAGE.name == "music" and STAGE.allow_web is False and STAGE.workspaceless is False
     assert STAGE.reads() == ["concept", "narrative", "beatsheet"]
     assert STAGE.artifact_dirs() == ["music"]
-    assert {t.name for t in STAGE.tools()} == {"render_music", "suggest_upstream_change"}
+    assert {t.name for t in STAGE.tools()} == {
+        "render_music",
+        "analyze_music",
+        "validate_sections",
+        "suggest_upstream_change",
+    }
 
 
 def test_write_scope_allows_only_the_script_and_keeps_products_tool_managed() -> None:

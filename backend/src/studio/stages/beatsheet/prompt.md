@@ -52,6 +52,30 @@
 - `visual_action` 要具体、可执行："圆点裂成四个，沿方形轨道加速"，而不是"开始变得激烈"。
 - 不要贪多：一段里动作太密，画面和配乐都做不过来。
 
+## 音乐 MV
+
+如果存在 `upstream/music/sections.json`（和 `upstream/music/analysis.json`），这是一支**音乐 MV**：音乐已经定好，节拍网格和段落边界、时长都以音乐为准，你只写每段的意图、能量档位和时刻。
+
+```json
+{
+  "sections": [
+    {
+      "ref": "intro",
+      "intent": "一句话：这段表达什么",
+      "energy": "low",
+      "moments": [{ "at": "1.1", "visual_action": "标题淡入" }]
+    }
+  ]
+}
+```
+
+- `ref` 必填：它是 `sections.json` 里该段的 `id`。`id`、`label` 可以不写（默认取 `sections.json` 的值）；写了 `id` 就必须等于 `ref`。
+- **不要写 `bpm` 和 `bars`**：BPM 取自音乐，段长取自 `sections.json`。
+- `sections.json` 的每个段落都要引用恰好一次，顺序保持一致；遗漏、重复、乱序都会被拒绝。
+- `at` 仍是"小节.拍"，相对本段、按音乐的 BPM（`sections.json` 里的 `bpm` 优先于 `analysis.json`）换算，必须落在本段内、按时间顺序写。
+- 读 `analysis.json` 里的 `energy` 曲线，看每段在音乐里是强是弱，据此决定每段的 `energy`（`low`、`mid`、`high`、`peak`），不要与音乐的强弱相反。
+- 总时长就是音乐的截取长度，会与简报的目标时长核对。
+
 ## 工作流程
 
 1. 读简报，算出 BPM 与总小节数，写出第一版 `beatsheet.json`。

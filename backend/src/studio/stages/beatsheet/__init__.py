@@ -2,7 +2,8 @@
 
 产物 `beatsheet/beatsheet.json`（BPM、按小节数计的段落、每段的画面时刻 `moments`）；工具：
 `validate_beatsheet` 与 `suggest_upstream_change`。定稿条件是校验没有错误。配乐按这里的网格产出，
-时间轴的段落时长 = `bars × 4 × 60 / bpm`。
+时间轴的段落时长 = `bars × 4 × 60 / bpm`。音乐 MV（上游有 `music/sections.json`）里段落用 `ref`
+指向音乐的段落，不写 `bpm`/`bars`，校验与状态摘要由 `check_workspace` 按形态分流。
 """
 
 from __future__ import annotations

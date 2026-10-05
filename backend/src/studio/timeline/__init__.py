@@ -7,11 +7,19 @@ from studio.timeline.build import (
     MusicInput,
     NarrationInput,
     SectionInput,
+    TimedSectionInput,
     TimelineError,
     TimelineLayers,
     build_timeline,
     narration_from_documents,
     timeline_hash,
+)
+from studio.timeline.imported import (
+    ImportLayers,
+    downbeat_times,
+    effective_grid,
+    import_hash,
+    layers_from_import,
 )
 from studio.timeline.notation import parse_at
 from studio.timeline.schema import (
@@ -31,6 +39,7 @@ __all__ = [
     "Energy",
     "Grid",
     "GridInput",
+    "ImportLayers",
     "LayerNotSupported",
     "Moment",
     "MomentInput",
@@ -41,10 +50,15 @@ __all__ = [
     "NarrationScene",
     "Section",
     "SectionInput",
+    "TimedSectionInput",
     "Timeline",
     "TimelineError",
     "TimelineLayers",
     "build_timeline",
+    "downbeat_times",
+    "effective_grid",
+    "import_hash",
+    "layers_from_import",
     "narration_from_documents",
     "parse_at",
     "timeline_hash",

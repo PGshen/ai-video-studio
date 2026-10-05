@@ -159,7 +159,7 @@ def _match_events(
     return matches, undetectable, unmatched[:_MAX_UNMATCHED]
 
 
-def _energy(mono: np.ndarray, sample_rate: int, duration: float) -> list[float]:
+def energy_curve(mono: np.ndarray, sample_rate: int, duration: float) -> list[float]:
     count = int(duration / ENERGY_HOP + 1e-9) + 1
     squares = np.concatenate([[0.0], np.cumsum(mono.astype(np.float64) ** 2)])
     half = ENERGY_WINDOW / 2
@@ -231,7 +231,7 @@ def analyze(
         undetectable=undetectable,
         unmatched=unmatched,
         energy_hop=ENERGY_HOP,
-        energy=_energy(mono, sr, duration),
+        energy=energy_curve(mono, sr, duration),
         waveform=_waveform(mono),
     )
     report.warnings = _warnings(report, timeline, section_energy or {})
