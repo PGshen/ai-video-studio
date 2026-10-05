@@ -153,7 +153,7 @@
 - **完成标准**：测试通过；一次 `slow` 用例用真实 Seatbelt 包装跑通参考脚本。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_music_render.py tests/stages/test_music_tool.py -v`；`uv run pytest -m slow tests/stages/test_music_tool.py -v`
 
-### T6：`music` 阶段定义、`prepare_turn`、提示词、注册（待开始）
+### T6：`music` 阶段定义、`prepare_turn`、提示词、注册（完成）
 
 - **目标**：阶段本身（设计 §7.1、§7.5），注册后两种形态可创建。
 - **涉及文件**：`backend/src/studio/stages/music/{__init__,prepare}.py`、`prompt.md`、`exemplar/audio-techniques.py`；`backend/src/studio/main.py`；`backend/pyproject.toml`（契约）；`backend/tests/stages/{test_music_stage,test_music_prompt}.py`；`backend/tests/api/test_video_kinds.py`、`test_projects.py`（新用例）。
@@ -223,6 +223,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T6 `music` 阶段与注册 — 26 个阶段测试；短片与"讲解 + 合成背景乐"在 `/api/video-kinds` 里可用，导入音乐仍不可用；`make check` 全绿
 - 2026-10-05 — T5 `render_music` 核心与工具 — 19 个测试（render 13、tool 5 + 真实 Seatbelt 1 slow），`agent.shell_sandbox.seatbelt_profile` 增加 `allow_read` 参数
 - 2026-10-05 — T4 `concept` 与 `beatsheet` 阶段 — 78 个新增测试（target_duration、concept、beatsheet），`make check` 全绿
 - 2026-10-05 — T3 分析图与脚本运行器 — picture 4、runner 8（含超时杀进程组、取消、环境变量隔离），slow 的真实 Seatbelt 用例通过
@@ -231,7 +232,7 @@
 
 ## 下一步
 
-- T6：`music` 阶段定义、`prepare_turn`、提示词、金样本、注册（`stages/music/__init__.py` 现在只有占位文档字符串）。
+- T7：HTML 运行时 `env.hit/span/energy/moment` 与 `assemble(include_global=…)`。
 
 ## 决策记录
 
@@ -255,6 +256,9 @@
 - 2026-10-05 — T5：`render_music_core(workdir, *, timeline, base_hash, section_energy, wrap_command, timeout)` 接收已构建好的时间轴字典与 `base_hash`，不自己读文件；工具从 `upstream/`（`infer_sources`：有 `upstream/beatsheet/beatsheet.json` 为短片，否则为有旁白）读时间轴，3B 的 api 端点可复用核心。`stages/music/sources.py` 的推断规则也用于 T6 的 `finalize_blockers`（顶层前缀）。
 - 2026-10-05 — T5：**计划外的公共接口新增**：`agent.shell_sandbox.seatbelt_profile` 增加关键字参数 `allow_read`（拒读之后放回的只读路径），工具用它放回虚拟环境（`sys.prefix`）；先写了红测试（`tests/agent/test_shell_sandbox.py`）。重定时校验：全部时间 ×1.25（短片 BPM ×0.8），失败条件为再跑一次出错、事件名集合变了、短片起音对齐率低于原来的一半。写回用"全部先写临时文件再依次改名"。
 - 2026-10-05 — T5：工具里的沙箱包装通过模块变量 `studio.stages.music.tool.sandbox_wrapper` 注入（测试替换成恒等包装或 `None`）；真实沙箱用例（slow）用参考脚本跑通整个流程。
+
+- 2026-10-05 — T6：**确认了 `unavailable_reason` 的缺口**：`music` 注册后，MV 与"导入音乐"的流水线阶段都已注册，会被误放开。`unavailable_reason(pipeline, registry, music_source=None)` 增加第三个参数，`music_source="import"` 时返回"「配乐（导入音乐）」阶段尚未实现"（措辞带"阶段尚未实现"以兼容既有断言）；`api/projects.py` 同步传入。随之改了既有测试：`test_video_kinds`（默认注册表下可用的是 5 种）、`test_projects`（MV 创建改为短片创建，MV 的流水线仍由 `tests/stages/test_pipeline.py` 覆盖）。
+- 2026-10-05 — T6：每阶段默认模型的阶段清单（`db/repo/settings.py::STAGES` 与前端 `DEFAULT_PROFILE_STAGES`）加入 `concept`、`beatsheet`、`music`（先写了红测试）。`music` 的 `finalize_blockers` 和 `prepare_turn` 都从 `upstream/` 读时间轴（`infer_sources(workdir, "upstream/")`）；`prepare_turn` 在两种上游都缺时写"缺少上游产物…"而不是抛异常。金样本 `exemplar/audio-techniques.py`（193 行）整理自探索作品，可直接运行，满足脚本契约（头部注释写了淡出与"不写死时间"两个坑）。
 
 ## 意外与发现
 

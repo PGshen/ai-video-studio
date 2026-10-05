@@ -49,6 +49,7 @@ from studio.stages.animation_html import STAGE as ANIMATION_HTML_STAGE
 from studio.stages.beatsheet import STAGE as BEATSHEET_STAGE
 from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.concept import STAGE as CONCEPT_STAGE
+from studio.stages.music import STAGE as MUSIC_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.style import STAGE as STYLE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
@@ -72,6 +73,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         ANIMATION_HTML_STAGE,
         CONCEPT_STAGE,
         BEATSHEET_STAGE,
+        MUSIC_STAGE,
         STYLE_STAGE,
     ):
         registry.register(stage)

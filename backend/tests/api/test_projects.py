@@ -23,7 +23,7 @@ from studio.styles import store as style_store
 from studio.styles.layout import style_dir
 from studio.workspace import files
 
-from .conftest import ApiEnv, assert_detail, register_reel_stages
+from .conftest import ApiEnv, assert_detail
 
 
 def _row_counts(api_env: ApiEnv) -> tuple[int, int, int]:
@@ -81,7 +81,7 @@ class TestCreateProjectKinds:
 
         response = await api_env.client.post(
             "/api/projects",
-            json={"title": "t", "engine": "manim", "narration": True, "music_source": "synth"},
+            json={"title": "t", "engine": "manim", "narration": True, "music_source": "import"},
         )
 
         assert response.status_code == 422
@@ -148,32 +148,31 @@ class TestCreateProjectKinds:
             ("animation_html", "locked"),
         ]
 
-    async def test_music_video_pipeline_stages_and_idea_card(self, api_env: ApiEnv) -> None:
+    async def test_motion_reel_pipeline_stages_and_idea_card(self, api_env: ApiEnv) -> None:
         from studio.db.repo.ideas import create_idea
 
-        register_reel_stages(api_env.app.state.registry)
         idea = create_idea(api_env.app.state.engine, title="想法", pitch="p")
 
         response = await api_env.client.post(
             "/api/projects",
             json={
-                "title": "MV",
+                "title": "短片",
                 "idea_id": idea.id,
                 "engine": "html",
                 "narration": False,
-                "music_source": "import",
+                "music_source": "synth",
             },
         )
 
         assert response.status_code == 201, response.text
         body = response.json()
         assert body["current_stage"] == "concept"
-        assert body["kind"]["video_kind"] == "music_video"
+        assert body["kind"]["video_kind"] == "motion_reel"
         stages = list_stages(api_env.app.state.engine, body["id"])
         assert [(s.stage, s.status) for s in stages] == [
             ("concept", "active"),
-            ("music", "locked"),
             ("beatsheet", "locked"),
+            ("music", "locked"),
             ("animation_html", "locked"),
         ]
         assert (api_env.workdir(body["id"]) / "concept/notes/idea-card.md").is_file()
