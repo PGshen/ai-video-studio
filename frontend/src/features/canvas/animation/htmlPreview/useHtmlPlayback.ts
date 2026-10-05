@@ -236,7 +236,17 @@ export function useHtmlPlayback(options: PlaybackOptions) {
       show(section.start) // looping: back to the section start, audio included
       startSection(currentIndex.value, 0)
     } else if (next >= section.end) {
-      advanceSection()
+      if (scoreDriven && score !== null && !score.paused) {
+        // The score is the clock and keeps playing: only follow it. Seeking it to the next
+        // section start would pull it back after a late frame or a background tab.
+        if (next >= meta.duration) finish()
+        else {
+          currentIndex.value = Math.max(0, sectionAt(meta.sections, next))
+          show(next)
+        }
+      } else {
+        advanceSection()
+      }
     } else if (next !== t.value) {
       show(next)
     }

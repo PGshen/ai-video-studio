@@ -21,6 +21,7 @@
 | P2 | 把本地 `main` 推送到 `origin` | 2026-10-04 | 需负责人确认后再推 |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
+| P2 | 3B 评审遗留的 Minor：`/music/meta` 的 `stale` 也比实际 wav 哈希；预览 meta 的 wav 哈希按 (mtime, size) 缓存；成片先复制 `music.wav` 再哈希与混音；`final.json` 的配乐哈希改单独字段（`audio_sources` 的镜头 id 可能叫 `music`） | 3B 整分支评审，2026-10-05 | 见 [synth-music-3b 决策记录](active/synth-music-3b.md) |
 | P2 | manim 阶段 `render_preview` 返回的图片限制大小（≤ 400 kB JPEG，防 Claude SDK 单条消息 1 MiB 上限） | 3A 冒烟发现，2026-10-05 | 见 [claude-agent-sdk](../references/claude-agent-sdk.md) 末节；`stages/animation/render_preview.py:115` |
 | P2 | 真实模型对 `animation/assets/*` 用法的验证 | 同上 | 子项目 2 的小试未覆盖 |
 

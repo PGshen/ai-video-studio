@@ -83,6 +83,9 @@ def html_preview_meta_endpoint(
     settings: Settings = Depends(get_settings),
 ) -> HtmlPreviewMeta:
     loaded, workdir = _load(engine, settings, project_id)
+    project = get_project(engine, project_id)
+    assert project is not None  # `_load` already 404s a missing project
+    kind = kind_from_settings(project.settings)
     response.headers.update(_HEADERS)
     timeline = loaded.timeline
     timeline_dict = timeline.model_dump(mode="json")
@@ -119,9 +122,11 @@ def html_preview_meta_endpoint(
             for section in timeline.sections
         ],
         audio=audio,
-        music=_preview_music(
-            project_id, workdir, loaded, loaded.beatsheet is None
-        ),  # a reel has a beatsheet and no narration,
+        music=(
+            _preview_music(project_id, workdir, loaded, kind.narration)
+            if kind.music_source == "synth"
+            else None
+        ),
     )
 
 

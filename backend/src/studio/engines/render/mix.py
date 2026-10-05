@@ -137,7 +137,10 @@ def build_mix_command(
         graph = (
             ";".join(delayed)
             + f";{labels}amix=inputs={len(tracks)}:normalize=0:duration=longest[bus]"
-            + ";[bus]asplit=2[narration][sidechain]"
+            + ";[bus]asplit=2[narration][sc0]"
+            # The compressor's output ends with its sidechain input: pad that one to the full
+            # length, or the bed is cut to silence after the last narration clip.
+            + f";[sc0]apad=whole_dur={span},atrim=end={span}[sidechain]"
             + f";{chain}"
             + f";[mus][sidechain]sidechaincompress={_DUCK}[ducked]"
             + f";[narration][ducked]amix=inputs=2:normalize=0:duration=longest,{finish}[aout]"

@@ -269,3 +269,13 @@ async def test_real_render_of_an_explainer_bed_has_narration_and_a_quieter_score
     info = _probe(final)
     assert [s["codec_type"] for s in info["streams"]].count("audio") == 1
     assert abs(float(info["format"]["duration"]) - 3.0) <= 0.15
+
+
+async def test_imported_music_is_refused_instead_of_rendering_a_silent_film(reel: Env) -> None:
+    from studio.db.repo.projects import update_project_settings
+
+    update_project_settings(reel.engine, reel.project_id, {"music_source": "import"})
+    backend = FakeBackend()
+    job = _job(reel, await _run(reel, backend))
+    assert job.status == "failed" and "导入音乐" in (job.error or "")
+    assert backend.video_calls == [] and backend.mix_calls == []

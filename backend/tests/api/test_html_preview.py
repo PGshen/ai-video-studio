@@ -336,3 +336,15 @@ async def test_meta_of_an_explainer_without_music_has_no_music_field_value(
     api_env: ApiEnv, pid: str
 ) -> None:
     assert (await api_env.client.get(f"{_base(pid)}/meta")).json()["music"] is None
+
+
+async def test_meta_gives_no_music_to_a_project_that_is_not_a_synth_one(api_env: ApiEnv) -> None:
+    """A stray `music/` in a project without a synth score must not reach the preview."""
+    from studio.db.repo.projects import update_project_settings
+
+    pid, _ = await _scored(api_env, "reel")
+    update_project_settings(api_env.app.state.engine, pid, {"music_source": "none"})
+    meta = await api_env.client.get(f"{_base(pid)}/meta")
+    assert meta.status_code in (200, 409)
+    if meta.status_code == 200:
+        assert meta.json()["music"] is None

@@ -224,6 +224,8 @@ async def run_html_job(
     music_source: str = "none",
 ) -> None:
     """成功返回；失败抛 `HtmlJobError`，已有的 `output/final.mp4` 保持不变。"""
+    if music_source == "import":
+        raise HtmlJobError("导入音乐的成片渲染尚未实现（子项目 4）")
     try:
         loaded = load_timeline(TimelineSources(workdir, narration, music_source))
     except TimelineError as exc:

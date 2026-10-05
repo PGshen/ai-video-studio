@@ -64,3 +64,4 @@ ffmpeg -y -i base.mp4 -loop 1 -i sub1.png \
 - **验收标准（本项目）**：说话段压低 ≥ 6 dB；停说话 1 秒后回到不压的电平 −2 dB 以内。`tests/engines/test_mix.py` 里的 `test_music_is_ducked_while_the_narration_speaks_and_recovers_after` 用 FFT 在配乐自己的频率上量，跟这条一致。
 - **配乐淡变**：只有配乐时首尾各 15 ms（防爆音）；讲解背景乐首淡入 1 秒、尾淡出 1.5 秒。`afade` 放在 `atrim` 之后、`apad` 之前，淡出起点 = 总长 − 淡出时长。
 - ⚠️ 待验证：旁白音量变化很大的项目（逐条 TTS 未归一化）压低量会不一致；若负责人验收时听出来，改成给旁白总线先加 `loudnorm` 或 `dynaudnorm` 再侧链。
+- ✅ 已验证（2026-10-05，3B 整分支评审）：`sidechaincompress` 的输出长度跟着**侧链输入**走。旁白总线只到最后一段旁白结束，不给侧链那一路补静音，背景乐在最后一句旁白之后整段无声（实测 −150 dB，淡出没发生）。做法：`[bus]asplit=2[narration][sc0];[sc0]apad=whole_dur=…,atrim=end=…[sidechain]`；测试 `test_the_bed_keeps_playing_after_the_last_narration_ends`。

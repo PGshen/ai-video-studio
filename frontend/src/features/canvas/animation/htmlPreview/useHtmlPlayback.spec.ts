@@ -348,6 +348,30 @@ describe('useHtmlPlayback with a score: a reel (no narration)', () => {
     expect(h.score.currentTime).toBe(2.02) // already in place: no jump, no click
   })
 
+  it('never pulls the score back when a frame was late or several sections went by', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.score.currentTime = 2.2 // a slow frame: well past the 2.0 boundary
+    h.tick(0.016)
+    expect(h.playback.currentIndex.value).toBe(1)
+    expect(h.score.currentTime).toBe(2.2)
+    expect(h.playback.t.value).toBe(2.2)
+
+    h.score.currentTime = 5.4 // the tab was in the background: two sections at once
+    h.tick(0.016)
+    expect(h.playback.currentIndex.value).toBe(2)
+    expect(h.score.currentTime).toBe(5.4)
+  })
+
+  it('stops at the end of the piece when the score reaches it', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.score.currentTime = 6
+    h.tick(0.016)
+    expect(h.playback.playing.value).toBe(false)
+    expect(h.playback.t.value).toBe(6)
+  })
+
   it('loops the current section by moving the score back to the section start', async () => {
     const h = setupScore(REEL)
     h.playback.setLoop(true)

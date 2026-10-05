@@ -284,7 +284,8 @@ def _decode(path: Path) -> tuple[np.ndarray, int]:
 
 def _band_db(samples: np.ndarray, rate: int, start: float, end: float, hz: float) -> float:
     """Level (dB) of one frequency inside a time window: keeps music and narration apart."""
-    window = samples[int(start * rate) : int(end * rate)] * np.hanning(int((end - start) * rate))
+    window = samples[int(start * rate) : int(end * rate)]
+    window = window * np.hanning(len(window))
     spectrum = np.abs(np.fft.rfft(window)) / len(window)
     freqs = np.fft.rfftfreq(len(window), 1 / rate)
     peak = spectrum[(freqs > hz - 30) & (freqs < hz + 30)].max()
@@ -380,3 +381,30 @@ async def test_a_broken_music_file_fails_without_leaving_output_or_touching_the_
         await mix_final(video, [], 2.0, out, music=MusicMix(AudioTrack(bad, 0.0)))
     assert out.read_bytes() == b"old final"
     assert not list(tmp_path.glob("*.tmp*"))
+
+
+@pytest.mark.slow
+async def test_the_bed_keeps_playing_after_the_last_narration_ends(tmp_path: Path) -> None:
+    """The sidechain input (narration bus) ends with the last clip; without padding it the
+    compressor's output ends there too and the bed is cut to silence for the rest of the film."""
+    video, nar, music, out = (tmp_path / n for n in ("v.mp4", "n.wav", "m.wav", "out.mp4"))
+    plain = tmp_path / "plain.mp4"
+    _make_video(video, 8.0)
+    _make_wav(music, 2000, 10.0, 0.2)  # longer than the video, so no fade-out is needed to see it
+    _make_wav(nar, 200, 2.0, 0.126)
+    tracks = [AudioTrack(nar, 1.0, 2.0)]
+    await mix_final(
+        video, tracks, 8.0, out, music=MusicMix(AudioTrack(music, 0.0), duck_under_narration=True)
+    )
+    await mix_final(
+        video,
+        tracks,
+        8.0,
+        plain,
+        music=MusicMix(AudioTrack(music, 0.0), duck_under_narration=False),
+    )
+    ducked, rate = _decode(out)
+    free, _ = _decode(plain)
+    for window in ((4.0, 5.0), (6.0, 6.8)):
+        gap = _band_db(ducked, rate, *window, 2000) - _band_db(free, rate, *window, 2000)
+        assert gap >= -2.0, (window, gap)
