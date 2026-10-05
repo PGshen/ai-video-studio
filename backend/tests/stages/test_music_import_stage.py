@@ -152,6 +152,26 @@ def test_a_valid_import_workspace_can_be_finalised(analysed: Path) -> None:
     assert STAGE.finalize_blockers(analysed) == []
 
 
+def test_the_song_is_hashed_in_chunks_not_read_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Larger than one 1 MiB chunk; the digest must match a whole-file sha256 byte for byte.
+    data = bytes(range(256)) * (5 * 4096 + 7)
+    _put_source(tmp_path, data=data)
+    _put_analysis(tmp_path, hashlib.sha256(data).hexdigest())
+    _put_sections(tmp_path)
+    original = Path.read_bytes
+
+    def guarded(self: Path) -> bytes:
+        if self.name.startswith("source."):
+            raise AssertionError(f"read_bytes on the song: {self}")
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded)
+    assert STAGE.finalize_blockers(tmp_path) == []
+    assert STAGE.status_summary(tmp_path) == "已分析：BPM 120，40.00 秒，置信度 0.90；2 个段落"
+
+
 # ---- status_summary ----------------------------------------------------------------------
 
 

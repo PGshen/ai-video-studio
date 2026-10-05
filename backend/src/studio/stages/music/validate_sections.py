@@ -1,8 +1,8 @@
 """`validate_sections` 工具与校验逻辑（4A 设计 §4、计划 T5）。
 
 纯函数 `check_sections(doc, analysis)` 检查 `music/sections.json`：段落 id、顺序、首尾相接并恰好覆盖
-有效截取区间、起止对齐强拍（容差 `ALIGN_TOLERANCE`）、落在音频长度内。畸形输入（非字典、缺字段、
-类型错误、布尔当数字、非有限数）一律转成错误条目，不抛异常。
+有效截取区间、起止对齐强拍（容差 `ALIGN_TOLERANCE`）且吸附到不同的强拍（每段至少一小节）、
+落在音频长度内。畸形输入（非字典、缺字段、类型错误、布尔当数字、非有限数）一律转成错误条目，不抛异常。
 """
 
 from __future__ import annotations
@@ -95,15 +95,21 @@ def _nearest(downbeats: list[float], value: float) -> float | None:
     return min(candidates, key=lambda t: abs(t - value))
 
 
-def _check_aligned(what: str, value: float, downbeats: list[float], check: SectionsCheck) -> None:
+def _check_aligned(
+    what: str, value: float, downbeats: list[float], check: SectionsCheck
+) -> float | None:
+    """`value` 吸附到的强拍；没对齐时记一条错误并返回 `None`。"""
     nearest = _nearest(downbeats, value)
     if nearest is None:
         check.errors.append(f"{what} {value:g} s 没有落在强拍上（音频内没有强拍）")
-    elif abs(nearest - value) > ALIGN_TOLERANCE + _EPS:
+        return None
+    if abs(nearest - value) > ALIGN_TOLERANCE + _EPS:
         check.errors.append(
             f"{what} {value:g} s 没有落在强拍上（最近的强拍 {nearest:g} s，"
             f"相差 {abs(nearest - value) * 1000:.0f} ms，容差 {ALIGN_TOLERANCE * 1000:.0f} ms）"
         )
+        return None
+    return nearest
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,8 +235,13 @@ def check_sections(doc: Any, analysis: Any) -> SectionsCheck:
         check.errors.extend(exc.errors)
         return check
     for section in sections:
-        _check_aligned(f"段落 {section.id} 的起点", section.start, downbeats, check)
-        _check_aligned(f"段落 {section.id} 的终点", section.end, downbeats, check)
+        start = _check_aligned(f"段落 {section.id} 的起点", section.start, downbeats, check)
+        end = _check_aligned(f"段落 {section.id} 的终点", section.end, downbeats, check)
+        if start is not None and start == end:
+            check.errors.append(
+                f"段落 {section.id} 不足一小节：{section.start:g}→{section.end:g} s 的起点和终点"
+                f"吸附到同一个强拍 {start:g} s，每个段落至少要跨一小节（起止落在不同的强拍上）"
+            )
     if doc.get("range") is not None and isinstance(doc["range"], dict):
         start, end = doc["range"].get("start"), doc["range"].get("end")
         if _is_number(start) and _is_number(end):

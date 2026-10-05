@@ -39,7 +39,7 @@
 | TD-72 | 2026-10-05 | `engines/audio/song_job.py` | `song_job` 导入了 runner 的私有辅助函数 `_drain`/`_kill_group`/`_tail_lines`，并把 `TMPDIR` 指向 `out_dir` | 两个运行器耦合；runner 改私有函数会连带破坏歌曲分析 | 把这三个辅助函数提升为公开（或抽到共用模块），`TMPDIR` 的约定写进 runner 文档 | import-music-4a |
 | TD-73 | 2026-10-05 | `engines/audio/song.py`（librosa 首次调用） | 进程内首次调用 librosa 约 27 秒（numba JIT 编译），每次歌曲分析都起新子进程，等于每次都付这个代价的一部分（缓存命中后更短） | 导入歌曲的第一次分析等待较久，超时预算要留余量 | 预热或持久化 numba 缓存目录；或常驻分析进程 | import-music-4a |
 | TD-74 | 2026-10-05 | `timeline/imported.py`、`timeline/build.py` | `imported.py` 复制了 `build.py` 里的少量常量与辅助函数（网格/容差/取整等），两处各自维护 | 改一处忘改另一处会让导入形态与短片的时间轴口径不一致 | 抽成 `timeline` 内部共用模块，两处引用 | import-music-4a |
-| TD-75 | 2026-10-05 | `engines/audio/song.py`（置信度的覆盖率） | 置信度的“拍点覆盖”对折半后的低速（< 60 BPM）网格仍用折叠前的拍点计数，会误报“拍点不稳”警告 | 慢歌（< 60 BPM）分析结果总带一条不准确的警告，用户可能不信任正常的网格 | 覆盖率按折叠后的拍点（或折叠后的网格）计算，补慢歌的测试 | import-music-4a |
+| TD-75 | 2026-10-05 | `engines/audio/song.py`（置信度的覆盖率） | 检测到的拍速低于 60 BPM 时网格按倍频折叠（`_fold`，`FOLD_MIN`）成两倍 BPM、周期减半，但覆盖率的分子 `beats_used` 是折叠前（按原慢拍速）检测到的拍点数，分母却按折叠后的周期算（时长 ÷ 折叠后周期），覆盖率约为 0.5，会误报“拍点不稳”警告 | 慢歌（< 60 BPM）分析结果总带一条不准确的警告，用户可能不信任正常的网格 | 覆盖率按折叠后的拍点（或折叠后的网格）计算，补慢歌的测试 | import-music-4a |
 
 ## 已处理
 

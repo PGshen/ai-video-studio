@@ -221,7 +221,14 @@ def test_reanalysing_a_replaced_song_marks_the_downstream_stale(project: _Projec
     analysis = json.loads((project.workdir / "music" / "analysis.json").read_text("utf-8"))
     assert analysis["bpm"] == pytest.approx(100.0, rel=0.01)
     # the old sections no longer sit on downbeats of the new grid
-    assert check_sections(project.workdir).errors
+    errors = check_sections(project.workdir).errors
+    # every boundary is reported as off-grid (the fitted downbeat floats are not pinned)
+    assert [error.split(" s 没有落在强拍上（最近的强拍 ")[0] for error in errors] == [
+        "段落 intro 的起点 0.5",
+        "段落 intro 的终点 8.5",
+        "段落 verse 的起点 8.5",
+        "段落 verse 的终点 16.5",
+    ]
     _write_json(
         project.workdir / "music" / "sections.json",
         {

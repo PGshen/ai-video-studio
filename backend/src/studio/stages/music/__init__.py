@@ -11,11 +11,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
 from studio.agent.tools import ToolSpec
+from studio.engines.audio.song import file_hash
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
 from studio.stages.music.analyze import ANALYZE_MUSIC_TOOL
 from studio.stages.music.prepare import prepare_turn
@@ -54,10 +54,6 @@ _NOTHING_YET = "还没有配乐：合成形态请写 music/compose.py 并 render
 _REANALYSE = "源文件已更换，需要重新 analyze_music"
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def _read_object(path: Path) -> dict | None:
     """`path` 的 JSON 对象；不存在、无法解析或顶层不是对象时为 `None`。"""
     if not path.is_file():
@@ -76,7 +72,7 @@ def _render_record(workdir: Path) -> dict | None:
 def _current_analysis(workdir: Path, source: Path) -> dict | None:
     """与当前源文件对应的 `analysis.json`；缺失、损坏或源文件已更换时为 `None`。"""
     analysis = _read_object(workdir / ANALYSIS_PATH)
-    if analysis is None or analysis.get("source_hash") != _sha256(source):
+    if analysis is None or analysis.get("source_hash") != file_hash(source):
         return None
     return analysis
 
@@ -88,7 +84,7 @@ def _import_blockers(workdir: Path, source: Path) -> list[str]:
     analysis = _read_object(analysis_path)
     if analysis is None:
         blockers.append(f"{ANALYSIS_PATH} 缺失或无法读取，需要先调用 analyze_music")
-    elif analysis.get("source_hash") != _sha256(source):
+    elif analysis.get("source_hash") != file_hash(source):
         blockers.append(_REANALYSE)
     if not sections_path.is_file():
         blockers.append(f"{SECTIONS_PATH} 不存在：写出段落后用 validate_sections 校验")
@@ -154,10 +150,10 @@ class MusicStage:
             return [_NOTHING_YET]
         blockers: list[str] = []
         script = workdir / "music" / "compose.py"
-        if not script.is_file() or _sha256(script) != record.get("script_hash"):
+        if not script.is_file() or file_hash(script) != record.get("script_hash"):
             blockers.append("music/compose.py 在上次渲染之后改过（或已删除）" + _RERENDER)
         wav = workdir / "music" / "music.wav"
-        if not wav.is_file() or _sha256(wav) != record.get("wav_hash"):
+        if not wav.is_file() or file_hash(wav) != record.get("wav_hash"):
             blockers.append("music/music.wav 缺失或与渲染记录不一致" + _RERENDER)
         try:
             loaded = load_timeline(infer_sources(workdir, "upstream/", with_music=False))

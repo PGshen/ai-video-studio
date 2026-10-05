@@ -163,6 +163,34 @@ def test_misaligned_start_names_the_nearest_downbeat() -> None:
     assert any("8.5" in e and "强拍" in e for e in errors)
 
 
+def _bar_doc(*bounds: float) -> dict[str, Any]:
+    names = "abcdefgh"
+    return {
+        "sections": [
+            {"id": names[i], "label": names[i].upper(), "start": start, "end": end}
+            for i, (start, end) in enumerate(zip(bounds, bounds[1:], strict=False))
+        ]
+    }
+
+
+_GRID_AT_ZERO = {**ANALYSIS, "offset": 0.0}  # 120 BPM: downbeats at 0, 2, 4, ...
+
+
+def test_a_section_whose_ends_snap_to_the_same_downbeat_is_an_error() -> None:
+    # b is 60 ms long: both its ends are within 30 ms of the downbeat at 2 s.
+    errors = check_sections(_bar_doc(0.0, 1.97, 2.03, 4.0), _GRID_AT_ZERO).errors
+    assert errors == [
+        "段落 b 不足一小节：1.97→2.03 s 的起点和终点吸附到同一个强拍 2 s，"
+        "每个段落至少要跨一小节（起止落在不同的强拍上）"
+    ]
+
+
+def test_a_one_bar_section_passes() -> None:
+    assert check_sections(_bar_doc(0.0, 2.0, 4.0, 10.0), _GRID_AT_ZERO).errors == []
+    # Tolerance on both sides still leaves a different downbeat at each end.
+    assert check_sections(_bar_doc(0.0, 2.03, 3.97, 10.0), _GRID_AT_ZERO).errors == []
+
+
 def test_overrides_move_the_grid() -> None:
     # bpm 60 -> bar 4 s; offset 0 -> downbeats at 0, 4, 8, ...
     d = {
