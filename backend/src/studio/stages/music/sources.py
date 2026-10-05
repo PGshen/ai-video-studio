@@ -13,6 +13,19 @@ from studio.timeline.load import TimelineSources
 
 _BEATSHEET = "beatsheet/beatsheet.json"
 
+SOURCE_EXTENSIONS = ("mp3", "wav", "m4a", "flac", "ogg")
+"""导入形态的源文件扩展名白名单（与上传端点一致）。"""
+
+
+def import_source(workdir: Path) -> Path | None:
+    """工作区里的 `music/source.<ext>`（导入形态的标志）；没有返回 `None`。"""
+    directory = workdir / "music"
+    for ext in SOURCE_EXTENSIONS:
+        path = directory / f"source.{ext}"
+        if path.is_file():
+            return path
+    return None
+
 
 def infer_sources(workdir: Path, prefix: str, *, with_music: bool) -> TimelineSources:
     narration = not (workdir / prefix / _BEATSHEET).is_file()
