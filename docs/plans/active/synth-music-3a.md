@@ -80,7 +80,7 @@
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 <!-- 依赖：T1、T2 互相独立；T3 依赖 T2；T4 依赖 T1；T5 依赖 T1、T3；T6 依赖 T1、T5；T7 独立；T8 依赖 T1、T7；T9 依赖 T4、T6、T8；T10 依赖 T9 -->
 
-### T1：时间轴三层与按形态读取（待开始）
+### T1：时间轴三层与按形态读取（完成）
 
 - **目标**：`studio.timeline` 支持网格、节拍脚本点、配乐三层，并能按项目形态从工作区或 `upstream/` 读取（设计 §4）。
 - **涉及文件**：`backend/src/studio/timeline/{build,load,__init__}.py`；调用方适配：`backend/src/studio/worker_html.py`、`backend/src/studio/api/html_preview.py`、`backend/src/studio/stages/animation_html/prepare.py`（及 `common.py` 中的 `load_timeline`，若用到）；`backend/tests/timeline/{test_build,test_load}.py`（含新用例）。
@@ -222,11 +222,12 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 2026-10-05 — 计划写成，开始 T1
+- 2026-10-05 — 计划写成
+- 2026-10-05 — T1 时间轴三层与按形态读取 — timeline 78 个测试（含 `test_build_layers`、`test_sources`），`make check` 全绿
 
 ## 下一步
 
-- T1：时间轴三层与按形态读取。
+- T2：`engines.audio` 的 WAV、分析、能量曲线。
 
 ## 决策记录
 
@@ -234,6 +235,10 @@
 
 - 2026-10-05 — `render_music_core` 不 import `agent`，沙箱包装由调用方传入：3B 的 api 端点复用同一份核心，api 层自己取 Seatbelt。
 - 2026-10-05 — T6 需要先确认 `unavailable_reason` 对"导入音乐"的判断；T8 需要先确认 `prepare_turn(workdir)` 如何得知项目形态。两处都可能让计划里的一小步改写，改写写进这里。
+
+- 2026-10-05 — T1：`load_workspace_timeline(workdir)` 保留为无配乐讲解的入口（原签名），新入口是 `load_timeline(TimelineSources)`；`LoadedTimeline` 增加 `base_hash`、`beatsheet`。短片的段落与节拍脚本点结构检查在 `layers_from_beatsheet`（`build.py`），内容校验仍在 `build_timeline`。
+- 2026-10-05 — T1：`worker` 不能依赖 `stages`（import-linter 契约），所以不复用 `kind_from_settings`，在 `worker.py` 里用 `_timeline_flags` 取 (有无旁白, 配乐来源) 两个值，缺字段按老项目处理。
+- 2026-10-05 — T1：`run_html_job` 对无旁白或带配乐的项目直接失败，消息"成片渲染尚未实现（配乐混音在子项目 3B）"，避免半成品成片；3B 去掉这条守卫。`api/html_preview` 的 `meta` 对短片可用（无旁白音频、`beats` 为空），读取仍以工作区顶层为准。
 
 ## 意外与发现
 

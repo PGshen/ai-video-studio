@@ -28,8 +28,9 @@ from studio.api.schemas import (
 from studio.config import Settings
 from studio.db.repo.projects import get_project
 from studio.engines.render.html.assemble import assemble, page_hash, serve_page_path
+from studio.stages.pipeline import kind_from_settings
 from studio.timeline import TimelineError
-from studio.timeline.load import LoadedTimeline, load_workspace_timeline
+from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
 from studio.workspace import project_dir
 
 router = APIRouter(prefix="/api", tags=["html-preview"])
@@ -45,7 +46,9 @@ def _load(engine: Engine, settings: Settings, project_id: str) -> tuple[LoadedTi
         raise HTTPException(status_code=409, detail="这个项目不是 HTML 引擎项目，没有实时预览")
     workdir = project_dir(settings.data_dir, project_id)
     try:
-        return load_workspace_timeline(workdir), workdir
+        kind = kind_from_settings(project.settings)
+        sources = TimelineSources(workdir, narration=kind.narration, music_source=kind.music_source)
+        return load_timeline(sources), workdir
     except TimelineError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -88,7 +91,7 @@ def html_preview_meta_endpoint(
                 end=section.end,
                 beats=[
                     HtmlPreviewBeat(start=b.start, end=b.end, cue_text=b.cue_text)
-                    for b in by_scene[section.id].beats
+                    for b in (by_scene[section.id].beats if section.id in by_scene else [])
                 ],
             )
             for section in timeline.sections

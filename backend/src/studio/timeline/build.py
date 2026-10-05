@@ -365,6 +365,51 @@ def narration_from_documents(
     return result
 
 
+def layers_from_beatsheet(
+    doc: dict[str, Any],
+) -> tuple[GridInput, list[SectionInput], list[MomentInput]]:
+    """`beatsheet.json`（短片）→ 网格、段落、节拍脚本点。
+
+    只做结构检查，内容校验在 `build_timeline`。
+    """
+    errors: list[str] = []
+    bpm = doc.get("bpm")
+    if isinstance(bpm, bool) or not isinstance(bpm, int | float):
+        errors.append(f"beatsheet.json：bpm 必须是数字（当前 {bpm!r}）")
+        bpm = 0.0
+    raw_sections = doc.get("sections")
+    if not isinstance(raw_sections, list) or not raw_sections:
+        errors.append("beatsheet.json：sections 必须是非空列表")
+        raise TimelineError(errors)
+    sections: list[SectionInput] = []
+    moments: list[MomentInput] = []
+    for index, raw in enumerate(raw_sections):
+        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str):
+            errors.append(f"beatsheet.json：第 {index} 个段落缺少字符串 id")
+            continue
+        section_id = raw["id"]
+        label = raw.get("label")
+        bars: Any = raw.get("bars")
+        sections.append(
+            SectionInput(
+                id=section_id,
+                label=label if isinstance(label, str) and label else section_id,
+                bars=bars,
+            )
+        )
+        for moment in raw.get("moments") or []:
+            if not isinstance(moment, dict) or not isinstance(moment.get("at"), str):
+                errors.append(f"beatsheet.json：段落 {section_id} 有节拍脚本点缺少字符串 at")
+                continue
+            action = moment.get("visual_action")
+            moments.append(
+                MomentInput(section_id, moment["at"], action if isinstance(action, str) else "")
+            )
+    if errors:
+        raise TimelineError(errors)
+    return GridInput(float(bpm)), sections, moments
+
+
 def _round_floats(value: Any) -> Any:
     if isinstance(value, float):
         return round(value, 6)
