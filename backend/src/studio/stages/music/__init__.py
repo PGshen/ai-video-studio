@@ -105,9 +105,12 @@ def _import_status(workdir: Path, source: Path) -> str:
     analysis = _current_analysis(workdir, source)
     if analysis is None:
         return "未分析"
-    doc = _read_object(workdir / SECTIONS_PATH)
-    if doc is None:
+    sections_path = workdir / SECTIONS_PATH
+    if not sections_path.is_file():
         return "已分析，待写 sections.json"
+    doc = _read_object(sections_path)
+    if doc is None:
+        return "已分析，sections.json 无法解析"
     sections = doc.get("sections")
     count = len(sections) if isinstance(sections, list) else 0
     try:

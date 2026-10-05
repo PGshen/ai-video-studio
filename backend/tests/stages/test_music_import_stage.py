@@ -166,6 +166,14 @@ def test_status_when_analysed_without_sections(tmp_path: Path) -> None:
     assert STAGE.status_summary(tmp_path) == "已分析，待写 sections.json"
 
 
+@pytest.mark.parametrize("content", ["{not json", "[1, 2]"])
+def test_status_when_sections_cannot_be_read(tmp_path: Path, content: str) -> None:
+    _put_source(tmp_path)
+    _put_analysis(tmp_path)
+    (tmp_path / "music" / "sections.json").write_text(content)
+    assert STAGE.status_summary(tmp_path) == "已分析，sections.json 无法解析"
+
+
 def test_status_when_analysed_with_sections(analysed: Path) -> None:
     assert STAGE.status_summary(analysed) == "已分析：BPM 120，40.00 秒，置信度 0.90；2 个段落"
 

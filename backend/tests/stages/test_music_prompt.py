@@ -46,7 +46,8 @@ def test_prompt_first_decides_the_form() -> None:
     assert "先判断形态" in PROMPT
     assert "music/source.*" in PROMPT
     # the decision comes before either form's chapter
-    assert PROMPT.index("先判断形态") < PROMPT.index("导入形态")
+    assert PROMPT.index("# 先判断形态") < PROMPT.index("# 配乐阶段（合成）")
+    assert PROMPT.index("# 先判断形态") < PROMPT.index("# 导入形态")
 
 
 @pytest.mark.parametrize(
