@@ -20,6 +20,7 @@ from studio.workspace.files import (
     write_text,
     write_text_unscoped,
 )
+from studio.workspace.hashing import file_sha256
 from studio.workspace.layout import EXCLUDED_TOP_DIRS, project_dir, scratch_dir
 from studio.workspace.scope import GuardReport, WriteScope, guard, is_writable
 from studio.workspace.snapshot import (
@@ -38,6 +39,7 @@ from studio.workspace.upstream import derived_upstream, materialize_upstream, up
 __all__ = [
     "BlobStore",
     "EXCLUDED_TOP_DIRS",
+    "file_sha256",
     "GuardReport",
     "Manifest",
     "ModifiedFile",

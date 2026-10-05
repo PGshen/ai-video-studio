@@ -58,4 +58,4 @@ T9（2026-09-27）核实时安装的版本：`claude-agent-sdk 0.2.160`，内置
 - ✅ 已验证（2026-10-05，子项目 3A 真实模型冒烟）：SDK 与 CLI 之间一条 JSON 消息超过 1048576 字节会抛 `CLIJSONDecodeError: JSON message exceeded maximum buffer size`，整轮失败；追加轮会再带上这条历史消息，所以重试也失败。
 - 工具返回的图片按 base64 内联在这条消息里：约 1800×1000 的 PNG 分析图、4 列的缩略图拼图 PNG 都会超限。假运行时和单测碰不到，只有真实模型暴露。
 - 做法：返回给模型的图用 JPEG，质量 85/70/55/40 逐级降，仍超限就缩小，上限 400 kB（`stages/music/tool.py::compress_picture`、`engines/render/html/probe.py::contact_sheet`）；要给人看的原图另存为文件。
-- ⚠️ 待处理：`stages/animation/render_preview.py`（manim）同样没有限制，已记入 TODO。
+- ✅ 已处理（2026-10-05）：共用 `stages/common/picture.py`（`compress_png`、`limit_for`）；manim `render_preview` 的关键帧也压成 JPEG，一条结果里所有图共用 600 kB 预算（单张 ≤ 400 kB），测试 `test_noisy_keyframes_stay_well_under_the_sdk_message_limit`。

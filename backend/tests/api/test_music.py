@@ -246,3 +246,17 @@ async def test_render_hash_matches_what_the_worker_checks(api_env: ApiEnv) -> No
     wav = hashlib.sha256((workdir / "music" / "music.wav").read_bytes()).hexdigest()
     assert render["wav_hash"] == wav
     assert (await api_env.client.get(_url(pid, "meta"))).json()["stale"] is False
+
+
+async def test_meta_marks_a_replaced_wav_as_stale_like_the_preview_and_the_render_do(
+    api_env: ApiEnv,
+) -> None:
+    pid, workdir = await _reel(api_env)
+    wav = workdir / "music" / "music.wav"
+    data = bytearray(wav.read_bytes())
+    data[-5] ^= 0x7F
+    wav.write_bytes(bytes(data))
+    body = (await api_env.client.get(_url(pid, "meta"))).json()
+    assert body["rendered"] is True and body["stale"] is True
+    preview = (await api_env.client.get(f"/api/projects/{pid}/animation/html-preview/meta")).json()
+    assert preview["music"] is None

@@ -83,7 +83,7 @@ async def test_render_preview_returns_one_image_per_beat_and_deviation_text(
     assert result.is_error is False, result.text
     # fixture 里 s-explain 有 2 个 beat（backend/tests/fixtures/animation/timing.json）。
     assert len(result.images) == 2
-    assert all(image.media_type == "image/png" for image in result.images)
+    assert all(image.media_type == "image/jpeg" for image in result.images)
     assert all(image.data_base64 for image in result.images)
     assert "s-explain" in result.text
     assert "偏差" in result.text
@@ -147,3 +147,43 @@ async def test_engine_timeout_becomes_tool_error(
     assert result.is_error is True
     assert result.text == "预览渲染超时"
     assert result.images == []
+
+
+async def test_noisy_keyframes_stay_well_under_the_sdk_message_limit(
+    animation_project: AnimationProjectEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Claude SDK drops one JSON message over 1 MiB (found by the 3A real-model smoke run):
+    the keyframes of one preview, all in one tool result, are returned as small JPEGs."""
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    from studio.engines.render.base import PreviewKeyframe
+
+    _materialize(animation_project)
+    for scene_id, code in _VALID_CODE.items():
+        _write_scene(animation_project, scene_id, code)
+    rng = np.random.default_rng(5)
+
+    def noisy_png() -> bytes:
+        buffer = io.BytesIO()
+        pixels = rng.integers(0, 256, (720, 1280, 3), dtype=np.uint8)
+        Image.fromarray(pixels).save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    keyframes = [PreviewKeyframe(beat_index=i, png_bytes=noisy_png()) for i in range(6)]
+
+    async def _fake(self: ManimRenderEngine, request, timeout_seconds=None):
+        return PreviewResult(True, None, 1.0, 0.0, keyframes, "")
+
+    monkeypatch.setattr(ManimRenderEngine, "render_preview", _fake)
+    result = await invoke_tool(
+        RENDER_PREVIEW_TOOL, _ctx(animation_project), {"scene_id": "s-explain"}
+    )
+    assert result.is_error is False, result.text
+    assert len(result.images) == 6 and all(i.media_type == "image/jpeg" for i in result.images)
+    total = sum(len(base64.b64decode(i.data_base64)) for i in result.images)
+    assert total <= 700_000, total
+    assert all(base64.b64decode(i.data_base64)[:3] == b"\xff\xd8\xff" for i in result.images)

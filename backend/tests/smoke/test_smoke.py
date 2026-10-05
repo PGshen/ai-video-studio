@@ -1386,7 +1386,7 @@ async def _render_reel_final(harness: Any) -> dict[str, Any]:
     assert len(audio) == 1, audio
     assert abs(duration - expected) <= 0.1, (duration, expected)
     meta = json.loads((harness.workdir / "output" / "final.json").read_text("utf-8"))
-    assert "music" in meta["audio_sources"]
+    assert meta["music_hash"] and meta["audio_sources"] == {}
     return {
         "seconds": round(time.monotonic() - started, 1),
         "duration": duration,

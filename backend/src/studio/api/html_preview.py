@@ -12,7 +12,6 @@ iframe 使用 `sandbox="allow-scripts"` 且不带 `allow-same-origin`，是不�
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from urllib.parse import quote
@@ -35,7 +34,7 @@ from studio.engines.render.mix import BED_GAIN_DB
 from studio.stages.pipeline import kind_from_settings
 from studio.timeline import TimelineError
 from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
-from studio.workspace import project_dir
+from studio.workspace import file_sha256, project_dir
 
 router = APIRouter(prefix="/api", tags=["html-preview"])
 
@@ -64,7 +63,7 @@ def _preview_music(
     wav = workdir / "music" / "music.wav"
     try:
         render = json.loads((workdir / "music" / "render.json").read_text(encoding="utf-8"))
-        wav_hash = hashlib.sha256(wav.read_bytes()).hexdigest()
+        wav_hash = file_sha256(wav)
         current = render["base_hash"] == loaded.base_hash and render["wav_hash"] == wav_hash
     except (OSError, ValueError, KeyError, TypeError):
         return None
