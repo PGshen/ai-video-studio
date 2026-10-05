@@ -227,7 +227,7 @@
 
 ## 下一步
 
-- T2：`engines.audio` 的 WAV、分析、能量曲线。
+- T2 进行中：`engines.audio.wav` 与 `read_wav` 测试已完成（numpy 已声明为直接依赖）；还差 `analysis.py`（`analyze`、`validate_events`、能量曲线、波形包络）及其测试 `tests/engines/test_audio_analysis.py`；测试夹具在 `tests/fixtures/audio_engine/`。之后是 T3。
 
 ## 决策记录
 
