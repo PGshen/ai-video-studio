@@ -58,6 +58,10 @@ class LoadedTimeline:
     narrative: dict[str, Any]
     timing: dict[str, Any]
     beatsheet: dict[str, Any] | None
+    range: tuple[float, float] | None = None
+    """MV 的有效截取区间（全局秒）；其他形态为 `None`。成片据此从原曲的这一秒起截取。"""
+    source_hash: str | None = None
+    """MV 的 `analysis.json` 记录的源文件哈希；其他形态为 `None`。"""
 
 
 def _read_document(root: Path, relpath: str, hint: str) -> dict[str, Any]:
@@ -126,7 +130,9 @@ def _load_import(sources: TimelineSources) -> LoadedTimeline:
     imported = layers_from_import(analysis, sections_doc, beatsheet, source_file=source_file)
     timeline = build_timeline(imported.layers)
     digest = import_hash(timeline_hash(timeline), imported.source_hash, imported.range)
-    return LoadedTimeline(timeline, digest, digest, {}, {}, beatsheet)
+    return LoadedTimeline(
+        timeline, digest, digest, {}, {}, beatsheet, imported.range, imported.source_hash
+    )
 
 
 def load_timeline(sources: TimelineSources) -> LoadedTimeline:

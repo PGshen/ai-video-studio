@@ -19,10 +19,12 @@ from sqlalchemy import Engine
 from fixtures.animation_html.seed import seed_animation_html_project
 from fixtures.html_engine import projects as fx
 from fixtures.html_engine.worker_fakes import ExplodingManim, FakeBackend
+from fixtures.import_music import write_mv_workspace
+from fixtures.import_music.seed import seed_mv_project
 from fixtures.synth_music import seed
 from fixtures.synth_music.products import render_products
 from studio.db.engine import make_engine, migrate
-from studio.engines.render.mix import AudioTrack, MusicMix
+from studio.engines.render.mix import MV_FADE_IN, MV_FADE_OUT, AudioTrack, MusicMix
 from studio.jobs import create_job, get_job
 from studio.worker import run_once
 from studio.workspace import BlobStore, project_dir
@@ -272,16 +274,6 @@ async def test_real_render_of_an_explainer_bed_has_narration_and_a_quieter_score
     assert abs(float(info["format"]["duration"]) - 3.0) <= 0.15
 
 
-async def test_imported_music_is_refused_instead_of_rendering_a_silent_film(reel: Env) -> None:
-    from studio.db.repo.projects import update_project_settings
-
-    update_project_settings(reel.engine, reel.project_id, {"music_source": "import"})
-    backend = FakeBackend()
-    job = _job(reel, await _run(reel, backend))
-    assert job.status == "failed" and "导入音乐" in (job.error or "")
-    assert backend.video_calls == [] and backend.mix_calls == []
-
-
 async def test_the_mixer_gets_a_private_copy_so_a_render_in_between_cannot_change_what_is_mixed(
     reel: Env,
 ) -> None:
@@ -312,3 +304,137 @@ async def test_the_mixer_gets_a_private_copy_so_a_render_in_between_cannot_chang
     final = json.loads((reel.workdir / "output" / "final.json").read_text())
     assert final["music_hash"] == before
     assert not Path(str(seen["path"])).exists()  # the copy is cleaned up
+
+
+# ---- imported song (4B T5) ----------------------------------------------------------------
+
+
+@pytest.fixture
+def mv(tmp_path: Path) -> Iterator[Env]:
+    data_dir, engine, blobs = _env(tmp_path)
+    pid = seed_mv_project(engine, blobs, data_dir=data_dir)
+    env = Env(data_dir, engine, blobs, pid)
+    write_mv_workspace(env.workdir)
+    yield env
+    engine.dispose()
+
+
+def _final(env: Env) -> dict:
+    return json.loads((env.workdir / "output" / "final.json").read_text())
+
+
+async def test_a_music_video_is_mixed_from_the_range_start_of_the_song(mv: Env) -> None:
+    backend = FakeBackend()
+    job = _job(mv, await _run(mv, backend))
+    assert job.status == "done", job.error
+    [call] = backend.mix_calls
+    assert call["tracks"] == [] and call["duration"] == pytest.approx(18.0)
+    music = call["music"]
+    assert music.track.source_start == 0.5 and music.duck_under_narration is False
+    assert (music.fade_in, music.fade_out) == (MV_FADE_IN, MV_FADE_OUT)
+    assert music.track.path != mv.workdir / "music" / "source.wav"
+    source_hash = _sha(mv.workdir / "music" / "source.wav")
+    final = _final(mv)
+    assert final["audio_sources"] == {"music": {"hash": source_hash, "range": [0.5, 18.5]}}
+    assert "music_hash" not in final
+
+
+async def test_an_explicit_range_sets_the_start_and_the_duration(mv: Env) -> None:
+    write_mv_workspace(mv.workdir, range_=(4.5, 18.5), refs=("verse", "chorus"))
+    backend = FakeBackend()
+    job = _job(mv, await _run(mv, backend))
+    assert job.status == "done", job.error
+    [call] = backend.mix_calls
+    assert call["music"].track.source_start == 4.5 and call["duration"] == pytest.approx(14.0)
+    assert _final(mv)["audio_sources"]["music"]["range"] == [4.5, 18.5]
+
+
+@pytest.mark.parametrize(
+    ("victim", "needle"),
+    [
+        ("music/analysis.json", "analysis.json"),
+        ("music/sections.json", "sections.json"),
+        ("music/source.wav", "source"),
+    ],
+)
+async def test_a_missing_input_stops_the_music_video_and_names_it(
+    mv: Env, victim: str, needle: str
+) -> None:
+    (mv.workdir / victim).unlink()
+    backend = FakeBackend()
+    job = _job(mv, await _run(mv, backend))
+    assert job.status == "failed" and needle in (job.error or ""), job.error
+    assert backend.video_calls == [] and backend.mix_calls == []
+    assert not (mv.workdir / "output" / "final.mp4").exists()
+
+
+async def test_a_swapped_song_is_refused_and_tells_you_to_reanalyse(mv: Env) -> None:
+    (mv.workdir / "music" / "source.wav").write_bytes(b"RIFF a different song")
+    backend = FakeBackend()
+    job = _job(mv, await _run(mv, backend))
+    assert job.status == "failed" and "重新分析" in (job.error or ""), job.error
+    assert backend.video_calls == [] and backend.mix_calls == []
+
+
+async def test_the_music_video_mixes_a_private_copy_of_the_checked_song(mv: Env) -> None:
+    original = mv.workdir / "music" / "source.wav"
+    before = _sha(original)
+    seen: dict[str, object] = {}
+
+    class Swapping(FakeBackend):
+        async def mix(
+            self,
+            video: Path,
+            tracks: list[AudioTrack],
+            duration: float,
+            output: Path,
+            music: MusicMix | None = None,
+        ) -> None:
+            assert music is not None
+            seen["path"], seen["hash"] = music.track.path, _sha(music.track.path)
+            original.write_bytes(b"swapped after the pre-check")
+            await super().mix(video, tracks, duration, output, music)
+
+    job = _job(mv, await _run(mv, Swapping()))
+    assert job.status == "done", job.error
+    assert seen["path"] != original and seen["hash"] == before
+    assert _final(mv)["audio_sources"]["music"]["hash"] == before
+    assert not Path(str(seen["path"])).exists()
+
+
+async def test_the_silent_video_is_cached_until_the_range_or_the_song_changes(mv: Env) -> None:
+    backend = FakeBackend()
+    assert _job(mv, await _run(mv, backend)).status == "done"
+    assert _job(mv, await _run(mv, backend)).status == "done"
+    assert len(backend.video_calls) == 1  # identical inputs: cache hit
+
+    write_mv_workspace(mv.workdir, range_=(4.5, 18.5), refs=("verse", "chorus"))
+    assert _job(mv, await _run(mv, backend)).status == "done"
+    assert len(backend.video_calls) == 2  # a different range is a different film
+
+    # the same range but another song (analysis updated to match): not a cache hit either
+    from engines.audio_fixtures import SAMPLE_RATE, click_track
+    from fixtures.audio_engine import write_wav
+
+    song = write_wav(
+        mv.workdir / "music" / "source.wav", click_track(120.0, 0.5, 20.0, seed=7), SAMPLE_RATE
+    )
+    analysis = json.loads((mv.workdir / "music" / "analysis.json").read_text())
+    analysis["source_hash"] = _sha(song)
+    (mv.workdir / "music" / "analysis.json").write_text(json.dumps(analysis))
+    assert _job(mv, await _run(mv, backend)).status == "done"
+    assert len(backend.video_calls) == 3
+
+
+@pytest.mark.slow
+async def test_real_render_of_a_music_video_has_the_song_as_its_audio(mv: Env) -> None:
+    from studio.worker_html import real_backend
+
+    job_id = create_job(mv.engine, type="final_render", project_id=mv.project_id, payload={}).id
+    assert await run_once(mv.engine, mv.blobs, data_dir=mv.data_dir, html_backend=real_backend())
+    assert _job(mv, job_id).status == "done", _job(mv, job_id).error
+    final = mv.workdir / "output" / "final.mp4"
+    info = _probe(final)
+    assert [s["codec_name"] for s in info["streams"] if s["codec_type"] == "audio"] == ["aac"]
+    assert abs(float(info["format"]["duration"]) - 18.0) <= 0.15
+    assert _loudness_db(final, 1.0, 17.0) > -50  # clicks are audible, not a silent track
