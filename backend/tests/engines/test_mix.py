@@ -12,11 +12,14 @@ import numpy as np
 import pytest
 
 from studio.engines.render.mix import (
+    MV_FADE_IN,
+    MV_FADE_OUT,
     AudioTrack,
     MixError,
     MusicMix,
     build_mix_command,
     mix_final,
+    music_video_mix,
 )
 
 VIDEO = Path("/tmp/v.mp4")
@@ -408,3 +411,91 @@ async def test_the_bed_keeps_playing_after_the_last_narration_ends(tmp_path: Pat
     for window in ((4.0, 5.0), (6.0, 6.8)):
         gap = _band_db(ducked, rate, *window, 2000) - _band_db(free, rate, *window, 2000)
         assert gap >= -2.0, (window, gap)
+
+
+# ---- music video: the song is read from `source_start` (4B T4) ----------------------------
+
+
+def test_source_start_trims_the_start_of_the_song_before_the_end() -> None:
+    track = AudioTrack(MUSIC, 0.0, source_start=12.5)
+    graph = _graph(build_mix_command(VIDEO, [], 7.5, OUT, music=MusicMix(track)))
+    assert "atrim=start=12.5,asetpts=PTS-STARTPTS,atrim=end=7.5" in graph
+
+
+def test_zero_source_start_leaves_the_graph_byte_identical() -> None:
+    plain = build_mix_command(VIDEO, [], 7.5, OUT, music=MusicMix(AudioTrack(MUSIC, 0.0)))
+    zero = build_mix_command(
+        VIDEO, [], 7.5, OUT, music=MusicMix(AudioTrack(MUSIC, 0.0, source_start=0.0))
+    )
+    assert plain == zero and "atrim=start" not in _graph(plain)
+
+
+def test_music_video_mix_has_short_fades_no_ducking_and_no_gain() -> None:
+    mix = music_video_mix(MUSIC, 3.0)
+    assert (MV_FADE_IN, MV_FADE_OUT) == (0.015, 0.015)
+    assert mix.fade_in == MV_FADE_IN and mix.fade_out == MV_FADE_OUT
+    assert mix.duck_under_narration is False and mix.track.gain_db == 0.0
+    assert mix.track.path == MUSIC and mix.track.start == 0.0 and mix.track.source_start == 3.0
+
+
+def _two_tone_song(path: Path) -> None:
+    """2 s of 440 Hz followed by 2 s of 880 Hz."""
+    _ffmpeg(
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=2:sample_rate=44100",
+        "-f", "lavfi", "-i", "sine=frequency=880:duration=2:sample_rate=44100",
+        "-filter_complex", "[0][1]concat=n=2:v=0:a=1", "-ac", "2", str(path),
+    )  # fmt: skip
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(("source_start", "loud", "quiet"), [(0.0, 440, 880), (2.0, 880, 440)])
+async def test_the_song_is_read_from_source_start(
+    tmp_path: Path, source_start: float, loud: int, quiet: int
+) -> None:
+    video, song, out = (tmp_path / n for n in ("v.mp4", "song.wav", "out.mp4"))
+    _make_video(video, 1.8)
+    _two_tone_song(song)
+    await mix_final(video, [], 1.8, out, music=music_video_mix(song, source_start))
+    samples, rate = _decode(out)
+    assert _band_db(samples, rate, 0.1, 1.7, loud) - _band_db(samples, rate, 0.1, 1.7, quiet) > 30
+
+
+@pytest.mark.slow
+async def test_the_start_is_millisecond_accurate(tmp_path: Path) -> None:
+    video, song, out = (tmp_path / n for n in ("v.mp4", "song.wav", "out.mp4"))
+    _make_video(video, 1.0)
+    _two_tone_song(song)
+    # 1.9 s in: the first 100 ms are still 440 Hz, the rest 880 Hz.
+    await mix_final(video, [], 1.0, out, music=music_video_mix(song, 1.9))
+    samples, rate = _decode(out)
+    assert _band_db(samples, rate, 0.02, 0.09, 440) > _band_db(samples, rate, 0.02, 0.09, 880)
+    assert _band_db(samples, rate, 0.12, 0.9, 880) > _band_db(samples, rate, 0.12, 0.9, 440) + 30
+
+
+@pytest.mark.slow
+async def test_a_song_that_ends_early_is_padded_with_silence_to_the_exact_duration(
+    tmp_path: Path,
+) -> None:
+    video, song, out = (tmp_path / n for n in ("v.mp4", "song.wav", "out.mp4"))
+    _make_video(video, 3.0)
+    _two_tone_song(song)  # 4 s; from 3.0 s only 1 s remains
+    await asyncio.wait_for(
+        mix_final(video, [], 3.0, out, music=music_video_mix(song, 3.0)), timeout=30
+    )
+    assert abs(float(_probe(out)["format"]["duration"]) - 3.0) <= 0.1
+    samples, rate = _decode(out)
+    assert _band_db(samples, rate, 0.1, 0.9, 880) - _band_db(samples, rate, 1.3, 2.9, 880) > 40
+    assert abs(samples[int(1.2 * rate) : int(2.9 * rate)]).max() < 0.01
+
+
+@pytest.mark.slow
+async def test_a_source_start_past_the_end_of_the_song(tmp_path: Path) -> None:
+    video, song, out = (tmp_path / n for n in ("v.mp4", "song.wav", "out.mp4"))
+    _make_video(video, 2.0)
+    _two_tone_song(song)
+    await asyncio.wait_for(
+        mix_final(video, [], 2.0, out, music=music_video_mix(song, 10.0)), timeout=30
+    )
+    assert abs(float(_probe(out)["format"]["duration"]) - 2.0) <= 0.1
+    samples, _ = _decode(out)
+    assert abs(samples).max() < 0.01  # all silence

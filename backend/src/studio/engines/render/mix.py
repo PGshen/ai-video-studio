@@ -30,6 +30,8 @@ class AudioTrack:
     """最多播多久（旁白轨传镜头时长）：配音比镜头长时不能叠进下一个镜头。"""
     gain_db: float = 0.0
     """这条轨的增益（dB）；背景乐用它压低音量，旁白轨不用。"""
+    source_start: float = 0.0
+    """从文件的这一秒起读（只用于配乐：音乐 MV 取原曲截取区间的起点）；旁白轨恒为 0。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,10 @@ class MusicMix:
     """首尾淡变（秒）。默认 15 ms 只防爆音；讲解背景乐用 1 秒与 1.5 秒。"""
 
 
+MV_FADE_IN = 0.015
+MV_FADE_OUT = 0.015
+"""音乐 MV 的首尾淡变（秒）：只防爆音。歌曲被截断处是否生硬靠人耳判断，需要时只改这两个常量。"""
+
 BED_GAIN_DB = -8.0
 BED_FADE_IN = 1.0
 BED_FADE_OUT = 1.5
@@ -51,6 +57,13 @@ BED_FADE_OUT = 1.5
 
 # 侧链压低参数（实测定值见 docs/references/ffmpeg.md「侧链压低」）。
 _DUCK = "threshold=0.03:ratio=6:attack=10:release=400:makeup=1"
+
+
+def music_video_mix(path: Path, source_start: float) -> MusicMix:
+    """音乐 MV 的音轨：原曲从 `source_start` 秒起铺满成片，无旁白、无侧链、增益 0 dB。"""
+    return MusicMix(
+        AudioTrack(path, 0.0, source_start=source_start), fade_in=MV_FADE_IN, fade_out=MV_FADE_OUT
+    )
 
 
 def _duration_arg(duration: float) -> str:
@@ -64,6 +77,8 @@ def _music_chain(music: MusicMix, input_index: int, duration: float, label: str)
     parts = [f"[{input_index}:a]aresample={_SAMPLE_RATE}", "aformat=channel_layouts=stereo"]
     if music.track.gain_db:
         parts.append(f"volume={_duration_arg(music.track.gain_db)}dB")
+    if music.track.source_start:
+        parts += [f"atrim=start={_duration_arg(music.track.source_start)}", "asetpts=PTS-STARTPTS"]
     parts += [
         f"atrim=end={span}",
         f"afade=t=in:st=0:d={_duration_arg(music.fade_in)}",
