@@ -19,7 +19,7 @@ from studio.config import get_settings, repo_root
 from studio.engines.audio.analysis import MusicReport
 from studio.engines.audio.runner import WrapCommand
 from studio.stages.music.render import RenderOutcome, render_music_core
-from studio.stages.music.sources import infer_sources
+from studio.stages.music.sources import infer_sources, section_energy
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 
@@ -129,11 +129,7 @@ async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
         loaded = load_timeline(infer_sources(ctx.workdir, "upstream/", with_music=False))
     except TimelineError as exc:
         return ToolResult(text=f"时间轴不可用：{exc}", is_error=True)
-    energy = {
-        section["id"]: section["energy"]
-        for section in (loaded.beatsheet or {}).get("sections", [])
-        if isinstance(section, dict) and isinstance(section.get("energy"), str)
-    }
+    energy = section_energy(loaded.beatsheet)
     outcome = await render_music_core(
         ctx.workdir,
         timeline=loaded.timeline.model_dump(mode="json"),

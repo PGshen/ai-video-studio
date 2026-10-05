@@ -193,7 +193,7 @@ def _retimed_onset_share(first: _Run, second: _Run) -> float:
     return kept / total
 
 
-def _metrics(report: MusicReport) -> dict[str, Any]:
+def metrics_of(report: MusicReport) -> dict[str, Any]:
     return {
         "peak_dbfs": round(report.peak_dbfs, 2),
         "clipped_samples": report.clipped_samples,
@@ -287,7 +287,7 @@ async def render_music_core(
             "duration": timeline["duration"],
             "sample_rate": report.sample_rate,
             "waveform": report.waveform,
-            "metrics": _metrics(report),
+            "metrics": metrics_of(report),
             "wav_hash": wav_hash,
         }
         render = {

@@ -80,6 +80,7 @@ export const queryKeys = {
    * "新的" query 并重新取数；失效走 `sceneChecksAll` 这个前缀，靠 TanStack
    * 默认的前缀匹配（`exact: false`）覆盖所有镜头集合的变体。
    */
+  musicMeta: (projectId: string) => ['projects', projectId, 'music', 'meta'] as const,
   htmlPreviewMeta: (projectId: string) =>
     ['projects', projectId, 'animation', 'html-preview-meta'] as const,
   sceneChecks: (projectId: string, sceneIds: readonly string[]) =>
@@ -209,6 +210,7 @@ export async function invalidateAfterWrite(
     queryClient.invalidateQueries({ queryKey: queryKeys.fileContent(projectId, path) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.htmlPreviewMeta(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.musicMeta(projectId) }),
   ])
 }
 
@@ -686,6 +688,28 @@ export function useHtmlPreviewMetaQuery(projectId: MaybeRefOrGetter<string>) {
   })
 }
 
+// ---- music ----------------------------------------------------------------
+
+/** 配乐的元数据；没有合成配乐的项目返回 404，不重试。 */
+export function useMusicMetaQuery(projectId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.musicMeta(toValue(projectId))),
+    queryFn: () => api.getMusicMeta(toValue(projectId)),
+    retry: retryUnlessClientError,
+  })
+}
+
+/** 手动渲染配乐：成功或失败都刷新（成功改了 `music/` 下的产物，预览的配乐也随之换版）。 */
+export function useRenderMusicMutation(projectId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.renderMusic(toValue(projectId)),
+    onSettled: () => {
+      void invalidateWorkspace(queryClient, toValue(projectId))
+    },
+  })
+}
+
 // ---- ideas / 选题池 ----------------------------------------------------
 
 export function useIdeasQuery(view: MaybeRefOrGetter<IdeasView>) {
@@ -759,5 +783,6 @@ export async function invalidateWorkspace(
     queryClient.invalidateQueries({ queryKey: queryKeys.snapshots(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.topicCheck(projectId) }),
     queryClient.invalidateQueries({ queryKey: queryKeys.htmlPreviewMeta(projectId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.musicMeta(projectId) }),
   ])
 }

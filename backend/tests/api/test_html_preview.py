@@ -275,3 +275,76 @@ async def test_meta_of_a_reel_project_has_music_timeline_sections_and_no_narrati
     assert all(s["beats"] == [] for s in meta["sections"])
     assert meta["audio"] == []
     assert meta["duration"] == pytest.approx(4 * bar)
+
+
+# ---- the score (3B T4) ------------------------------------------------------------------
+
+
+async def _scored(api_env: ApiEnv, kind: str):
+    from fixtures.synth_music import seed
+    from fixtures.synth_music.products import render_products
+
+    engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
+    if kind == "reel":
+        project_id = seed.seed_reel_project(engine, blobs, data_dir=api_env.data_dir)
+        work = api_env.workdir(project_id)
+        (work / "beatsheet").mkdir()
+        (work / "beatsheet" / "beatsheet.json").write_text(seed.BEATSHEET, encoding="utf-8")
+        scenes = ["s1", "s2"]
+    else:
+        project_id = seed.seed_bed_project(engine, blobs, data_dir=api_env.data_dir)
+        work = api_env.workdir(project_id)
+        scenes = ["s-hook", "s-explain"]
+    await render_products(work)
+    fx.write_project(work, scenes={name: fx.PURE_SCENE_PLAIN for name in scenes})
+    return project_id, work
+
+
+async def test_meta_points_a_reel_at_its_score_at_full_gain(api_env: ApiEnv) -> None:
+    pid, work = await _scored(api_env, "reel")
+    meta = (await api_env.client.get(f"{_base(pid)}/meta")).json()
+    wav_hash = json.loads((work / "music" / "render.json").read_text())["wav_hash"]
+    assert meta["music"] == {
+        "url": f"/api/projects/{pid}/music/audio?v={wav_hash}",
+        "gain": 1.0,
+    }
+    assert meta["audio"] == []
+
+
+async def test_meta_gives_an_explainer_bed_its_quieter_gain_next_to_the_narration(
+    api_env: ApiEnv,
+) -> None:
+    pid, _ = await _scored(api_env, "bed")
+    meta = (await api_env.client.get(f"{_base(pid)}/meta")).json()
+    assert meta["music"]["gain"] == pytest.approx(10 ** (-8 / 20))
+    assert len(meta["audio"]) == 2
+
+
+async def test_meta_has_no_music_when_nothing_is_rendered_or_the_score_is_stale(
+    api_env: ApiEnv,
+) -> None:
+    pid, work = await _scored(api_env, "reel")
+    path = work / "beatsheet" / "beatsheet.json"
+    path.write_text(path.read_text().replace("BUILD", "RISE", 1), encoding="utf-8")
+    assert (await api_env.client.get(f"{_base(pid)}/meta")).json()["music"] is None
+
+    (work / "music" / "render.json").unlink()
+    assert (await api_env.client.get(f"{_base(pid)}/meta")).json()["music"] is None
+
+
+async def test_meta_of_an_explainer_without_music_has_no_music_field_value(
+    api_env: ApiEnv, pid: str
+) -> None:
+    assert (await api_env.client.get(f"{_base(pid)}/meta")).json()["music"] is None
+
+
+async def test_meta_gives_no_music_to_a_project_that_is_not_a_synth_one(api_env: ApiEnv) -> None:
+    """A stray `music/` in a project without a synth score must not reach the preview."""
+    from studio.db.repo.projects import update_project_settings
+
+    pid, _ = await _scored(api_env, "reel")
+    update_project_settings(api_env.app.state.engine, pid, {"music_source": "none"})
+    meta = await api_env.client.get(f"{_base(pid)}/meta")
+    assert meta.status_code in (200, 409)
+    if meta.status_code == 200:
+        assert meta.json()["music"] is None

@@ -23,7 +23,15 @@ from studio.engines.render.html.assets import check_assets
 from studio.engines.render.html.browser import ChromiumUnavailable, HtmlBrowser, PageNotReady
 from studio.engines.render.html.static_check import static_check
 from studio.engines.render.html.video import ProgressCallback, VideoRenderError, render_silent_video
-from studio.engines.render.mix import AudioTrack, MixError, mix_final
+from studio.engines.render.mix import (
+    BED_FADE_IN,
+    BED_FADE_OUT,
+    BED_GAIN_DB,
+    AudioTrack,
+    MixError,
+    MusicMix,
+    mix_final,
+)
 from studio.jobs import heartbeat, update_progress
 from studio.timeline import TimelineError
 from studio.timeline.load import TimelineSources, load_timeline
@@ -37,7 +45,7 @@ _BEAT_INTERVAL_SECONDS = 10.0
 """没有整百分比变化时，至少隔这么久也续一次心跳。"""
 
 RenderVideo = Callable[[AssembledPage, float, Path, int, ProgressCallback], Awaitable[None]]
-Mix = Callable[[Path, list[AudioTrack], float, Path], Awaitable[None]]
+Mix = Callable[[Path, list[AudioTrack], float, Path, MusicMix | None], Awaitable[None]]
 
 
 class HtmlJobError(RuntimeError):
@@ -65,8 +73,14 @@ async def _render_video(
             await opened.close()
 
 
-async def _mix(video: Path, tracks: list[AudioTrack], duration: float, output: Path) -> None:
-    await mix_final(video, tracks, duration, output)
+async def _mix(
+    video: Path,
+    tracks: list[AudioTrack],
+    duration: float,
+    output: Path,
+    music: MusicMix | None = None,
+) -> None:
+    await mix_final(video, tracks, duration, output, music=music)
 
 
 def real_backend() -> HtmlBackend:
@@ -123,6 +137,48 @@ def _audio_sources(
     return result
 
 
+@dataclass(frozen=True, slots=True)
+class _Score:
+    path: Path
+    hash: str
+
+
+_MUSIC_FILES = ("music.wav", "events.json", "analysis.json", "render.json")
+
+
+def _music_source(workdir: Path, base_hash: str, errors: list[str]) -> _Score | None:
+    """配乐文件齐全，且是对着当前时间轴渲染的那一份（`render.json` 的哈希对得上）。"""
+    music = workdir / "music"
+    missing = [name for name in _MUSIC_FILES if not (music / name).is_file()]
+    if missing:
+        errors += [f"配乐缺少 music/{name}，需要在配乐阶段渲染" for name in missing]
+        return None
+    try:
+        render = json.loads((music / "render.json").read_text(encoding="utf-8"))
+        recorded_base, recorded_wav = render["base_hash"], render["wav_hash"]
+    except (ValueError, KeyError, TypeError):
+        errors.append("music/render.json 损坏或缺字段，需要在配乐阶段重新渲染")
+        return None
+    wav_hash = hashlib.sha256((music / "music.wav").read_bytes()).hexdigest()
+    if recorded_base != base_hash:
+        errors.append("配乐与当前时间轴不一致，需要在配乐阶段重新渲染（节拍脚本或旁白变了）")
+    if wav_hash != recorded_wav:
+        errors.append("music.wav 与 render.json 记录的不一致，需要在配乐阶段重新渲染")
+    return _Score(music / "music.wav", wav_hash)
+
+
+def _music_mix(path: Path, narration: bool) -> MusicMix:
+    """短片只有配乐；讲解的背景乐压低、被旁白侧链压住，并带长淡入淡出。"""
+    if not narration:
+        return MusicMix(AudioTrack(path, 0.0))
+    return MusicMix(
+        AudioTrack(path, 0.0, gain_db=BED_GAIN_DB),
+        duck_under_narration=True,
+        fade_in=BED_FADE_IN,
+        fade_out=BED_FADE_OUT,
+    )
+
+
 def _cache_path(workdir: Path, key: str) -> Path:
     return workdir / ".cache" / "render_cache" / f"{key}.mp4"
 
@@ -168,12 +224,13 @@ async def run_html_job(
     music_source: str = "none",
 ) -> None:
     """成功返回；失败抛 `HtmlJobError`，已有的 `output/final.mp4` 保持不变。"""
-    if not narration or music_source != "none":
-        raise HtmlJobError("带配乐或无旁白项目的成片渲染尚未实现（配乐混音在子项目 3B）")
+    if music_source == "import":
+        raise HtmlJobError("导入音乐的成片渲染尚未实现（子项目 4）")
     try:
         loaded = load_timeline(TimelineSources(workdir, narration, music_source))
     except TimelineError as exc:
-        raise HtmlJobError(str(exc)) from exc
+        hint = "\n（若是配乐与时间轴不一致，到配乐阶段重新渲染）" if music_source == "synth" else ""
+        raise HtmlJobError(str(exc) + hint) from exc
     timeline = loaded.timeline.model_dump(mode="json")
     sections = loaded.timeline.sections
 
@@ -181,7 +238,8 @@ async def run_html_job(
     scene_sources = _scene_sources(workdir, [s.id for s in sections], errors)
     errors += [f"{i.path}:{i.line}：{i.message}" for i in static_check(workdir)]
     errors += check_assets(workdir)
-    audio = _audio_sources(workdir, loaded.timing, sections, errors)
+    audio = _audio_sources(workdir, loaded.timing, sections, errors) if narration else []
+    score = _music_source(workdir, loaded.base_hash, errors) if music_source == "synth" else None
     if errors:
         raise HtmlJobError("成片前置检查未通过：\n" + "\n".join(f"- {e}" for e in errors))
 
@@ -198,7 +256,10 @@ async def run_html_job(
                 page, float(timeline["duration"]), silent, fps, _progress_reporter(engine, job_id)
             )
         tracks = [AudioTrack(source.path, source.start, source.length) for source in audio]
-        await backend.mix(silent, tracks, float(timeline["duration"]), output_dir / "final.mp4")
+        music = _music_mix(score.path, narration) if score is not None else None
+        await backend.mix(
+            silent, tracks, float(timeline["duration"]), output_dir / "final.mp4", music
+        )
     except (VideoRenderError, MixError, ChromiumUnavailable, PageNotReady) as exc:
         raise HtmlJobError(f"成片渲染失败：{exc}") from exc
 
@@ -210,7 +271,10 @@ async def run_html_job(
             scene_id: hashlib.sha256(text.encode("utf-8")).hexdigest()
             for scene_id, text in scene_sources.items()
         },
-        "audio_sources": {source.scene_id: source.hash for source in audio},
+        "audio_sources": {
+            **{source.scene_id: source.hash for source in audio},
+            **({"music": score.hash} if score is not None else {}),
+        },
         "rendered_at": datetime.now(UTC).isoformat(),
     }
     (output_dir / "final.json").write_text(

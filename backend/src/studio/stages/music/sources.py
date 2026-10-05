@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from studio.timeline.load import TimelineSources
 
@@ -21,3 +23,13 @@ def infer_sources(workdir: Path, prefix: str, *, with_music: bool) -> TimelineSo
         prefix=prefix,
         with_music=with_music,
     )
+
+
+def section_energy(beatsheet: Mapping[str, Any] | None) -> dict[str, str]:
+    """段落 id → 节拍脚本里声明的能量档位；讲解（没有节拍脚本）为空。"""
+    sections = (beatsheet or {}).get("sections", [])
+    return {
+        section["id"]: section["energy"]
+        for section in sections
+        if isinstance(section, dict) and isinstance(section.get("energy"), str)
+    }

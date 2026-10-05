@@ -3,7 +3,7 @@
  * 播放时钟优先用当前镜头配音的 `currentTime` 加镜头起点；某个镜头没有配音时回退为
  * 墙钟计时（`advanceClock`）。预览与成片的音画对齐允许有小偏差，以成片为准。
  */
-import type { HtmlPreviewAudio, HtmlPreviewSection } from '@/types/api'
+import type { HtmlPreviewAudio, HtmlPreviewMeta, HtmlPreviewSection } from '@/types/api'
 
 /** `t` 所在镜头的下标（越界夹紧到首尾；没有镜头返回 -1）。 */
 export function sectionAt(sections: readonly HtmlPreviewSection[], t: number): number {
@@ -56,4 +56,31 @@ export function shouldReloadPreview(
   latestHash: string | undefined,
 ): boolean {
   return latestHash !== undefined && latestHash !== loadedHash
+}
+
+/**
+ * 谁当时钟：有旁白就用旁白（配乐跟随）；没有旁白但有配乐（短片）用配乐；都没有走墙钟。
+ */
+export type PlaybackMode = 'narration' | 'music' | 'wall'
+
+export function playbackMode(meta: Pick<HtmlPreviewMeta, 'audio' | 'music'>): PlaybackMode {
+  if (meta.audio.length > 0) return 'narration'
+  return meta.music !== null ? 'music' : 'wall'
+}
+
+/** 以配乐为时钟时，全局时间就是配乐的 `currentTime`，夹在整片范围内。 */
+export function musicClockTime(audioTime: number, duration: number): number {
+  if (!Number.isFinite(audioTime)) return 0
+  return Math.min(duration, Math.max(0, audioTime))
+}
+
+/** 配乐比目标位置偏了多少秒以上才重设 `currentTime`，避免跟随时不停地抖。 */
+export const REALIGN_THRESHOLD_SECONDS = 0.3
+
+export function needsRealign(
+  audioTime: number,
+  target: number,
+  threshold: number = REALIGN_THRESHOLD_SECONDS,
+): boolean {
+  return Math.abs(audioTime - target) > threshold
 }

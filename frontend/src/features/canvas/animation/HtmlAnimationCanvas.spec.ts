@@ -12,11 +12,13 @@ const META: HtmlPreviewMeta = {
     { id: 's-explain', label: '讲解', start: 1.4, end: 3, beats: [] },
   ],
   audio: [],
+  music: null,
 }
 
 const state = vi.hoisted(() => ({
   meta: undefined as unknown,
   metaError: undefined as unknown,
+  project: undefined as unknown,
   files: [] as string[],
   written: [] as Array<{ path: string; stage: string; content: string }>,
 }))
@@ -25,6 +27,7 @@ vi.mock('@/composables/queries', async () => {
   const { ref: vueRef, computed } = await import('vue')
   return {
     useHtmlPreviewMetaQuery: () => ({ data: vueRef(state.meta), error: vueRef(state.metaError) }),
+    useProjectQuery: () => ({ data: vueRef(state.project) }),
     useFileTreeQuery: () => ({ data: vueRef({ files: state.files.map((path) => ({ path })) }) }),
     useFileContentQuery: (_id: unknown, path: () => string | null) => ({
       data: computed(() => (path() === null ? undefined : 'module.exports = {}\n')),
@@ -61,8 +64,15 @@ vi.mock('@/components/CodeEditor.vue', () => ({
 import HtmlAnimationCanvas from './HtmlAnimationCanvas.vue'
 
 const stubs = {
+  // exposes the prop so the test can read it
+
   FinalRenderPanel: { props: ['sceneCount'], render() { return h('div', { 'data-testid': 'final-panel' }, `final ${this.sceneCount}`) } },
-  HtmlPreviewPane: { render() { return h('div', { 'data-testid': 'preview-pane' }) } },
+  HtmlPreviewPane: {
+    props: ['scoreMissing'],
+    render() {
+      return h('div', { 'data-testid': 'preview-pane', 'data-score-missing': String(this.scoreMissing) })
+    },
+  },
 }
 const mountCanvas = (busy = false) =>
   mount(HtmlAnimationCanvas, { props: { projectId: 'p1', busy }, global: { stubs } })
@@ -71,6 +81,7 @@ describe('HtmlAnimationCanvas', () => {
   beforeEach(() => {
     state.meta = META
     state.metaError = undefined
+    state.project = undefined
     state.files = ['animation/scenes/s-hook.js']
     state.written = []
   })
@@ -127,5 +138,20 @@ describe('HtmlAnimationCanvas', () => {
     const wrapper = mountCanvas()
     expect(wrapper.find('[data-testid="meta-problem"]').text()).toContain('narrative/timing.json')
     expect(wrapper.find('[data-testid="animation-tabbar"]').text()).toContain('镜头（0）')
+  })
+
+  it('tells the preview the score is missing only for a synth-music project without one', async () => {
+    const tabOf = async (project: unknown, meta: unknown) => {
+      state.project = project
+      state.meta = meta
+      const wrapper = mountCanvas()
+      await wrapper.findAll('button').find((b) => b.text() === '实时预览')!.trigger('click')
+      return wrapper.find('[data-testid="preview-pane"]').attributes('data-score-missing')
+    }
+    const synth = { kind: { music_source: 'synth' } }
+    expect(await tabOf(synth, META)).toBe('true')
+    expect(await tabOf(synth, { ...META, music: { url: '/m', gain: 1 } })).toBe('false')
+    expect(await tabOf({ kind: { music_source: 'none' } }, META)).toBe('false')
+    expect(await tabOf(undefined, META)).toBe('false')
   })
 })

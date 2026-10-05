@@ -427,10 +427,59 @@ export interface HtmlPreviewAudio {
   url: string
 }
 
+/** 实时预览的配乐：已渲染且对得上当前时间轴才有；`url` 带 `wav_hash` 版本，`gain` 是线性增益。 */
+export interface HtmlPreviewMusic {
+  url: string
+  gain: number
+}
+
 /** `GET /projects/{id}/animation/html-preview/meta`：`hash` 变了才需要刷新 iframe。 */
 export interface HtmlPreviewMeta {
   hash: string
   duration: number
   sections: HtmlPreviewSection[]
   audio: HtmlPreviewAudio[]
+  music: HtmlPreviewMusic | null
+}
+
+// ---- 配乐（`/projects/{id}/music/*`）-----------------------------------------
+
+export interface MusicEventOut {
+  name: string
+  kind: 'onset' | 'sweep' | string
+  start: number
+  end: number
+}
+
+export interface MusicSectionOut {
+  id: string
+  label: string
+  start: number
+  end: number
+}
+
+/** `GET .../music/meta`：没有产物时 `rendered=false`；`stale` 表示产物对应的是另一版时间轴。 */
+export interface MusicMetaOut {
+  rendered: boolean
+  stale: boolean
+  hash: string | null
+  duration: number | null
+  bpm: number | null
+  events: MusicEventOut[]
+  sections: MusicSectionOut[]
+  /** 1000 个点的波形包络，取值 0–1。 */
+  waveform: number[]
+  metrics: Record<string, unknown> | null
+}
+
+/** `POST .../music/render`：脚本的问题是 `ok=false`（HTTP 仍是 200）。 */
+export interface MusicRenderOut {
+  ok: boolean
+  errors: string[]
+  text: string
+  warnings: string[]
+  retime_note: string
+  metrics: Record<string, unknown> | null
+  picture_base64: string | null
+  picture_media_type: string | null
 }

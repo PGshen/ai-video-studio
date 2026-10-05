@@ -10,7 +10,7 @@
  * `useHtmlPlayback`。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Pause, Play, Repeat } from '@lucide/vue'
+import { Pause, Play, Repeat, Volume2, VolumeX } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { getHtmlPreviewPage } from '@/api/endpoints'
 import type { HtmlPreviewMeta } from '@/types/api'
@@ -22,7 +22,12 @@ const FRAME_WIDTH = 1920
 const FRAME_HEIGHT = 1080
 const FPS = 30
 
-const props = defineProps<{ projectId: string; meta: HtmlPreviewMeta }>()
+const props = defineProps<{
+  projectId: string
+  meta: HtmlPreviewMeta
+  /** 项目有合成配乐，但配乐还没渲染或与当前时间轴对不上（`meta.music` 为空）：提示去配乐阶段。 */
+  scoreMissing?: boolean
+}>()
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const stage = ref<HTMLDivElement | null>(null)
@@ -171,6 +176,18 @@ function onScrub(event: Event): void {
       >
         <Repeat />
       </Button>
+      <Button
+        v-if="meta.music"
+        size="sm"
+        :variant="playback.muted.value ? 'default' : 'outline'"
+        :aria-pressed="playback.muted.value"
+        aria-label="配乐静音"
+        data-testid="preview-mute"
+        @click="playback.setMuted(!playback.muted.value)"
+      >
+        <VolumeX v-if="playback.muted.value" />
+        <Volume2 v-else />
+      </Button>
       <span
         class="text-muted-foreground text-xs tabular-nums"
         data-testid="preview-time"
@@ -181,6 +198,15 @@ function onScrub(event: Event): void {
         {{ currentSection?.label }}
       </span>
     </div>
+
+    <p
+      v-if="scoreMissing"
+      class="text-muted-foreground rounded border px-3 py-2 text-xs"
+      role="status"
+      data-testid="preview-score-missing"
+    >
+      配乐还没渲染，或与当前节拍脚本、旁白对不上，预览没有声音。到「配乐」阶段重新渲染后会自动刷新。
+    </p>
 
     <div class="relative">
       <input

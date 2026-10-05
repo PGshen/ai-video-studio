@@ -19,6 +19,7 @@ const META: HtmlPreviewMeta = {
     { id: 'c', label: '收尾', start: 5, end: 6, beats: [] },
   ],
   audio: [],
+  music: null,
 }
 
 const mounted: Array<ReturnType<typeof mount>> = []
@@ -153,5 +154,25 @@ describe('HtmlPreviewPane', () => {
     expect(loop.attributes('aria-pressed')).toBe('false')
     await loop.trigger('click')
     expect(loop.attributes('aria-pressed')).toBe('true')
+  })
+
+  it('offers a mute button only when there is a score, and toggles it', async () => {
+    expect((await mountPane()).find('[data-testid="preview-mute"]').exists()).toBe(false)
+    const wrapper = await mountPane({ ...META, music: { url: '/m.wav', gain: 1 } })
+    const mute = wrapper.find('[data-testid="preview-mute"]')
+    expect(mute.attributes('aria-pressed')).toBe('false')
+    await mute.trigger('click')
+    expect(mute.attributes('aria-pressed')).toBe('true')
+  })
+
+  it('says why there is no sound when the score is missing or stale', async () => {
+    const wrapper = mount(HtmlPreviewPane, {
+      props: { projectId: 'p1', meta: META, scoreMissing: true },
+      attachTo: document.body,
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="preview-score-missing"]').text()).toContain('配乐')
+    expect((await mountPane()).find('[data-testid="preview-score-missing"]').exists()).toBe(false)
   })
 })

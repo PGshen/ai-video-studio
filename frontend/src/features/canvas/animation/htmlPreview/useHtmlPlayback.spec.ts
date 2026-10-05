@@ -5,6 +5,7 @@ import { useHtmlPlayback, type PlaybackAudio } from './useHtmlPlayback'
 
 class FakeAudio implements PlaybackAudio {
   src = ''
+  volume = 1
   currentTime = 0
   paused = true
   playRejects = false
@@ -54,6 +55,7 @@ const META: HtmlPreviewMeta = {
     { section_id: 'a', url: '/audio/a.wav' },
     { section_id: 'c', url: '/audio/c.wav' },
   ],
+  music: null,
 }
 
 function setup(meta: HtmlPreviewMeta | null = META) {
@@ -257,3 +259,264 @@ describe('useHtmlPlayback', () => {
   })
 })
 
+
+
+// ---- the score (3B T6) ------------------------------------------------------------------
+
+const REEL: HtmlPreviewMeta = {
+  hash: 'r',
+  duration: 6,
+  sections: META.sections,
+  audio: [],
+  music: { url: '/music/audio?v=one', gain: 1 },
+}
+const BED: HtmlPreviewMeta = { ...META, music: { url: '/music/audio?v=one', gain: 0.4 } }
+
+function setupScore(initial: HtmlPreviewMeta) {
+  const narration = new FakeAudio()
+  const score = new FakeAudio()
+  let meta = initial
+  let created = 0
+  const seeks: number[] = []
+  let frame: ((ms: number) => void) | null = null
+  let now = 0
+  const scope = effectScope()
+  const playback = scope.run(() =>
+    useHtmlPlayback({
+      meta: () => meta,
+      onSeek: (t) => seeks.push(t),
+      createAudio: () => narration,
+      createScoreAudio: () => {
+        created += 1
+        return score
+      },
+      requestFrame: (cb) => {
+        frame = cb
+        return 1
+      },
+      cancelFrame: () => {
+        frame = null
+      },
+    }),
+  )!
+  const tick = (seconds: number): void => {
+    now += seconds * 1000
+    const cb = frame
+    frame = null
+    cb?.(now)
+  }
+  return {
+    playback,
+    narration,
+    score,
+    seeks,
+    tick,
+    scope,
+    setMeta: (next: HtmlPreviewMeta) => {
+      meta = next
+    },
+    created: () => created,
+  }
+}
+
+async function playing(h: ReturnType<typeof setupScore>): Promise<void> {
+  h.playback.toggle()
+  await Promise.resolve()
+  h.tick(0)
+}
+
+describe('useHtmlPlayback with a score: a reel (no narration)', () => {
+  it('plays the score and uses its currentTime as the clock', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    expect(h.score.src).toContain('/music/audio?v=one')
+    expect(h.score.paused).toBe(false)
+    expect(h.score.volume).toBe(1)
+    h.score.currentTime = 1.5
+    h.tick(0.016)
+    expect(h.playback.t.value).toBe(1.5)
+    expect(h.seeks.at(-1)).toBe(1.5)
+    expect(h.narration.plays).toBe(0)
+  })
+
+  it('crosses into the next section without seeking the score', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.score.currentTime = 2.02
+    h.tick(0.016)
+    expect(h.playback.currentIndex.value).toBe(1)
+    expect(h.score.currentTime).toBe(2.02) // already in place: no jump, no click
+  })
+
+  it('never pulls the score back when a frame was late or several sections went by', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.score.currentTime = 2.2 // a slow frame: well past the 2.0 boundary
+    h.tick(0.016)
+    expect(h.playback.currentIndex.value).toBe(1)
+    expect(h.score.currentTime).toBe(2.2)
+    expect(h.playback.t.value).toBe(2.2)
+
+    h.score.currentTime = 5.4 // the tab was in the background: two sections at once
+    h.tick(0.016)
+    expect(h.playback.currentIndex.value).toBe(2)
+    expect(h.score.currentTime).toBe(5.4)
+  })
+
+  it('stops at the end of the piece when the score reaches it', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.score.currentTime = 6
+    h.tick(0.016)
+    expect(h.playback.playing.value).toBe(false)
+    expect(h.playback.t.value).toBe(6)
+  })
+
+  it('loops the current section by moving the score back to the section start', async () => {
+    const h = setupScore(REEL)
+    h.playback.setLoop(true)
+    await playing(h)
+    h.score.currentTime = 2.05
+    h.tick(0.016)
+    expect(h.score.currentTime).toBe(0)
+    expect(h.playback.t.value).toBe(0)
+  })
+
+  it('seeking while playing moves the score to the global time', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.playback.seekTo(3.2)
+    expect(h.score.currentTime).toBe(3.2)
+  })
+
+  it('seeking while paused only moves the page', () => {
+    const h = setupScore(REEL)
+    h.playback.seekTo(3.2)
+    expect(h.score.plays).toBe(0)
+    expect(h.playback.t.value).toBe(3.2)
+  })
+
+  it('keeps going on the wall clock when the browser refuses to play the score', async () => {
+    const h = setupScore(REEL)
+    h.score.playRejects = true
+    await playing(h)
+    await Promise.resolve()
+    h.tick(0.5)
+    expect(h.playback.t.value).toBeCloseTo(0.5, 5)
+    expect(h.playback.playing.value).toBe(true)
+  })
+
+  it('pausing pauses the score and ends at the end of the piece', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.playback.toggle()
+    expect(h.score.paused).toBe(true)
+    expect(h.playback.playing.value).toBe(false)
+  })
+
+  it('reloads the score when a new render changed its address, keeping the position', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.score.currentTime = 1.2
+    h.tick(0.016)
+    h.setMeta({ ...REEL, music: { url: '/music/audio?v=two', gain: 1 } })
+    h.tick(0.016)
+    expect(h.score.src).toContain('v=two')
+    expect(h.score.currentTime).toBeCloseTo(1.2, 5)
+    expect(h.score.paused).toBe(false)
+  })
+
+  it('stops the score when the render goes away', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.setMeta({ ...REEL, music: null })
+    h.tick(0.016)
+    expect(h.score.paused).toBe(true)
+  })
+
+  it('muting silences only the score and unmuting restores the gain', async () => {
+    const h = setupScore({ ...REEL, music: { url: '/m', gain: 0.5 } })
+    await playing(h)
+    expect(h.score.volume).toBe(0.5)
+    h.playback.setMuted(true)
+    expect(h.score.volume).toBe(0)
+    h.playback.setMuted(false)
+    expect(h.score.volume).toBe(0.5)
+  })
+
+  it('is stopped for good when the scope is disposed', async () => {
+    const h = setupScore(REEL)
+    await playing(h)
+    h.scope.stop()
+    expect(h.score.paused).toBe(true)
+  })
+})
+
+describe('useHtmlPlayback with a score: narration plus a bed', () => {
+  it('keeps the narration as the clock and starts the bed at the global time, quieter', async () => {
+    const h = setupScore(BED)
+    await playing(h)
+    expect(h.narration.src).toContain('/audio/a.wav')
+    expect(h.score.src).toContain('/music/audio?v=one')
+    expect(h.score.volume).toBe(0.4)
+    h.narration.currentTime = 1
+    h.score.currentTime = 1.05
+    h.tick(0.016)
+    expect(h.playback.t.value).toBe(1) // narration is the clock
+    expect(h.score.currentTime).toBe(1.05) // within the drift allowance: untouched
+  })
+
+  it('pulls the bed back only when it drifted past the threshold', async () => {
+    const h = setupScore(BED)
+    await playing(h)
+    h.narration.currentTime = 1
+    h.score.currentTime = 1.5
+    h.tick(0.016)
+    expect(h.score.currentTime).toBe(1)
+  })
+
+  it('aligns the bed on seeks and section changes', async () => {
+    const h = setupScore(BED)
+    await playing(h)
+    h.playback.seekTo(5.4)
+    expect(h.score.currentTime).toBeCloseTo(5.4, 5)
+  })
+
+  it('keeps the bed running through a section without narration on the wall clock', async () => {
+    const h = setupScore(BED)
+    h.playback.seekTo(2.5)
+    h.playback.toggle()
+    await Promise.resolve()
+    h.tick(0)
+    h.tick(0.5)
+    expect(h.playback.t.value).toBeCloseTo(3.0, 5)
+    expect(h.score.paused).toBe(false)
+  })
+
+  it('does not stop the narration when the browser refuses the bed', async () => {
+    const h = setupScore(BED)
+    h.score.playRejects = true
+    await playing(h)
+    await Promise.resolve()
+    h.narration.currentTime = 0.5
+    h.tick(0.016)
+    expect(h.playback.t.value).toBe(0.5)
+    expect(h.playback.playing.value).toBe(true)
+  })
+
+  it('pauses the bed together with the narration', async () => {
+    const h = setupScore(BED)
+    await playing(h)
+    h.playback.toggle()
+    expect(h.narration.paused).toBe(true)
+    expect(h.score.paused).toBe(true)
+  })
+})
+
+describe('useHtmlPlayback without a score', () => {
+  it('never creates a score audio element', async () => {
+    const h = setupScore({ ...META, music: null })
+    await playing(h)
+    expect(h.created()).toBe(0)
+  })
+})

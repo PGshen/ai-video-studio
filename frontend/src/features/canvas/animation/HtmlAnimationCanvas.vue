@@ -19,6 +19,7 @@ import {
   useFileContentQuery,
   useFileTreeQuery,
   useHtmlPreviewMetaQuery,
+  useProjectQuery,
   useSceneChecksQuery,
   useWriteFileMutation,
 } from '@/composables/queries'
@@ -51,7 +52,11 @@ const STAGE = 'animation_html'
 const tab = ref<'scenes' | 'preview' | 'final'>('scenes')
 
 const { data: meta, error: metaError } = useHtmlPreviewMetaQuery(() => props.projectId)
+const { data: project } = useProjectQuery(() => props.projectId)
 const sections = computed(() => meta.value?.sections ?? [])
+const scoreMissing = computed(
+  () => project.value?.kind?.music_source === 'synth' && meta.value?.music === null,
+)
 const sceneIds = computed(() => sections.value.map((section) => section.id))
 
 const metaProblem = computed<string | null>(() => {
@@ -329,6 +334,7 @@ function onLoadLatest(): void {
         v-if="meta"
         :project-id="projectId"
         :meta="meta"
+        :score-missing="scoreMissing"
       />
       <p
         v-else-if="!metaProblem"

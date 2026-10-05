@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待开始（计划已写成，等待负责人审阅） |
+| 状态 | 进行中 |
 | 里程碑 | 多形态视频流水线 · 子项目 3/4 · 计划 3B |
 | 设计依据 | [子项目 3 设计](../../design/2026-10-05-synth-music-reel.md)（已批准）§8、§9、§10；[ADR 0021](../../decisions/0021-HTML引擎与配乐阶段.md)；[3A 计划](../completed/synth-music-3a.md)（已合并）的决策记录；[ffmpeg 记录](../../references/ffmpeg.md) |
 | 分支 | `synth-music-3b`（从 `main` 切出，3A 与其遗留修复合并之后） |
-| 批准记录 | 设计已于 2026-10-05 批准（含 3B 的范围）；本计划等待负责人审阅后开工 |
+| 批准记录 | 设计已于 2026-10-05 批准（含 3B 的范围）；2026-10-05 负责人审阅通过本计划，开始实现 |
 
 > 执行方式：Native（自己按任务顺序实现），整分支完成后由一个独立评审者评审一次；用 `claude-login` 做一次真实模型冒烟。本计划的「进度」「决策记录」就是账本。每个任务先写失败的测试，再实现。计划只写结构和意图，不写完整实现代码。
 
@@ -81,7 +81,7 @@
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 <!-- 依赖：T1 独立；T2 依赖 T1；T3 独立；T4 依赖 T3；T5 依赖 T4；T6 依赖 T5；T7 依赖 T3、T5；T8 依赖 T2、T6、T7；T9 依赖 T8 -->
 
-### T1：`engines.render.mix` 的配乐轨（待开始）
+### T1：`engines.render.mix` 的配乐轨（完成）
 
 - **目标**：`mix_final(music=…)` 可用；参数实测后定（设计 §8.1）。
 - **涉及文件**：`backend/src/studio/engines/render/mix.py`、`backend/tests/engines/test_render_mix*.py`（现有测试的位置以仓库为准）、`docs/references/ffmpeg.md`。
@@ -93,7 +93,7 @@
 - **完成标准**：AC1；无配乐的现有测试不改一行也通过。
 - **验证命令**：`cd backend && uv run pytest tests/engines -k mix -v && uv run pytest -m slow tests/engines -k mix -v`
 
-### T2：`worker_html` 的配乐路径（待开始）
+### T2：`worker_html` 的配乐路径（完成）
 
 - **目标**：成片渲染支持短片与"讲解 + 合成背景乐"（设计 §8.2）。
 - **涉及文件**：`backend/src/studio/worker_html.py`、`backend/src/studio/worker.py`（若有形态判断）、`backend/src/studio/api/animation.py`（`finalize-render` 对短片的前置条件）、`backend/tests/test_worker_html.py`、`backend/tests/api/test_animation_finalize_render.py`（若存在）。
@@ -107,7 +107,7 @@
 - **完成标准**：AC2。
 - **验证命令**：`cd backend && uv run pytest tests/test_worker_html.py tests/api -k "render or worker_html" -v && uv run pytest -m slow tests/test_worker_html.py -v`
 
-### T3：音乐 api——`meta`、`audio`、`render`（待开始）
+### T3：音乐 api——`meta`、`audio`、`render`（完成）
 
 - **目标**：设计 §9.1 的三个端点，行为稳健。
 - **涉及文件**：新建 `backend/src/studio/api/music.py`；`backend/src/studio/api/schemas.py`；`backend/src/studio/main.py`（挂路由）；`backend/tests/api/test_music.py`；读一遍 `api/files.py` 的忙碌检查与安全解析写法后照用。
@@ -120,7 +120,7 @@
 - **完成标准**：AC3。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_music.py -v && uv run lint-imports`
 
-### T4：`html-preview/meta` 带配乐（待开始）
+### T4：`html-preview/meta` 带配乐（完成）
 
 - **目标**：预览知道有没有配乐、在哪取、放多大声（设计 §9.1）。
 - **涉及文件**：`backend/src/studio/api/html_preview.py`、`backend/src/studio/api/schemas.py`（`HtmlPreviewMusic`）、`backend/tests/api/test_html_preview.py`、`frontend/src/types/api.ts`。
@@ -129,7 +129,7 @@
 - **完成标准**：AC4。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_html_preview.py -v`
 
-### T5：前端基础——类型、endpoints、查询与纯函数（待开始）
+### T5：前端基础——类型、endpoints、查询与纯函数（完成）
 
 - **目标**：把 api 接进前端，并把所有换算写成有测试的纯函数。
 - **涉及文件**：`frontend/src/types/api.ts`（`MusicMeta`、`MusicRenderReport`、`HtmlPreviewMeta.music`）、`frontend/src/api/endpoints.ts`（及 `endpoints.spec.ts`）、`frontend/src/features/canvas/music/musicQueries.ts`（查询与渲染 mutation，沿用现有 query 写法）、`frontend/src/features/canvas/music/waveform.ts`（波形点 → 画布坐标、事件与段落标记坐标、点击 x → 时间）、`frontend/src/features/canvas/animation/htmlPreview/previewClock.ts`（配乐时钟换算）及各自 spec。
@@ -138,7 +138,7 @@
 - **完成标准**：AC5 的纯函数部分。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas src/api`
 
-### T6：`useHtmlPlayback` 的配乐来源（待开始）
+### T6：`useHtmlPlayback` 的配乐来源（完成）
 
 - **目标**：实时预览能放配乐（设计 §9.2）。
 - **涉及文件**：`frontend/src/features/canvas/animation/htmlPreview/useHtmlPlayback.ts`（及 spec）、`HtmlPreviewPane.vue`、`HtmlAnimationCanvas.vue`（传入 `meta.music`、显示"配乐未渲染"提示与静音开关）。
@@ -151,7 +151,7 @@
 - **完成标准**：AC5。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas/animation`
 
-### T7：`MusicCanvas` 与阶段分发（待开始）
+### T7：`MusicCanvas` 与阶段分发（完成）
 
 - **目标**：配乐阶段有自己的画布（设计 §9.2）。
 - **涉及文件**：`frontend/src/features/canvas/music/{MusicCanvas,MusicPlayer,WaveformView,EventTable,RenderReport}.vue` 及 spec；`frontend/src/pages/ProjectWorkbenchPage.vue`（`stage === 'music'` 分支，定稿按钮与侧栏切换沿用其他阶段的写法）。
@@ -164,7 +164,7 @@
 - **完成标准**：AC6。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas/music src/pages && pnpm run lint && pnpm exec vue-tsc --noEmit`（以 `package.json` 里的类型检查命令为准）
 
-### T8：整流水线集成、真实模型冒烟与成片（待开始）
+### T8：整流水线集成、真实模型冒烟与成片（完成）
 
 - **目标**：证明短片与"讲解 + 合成背景乐"能一路出成片（AC7、AC8）。
 - **涉及文件**：`backend/tests/api/test_synth_music_flow.py`（扩展）、`backend/tests/smoke/test_smoke.py::test_motion_reel_claude_login`（扩展到成片）、`backend/tests/smoke/support.py`。
@@ -175,7 +175,7 @@
 - **完成标准**：AC7、AC8（附耗时、费用、各阶段轮数、警告）。
 - **验证命令**：`cd backend && uv run pytest -m slow tests/api/test_synth_music_flow.py -v`；`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`
 
-### T9：L4、文档同步与收尾（待开始）
+### T9：L4、文档同步与收尾（进行中：L4 与文档完成，待冒烟结果与整分支评审）
 
 - **目标**：完成 L4（AC9）与文档同步（AC10）。
 - **涉及文件**：`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`、`docs/runbooks/verification.md`（L4 步骤与冒烟命令）、`docs/references/ffmpeg.md`、`docs/design/2026-10-05-synth-music-reel.md` 的"对总设计的补充"处只追加、不改正文（若需改正文走升级流程）、`docs/plans/TODO.md`、本计划的验证记录。
@@ -190,7 +190,19 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 2026-10-05 — 计划写成，等待负责人审阅
+- 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — 整分支评审（opus，无 Critical）：**Important 1** 侧链输入（旁白总线）结束后背景乐被整段截掉（实测 −150 dB）→ 已修，只给侧链那一路 `apad`/`atrim`，`test_the_bed_keeps_playing_after_the_last_narration_ends` 先红后绿，ffmpeg.md 补记。**Important 2** 短片以配乐为时钟时，跨镜头会把配乐往回拨（慢帧、后台标签）→ 已修，配乐在放时跨镜头只按配乐位置更新 `currentIndex`、不重新定位；两条用例先红后绿。顺带修：worker 对 `music_source=import` 显式失败（原来静默出无配乐的片），`html-preview` 的 `music` 只给 `synth` 项目且用项目 `kind.narration`。
+- 2026-10-05 — 评审 Minor（延后，进 TODO）：`music/meta.stale` 只比 `base_hash` 不比实际 wav 哈希（与预览、成片的说法不一致）；预览 meta 每次请求都整读 wav 算 sha256（长讲解有几十 MB）；worker 先算哈希再交给 ffmpeg 读，之间手动渲染可能换文件，`final.json` 记旧哈希；`final.json.audio_sources` 里镜头 id 与固定键 `music` 同层，镜头真叫 `music` 会被覆盖。
+- 2026-10-05 — T8 真实模型冒烟（claude-login，短片到成片）通过 — 7 分 26 秒，$1.03，4 阶段各 1 轮（步数 2/3/5/17），成片渲染 4.1 秒、1.28 MB、AAC 一条音轨、时长 11.267 秒（节拍脚本 11.25 秒），证据 `data/evidence/synth-music/smoke/`
+- 2026-10-05 — T9 L4（隔离实例 api 8010 / 前端 5174，种子短片项目，真实 Seatbelt）— 配乐画布：播放器可放、点波形跳转（click 5.6 秒后播放到结尾）、播放位置与时间标签跟随、真实沙箱里手动渲染得到报告（重定时校验通过、指标、256 色分析图）；动画阶段实时预览：静音按钮在、无"缺失"提示、点播放后配乐（URL 带 `wav_hash`）在放且预览时钟跟着配乐。**L4 发现并修掉三处**：配乐阶段定稿按钮与快照开关重复（页面通用头部也渲染一份，改为 `STAGES_WITH_OWN_ACTIONS` 统一判断并加单测）；播放器被 flex 压成 0 高（改 grid）；脚本标签里渲染报告压住编辑器且不能滚动（编辑器给最小高度、容器可滚动）。jsdom 看不到布局问题，已写进 runbook。未单独走查：讲解加配乐项目的画布与成片标签的 UI 渲染（后端与前端逻辑均有测试，成片由 slow 与冒烟覆盖）。
+- 2026-10-05 — T8 集成 — `test_synth_music_flow.py` 新增：短片与讲解加背景乐从配乐到成片再到 `finalize-render`（假后端，3 条含"成片前配乐过期被拦"）+ slow 真实 Chromium/ffmpeg 2 条（短片音轨 aac、时长 11.25 秒、`audio_sources` 只有 `music`；讲解加配乐一条音轨、3 秒）；冒烟用例已扩展到出成片（`_render_reel_final`），待真实运行
+- 2026-10-05 — T7 `MusicCanvas` — 播放/脚本/事件三标签（`v-show`，切换不打断播放）；`MusicPlayer`（播放器、`WaveformView` SVG 波形与段落/事件/播放位置、指标、分析图、固定的"需要试听"提示）、`EventTable`、`RenderReport`、`musicView.ts`；脚本标签编辑 `music/compose.py`（保存走阶段 `music`），手动渲染在忙碌、未保存、无脚本时禁用并说明原因；`ProjectWorkbenchPage` 新增 `music` 分支（定稿按钮沿用）；组件与纯函数测试 40 条
+- 2026-10-05 — T6 预览播放的配乐来源 — `useHtmlPlayback`：短片以配乐 `currentTime` 为时钟（贴合容差 0.05 秒、拒绝自动播放回退墙钟）；讲解里旁白是时钟、配乐 −8 dB 跟随（漂移 > 0.3 秒才重设，拒绝不影响旁白）；URL 变了换源并保持位置、配乐没了就停；`setMuted`；`HtmlPreviewPane` 加静音按钮与"配乐未渲染或已过期"提示，`HtmlAnimationCanvas` 按项目 `music_source` 计算 `scoreMissing`；新增 composable 测试 18 条、组件测试 3 条
+- 2026-10-05 — T5 前端基础 — 类型（`MusicMetaOut`、`MusicRenderOut`）、endpoints（`getMusicMeta`、`musicAudioUrl`、`renderMusic`）、`queryKeys.musicMeta` 与 `useMusicMetaQuery`/`useRenderMusicMutation`（工作区失效时一并刷新配乐 meta）；纯函数 `waveform.ts`（`timeToX`/`xToTime`/`waveformPeaks`/`eventMarkers`/`sectionBands`）与 `previewClock.ts`（`playbackMode`/`musicClockTime`/`needsRealign`）及单测
+- 2026-10-05 — T4 `html-preview/meta.music` — `{url, gain}`，URL 带 `wav_hash`；只在产物存在、`base_hash` 与 `wav_hash` 都对得上时给，否则 `null`；短片 gain 1.0、讲解 −8 dB 线性值；讲解背景乐的默认混音常量（−8 dB、淡入 1 秒/淡出 1.5 秒）移到 `engines.render.mix` 让成片与预览共用；前端 `HtmlPreviewMeta.music` 类型；`test_html_preview.py` 新增 4 条
+- 2026-10-05 — T3 音乐 api — `api/music.py`：`meta`（含 `stale`、`sections`，损坏产物当作未渲染）、`audio`（`FileResponse` 的 Range：206、尾部范围、非法 400/416、软链接逃逸 404）、`render`（共用 `render_music_core`；脚本问题 200 + `ok=false`；轮次在跑 / 已有手动渲染 / 无沙箱 / 时间轴不可用 409）；`tests/api/test_music.py` 20 条；`section_energy` 抽到 `stages/music/sources.py`，`metrics_of` 公开
+- 2026-10-05 — T2 `worker_html` 配乐路径 — 去掉守卫；前置检查（四个文件、`base_hash`、`wav_hash`）；短片只有配乐，背景乐 −8 dB + 侧链 + 淡入 1 秒/淡出 1.5 秒；`final.json.audio_sources.music`；新测试 `tests/test_worker_html_music.py`（成功 2、前置检查 7、旧成片保留 2、无配乐回归 1）+ slow 真实 Chromium + ffmpeg 2（短片音轨非静音、时长一致；讲解加配乐）；`FakeBackend` 移到 `fixtures/html_engine/worker_fakes.py`；`finalize-render` 与 `POST /render` 与形态无关，无需改
+- 2026-10-05 — T1 `engines.render.mix` 配乐轨 — `MusicMix`、`AudioTrack.gain_db`、命令构造 7 条（无配乐不变、只有配乐、增益与淡变、侧链、不压低、无旁白不压）+ slow 4 条（时长与非静音与无爆音、配乐长短都钉时长、侧链压低 ≥ 6 dB 且 1 秒后回升、坏文件不留输出）；侧链定值 `0.03:6:10:400`，扫描表写进 `references/ffmpeg.md`
 
 ## 下一步
 
@@ -200,7 +212,11 @@
 
 <!-- 日期 — 决定 — 原因 — 影响。 -->
 
+- 2026-10-05 — T2：时间轴本身因配乐声明的 duration 与节拍脚本不符而失败时（改了小节数），`run_html_job` 在错误后追加"到配乐阶段重新渲染"的提示；只改标签等不改时长时由 `base_hash` 前置检查报"配乐与当前时间轴不一致" — 两种都点名原因 — 无风险。
 - 2026-10-05 — 时间轴来源：api 与 worker 都读工作区顶层，不用 `upstream/`（修正设计 §9.1 的措辞）— `upstream/` 只是 agent 某轮开始时的上游副本，在 api 里可能不存在或已过期；顶层与成片一致 — 无代码风险，设计正文不改，仅在此记录。
+- 2026-10-05 — T3：手动渲染成功后不拍快照 — 与 `PUT /files` 保存文件一致（它也不拍）；`finalize_blockers` 以 `upstream/` 为准的局限在 agent 轮次里仍在，但手动渲染后用户再开一轮时 `upstream/` 会重建，影响不大。手动渲染期间用户又开了一轮 agent：两边各自原子发布，交错的话 `render.json` 的 `wav_hash` 对不上，成片前置检查点名 — 单人本地使用，不为此给 `TurnRunner` 加锁。
+- 2026-10-05 — T3：时间轴来源用项目 `settings.narration` 决定（`TimelineSources`），不用 `infer_sources` 的"看有没有 beatsheet 文件"推断 — 推断在 beatsheet 被删时会误判成讲解 — 无。
+- 2026-10-05 — T7：波形用 SVG 而不是 canvas（计划写的是 canvas）— jsdom 里没有 canvas 绘图上下文，SVG 能直接断言条形、标记与点击；1000 个点的 `<rect>` 开销可忽略 — 无。
 - 2026-10-05 — 手动渲染同步返回 — 3A 冒烟里一次合成约 1 秒，加重定时与分析也远小于 60 秒 — 若实际更慢，改成任务并记入 TODO。
 - 2026-10-05 — 讲解 + 背景乐不单独做真实模型冒烟 — 成本高、画面阶段的流程已由 3A 的短片冒烟验证，音轨由 slow 的真实 ffmpeg 测试验证 — 若负责人要求，补一个。
 
