@@ -1350,10 +1350,50 @@ async def test_motion_reel_claude_login(tmp_path: Path) -> None:
         previews = _html_tool_results_all(evidence)
         evidence["preview_calls"] = previews
         assert previews >= 1, "没有调用 render_preview_html"
+        evidence["final"] = await _render_reel_final(harness)
     finally:
         record_evidence("motion-reel-claude-login", evidence, SYNTH_MUSIC_EVIDENCE_DIR)
         await close_browser_pool()
         harness.engine.dispose()
+
+
+async def _render_reel_final(harness: Any) -> dict[str, Any]:
+    """成片（3B）：真实 Chromium + ffmpeg 出片，不再调模型；断言音轨与时长，不评价观感。"""
+    import subprocess
+    import time
+
+    from studio.jobs import create_job, get_job
+    from studio.worker import run_once
+
+    sheet = json.loads((harness.workdir / "beatsheet" / "beatsheet.json").read_text("utf-8"))
+    expected = sum(int(sec["bars"]) for sec in sheet["sections"]) * 4 * 60 / float(sheet["bpm"])
+    job = create_job(harness.engine, type="final_render", project_id=harness.project_id, payload={})
+    started = time.monotonic()
+    assert await run_once(harness.engine, harness.blobs, data_dir=harness.data_dir) is True
+    done = get_job(harness.engine, job.id)
+    assert done is not None and done.status == "done", done.error if done else None
+    final = harness.workdir / "output" / "final.mp4"
+    probe = json.loads(
+        subprocess.run(
+            ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(final)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    audio = [s for s in probe["streams"] if s["codec_type"] == "audio"]
+    duration = float(probe["format"]["duration"])
+    assert len(audio) == 1, audio
+    assert abs(duration - expected) <= 0.1, (duration, expected)
+    meta = json.loads((harness.workdir / "output" / "final.json").read_text("utf-8"))
+    assert "music" in meta["audio_sources"]
+    return {
+        "seconds": round(time.monotonic() - started, 1),
+        "duration": duration,
+        "expected": expected,
+        "bytes": final.stat().st_size,
+        "audio_codec": audio[0]["codec_name"],
+    }
 
 
 def _html_tool_results_all(evidence: dict[str, Any]) -> int:

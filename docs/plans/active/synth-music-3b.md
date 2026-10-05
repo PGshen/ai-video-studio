@@ -164,7 +164,7 @@
 - **完成标准**：AC6。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas/music src/pages && pnpm run lint && pnpm exec vue-tsc --noEmit`（以 `package.json` 里的类型检查命令为准）
 
-### T8：整流水线集成、真实模型冒烟与成片（待开始）
+### T8：整流水线集成、真实模型冒烟与成片（进行中：集成完成，冒烟待跑）
 
 - **目标**：证明短片与"讲解 + 合成背景乐"能一路出成片（AC7、AC8）。
 - **涉及文件**：`backend/tests/api/test_synth_music_flow.py`（扩展）、`backend/tests/smoke/test_smoke.py::test_motion_reel_claude_login`（扩展到成片）、`backend/tests/smoke/support.py`。
@@ -191,6 +191,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — T8 集成 — `test_synth_music_flow.py` 新增：短片与讲解加背景乐从配乐到成片再到 `finalize-render`（假后端，3 条含"成片前配乐过期被拦"）+ slow 真实 Chromium/ffmpeg 2 条（短片音轨 aac、时长 11.25 秒、`audio_sources` 只有 `music`；讲解加配乐一条音轨、3 秒）；冒烟用例已扩展到出成片（`_render_reel_final`），待真实运行
 - 2026-10-05 — T7 `MusicCanvas` — 播放/脚本/事件三标签（`v-show`，切换不打断播放）；`MusicPlayer`（播放器、`WaveformView` SVG 波形与段落/事件/播放位置、指标、分析图、固定的"需要试听"提示）、`EventTable`、`RenderReport`、`musicView.ts`；脚本标签编辑 `music/compose.py`（保存走阶段 `music`），手动渲染在忙碌、未保存、无脚本时禁用并说明原因；`ProjectWorkbenchPage` 新增 `music` 分支（定稿按钮沿用）；组件与纯函数测试 40 条
 - 2026-10-05 — T6 预览播放的配乐来源 — `useHtmlPlayback`：短片以配乐 `currentTime` 为时钟（贴合容差 0.05 秒、拒绝自动播放回退墙钟）；讲解里旁白是时钟、配乐 −8 dB 跟随（漂移 > 0.3 秒才重设，拒绝不影响旁白）；URL 变了换源并保持位置、配乐没了就停；`setMuted`；`HtmlPreviewPane` 加静音按钮与"配乐未渲染或已过期"提示，`HtmlAnimationCanvas` 按项目 `music_source` 计算 `scoreMissing`；新增 composable 测试 18 条、组件测试 3 条
 - 2026-10-05 — T5 前端基础 — 类型（`MusicMetaOut`、`MusicRenderOut`）、endpoints（`getMusicMeta`、`musicAudioUrl`、`renderMusic`）、`queryKeys.musicMeta` 与 `useMusicMetaQuery`/`useRenderMusicMutation`（工作区失效时一并刷新配乐 meta）；纯函数 `waveform.ts`（`timeToX`/`xToTime`/`waveformPeaks`/`eventMarkers`/`sectionBands`）与 `previewClock.ts`（`playbackMode`/`musicClockTime`/`needsRealign`）及单测

@@ -17,6 +17,7 @@ import pytest
 
 from fixtures.html_engine.fakes import Behaviour, ScriptedBrowser
 from fixtures.html_engine.fakes import digest as _digest
+from fixtures.html_engine.worker_fakes import FakeBackend
 from fixtures.synth_music import seed
 from studio.agent.fake import FakeRuntime, call_tool, write
 from studio.agent.runtime import UserInput
@@ -28,6 +29,7 @@ from studio.db.repo.stages import list_stages
 from studio.db.repo.turns import get_turn, list_events
 from studio.engines.render.html.pool import BrowserPool, set_browser_pool
 from studio.stages.music import tool as music_tool
+from studio.worker import run_once
 
 from .conftest import ApiEnv
 
@@ -321,3 +323,128 @@ async def test_events_json_reaches_the_scenes_through_the_timeline(
         index = min(len(analysis["energy"]) - 1, int(kick["start"] / analysis["hop"]))
         assert 0.0 <= energy <= 1.0 and energy == pytest.approx(analysis["energy"][index], abs=0.15)
     shutil.rmtree(probe_dir, ignore_errors=True)
+
+
+# ---- 成片（3B）：创建渲染任务 → worker → 定稿 --------------------------------------------
+
+
+async def _bed_through_animation(api_env: ApiEnv) -> str:
+    engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
+    pid = seed.seed_bed_project(engine, blobs, data_dir=api_env.data_dir)
+    await _turn(
+        api_env,
+        pid,
+        "music",
+        [write("music/compose.py", REF.read_text()), call_tool("render_music")],
+    )
+    _finalize(api_env, pid, "music")
+    await _turn(
+        api_env,
+        pid,
+        "animation_html",
+        [
+            write("animation/scenes/s-hook.js", _bed_scene()),
+            write("animation/scenes/s-explain.js", _bed_scene()),
+            call_tool("validate_scenes_html"),
+        ],
+    )
+    return pid
+
+
+async def _render_final(api_env: ApiEnv, pid: str, backend: FakeBackend | None = None) -> Path:
+    created = await api_env.client.post(f"/api/projects/{pid}/render")
+    assert created.status_code == 201, created.text
+    extra = {"html_backend": backend.as_backend()} if backend is not None else {}
+    engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
+    assert await run_once(engine, blobs, data_dir=api_env.data_dir, **extra) is True
+    job = (await api_env.client.get(f"/api/projects/{pid}/jobs/{created.json()['id']}")).json()
+    assert job["status"] == "done", job["error"]
+    return api_env.workdir(pid) / "output" / "final.mp4"
+
+
+async def test_a_reel_goes_from_the_score_to_a_finalised_render_with_fakes(
+    api_env: ApiEnv, plain_scripts: None, fake_pool: Behaviour
+) -> None:
+    pid = await _run_reel_up_to_music(api_env)
+    await _animation_turn(api_env, pid)
+    backend = FakeBackend()
+    final = await _render_final(api_env, pid, backend)
+    assert final.is_file()
+    [call] = backend.mix_calls
+    assert call["tracks"] == [] and call["music"].duck_under_narration is False
+
+    done = await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
+    assert done.status_code == 200, done.text
+    assert _status(api_env, pid)["animation_html"] == "finalized"
+
+
+async def test_an_explainer_bed_goes_to_a_finalised_render_with_fakes(
+    api_env: ApiEnv, plain_scripts: None, fake_pool: Behaviour
+) -> None:
+    pid = await _bed_through_animation(api_env)
+    backend = FakeBackend()
+    await _render_final(api_env, pid, backend)
+    [call] = backend.mix_calls
+    assert len(call["tracks"]) == 2 and call["music"].duck_under_narration is True
+    done = await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
+    assert done.status_code == 200, done.text
+
+
+async def test_a_score_made_stale_after_the_scenes_blocks_the_render_with_the_reason(
+    api_env: ApiEnv, plain_scripts: None, fake_pool: Behaviour
+) -> None:
+    pid = await _run_reel_up_to_music(api_env)
+    await _animation_turn(api_env, pid)
+    path = api_env.workdir(pid) / "beatsheet" / "beatsheet.json"
+    path.write_text(path.read_text().replace("BUILD", "RISE", 1), encoding="utf-8")
+    created = await api_env.client.post(f"/api/projects/{pid}/render")
+    backend = FakeBackend()
+    await run_once(
+        api_env.app.state.engine,
+        api_env.app.state.blobs,
+        data_dir=api_env.data_dir,
+        html_backend=backend.as_backend(),
+    )
+    job = (await api_env.client.get(f"/api/projects/{pid}/jobs/{created.json()['id']}")).json()
+    assert job["status"] == "failed" and "配乐与当前时间轴不一致" in job["error"]
+    assert backend.video_calls == []
+
+
+def _audio_streams(path: Path) -> tuple[list[dict[str, Any]], float]:
+    import subprocess
+
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    info = json.loads(out)
+    audio = [st for st in info["streams"] if st["codec_type"] == "audio"]
+    return audio, float(info["format"]["duration"])
+
+
+@pytest.mark.slow
+async def test_a_reel_final_has_the_score_as_its_only_audio_with_real_ffmpeg(
+    api_env: ApiEnv, real_pool: None
+) -> None:
+    pid = await _run_reel_up_to_music(api_env)
+    await _animation_turn(api_env, pid)
+    final = await _render_final(api_env, pid)
+    audio, duration = _audio_streams(final)
+    assert [a["codec_name"] for a in audio] == ["aac"]
+    assert abs(duration - 11.25) <= 0.1
+    meta = json.loads((api_env.workdir(pid) / "output" / "final.json").read_text())
+    assert set(meta["audio_sources"]) == {"music"}
+
+
+@pytest.mark.slow
+async def test_an_explainer_bed_final_has_one_audio_track_with_real_ffmpeg(
+    api_env: ApiEnv, real_pool: None
+) -> None:
+    pid = await _bed_through_animation(api_env)
+    final = await _render_final(api_env, pid)
+    audio, duration = _audio_streams(final)
+    assert len(audio) == 1 and abs(duration - 3.0) <= 0.15
+    meta = json.loads((api_env.workdir(pid) / "output" / "final.json").read_text())
+    assert {"music", "s-hook", "s-explain"} <= set(meta["audio_sources"])
