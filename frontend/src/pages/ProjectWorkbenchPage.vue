@@ -49,6 +49,7 @@ import { projectScope } from '@/composables/sessionScope'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
 import HtmlAnimationCanvas from '@/features/canvas/animation/HtmlAnimationCanvas.vue'
+import MusicCanvas from '@/features/canvas/music/MusicCanvas.vue'
 import NarrativeCanvas from '@/features/canvas/narrative/NarrativeCanvas.vue'
 import TopicCanvas from '@/features/canvas/topic/TopicCanvas.vue'
 
@@ -258,6 +259,24 @@ const canvasBusy = computed(() =>
                     />
                   </template>
                 </HtmlAnimationCanvas>
+                <MusicCanvas
+                  v-else-if="stage === 'music'"
+                  :project-id="projectId"
+                  :busy="canvasBusy"
+                >
+                  <template #actions>
+                    <StageFinalizeButton
+                      :project-id="projectId"
+                      :stages="project.stages"
+                      :current-stage="stage"
+                    />
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </MusicCanvas>
                 <NarrativeCanvas
                   v-else-if="stage === 'narrative'"
                   :project-id="projectId"

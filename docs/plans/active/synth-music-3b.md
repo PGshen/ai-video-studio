@@ -151,7 +151,7 @@
 - **完成标准**：AC5。
 - **验证命令**：`cd frontend && pnpm exec vitest run src/features/canvas/animation`
 
-### T7：`MusicCanvas` 与阶段分发（待开始）
+### T7：`MusicCanvas` 与阶段分发（完成）
 
 - **目标**：配乐阶段有自己的画布（设计 §9.2）。
 - **涉及文件**：`frontend/src/features/canvas/music/{MusicCanvas,MusicPlayer,WaveformView,EventTable,RenderReport}.vue` 及 spec；`frontend/src/pages/ProjectWorkbenchPage.vue`（`stage === 'music'` 分支，定稿按钮与侧栏切换沿用其他阶段的写法）。
@@ -191,6 +191,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — T7 `MusicCanvas` — 播放/脚本/事件三标签（`v-show`，切换不打断播放）；`MusicPlayer`（播放器、`WaveformView` SVG 波形与段落/事件/播放位置、指标、分析图、固定的"需要试听"提示）、`EventTable`、`RenderReport`、`musicView.ts`；脚本标签编辑 `music/compose.py`（保存走阶段 `music`），手动渲染在忙碌、未保存、无脚本时禁用并说明原因；`ProjectWorkbenchPage` 新增 `music` 分支（定稿按钮沿用）；组件与纯函数测试 40 条
 - 2026-10-05 — T6 预览播放的配乐来源 — `useHtmlPlayback`：短片以配乐 `currentTime` 为时钟（贴合容差 0.05 秒、拒绝自动播放回退墙钟）；讲解里旁白是时钟、配乐 −8 dB 跟随（漂移 > 0.3 秒才重设，拒绝不影响旁白）；URL 变了换源并保持位置、配乐没了就停；`setMuted`；`HtmlPreviewPane` 加静音按钮与"配乐未渲染或已过期"提示，`HtmlAnimationCanvas` 按项目 `music_source` 计算 `scoreMissing`；新增 composable 测试 18 条、组件测试 3 条
 - 2026-10-05 — T5 前端基础 — 类型（`MusicMetaOut`、`MusicRenderOut`）、endpoints（`getMusicMeta`、`musicAudioUrl`、`renderMusic`）、`queryKeys.musicMeta` 与 `useMusicMetaQuery`/`useRenderMusicMutation`（工作区失效时一并刷新配乐 meta）；纯函数 `waveform.ts`（`timeToX`/`xToTime`/`waveformPeaks`/`eventMarkers`/`sectionBands`）与 `previewClock.ts`（`playbackMode`/`musicClockTime`/`needsRealign`）及单测
 - 2026-10-05 — T4 `html-preview/meta.music` — `{url, gain}`，URL 带 `wav_hash`；只在产物存在、`base_hash` 与 `wav_hash` 都对得上时给，否则 `null`；短片 gain 1.0、讲解 −8 dB 线性值；讲解背景乐的默认混音常量（−8 dB、淡入 1 秒/淡出 1.5 秒）移到 `engines.render.mix` 让成片与预览共用；前端 `HtmlPreviewMeta.music` 类型；`test_html_preview.py` 新增 4 条
@@ -210,6 +211,7 @@
 - 2026-10-05 — 时间轴来源：api 与 worker 都读工作区顶层，不用 `upstream/`（修正设计 §9.1 的措辞）— `upstream/` 只是 agent 某轮开始时的上游副本，在 api 里可能不存在或已过期；顶层与成片一致 — 无代码风险，设计正文不改，仅在此记录。
 - 2026-10-05 — T3：手动渲染成功后不拍快照 — 与 `PUT /files` 保存文件一致（它也不拍）；`finalize_blockers` 以 `upstream/` 为准的局限在 agent 轮次里仍在，但手动渲染后用户再开一轮时 `upstream/` 会重建，影响不大。手动渲染期间用户又开了一轮 agent：两边各自原子发布，交错的话 `render.json` 的 `wav_hash` 对不上，成片前置检查点名 — 单人本地使用，不为此给 `TurnRunner` 加锁。
 - 2026-10-05 — T3：时间轴来源用项目 `settings.narration` 决定（`TimelineSources`），不用 `infer_sources` 的"看有没有 beatsheet 文件"推断 — 推断在 beatsheet 被删时会误判成讲解 — 无。
+- 2026-10-05 — T7：波形用 SVG 而不是 canvas（计划写的是 canvas）— jsdom 里没有 canvas 绘图上下文，SVG 能直接断言条形、标记与点击；1000 个点的 `<rect>` 开销可忽略 — 无。
 - 2026-10-05 — 手动渲染同步返回 — 3A 冒烟里一次合成约 1 秒，加重定时与分析也远小于 60 秒 — 若实际更慢，改成任务并记入 TODO。
 - 2026-10-05 — 讲解 + 背景乐不单独做真实模型冒烟 — 成本高、画面阶段的流程已由 3A 的短片冒烟验证，音轨由 slow 的真实 ffmpeg 测试验证 — 若负责人要求，补一个。
 
