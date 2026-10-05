@@ -1274,3 +1274,88 @@ async def test_animation_html_claude_login(tmp_path: Path) -> None:
         record_evidence("animation-html-claude-login", evidence, HTML_EVIDENCE_DIR)
         await close_browser_pool()
         harness.engine.dispose()
+
+
+# ---- 子项目 3A: 动态图形短片（本机 Claude 登录，真实 Chromium 与沙箱）--------------------------
+
+_REEL_CONCEPT_PROMPT = (
+    "我们要做一支 12 秒左右、没有旁白的动态图形短片，主题是“一个白点的裂变与回收”：圆点呼吸、"
+    "裂成方形轨道上的四个点、爆开成粒子、再收回成一个点。按提示词写出 concept/brief.md，"
+    "目标时长写 12 秒；写完用 check_concept 检查并修好。不需要联网查资料。"
+)
+_REEL_BEATSHEET_PROMPT = (
+    "按概念简报写节拍脚本：128 BPM，两个段落（第一段蓄力、第二段释放），每段 3 小节，"
+    "每段给 1 到 2 个 moments；写完用 validate_beatsheet 校验并修好。"
+)
+_REEL_MUSIC_PROMPT = (
+    "按提示词写 music/compose.py 并用 render_music 渲染：第一段稀疏低能量，第二段全编制顶点，"
+    "第二段起点是一记冲击，冲击前留半拍静默。至少渲染并看一次图，修到 render_music 成功为止；"
+    "最后说明你靠什么判断、哪些东西无法验证。"
+)
+_REEL_ANIMATION_PROMPT = (
+    "按提示词为时间轴里的 2 个镜头各写一个场景脚本，画面踩在节拍上，"
+    "用 env.hit / env.bt / env.moment。"
+    "按镜头顺序逐个做：写完先用 validate_scenes_html 校验该镜头，再用 render_preview_html 看图；"
+    "全部做完后做一次全量校验。"
+)
+_REEL_FOLLOW_UP = "上一轮的最终结果还有错误。根据工具返回的错误继续修复，直到全部通过。"
+
+
+def _last_ok(outcome_list: list[TurnOutcome], name: str) -> dict[str, Any] | None:
+    results = [r for t in outcome_list for r in _html_tool_results(t, name)]
+    return results[-1] if results and not results[-1]["is_error"] else None
+
+
+async def test_motion_reel_claude_login(tmp_path: Path) -> None:
+    from studio.engines.render.html.pool import close_browser_pool
+
+    from .support import SYNTH_MUSIC_EVIDENCE_DIR
+
+    _skip_unless_claude_login()
+    harness = build_harness(tmp_path, real_stages=True, reel=True)
+    evidence: dict[str, Any] = {"stages": {}}
+    stage_plan = [
+        ("concept", _REEL_CONCEPT_PROMPT, "check_concept", 40),
+        ("beatsheet", _REEL_BEATSHEET_PROMPT, "validate_beatsheet", 40),
+        ("music", _REEL_MUSIC_PROMPT, "render_music", 80),
+        ("animation_html", _REEL_ANIMATION_PROMPT, "validate_scenes_html", 80),
+    ]
+    try:
+        for stage, prompt, tool, steps in stage_plan:
+            profile = harness.profile("claude-login", max_steps_per_turn=steps, suffix=f"-{stage}")
+            session = harness.session(profile, "claude", stage=stage)
+            turns = [await harness.turn(session, prompt)]
+            if _last_ok(turns, tool) is None:
+                turns.append(await harness.turn(session, _REEL_FOLLOW_UP))
+            assert all(t.turn.status == "done" for t in turns), [
+                (t.turn.status, t.turn.error) for t in turns
+            ]
+            final = _last_ok(turns, tool)
+            assert final is not None, f"{stage}：最后一次 {tool} 没有成功"
+            evidence["stages"][stage] = {
+                "turns": [outcome_summary(t) for t in turns],
+                "tool_calls": [name for t in turns for name in t.tool_names],
+                "final_text": final["text"][:2000],
+            }
+            blockers = harness.registry.get(stage).finalize_blockers(harness.workdir)
+            assert blockers == [], (stage, blockers)
+            finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, stage)
+
+        work = harness.workdir
+        for name in ("music.wav", "events.json", "analysis.json", "analysis.png", "render.json"):
+            assert (work / "music" / name).is_file(), name
+        sheet = json.loads((work / "beatsheet" / "beatsheet.json").read_text("utf-8"))
+        for section in sheet["sections"]:
+            assert (work / "animation" / "scenes" / f"{section['id']}.js").is_file(), section["id"]
+        previews = _html_tool_results_all(evidence)
+        evidence["preview_calls"] = previews
+        assert previews >= 1, "没有调用 render_preview_html"
+    finally:
+        record_evidence("motion-reel-claude-login", evidence, SYNTH_MUSIC_EVIDENCE_DIR)
+        await close_browser_pool()
+        harness.engine.dispose()
+
+
+def _html_tool_results_all(evidence: dict[str, Any]) -> int:
+    calls = evidence["stages"].get("animation_html", {}).get("tool_calls", [])
+    return sum(1 for name in calls if name == "render_preview_html")
