@@ -120,7 +120,7 @@
 - **完成标准**：非 `slow` 测试通过；`slow` 在本机通过。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_audio_picture.py tests/engines/test_audio_runner.py -v`；`uv run pytest -m slow tests/engines/test_audio_runner.py -v`
 
-### T4：`concept` 与 `beatsheet` 阶段（待开始）
+### T4：`concept` 与 `beatsheet` 阶段（完成）
 
 - **目标**：两个不写代码的阶段及其校验工具、提示词，注册进应用（设计 §6.1、§6.2）。
 - **涉及文件**：`backend/src/studio/stages/concept/{__init__,check_concept}.py` 与 `prompt.md`；`backend/src/studio/stages/beatsheet/{__init__,schema,validate_beatsheet}.py` 与 `prompt.md`；`backend/src/studio/main.py`（注册）；`backend/pyproject.toml`（independence 与 `stages.pipeline` 契约）；`backend/tests/stages/{test_concept_stage,test_concept_check,test_beatsheet_stage,test_beatsheet_validate,test_beatsheet_prompt}.py`；`frontend/src/composables/stageTitles.ts` 已含标题，无需改。
@@ -223,13 +223,14 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T4 `concept` 与 `beatsheet` 阶段 — 78 个新增测试（target_duration、concept、beatsheet），`make check` 全绿
 - 2026-10-05 — T3 分析图与脚本运行器 — picture 4、runner 8（含超时杀进程组、取消、环境变量隔离），slow 的真实 Seatbelt 用例通过
 - 2026-10-05 — T2 `engines.audio` WAV 与分析 — 30 个测试（wav 10、analysis 20）
 - 2026-10-05 — T1 时间轴三层与按形态读取 — timeline 78 个测试（含 `test_build_layers`、`test_sources`），`make check` 全绿
 
 ## 下一步
 
-- T4：`concept` 与 `beatsheet` 阶段。
+- T5：`render_music` 工具核心（`stages/music/render.py`、`tool.py`）。
 
 ## 决策记录
 
@@ -247,6 +248,8 @@
 
 - 2026-10-05 — T3：**Seatbelt 配置需要放回虚拟环境的读权限**。`shell_sandbox.seatbelt_profile` 拒读仓库根，而 `.venv` 在仓库内，脚本因此 `import numpy` 失败。`render_music` 的包装在 profile 末尾追加 `(allow file-read* (subpath <venv>))`（后写的规则优先；`.venv` 里没有密钥，`backend/.env` 仍被拒读）；真实沙箱用例已验证"能 import numpy、读不到 `.env`、连不上网络"。T5 的包装函数要照做。
 - 2026-10-05 — T3：运行器只把 `PATH/LANG/LC_ALL/HOME` 加上 `STUDIO_*`、`TMPDIR`（指向 `out_dir/tmp`）传给脚本，父进程里的 API key 等不会泄给脚本；`RLIMIT_CPU` 为超时 + 10 秒；超时与取消都杀整个进程组。分析图的底部一行画的是能量曲线加检测到的起音（`MusicReport` 不保存逐帧谱流量），不是设计里的"起音强度"曲线。
+
+- 2026-10-05 — T4：目标时长的解析（`parse_target_seconds`、`target_seconds_from_brief`）放进 `stages.common.target_duration`，因为 `concept` 与 `beatsheet` 互不 import 又都要用；`beatsheet` 从 `upstream/concept/brief.md` 读目标，读不到只给警告。`visual_action`/`intent`/`label` 为空只是警告。注册 `concept`、`beatsheet` 后短片的不可用原因变为"「配乐」阶段尚未实现"（`test_video_kinds` 随之更新），不会出现半成品入口。
 
 ## 意外与发现
 

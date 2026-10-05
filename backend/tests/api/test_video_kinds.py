@@ -47,7 +47,7 @@ async def test_unavailable_reason_lists_missing_stages_in_pipeline_order(api_env
     body = (await api_env.client.get("/api/video-kinds")).json()
 
     reel = next(k for k in body["kinds"] if k["video_kind"] == "motion_reel")
-    assert reel["unavailable_reason"] == "「创意」「节拍脚本」「配乐」阶段尚未实现"
+    assert reel["unavailable_reason"] == "「配乐」阶段尚未实现"  # concept, beatsheet are registered
     synth = next(
         k
         for k in body["kinds"]
