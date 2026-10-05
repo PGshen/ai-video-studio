@@ -293,9 +293,13 @@ async def render_music_core(
             {
                 "music.wav": wav_bytes,
                 "events.json": events_bytes,
-                "analysis.json": json.dumps(analysis, ensure_ascii=False).encode("utf-8"),
+                "analysis.json": json.dumps(analysis, ensure_ascii=False, allow_nan=False).encode(
+                    "utf-8"
+                ),
                 "analysis.png": png,
-                "render.json": json.dumps(render, ensure_ascii=False, indent=2).encode("utf-8"),
+                "render.json": json.dumps(
+                    render, ensure_ascii=False, indent=2, allow_nan=False
+                ).encode("utf-8"),
             },
         )
         before = first.report.grid_alignment

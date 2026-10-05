@@ -115,5 +115,7 @@ def read_wav(
     if duration > max_seconds:
         raise AudioError(f"音频时长 {duration:.1f} 秒超过上限 {max_seconds:.0f} 秒")
     values = _decode(raw[data_start : data_start + usable], tag, bits)
+    if not np.isfinite(values).all():
+        raise AudioError(f"{path.name} 含 NaN 或无穷大的样本；检查合成脚本里的除零与 log(0)")
     data = values if channels == 1 else values.reshape(-1, 2)
     return Samples(data=data, sample_rate=sample_rate)

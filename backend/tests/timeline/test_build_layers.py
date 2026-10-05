@@ -173,3 +173,15 @@ def test_sections_and_narration_together_are_rejected() -> None:
     layers = _reel_layers(narration=[NarrationInput("s-a", "甲", 2.0, [])])
     with pytest.raises(TimelineError):
         build_timeline(layers)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_non_finite_music_values_are_rejected(bad: float) -> None:
+    with pytest.raises(TimelineError):
+        build_timeline(
+            _reel_layers(
+                music=_music(events=[{"name": "kick", "kind": "onset", "start": bad, "end": bad}])
+            )
+        )
+    with pytest.raises(TimelineError):
+        build_timeline(_reel_layers(music=_music(declared_duration=bad)))

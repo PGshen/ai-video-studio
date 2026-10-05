@@ -270,7 +270,7 @@ def _warnings(
 
 
 def _number(value: Any) -> TypeGuard[float]:
-    return isinstance(value, int | float) and not isinstance(value, bool)
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def validate_events(doc: Any, timeline: Mapping[str, Any]) -> list[str]:
@@ -290,6 +290,13 @@ def validate_events(doc: Any, timeline: Mapping[str, Any]) -> list[str]:
     declared = doc.get("duration")
     if not _number(declared) or abs(declared - duration) > DURATION_TOLERANCE:
         problems.append(f"声明的 duration {declared!r} 与时间轴 {duration:.3f} 相差超过 0.05 秒")
+    if "offset" in doc:
+        offset = doc["offset"]
+        if not _number(offset) or not 0 <= offset < max(duration, 0.001):
+            problems.append(
+                f"offset 必须是 [0, 总长 {duration:.3f}) 秒内的数字（当前 {offset!r}）；"
+                "它是第一拍相对音频起点的偏移"
+            )
     events = doc.get("events")
     if not isinstance(events, list):
         problems.append("events 必须是列表")

@@ -47,6 +47,12 @@ BPM_RANGE = (40.0, 240.0)
 EVENT_KINDS = ("onset", "sweep")
 _BEATS_PER_BAR = 4
 _DURATION_TOLERANCE = 0.05
+
+
+def _finite(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
 _BPM_TOLERANCE = 0.01
 _EPSILON = 1e-6
 
@@ -212,7 +218,7 @@ def _music(
         if kind not in EVENT_KINDS:
             errors.append(f"{label}：kind 必须是 onset 或 sweep（当前 {kind!r}）")
             continue
-        if not isinstance(start, int | float) or not isinstance(end, int | float) or end < start:
+        if not _finite(start) or not _finite(end) or end < start:
             errors.append(f"{label}：起止必须是数字且 start ≤ end（{start!r}→{end!r}）")
             continue
         if start < -_DURATION_TOLERANCE or end > duration + _DURATION_TOLERANCE:
@@ -221,7 +227,7 @@ def _music(
         events.append(MusicEvent(name=name, kind=kind, start=float(start), end=float(end)))
     if (
         music.declared_duration is not None
-        and abs(music.declared_duration - duration) > _DURATION_TOLERANCE
+        and not abs(music.declared_duration - duration) <= _DURATION_TOLERANCE
     ):
         errors.append(
             f"配乐声明的 duration {music.declared_duration} 与时间轴 {duration:.3f} "
@@ -230,7 +236,7 @@ def _music(
     if (
         grid_bpm is not None
         and music.declared_bpm is not None
-        and abs(music.declared_bpm - grid_bpm) > _BPM_TOLERANCE
+        and not abs(music.declared_bpm - grid_bpm) <= _BPM_TOLERANCE
     ):
         errors.append(f"配乐声明的 bpm {music.declared_bpm} 与节拍脚本的 {grid_bpm} 不一致")
     if (
