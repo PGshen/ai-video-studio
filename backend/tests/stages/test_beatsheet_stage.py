@@ -72,3 +72,41 @@ def test_prompt_states_the_contract() -> None:
         "moments",
     ):
         assert needle in prompt
+
+
+def test_mv_form_finalize_and_status_follow_the_upstream_sections(tmp_path: Path) -> None:
+    (tmp_path / "upstream" / "music").mkdir(parents=True)
+    (tmp_path / "upstream" / "music" / "sections.json").write_text(
+        json.dumps(
+            {
+                "sections": [
+                    {"id": "a", "label": "A", "start": 0.0, "end": 16.0},
+                    {"id": "b", "label": "B", "start": 16.0, "end": 32.0},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "upstream" / "music" / "analysis.json").write_text(
+        json.dumps({"bpm": 120, "offset": 0.0}), encoding="utf-8"
+    )
+    _write_sheet(
+        tmp_path,
+        {
+            "sections": [
+                {"ref": "a", "intent": "i", "energy": "low", "moments": []},
+                {"ref": "b", "intent": "i", "energy": "high", "moments": []},
+            ]
+        },
+    )
+    assert STAGE.finalize_blockers(tmp_path) == []
+    assert STAGE.status_summary(tmp_path) == "2 个段落，BPM 120，总时长 32.00 秒"
+    _write_sheet(tmp_path, {"sections": [{"ref": "a", "intent": "i", "energy": "low"}]})
+    assert STAGE.finalize_blockers(tmp_path) == ["还缺少 music/sections.json 的段落：b"]
+    assert STAGE.status_summary(tmp_path) == "1 个段落，BPM 120，总时长 32.00 秒"
+
+
+def test_prompt_has_a_music_video_section() -> None:
+    prompt = STAGE.system_prompt()
+    for needle in ("音乐 MV", "ref", "upstream/music/sections.json", "analysis.json"):
+        assert needle in prompt
