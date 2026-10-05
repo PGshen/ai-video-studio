@@ -252,3 +252,98 @@ class TestPrepareTurnForMusicProjects:
         self._music(tmp_path)
         STAGE.prepare_turn(tmp_path)
         assert (tmp_path / "upstream" / "beatsheet" / "beatsheet.json").is_file()
+
+
+class TestPrepareTurnForMusicMv:
+    """导入音乐 MV：`upstream/music/sections.json` 存在即走导入来源（4A T8）。"""
+
+    ANALYSIS = {
+        "source_hash": "a" * 64,
+        "duration": 30.0,
+        "bpm": 120.0,
+        "offset": 0.5,
+        "residual_ms": 4.0,
+        "confidence": 0.9,
+        "beats": [0.5 + 0.5 * i for i in range(59)],
+        "downbeats": [0.5 + 2.0 * i for i in range(15)],
+        "candidates": [4.5, 8.5],
+        "hop": 0.5,
+        "energy": [0.5] * 60,
+        "warnings": [],
+    }
+    SECTIONS = {
+        "sections": [
+            {"id": "intro", "label": "Intro", "start": 0.5, "end": 4.5},
+            {"id": "verse", "label": "Verse", "start": 4.5, "end": 8.5},
+        ]
+    }
+    BEATSHEET = {
+        "sections": [
+            {"ref": "intro", "intent": "起", "energy": "low", "moments": []},
+            {
+                "ref": "verse",
+                "intent": "承",
+                "energy": "mid",
+                "moments": [{"at": "1.3", "visual_action": "闪"}],
+            },
+        ]
+    }
+
+    @staticmethod
+    def _write(workdir: Path, relpath: str, data: object) -> None:
+        path = workdir / "upstream" / relpath
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    def _mv(self, workdir: Path) -> None:
+        music = workdir / "upstream" / "music"
+        music.mkdir(parents=True, exist_ok=True)
+        (music / "source.mp3").write_bytes(b"ID3fake")
+        self._write(workdir, "music/analysis.json", self.ANALYSIS)
+        self._write(workdir, "music/sections.json", self.SECTIONS)
+        self._write(workdir, "beatsheet/beatsheet.json", self.BEATSHEET)
+
+    def test_an_mv_gets_the_import_timeline(self, tmp_path: Path) -> None:
+        self._mv(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        timeline = _load(tmp_path / "upstream" / "timeline.json")
+        assert timeline["narration"] == []
+        assert [(s["id"], s["start"], s["end"]) for s in timeline["sections"]] == [
+            ("intro", 0.0, 4.0),
+            ("verse", 4.0, 8.0),
+        ]
+        assert timeline["grid"]["bpm"] == 120.0
+        assert timeline["music"]["file"] == "music/source.mp3"
+        assert timeline["music"]["events"] == []
+        assert timeline["music"]["energy"]["hop"] == 0.5
+        assert timeline["moments"][0]["section_id"] == "verse"
+        assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
+
+    def test_missing_sections_json_falls_back_to_the_synth_path(self, tmp_path: Path) -> None:
+        self._mv(tmp_path)
+        (tmp_path / "upstream" / "music" / "sections.json").unlink()
+        STAGE.prepare_turn(tmp_path)
+        reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
+        assert "bpm 必须是数字" in reason  # the synth loader rejects an MV beatsheet
+        assert not (tmp_path / "upstream" / "timeline.json").exists()
+
+    def test_a_ref_that_matches_no_section_is_reported_and_clears_the_stale_timeline(
+        self, tmp_path: Path
+    ) -> None:
+        self._mv(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        assert (tmp_path / "upstream" / "timeline.json").is_file()
+        bad = json.loads(json.dumps(self.BEATSHEET))
+        bad["sections"][1]["ref"] = "bridge"
+        self._write(tmp_path, "beatsheet/beatsheet.json", bad)
+        STAGE.prepare_turn(tmp_path)
+        reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
+        assert "bridge" in reason
+        assert not (tmp_path / "upstream" / "timeline.json").exists()
+
+    def test_a_missing_source_audio_is_reported(self, tmp_path: Path) -> None:
+        self._mv(tmp_path)
+        (tmp_path / "upstream" / "music" / "source.mp3").unlink()
+        STAGE.prepare_turn(tmp_path)
+        reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
+        assert "music/source" in reason

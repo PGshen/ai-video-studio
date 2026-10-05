@@ -33,10 +33,16 @@ def _fail(workdir: Path, reason: str) -> None:
 
 
 def _prepare_music_project(workdir: Path) -> None:
-    """短片与"讲解 + 背景乐"：按上游内容选来源，读出带网格与配乐层的时间轴。"""
+    """短片、MV 与"讲解 + 背景乐"：按上游内容选来源，读出带网格与配乐层的时间轴。"""
     upstream = workdir / "upstream"
     reel = (upstream / "beatsheet" / "beatsheet.json").is_file()
-    sources = TimelineSources(workdir, narration=not reel, music_source="synth", prefix="upstream/")
+    mv = (upstream / "music" / "sections.json").is_file()
+    sources = TimelineSources(
+        workdir,
+        narration=not reel and not mv,
+        music_source="import" if mv else "synth",
+        prefix="upstream/",
+    )
     try:
         loaded = load_timeline(sources)
     except TimelineError as exc:
@@ -57,9 +63,11 @@ def prepare_turn(workdir: Path) -> None:
     shutil.copyfile(_EXEMPLAR, exemplar)
 
     upstream = workdir / "upstream"
-    if (upstream / "beatsheet" / "beatsheet.json").is_file() or (
-        upstream / "music" / "events.json"
-    ).is_file():
+    if (
+        (upstream / "beatsheet" / "beatsheet.json").is_file()
+        or (upstream / "music" / "events.json").is_file()
+        or (upstream / "music" / "sections.json").is_file()
+    ):
         _prepare_music_project(workdir)
         return
 

@@ -56,7 +56,8 @@
       // 配乐相关：timeline.music 为 null（无配乐的讲解）时保持中性值，不抛错。
       hit: function (name) {
         var music = timeline.music;
-        if (!music) return 0;
+        // 导入歌曲（MV）没有命名事件：事件列表为空时保持中性，不报错。
+        if (!music || !(music.events || []).length) return 0;
         var named = (music.events || []).filter(function (e) { return e.name === name; });
         if (!named.length) {
           var names = Array.from(new Set((music.events || []).map(function (e) { return e.name; })));

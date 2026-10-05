@@ -83,6 +83,15 @@ module.exports = {
 - 能量曲线用来调节整体强度（亮度、粒子数量、动作幅度），不要用它定时刻。
 - 转场踩在小节线上：用 `pad.in/out` 交叉叠化，或在小节线上硬切；硬切会让边界帧差很大，这是有意的，不是缺陷。
 
+## 音乐 MV（导入歌曲）
+
+`upstream/music/sections.json` 存在时，这是一支音乐 MV：时间轴由导入的歌曲和 `upstream/beatsheet/beatsheet.json` 决定，其余规则和上面的"短片"一致（没有旁白、`env.bt / env.bar / env.moment / env.energy` 照常可用）。差别：
+
+- 一个 `sections.json` 段落对应一个场景文件 `animation/scenes/<id>.js`，场景 id 就是段落 id；节拍脚本里每段用 `ref` 指向它。
+- 时间零点是截取区间起点：`timeline.json` 里的全局秒从 0 起算，第一个场景从 0 开始。
+- 画面对齐节拍网格（`env.bt / env.bar`）和能量曲线（`env.energy`）。导入的歌曲没有命名事件（`music.events` 为空），`env.hit(...)` 恒为 0、`env.span(...)` 恒为空列表，不要靠它们驱动画面；冲击点和重音由 `env.moment` 的节拍脚本点与能量变化表达。
+- 校验里的"音乐平移"检查同样适用：时刻必须从网格、`env.moment` 或能量推出，不许写字面的秒数。
+
 ## 工作流（按这个顺序，控制成本）
 
 1. 先读 `style/STYLE.md` 和它指向的风格文件、金样本。
