@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 执行中 |
 | 里程碑 | 多形态视频流水线·子项目 4（4A） |
 | 设计依据 | [导入音乐与音乐 MV](../../design/2026-10-05-import-music-mv.md)（已批准 2026-10-05）；总设计 [§4、§6.2、§7.2](../../design/2026-10-04-html-video-pipeline.md) |
 | 分支 | `import-music-4a` |
@@ -176,7 +176,14 @@ agent 能在「音乐 MV」项目里走完 `concept → music → beatsheet → 
 
 ## 进度
 
-- 无
+- T1 完成：eb1982d（librosa 依赖、歌曲解码与恒定网格拟合）
+- T2 完成：b5aa7c9（强拍相位、候选段落、能量曲线、置信度）
+- T3 完成：f9383b2（分析图与 `song_job` 隔离运行）
+- T4 完成：de875ac（时间轴的 MV 来源）
+- T5 完成：919b259、741c2e1（`analyze_music` 与 `validate_sections`；压缩分析图先于写入）
+- T6 完成：fad9c99、e303f90（`music` 阶段导入分支与提示词）
+- T7 完成：dc6c58b、cc1cde8（`beatsheet` 的 MV 分支）
+- T8 完成：16c41aa（`animation_html` 认得 MV）
 
 ## 下一步
 
