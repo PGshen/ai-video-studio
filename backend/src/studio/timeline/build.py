@@ -88,6 +88,16 @@ class SectionInput:
 
 
 @dataclass(frozen=True, slots=True)
+class TimedSectionInput:
+    """MV 的段落：起止由音乐决定，已是时间轴上的秒（第一段从 0 开始）。"""
+
+    id: str
+    label: str
+    start: float
+    end: float
+
+
+@dataclass(frozen=True, slots=True)
 class MomentInput:
     section_id: str
     at: str
@@ -103,6 +113,8 @@ class MusicInput:
     declared_duration: float | None = None
     declared_bpm: float | None = None
     """短片里与节拍脚本核对；有旁白的项目网格本身取自它，不再核对。"""
+    file: str | None = None
+    """音频在工作区里的相对路径；未给时是合成配乐的 `MUSIC_FILE`。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +124,8 @@ class TimelineLayers:
     moments: list[MomentInput] | None = None
     music: MusicInput | None = None
     sections: list[SectionInput] | None = None
+    timed_sections: list[TimedSectionInput] | None = None
+    """MV 的段落；与 `sections`、`narration` 三选一。"""
 
 
 def _bpm_error(bpm: float) -> str | None:
@@ -165,6 +179,36 @@ def _bar_sections(
         end = cursor + item.bars * _BEATS_PER_BAR * 60.0 / bpm
         sections.append(Section(id=item.id, label=item.label, start=cursor, end=end))
         cursor = end
+    return sections, cursor
+
+
+def _timed_sections(
+    inputs: list[TimedSectionInput], errors: list[str]
+) -> tuple[list[Section], float]:
+    sections: list[Section] = []
+    cursor = 0.0
+    seen: set[str] = set()
+    for item in inputs:
+        if not isinstance(item.id, str) or not _ID_PATTERN.match(item.id):
+            errors.append(f"镜头 id {item.id!r} 不合法：只能包含字母、数字、下划线和连字符")
+            continue
+        if item.id in seen:
+            errors.append(f"镜头 id {item.id} 重复")
+            continue
+        seen.add(item.id)
+        start, end = item.start, item.end
+        if not _finite(start) or not _finite(end) or not start < end:
+            errors.append(f"镜头 {item.id}：起止必须是数字且 start < end（{start!r}→{end!r}）")
+            continue
+        if abs(start - cursor) > _EPSILON:
+            if not sections:
+                errors.append(f"镜头 {item.id}：第一段必须从 0 开始（当前 {start}）")
+            else:
+                errors.append(
+                    f"镜头 {item.id}：起点 {start} 与上一段终点 {cursor} 不相接（段落必须首尾相接）"
+                )
+        sections.append(Section(id=item.id, label=item.label, start=float(start), end=float(end)))
+        cursor = float(end)
     return sections, cursor
 
 
@@ -252,7 +296,7 @@ def _music(
     ):
         errors.append("energy：hop 必须为正，values 非空且都在 [0, 1] 内")
     return Music(
-        file=MUSIC_FILE,
+        file=music.file if music.file is not None else MUSIC_FILE,
         events=events,
         energy=Energy(hop=music.energy_hop, values=list(music.energy_values)),
     )
@@ -260,8 +304,13 @@ def _music(
 
 def build_timeline(layers: TimelineLayers) -> Timeline:
     errors: list[str] = []
-    if layers.sections is not None and layers.narration:
-        raise TimelineError(["不能同时给出短片段落和旁白镜头"])
+    given = [
+        layers.sections is not None,
+        layers.timed_sections is not None,
+        bool(layers.narration),
+    ]
+    if sum(given) > 1:
+        raise TimelineError(["短片段落、MV 段落和旁白镜头只能给出一种，不能同时给出"])
     if layers.grid is not None and (bpm_error := _bpm_error(layers.grid.bpm)):
         raise TimelineError([bpm_error])
 
@@ -272,6 +321,10 @@ def build_timeline(layers: TimelineLayers) -> Timeline:
         if not layers.sections:
             raise TimelineError(["没有任何镜头"])
         sections, duration = _bar_sections(layers.sections, layers.grid.bpm, errors)
+    elif layers.timed_sections is not None:
+        if not layers.timed_sections:
+            raise TimelineError(["没有任何镜头"])
+        sections, duration = _timed_sections(layers.timed_sections, errors)
     else:
         if not layers.narration:
             raise TimelineError(["没有任何镜头"])
