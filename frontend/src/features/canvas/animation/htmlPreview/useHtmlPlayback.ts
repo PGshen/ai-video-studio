@@ -15,11 +15,13 @@ import {
   advanceClock,
   globalTime,
   loopedTime,
+  fromScoreTime,
   musicClockTime,
   needsRealign,
   nextSection,
   playbackMode,
   sectionAt,
+  toScoreTime,
 } from './previewClock'
 
 export interface PlaybackAudio {
@@ -103,10 +105,11 @@ export function useHtmlPlayback(options: PlaybackOptions) {
       scoreUrl = music.url
     }
     applyVolume(music.gain)
+    const playedAt = fromScoreTime(el.currentTime, music)
     const off = clock
-      ? Math.abs(el.currentTime - at) > CLOCK_TOLERANCE_SECONDS
-      : needsRealign(el.currentTime, at)
-    if (off) el.currentTime = at
+      ? Math.abs(playedAt - at) > CLOCK_TOLERANCE_SECONDS
+      : needsRealign(playedAt, at)
+    if (off) el.currentTime = toScoreTime(at, music)
     el.play().catch((error: unknown) => {
       const aborted = error instanceof DOMException && error.name === 'AbortError'
       // 短片：配乐放不了就回退墙钟；讲解：背景乐放不了不影响旁白。
@@ -128,13 +131,13 @@ export function useHtmlPlayback(options: PlaybackOptions) {
       const resume = !score.paused
       score.src = music.url
       scoreUrl = music.url
-      score.currentTime = shown
+      score.currentTime = toScoreTime(shown, music)
       applyVolume(music.gain)
       if (resume) void score.play().catch(() => undefined)
       return
     }
-    if (!scoreDriven && !score.paused && needsRealign(score.currentTime, shown)) {
-      score.currentTime = shown
+    if (!scoreDriven && !score.paused && needsRealign(fromScoreTime(score.currentTime, music), shown)) {
+      score.currentTime = toScoreTime(shown, music)
     }
   }
 
@@ -225,7 +228,7 @@ export function useHtmlPlayback(options: PlaybackOptions) {
 
     let next: number
     if (scoreDriven && score !== null && !score.paused) {
-      next = musicClockTime(score.currentTime, meta.duration)
+      next = musicClockTime(fromScoreTime(score.currentTime, meta.music), meta.duration)
     } else if (audioDriven && audio !== null && !audio.paused) {
       next = globalTime(section, audio.currentTime)
     } else {

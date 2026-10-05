@@ -12,6 +12,8 @@ import {
   sectionAt,
   sectionTicks,
   shouldReloadPreview,
+  fromScoreTime,
+  toScoreTime,
 } from './previewClock'
 
 const sections: HtmlPreviewSection[] = [
@@ -132,5 +134,26 @@ describe('needsRealign', () => {
     expect(needsRealign(2.0, 2.31)).toBe(true)
     expect(needsRealign(5.0, 2.0)).toBe(true)
     expect(needsRealign(2.0, 2.2, 0.1)).toBe(true)
+  })
+})
+
+describe('toScoreTime / fromScoreTime', () => {
+  it('音频时间 = 预览时间 + offset，往返互逆', () => {
+    const music = { offset: 4.5 }
+    expect(toScoreTime(0, music)).toBe(4.5)
+    expect(toScoreTime(1.5, music)).toBe(6)
+    expect(fromScoreTime(6, music)).toBe(1.5)
+    expect(fromScoreTime(toScoreTime(3.25, music), music)).toBe(3.25)
+  })
+
+  it('offset 缺省、为 0 或没有配乐时恒等', () => {
+    for (const music of [{ offset: 0 }, {}, null, undefined]) {
+      expect(toScoreTime(2.5, music)).toBe(2.5)
+      expect(fromScoreTime(2.5, music)).toBe(2.5)
+    }
+  })
+
+  it('音频还没走到 offset 时预览时间为负，由 musicClockTime 夹到 0', () => {
+    expect(musicClockTime(fromScoreTime(1, { offset: 4.5 }), 6)).toBe(0)
   })
 })

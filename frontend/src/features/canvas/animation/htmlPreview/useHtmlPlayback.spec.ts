@@ -520,3 +520,111 @@ describe('useHtmlPlayback without a score', () => {
     expect(h.created()).toBe(0)
   })
 })
+
+// ---- an imported song: audio time = preview time + music.offset (4B T8) ----------------------
+
+const OFFSET = 4.5
+const MV: HtmlPreviewMeta = {
+  ...REEL,
+  music: { url: '/music/audio?v=song', gain: 1, offset: OFFSET },
+}
+
+describe('useHtmlPlayback with an offset score', () => {
+  it('starts the song at offset + the preview time', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    expect(h.score.currentTime).toBe(OFFSET)
+    expect(h.score.paused).toBe(false)
+  })
+
+  it('takes the clock from the song minus the offset', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    h.score.currentTime = OFFSET + 1.5
+    h.tick(0.016)
+    expect(h.playback.t.value).toBe(1.5)
+    expect(h.seeks.at(-1)).toBe(1.5)
+  })
+
+  it('crosses sections without seeking the song', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    h.score.currentTime = OFFSET + 2.2
+    h.tick(0.016)
+    expect(h.playback.currentIndex.value).toBe(1)
+    expect(h.score.currentTime).toBe(OFFSET + 2.2)
+    expect(h.playback.t.value).toBe(2.2)
+  })
+
+  it('stops at the end of the piece when the song reaches offset + duration', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    h.score.currentTime = OFFSET + 6
+    h.tick(0.016)
+    expect(h.playback.playing.value).toBe(false)
+    expect(h.playback.t.value).toBe(6)
+    h.score.currentTime = OFFSET + 99 // past the cut: still clamped to the piece
+    expect(h.playback.t.value).toBe(6)
+  })
+
+  it('seeking while playing moves the song to offset + the global time', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    h.playback.seekTo(3.2)
+    expect(h.score.currentTime).toBe(OFFSET + 3.2)
+  })
+
+  it('resuming after a pause continues from offset + t', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    h.score.currentTime = OFFSET + 1
+    h.tick(0.016)
+    h.playback.toggle() // pause
+    h.score.currentTime = 0 // the browser may have moved it meanwhile
+    h.playback.toggle() // resume
+    await Promise.resolve()
+    expect(h.score.currentTime).toBe(OFFSET + 1)
+  })
+
+  it('loops the section by moving the song back to offset + the section start', async () => {
+    const h = setupScore(MV)
+    h.playback.setLoop(true)
+    await playing(h)
+    h.score.currentTime = OFFSET + 2.05
+    h.tick(0.016)
+    expect(h.score.currentTime).toBe(OFFSET)
+    expect(h.playback.t.value).toBe(0)
+  })
+
+  it('keeps the position when a changed song address reloads the source', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    h.score.currentTime = OFFSET + 1.2
+    h.tick(0.016)
+    h.setMeta({ ...MV, music: { url: '/music/audio?v=other', gain: 1, offset: OFFSET } })
+    h.tick(0.016)
+    expect(h.score.src).toContain('v=other')
+    expect(h.score.currentTime).toBeCloseTo(OFFSET + 1.2, 5)
+    expect(h.score.paused).toBe(false)
+  })
+
+  it('with narration the song only follows: drift is measured against offset + t', async () => {
+    const h = setupScore({ ...BED, music: { url: '/m', gain: 0.4, offset: OFFSET } })
+    await playing(h)
+    h.narration.currentTime = 1
+    h.score.currentTime = OFFSET + 1.05 // within the allowance
+    h.tick(0.016)
+    expect(h.score.currentTime).toBe(OFFSET + 1.05)
+    h.score.currentTime = OFFSET + 3 // far off
+    h.tick(0.016)
+    expect(h.score.currentTime).toBeCloseTo(OFFSET + 1, 1)
+  })
+
+  it('offset 0 or missing behaves exactly like before', async () => {
+    const h = setupScore({ ...REEL, music: { url: '/m', gain: 1, offset: 0 } })
+    await playing(h)
+    h.score.currentTime = 1.5
+    h.tick(0.016)
+    expect(h.playback.t.value).toBe(1.5)
+  })
+})
