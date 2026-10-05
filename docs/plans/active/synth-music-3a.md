@@ -71,7 +71,7 @@
 - [ ] AC6：`animation_html` 在短片与讲解 + 背景乐下按形态生成时间轴；`validate_scenes_html`、`render_preview_html` 的短片分支符合设计 §6.3（验证方式：`tests/stages/test_animation_html_*.py`）
 - [ ] AC7：`GET /api/video-kinds` 里短片与"讲解 + 合成背景乐"可用，创建项目成功；MV 与"导入音乐"仍不可用；设置页阶段列表含三个新阶段；旧项目与 Manim 路径的现有测试全部通过（验证方式：`tests/api/test_video_kinds.py`、`test_projects.py`、前端单测、`make check`）
 - [ ] AC8：fake 运行时分别跑通短片和"讲解 + 合成背景乐"的整条流水线，每个阶段产物齐全且能定稿；联调测试从真实 `render_music` 产物走到画面校验（验证方式：`tests/api/test_synth_music_flow.py`、`-m slow`）
-- [ ] AC9：真实模型（`claude-login`）走完一个短片小项目（2 段 × 2 小节），`validate_beatsheet`、`render_music`、`validate_scenes_html` 最终无错误（验证方式：`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`，证据写到 `data/evidence/synth-music/smoke/`）
+- [x] AC9：真实模型（`claude-login`）走完一个短片小项目（2 段 × 2 小节），`validate_beatsheet`、`render_music`、`validate_scenes_html` 最终无错误（验证方式：`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`，证据写到 `data/evidence/synth-music/smoke/`）
 - [ ] AC10：L4：在内置浏览器里创建"动态图形短片"项目，阶段导航为 概念 → 节拍脚本 → 配乐 → 动画，通用画布能看到各阶段产物（验证方式：控制者截图）
 - [ ] AC11：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`docs/references/` 已同步；`make check` 全绿
 
@@ -223,6 +223,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T10 真实模型冒烟通过（AC9）— 修了两处 SDK 1 MiB 上限（`render_music`、`render_preview_html` 的图片改 JPEG）；见验证记录
 - 2026-10-05 — T9 整流水线集成与联调 — `tests/api/test_synth_music_flow.py`：假池 3 个（短片整条流水线、改节拍脚本后配乐变旧、讲解 + 背景乐），slow 2 个（真实 Seatbelt + Chromium 的短片流水线；`events.json` → 时间轴 → `env.hit` 在每个 kick 起点为 1、`env.energy` 与 `analysis.json` 一致）
 - 2026-10-05 — T8 `animation_html` 短片分支 — probe 5、静态检查 3 组、阶段 6、工具 8 + 1 slow（真实 Chromium：global.js 的 HUD 不能替镜头顶账）、提示词 11 条规则
 - 2026-10-05 — T7 运行时 `env` 补全与 `include_global` — 慢测 7 个新增（共 24 个通过），assemble 1 个
@@ -235,7 +236,7 @@
 
 ## 下一步
 
-- T10：真实模型冒烟（`test_motion_reel_claude_login`）、L4、文档同步与收尾，之后整分支评审。
+- T10：AC9 已通过；剩 L4（AC10）、TODO 同步、验证记录 AC1–AC8/AC11，之后整分支评审。
 
 ## 决策记录
 
@@ -273,7 +274,7 @@
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 暂无
+- 2026-10-05 — **Claude SDK 单条 JSON 消息上限 1 MiB**（`CLIJSONDecodeError: … exceeded maximum buffer size of 1048576 bytes`）。工具返回的图片超限会让整轮失败，追加轮又带上这条历史所以再失败。假运行时和单测碰不到，只有真实模型冒烟暴露。冒烟前两次分别死在 `render_music`（1800×1000 PNG，约 3.5 分钟）和 `render_preview_html`（4 列拼图 PNG，约 7.5 分钟）。已修：两处都改返回 JPEG（质量 85/70/55/40 逐级降，仍超限就缩小），上限 400 kB，各有测试（`test_the_attached_picture_stays_well_under_the_sdk_message_limit`、`test_a_busy_contact_sheet_stays_well_under_the_sdk_message_limit`）；`music/analysis.png` 仍是原图。manim 阶段 `stages/animation/render_preview.py` 同样未限制大小，不在 3A 范围，记入 TODO。
 
 ## 阻塞
 
@@ -285,4 +286,15 @@
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 待填
+- **AC9**（2026-10-05，第 3 次运行通过）：`make smoke SMOKE_ARGS="-k motion_reel_claude_login"` → `1 passed in 576.68s (0:09:36)`；证据 `data/evidence/synth-music/smoke/20261005T085954Z-motion-reel-claude-login.json`。前两次失败见"意外与发现"（SDK 1 MiB 上限）。目标 12 秒短片，2 段 × 2 小节、128 BPM、11.25 秒。
+
+  | 阶段 | 轮数 | 模型步数 | 费用（美元） | 工具调用 |
+  |---|---|---|---|---|
+  | concept | 1 | 2 | 0.05 | Write, check_concept |
+  | beatsheet | 1 | 3 | 0.05 | Read, Write, validate_beatsheet |
+  | music | 1 | 10 | 0.22 | …Write, render_music, Edit, render_music（第二次渲染才通过） |
+  | animation_html | 1 | 14 | 0.49 | Write ×6, validate_scenes_html ×3, render_preview_html ×2 |
+  | 合计 | 4 | 29 | 0.82 | |
+
+  所有轮次 `done`。music：48 个事件，起音对齐率 87%，声明起音匹配 kick 15/15、hat 19/19、impact 1/1，重定时校验通过（11.25→14.06 秒，对齐 87%→88%）。animation_html：最终"全部 2 个镜头校验通过"。警告：仅 pydub 的 `audioop` 弃用提示（与本功能无关）。"没有累积"：每次都是新临时目录和新会话，单次耗时主要在 music 与 animation_html 的沙箱渲染和 Chromium 预览。
+- AC1–AC8、AC10、AC11：待填（L4 与整分支评审之后）
