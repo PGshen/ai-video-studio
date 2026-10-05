@@ -9,7 +9,7 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -19,22 +19,14 @@ from sqlalchemy import Engine
 
 from fixtures.animation_html.seed import seed_animation_html_project
 from fixtures.html_engine import projects as fx
+from fixtures.html_engine.worker_fakes import ExplodingManim, FakeBackend
 from studio.db.engine import make_engine, migrate, session_scope
 from studio.db.models import Job
 from studio.db.repo.snapshots import latest_snapshot
-from studio.engines.render.base import (
-    PreviewRequest,
-    PreviewResult,
-    RenderRequest,
-    RenderResult,
-    SceneInput,
-)
-from studio.engines.render.html.assemble import AssembledPage
 from studio.engines.render.html.video import VideoRenderError
-from studio.engines.render.mix import AudioTrack, MixError
+from studio.engines.render.mix import MixError
 from studio.jobs import create_job, get_job
 from studio.worker import run_once
-from studio.worker_html import HtmlBackend
 from studio.workspace import BlobStore, project_dir
 
 
@@ -63,56 +55,6 @@ def html_env(tmp_path: Path) -> Iterator[HtmlEnv]:
     )
     yield HtmlEnv(data_dir, engine, blobs, project_id)
     engine.dispose()
-
-
-@dataclass
-class FakeBackend:
-    video_calls: list[dict[str, Any]] = field(default_factory=list)
-    mix_calls: list[dict[str, Any]] = field(default_factory=list)
-    video_error: Exception | None = None
-    mix_error: Exception | None = None
-    on_video: Any = None
-
-    async def render_video(
-        self, page: AssembledPage, duration: float, output: Path, fps: int, on_progress: Any
-    ) -> None:
-        self.video_calls.append({"page": page, "duration": duration, "fps": fps})
-        if self.on_video is not None:
-            await self.on_video(on_progress)
-        if self.video_error is not None:
-            raise self.video_error
-        output.parent.mkdir(parents=True, exist_ok=True)  # like render_silent_video
-        output.write_bytes(b"silent-video")
-
-    async def mix(
-        self, video: Path, tracks: list[AudioTrack], duration: float, output: Path
-    ) -> None:
-        self.mix_calls.append({"video": video, "tracks": tracks, "duration": duration})
-        if self.mix_error is not None:
-            raise self.mix_error
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(b"final-video:" + video.read_bytes())
-
-    def as_backend(self) -> HtmlBackend:
-        return HtmlBackend(render_video=self.render_video, mix=self.mix)
-
-
-class ExplodingManim:
-    """HTML 项目绝不能碰 Manim 引擎。"""
-
-    engine_name = "exploding"
-
-    async def validate_code(self, scenes: list[SceneInput]) -> tuple[bool, str]:
-        raise AssertionError("manim engine used for an html project")
-
-    async def render_preview(self, request: PreviewRequest) -> PreviewResult:
-        raise AssertionError("manim engine used for an html project")
-
-    async def health_check(self) -> bool:
-        raise AssertionError("manim engine used for an html project")
-
-    async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:
-        raise AssertionError("manim engine used for an html project")
 
 
 async def _run(env: HtmlEnv, backend: FakeBackend) -> str:
@@ -363,25 +305,3 @@ async def test_page_edited_during_the_render_is_not_cached_under_the_old_key(
     (html_env.workdir / "animation/scenes/s-hook.js").write_text(fx.PURE_SCENE_PLAIN)
     await _run(html_env, backend)
     assert len(backend.video_calls) == 1  # back to content A: A's frames come from the cache
-
-
-@pytest.mark.parametrize(
-    "patch",
-    [
-        {"narration": False, "music_source": "synth"},
-        {"narration": True, "music_source": "synth"},
-    ],
-    ids=["reel", "explainer-with-music"],
-)
-async def test_projects_with_music_fail_clearly_until_the_music_mix_exists(
-    html_env: HtmlEnv, patch: dict[str, Any]
-) -> None:
-    from studio.db.repo.projects import update_project_settings
-
-    update_project_settings(html_env.engine, html_env.project_id, patch)
-    backend = FakeBackend()
-    job_id = await _run(html_env, backend)
-    job = _job(html_env, job_id)
-    assert job.status == "failed"
-    assert job.error is not None and "尚未实现" in job.error
-    assert backend.video_calls == [] and backend.mix_calls == []

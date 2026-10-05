@@ -93,7 +93,7 @@
 - **完成标准**：AC1；无配乐的现有测试不改一行也通过。
 - **验证命令**：`cd backend && uv run pytest tests/engines -k mix -v && uv run pytest -m slow tests/engines -k mix -v`
 
-### T2：`worker_html` 的配乐路径（待开始）
+### T2：`worker_html` 的配乐路径（完成）
 
 - **目标**：成片渲染支持短片与"讲解 + 合成背景乐"（设计 §8.2）。
 - **涉及文件**：`backend/src/studio/worker_html.py`、`backend/src/studio/worker.py`（若有形态判断）、`backend/src/studio/api/animation.py`（`finalize-render` 对短片的前置条件）、`backend/tests/test_worker_html.py`、`backend/tests/api/test_animation_finalize_render.py`（若存在）。
@@ -191,6 +191,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成，负责人审阅通过，开工
+- 2026-10-05 — T2 `worker_html` 配乐路径 — 去掉守卫；前置检查（四个文件、`base_hash`、`wav_hash`）；短片只有配乐，背景乐 −8 dB + 侧链 + 淡入 1 秒/淡出 1.5 秒；`final.json.audio_sources.music`；新测试 `tests/test_worker_html_music.py`（成功 2、前置检查 7、旧成片保留 2、无配乐回归 1）+ slow 真实 Chromium + ffmpeg 2（短片音轨非静音、时长一致；讲解加配乐）；`FakeBackend` 移到 `fixtures/html_engine/worker_fakes.py`；`finalize-render` 与 `POST /render` 与形态无关，无需改
 - 2026-10-05 — T1 `engines.render.mix` 配乐轨 — `MusicMix`、`AudioTrack.gain_db`、命令构造 7 条（无配乐不变、只有配乐、增益与淡变、侧链、不压低、无旁白不压）+ slow 4 条（时长与非静音与无爆音、配乐长短都钉时长、侧链压低 ≥ 6 dB 且 1 秒后回升、坏文件不留输出）；侧链定值 `0.03:6:10:400`，扫描表写进 `references/ffmpeg.md`
 
 ## 下一步
@@ -201,6 +202,7 @@
 
 <!-- 日期 — 决定 — 原因 — 影响。 -->
 
+- 2026-10-05 — T2：时间轴本身因配乐声明的 duration 与节拍脚本不符而失败时（改了小节数），`run_html_job` 在错误后追加"到配乐阶段重新渲染"的提示；只改标签等不改时长时由 `base_hash` 前置检查报"配乐与当前时间轴不一致" — 两种都点名原因 — 无风险。
 - 2026-10-05 — 时间轴来源：api 与 worker 都读工作区顶层，不用 `upstream/`（修正设计 §9.1 的措辞）— `upstream/` 只是 agent 某轮开始时的上游副本，在 api 里可能不存在或已过期；顶层与成片一致 — 无代码风险，设计正文不改，仅在此记录。
 - 2026-10-05 — 手动渲染同步返回 — 3A 冒烟里一次合成约 1 秒，加重定时与分析也远小于 60 秒 — 若实际更慢，改成任务并记入 TODO。
 - 2026-10-05 — 讲解 + 背景乐不单独做真实模型冒烟 — 成本高、画面阶段的流程已由 3A 的短片冒烟验证，音轨由 slow 的真实 ffmpeg 测试验证 — 若负责人要求，补一个。
