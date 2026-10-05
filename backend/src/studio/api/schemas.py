@@ -484,20 +484,71 @@ class MusicSectionOut(BaseModel):
     end: float
 
 
-class MusicMetaOut(BaseModel):
-    """`GET .../music/meta`：配乐画布和预览需要的全部信息；没有产物时 `rendered=false`。"""
+class MusicSourceInfo(BaseModel):
+    filename: str
+    size: int
+    sha256: str
+    duration: float | None = None
+    """只在分析与当前源文件对得上时给（取分析里的时长），meta 不为它再跑一次 ffprobe。"""
 
+
+class MusicAnalysisOut(BaseModel):
+    bpm: float
+    confidence: float
+    residual_ms: float
+    duration: float
+    warnings: list[str] = []
+
+
+class MusicGridOut(BaseModel):
+    """有效网格（`sections.json` 的覆盖优先）；`downbeats` 是整曲内的强拍时刻（秒）。"""
+
+    bpm: float
+    offset: float
+    downbeats: list[float]
+
+
+class MusicRangeOut(BaseModel):
+    start: float
+    end: float
+
+
+class MusicEnergyOut(BaseModel):
+    hop: float
+    values: list[float]
+
+
+class SectionsCheckOut(BaseModel):
+    ok: bool
+    errors: list[str] = []
+    warnings: list[str] = []
+
+
+class MusicMetaOut(BaseModel):
+    """`GET .../music/meta`：配乐画布和预览需要的全部信息；没有产物时 `rendered=false`。
+
+    导入形态（`form="import"`）：`rendered` 表示"已上传源文件"，`hash` 是源文件的哈希，`stale` 表示
+    分析不是对着当前源文件做的，`sections` 是 `sections.json` 的段落（整曲秒，不按区间截）。
+    """
+
+    form: Literal["synth", "import"] = "synth"
     rendered: bool
     stale: bool
     """产物是对着另一版时间轴渲染的（节拍脚本或旁白变了），成片会拒绝它。"""
     hash: str | None = None
-    """`music.wav` 的哈希；音频地址的版本号。"""
+    """`music.wav`（导入形态是源文件）的哈希；音频地址的版本号。"""
     duration: float | None = None
     bpm: float | None = None
     events: list[MusicEventOut] = []
     sections: list[MusicSectionOut] = []
     waveform: list[float] = []
     metrics: dict[str, Any] | None = None
+    source: MusicSourceInfo | None = None
+    analysis: MusicAnalysisOut | None = None
+    grid: MusicGridOut | None = None
+    range: MusicRangeOut | None = None
+    energy: MusicEnergyOut | None = None
+    sections_check: SectionsCheckOut | None = None
 
 
 class MusicSourceOut(BaseModel):
