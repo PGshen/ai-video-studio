@@ -627,4 +627,18 @@ describe('useHtmlPlayback with an offset score', () => {
     h.tick(0.016)
     expect(h.playback.t.value).toBe(1.5)
   })
+
+  it('a new meta that changes the song and the offset at once does not make the picture jump', async () => {
+    const h = setupScore(MV)
+    await playing(h)
+    h.score.currentTime = OFFSET + 1.2
+    h.tick(0.016)
+    expect(h.playback.t.value).toBeCloseTo(1.2, 5)
+    h.setMeta({ ...MV, music: { url: '/music/audio?v=other', gain: 1, offset: 9 } })
+    h.score.currentTime = OFFSET + 1.3 // still the old element position, old mapping
+    h.tick(0.016)
+    expect(h.playback.t.value).toBeCloseTo(1.3, 5) // not 1.3 + 4.5 - 9
+    expect(h.score.src).toContain('v=other')
+    expect(h.score.currentTime).toBeCloseTo(9 + 1.3, 5) // new song at the new mapping
+  })
 })

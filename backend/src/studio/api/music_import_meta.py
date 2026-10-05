@@ -89,7 +89,11 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
     if analysis_doc is not None and analysis is not None:
         energy_values = analysis_doc.get("energy")
         hop = _number(analysis_doc.get("hop"))
-        if hop is not None and isinstance(energy_values, list):
+        if (
+            hop is not None
+            and isinstance(energy_values, list)
+            and all(_number(v) is not None for v in energy_values)
+        ):
             energy = MusicEnergyOut(hop=hop, values=[float(v) for v in energy_values])
         try:
             bpm, offset = effective_grid(analysis_doc, sections_doc or {})

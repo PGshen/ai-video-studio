@@ -191,3 +191,16 @@ async def test_synth_form_reports_form_synth(api_env: ApiEnv) -> None:
     )
     body = await _meta(api_env, pid)
     assert body["form"] == "synth" and body["source"] is None
+
+
+async def test_non_numeric_energy_degrades_to_no_energy(api_env: ApiEnv) -> None:
+    pid, workdir = _mv(api_env)
+    _analysis(workdir, _source(workdir), energy=[0.1, None, "x"])
+    body = await _meta(api_env, pid)
+    assert body["energy"] is None and body["analysis"] is not None
+
+
+async def test_render_of_an_import_project_says_there_is_no_synth_render(api_env: ApiEnv) -> None:
+    pid, _ = _mv(api_env)
+    response = await api_env.client.post(_url(pid, "render"))
+    assert response.status_code == 404 and response.json()["detail"] == "导入形态没有合成渲染"

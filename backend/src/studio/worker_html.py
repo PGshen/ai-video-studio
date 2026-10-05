@@ -210,7 +210,11 @@ def _import_score(
         return None
     private = workdir / ".cache" / "tmp" / f"mix-{uuid.uuid4().hex[:8]}"
     scratch.append(private)
-    digest = _copy_with_hash(source, private / source.name)
+    try:
+        digest = _copy_with_hash(source, private / source.name)
+    except OSError:
+        errors.append("源文件已更换，需要在配乐阶段重新分析")
+        return None
     if digest != analysis_hash:
         errors.append("源文件已更换，需要在配乐阶段重新分析")
     return _Score(private / source.name, digest, start)

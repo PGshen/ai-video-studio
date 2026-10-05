@@ -71,6 +71,16 @@ describe('SourceUploader', () => {
     expect(wrapper.emitted('uploaded')![0]).toEqual([source])
   })
 
+  it('请求体传完后进入“处理中”，不能再取消（服务端已读完，取消不会撤销）', async () => {
+    const wrapper = mountUploader()
+    await pick(wrapper, song())
+    expect(wrapper.find('[data-testid="music-upload-cancel"]').exists()).toBe(true)
+    state.calls[0]!.onProgress!(120, 120)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="music-upload-cancel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="music-upload-percent"]').text()).toContain('处理')
+  })
+
   it('服务端的 422 中文原因原样显示，之后可以再传', async () => {
     const wrapper = mountUploader()
     await pick(wrapper, song())

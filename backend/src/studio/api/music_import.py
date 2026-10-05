@@ -56,6 +56,7 @@ class _Receiver:
         self.ext: str | None = None
         self.path: Path | None = None
         self.size = 0
+        self.complete = False
         self.digest = hashlib.sha256()
         self._writer = None
         self._skipping = False
@@ -103,6 +104,8 @@ class _Receiver:
         self._writer.write(chunk)
 
     def on_part_end(self) -> None:
+        if self._writer is not None:
+            self.complete = True
         self.close()
 
     def close(self) -> None:
@@ -117,9 +120,12 @@ async def _receive(request: Request, receiver: _Receiver) -> None:
     if not boundary:
         raise _unprocessable("请求必须是 multipart/form-data，字段名为 file")
     parser = MultipartParser(boundary, _callbacks(receiver))
-    async for chunk in request.stream():
-        parser.write(chunk)
-    parser.finalize()
+    try:
+        async for chunk in request.stream():
+            parser.write(chunk)
+        parser.finalize()
+    except ValueError as exc:  # MultipartParseError is a ValueError
+        raise _unprocessable("请求体不是合法的 multipart/form-data") from exc
 
 
 def _callbacks(receiver: _Receiver) -> MultipartCallbacks:
@@ -153,15 +159,17 @@ async def upload_music_source_endpoint(
     uploading.add(project_id)
     workdir = project_dir(settings.data_dir, project_id)
     scratch = workdir / ".cache" / "tmp" / f"upload-{uuid4().hex[:8]}"
-    scratch.mkdir(parents=True)
     receiver = _Receiver(scratch)
     try:
+        scratch.mkdir(parents=True)
         try:
             await _receive(request, receiver)
         finally:
             receiver.close()
         if receiver.path is None or receiver.ext is None:
             raise _unprocessable("没有收到文件，字段名应为 file")
+        if not receiver.complete:
+            raise _unprocessable("上传的数据不完整，请重新上传")
         if receiver.size == 0:
             raise _unprocessable("文件是空的")
         try:

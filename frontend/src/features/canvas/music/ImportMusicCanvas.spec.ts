@@ -113,6 +113,17 @@ describe('ImportMusicCanvas', () => {
     ).toBeDefined()
   })
 
+  it('上传成功的提示不随画布从上传区切到已上传分支而消失', async () => {
+    state.meta = { ...UPLOADED, rendered: false, hash: null, source: null }
+    const wrapper = mountCanvas()
+    expect(has(wrapper, 'music-upload-note')).toBe(false)
+    wrapper
+      .findComponent({ name: 'SourceUploader' })
+      .vm.$emit('uploaded', { filename: 'source.mp3', size: 1, sha256: 'x', duration: 10 })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="music-upload-note"]').text()).toContain('analyze_music')
+  })
+
   it('actions 槽的内容显示出来', () => {
     state.meta = UPLOADED
     const wrapper = mount(ImportMusicCanvas, {

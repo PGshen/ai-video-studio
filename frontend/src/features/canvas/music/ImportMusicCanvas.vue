@@ -20,6 +20,7 @@ const problem = computed(() =>
   metaError.value === null || metaError.value === undefined ? null : errorMessage(metaError.value),
 )
 
+const uploadedNote = ref(false)
 const audio = ref<HTMLAudioElement | null>(null)
 const currentTime = ref(0)
 const src = computed(() => musicAudioUrl(props.projectId, meta.value?.hash))
@@ -55,6 +56,15 @@ defineExpose({ seek })
       {{ problem }}
     </p>
 
+    <p
+      v-if="uploadedNote"
+      class="rounded border px-3 py-2 text-sm"
+      role="status"
+      data-testid="music-upload-note"
+    >
+      上传完成。让 agent 调用 analyze_music 分析这首歌。
+    </p>
+
     <div
       v-if="meta && !meta.rendered"
       class="flex flex-col gap-2"
@@ -64,6 +74,7 @@ defineExpose({ seek })
         :project-id="projectId"
         :busy="busy"
         :has-source="false"
+        @uploaded="uploadedNote = true"
       />
     </div>
 
@@ -110,6 +121,7 @@ defineExpose({ seek })
           :project-id="projectId"
           :busy="busy"
           :has-source="true"
+          @uploaded="uploadedNote = true"
         />
       </div>
       <AnalysisSummary :meta="meta" />

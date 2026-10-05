@@ -438,3 +438,18 @@ async def test_real_render_of_a_music_video_has_the_song_as_its_audio(mv: Env) -
     assert [s["codec_name"] for s in info["streams"] if s["codec_type"] == "audio"] == ["aac"]
     assert abs(float(info["format"]["duration"]) - 18.0) <= 0.15
     assert _loudness_db(final, 1.0, 17.0) > -50  # clicks are audible, not a silent track
+
+
+async def test_a_song_that_vanishes_before_the_copy_asks_for_reanalysis(
+    mv: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from studio import worker_html
+
+    def gone(source: Path, target: Path) -> str:
+        raise FileNotFoundError(source)
+
+    monkeypatch.setattr(worker_html, "_copy_with_hash", gone)
+    backend = FakeBackend()
+    job = _job(mv, await _run(mv, backend))
+    assert job.status == "failed" and "重新分析" in (job.error or ""), job.error
+    assert backend.video_calls == [] and backend.mix_calls == []

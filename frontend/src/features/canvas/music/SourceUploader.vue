@@ -122,9 +122,10 @@ function cancel(): void {
         class="mb-2 tabular-nums"
         data-testid="music-upload-percent"
       >
-        上传中 {{ percent }}%
+        {{ percent >= 100 ? '处理中…（服务端正在校验）' : `上传中 ${percent}%` }}
       </p>
       <Button
+        v-if="percent < 100"
         size="sm"
         variant="outline"
         data-testid="music-upload-cancel"

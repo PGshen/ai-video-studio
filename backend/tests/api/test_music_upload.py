@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import shutil
 import subprocess
@@ -196,7 +197,7 @@ async def test_disconnect_mid_upload_leaves_no_temp_file(api_env: ApiEnv, tmp_pa
         yield head + data[: len(data) // 2]
         raise ConnectionError("client went away")
 
-    with pytest.raises(Exception):  # noqa: B017,PT011 - the client side error is not the point
+    with contextlib.suppress(Exception):  # the client-side error type depends on the transport
         await api_env.client.post(
             _url(pid),
             content=body(),
@@ -265,3 +266,75 @@ async def test_a_turn_cannot_start_while_a_song_is_uploading(api_env: ApiEnv) ->
     assert (
         await api_env.client.post(f"/api/sessions/{session.id}/messages", json={"text": "hi"})
     ).status_code == 202
+
+
+def _multipart(
+    boundary: str, parts: list[tuple[str, str | None, bytes]], *, close: bool = True
+) -> bytes:
+    body = b""
+    for name, filename, data in parts:
+        disposition = f'form-data; name="{name}"' + (f'; filename="{filename}"' if filename else "")
+        body += f"--{boundary}\r\nContent-Disposition: {disposition}\r\n\r\n".encode() + data
+        body += b"\r\n"
+    return body + (f"--{boundary}--\r\n".encode() if close else b"")
+
+
+async def _post_raw(api_env: ApiEnv, pid: str, body: bytes):
+    return await api_env.client.post(
+        _url(pid),
+        content=body,
+        headers={"Content-Type": "multipart/form-data; boundary=B"},
+    )
+
+
+async def test_a_malformed_body_is_422_not_500(api_env: ApiEnv) -> None:
+    pid, workdir = _mv(api_env)
+    response = await _post_raw(api_env, pid, b"garbage")
+    assert response.status_code == 422
+    assert _residue(workdir) == [] and pid not in api_env.app.state.music_uploads
+
+
+async def test_a_body_that_never_closes_its_part_is_422(api_env: ApiEnv, tmp_path: Path) -> None:
+    pid, workdir = _mv(api_env)
+    body = _multipart("B", [("file", "a.wav", _wav_bytes(tmp_path))], close=False)
+    body = body[: -len(b"\r\n")]  # not even the closing CRLF of the part
+    response = await _post_raw(api_env, pid, body)
+    assert response.status_code == 422
+    assert not (workdir / "music" / "source.wav").exists() and _residue(workdir) == []
+
+
+async def test_a_field_not_named_file_is_422(api_env: ApiEnv, tmp_path: Path) -> None:
+    pid, _ = _mv(api_env)
+    response = await _post_raw(
+        api_env, pid, _multipart("B", [("upload", "a.wav", _wav_bytes(tmp_path))])
+    )
+    assert response.status_code == 422 and "file" in assert_detail(response)
+
+
+async def test_a_file_part_without_a_filename_is_422(api_env: ApiEnv, tmp_path: Path) -> None:
+    pid, _ = _mv(api_env)
+    response = await _post_raw(
+        api_env, pid, _multipart("B", [("file", None, _wav_bytes(tmp_path))])
+    )
+    assert response.status_code == 422
+
+
+async def test_only_the_first_file_part_is_used(api_env: ApiEnv, tmp_path: Path) -> None:
+    pid, workdir = _mv(api_env)
+    first = _wav_bytes(tmp_path, 8.0, "one.wav")
+    body = _multipart("B", [("file", "a.wav", first), ("file", "b.mp3", b"ignored")])
+    response = await _post_raw(api_env, pid, body)
+    assert response.status_code == 200, response.text
+    assert sorted(p.name for p in (workdir / "music").iterdir()) == ["source.wav"]
+    assert (workdir / "music" / "source.wav").read_bytes() == first
+
+
+async def test_a_failing_scratch_dir_does_not_leave_the_project_locked(
+    api_env: ApiEnv, tmp_path: Path
+) -> None:
+    pid, workdir = _mv(api_env)
+    (workdir / ".cache").mkdir(exist_ok=True)
+    (workdir / ".cache" / "tmp").write_text("a file where a directory should be")
+    with contextlib.suppress(Exception):
+        await _upload(api_env, pid, "a.wav", _wav_bytes(tmp_path))
+    assert pid not in api_env.app.state.music_uploads

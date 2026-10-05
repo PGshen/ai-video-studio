@@ -65,7 +65,7 @@ def _require_score_project(engine: Engine, project_id: str) -> bool:
     """项目存在且有合成配乐，返回它是否有旁白（决定时间轴的来源）。"""
     form, narration = require_music_project(engine, project_id)
     if form != "synth":
-        raise HTTPException(status_code=404, detail="这个项目没有合成配乐")
+        raise HTTPException(status_code=404, detail="导入形态没有合成渲染")
     return narration
 
 
