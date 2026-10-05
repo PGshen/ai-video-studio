@@ -31,8 +31,10 @@ from studio.config import Settings
 from studio.db.repo.projects import get_project
 from studio.engines.render.html.assemble import assemble, page_hash, serve_page_path
 from studio.engines.render.mix import BED_GAIN_DB
+from studio.stages.common.music_source import find_source
 from studio.stages.pipeline import kind_from_settings
 from studio.timeline import TimelineError
+from studio.timeline.imported import effective_range
 from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
 from studio.workspace import file_sha256, project_dir
 
@@ -72,6 +74,24 @@ def _preview_music(
     gain = 10 ** (BED_GAIN_DB / 20) if narration else 1.0
     url = f"/api/projects/{quote(project_id, safe='')}/music/audio?v={wav_hash}"
     return HtmlPreviewMusic(url=url, gain=gain)
+
+
+def _preview_import_music(project_id: str, workdir: Path) -> HtmlPreviewMusic | None:
+    """源文件在、分析对着当前这份文件做的、段落能读出区间，才给预览用（同合成形态的标准）。"""
+    source = find_source(workdir / "music")
+    if source is None:
+        return None
+    try:
+        analysis = json.loads((workdir / "music" / "analysis.json").read_text(encoding="utf-8"))
+        sections = json.loads((workdir / "music" / "sections.json").read_text(encoding="utf-8"))
+        digest = file_sha256(source)
+        if analysis.get("source_hash") != digest:
+            return None
+        start, _ = effective_range(sections)
+    except (OSError, ValueError, AttributeError, TimelineError):
+        return None
+    url = f"/api/projects/{quote(project_id, safe='')}/music/audio?v={digest}"
+    return HtmlPreviewMusic(url=url, gain=1.0, offset=start)
 
 
 @router.get("/projects/{project_id}/animation/html-preview/meta", response_model=HtmlPreviewMeta)
@@ -124,6 +144,8 @@ def html_preview_meta_endpoint(
         music=(
             _preview_music(project_id, workdir, loaded, kind.narration)
             if kind.music_source == "synth"
+            else _preview_import_music(project_id, workdir)
+            if kind.music_source == "import"
             else None
         ),
     )

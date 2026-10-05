@@ -456,6 +456,8 @@ class HtmlPreviewMusic(BaseModel):
     """`/music/audio` 的地址，带 `wav_hash` 作版本：重新渲染后换地址，预览不会放旧音。"""
     gain: float
     """线性增益：短片 1.0，讲解背景乐比成片里压低的那一档（预览不做侧链）。"""
+    offset: float = 0.0
+    """秒。音频时间 = 预览时间 + offset：导入音乐从有效截取区间的起点放；合成形态恒为 0。"""
 
 
 class HtmlPreviewMeta(BaseModel):
