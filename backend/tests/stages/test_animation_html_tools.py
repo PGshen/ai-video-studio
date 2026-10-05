@@ -380,7 +380,7 @@ async def test_asset_problems_are_errors_and_unknown_scene_files_warn(
 
 
 def _sheet(result: ToolResult) -> Image.Image:
-    assert len(result.images) == 1 and result.images[0].media_type == "image/png"
+    assert len(result.images) == 1 and result.images[0].media_type == "image/jpeg"
     return Image.open(io.BytesIO(base64.b64decode(result.images[0].data_base64)))
 
 

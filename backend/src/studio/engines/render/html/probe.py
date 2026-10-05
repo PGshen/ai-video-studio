@@ -138,6 +138,9 @@ def is_flat(metrics: FrameMetrics) -> bool:
     return metrics.std < FLAT_STD
 
 
+_MAX_SHEET_BYTES = 400_000
+
+
 def contact_sheet(
     frames: list[tuple[str, bytes]], cols: int = 4, thumb: tuple[int, int] = (480, 270)
 ) -> bytes:
@@ -151,9 +154,18 @@ def contact_sheet(
         draw.rectangle([0, 0, 8 + 6 * len(label), 14], fill=(0, 0, 0))
         draw.text((3, 1), label, fill=(255, 255, 0))
         sheet.paste(cell, ((index % cols) * thumb[0], (index // cols) * thumb[1]))
-    buffer = io.BytesIO()
-    sheet.save(buffer, format="PNG")
-    return buffer.getvalue()
+    return _jpeg_within(sheet, _MAX_SHEET_BYTES)
+
+
+def _jpeg_within(image: Image.Image, limit: int) -> bytes:
+    """JPEG at descending quality, then shrink; the Claude SDK drops messages over 1 MiB."""
+    while True:
+        for quality in (85, 70, 55, 40):
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=quality, optimize=True)
+            if buffer.tell() <= limit:
+                return buffer.getvalue()
+        image = image.resize((int(image.width * 0.8), int(image.height * 0.8)))
 
 
 def _gray(jpeg: bytes) -> Image.Image:

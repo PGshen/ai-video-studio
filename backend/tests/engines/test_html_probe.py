@@ -143,8 +143,25 @@ def test_frame_metrics_and_flatness() -> None:
 def test_contact_sheet_layout() -> None:
     frames = [(f"f{i}", _jpeg(flat=False)) for i in range(6)]
     sheet = Image.open(io.BytesIO(contact_sheet(frames, cols=4, thumb=(160, 90))))
-    assert sheet.format == "PNG"
+    assert sheet.format == "JPEG"
     assert sheet.size == (4 * 160, 2 * 90)
+
+
+def test_a_busy_contact_sheet_stays_well_under_the_sdk_message_limit() -> None:
+    """The Claude SDK refuses one JSON message over 1 MiB (real-model smoke, animation stage):
+    a full 4x8 sheet of noisy frames must come back as a JPEG of at most 400 kB."""
+    import numpy as np
+
+    rng = np.random.default_rng(7)
+
+    def noisy() -> bytes:
+        pixels = rng.integers(0, 256, (540, 960, 3), dtype=np.uint8)
+        buffer = io.BytesIO()
+        Image.fromarray(pixels).save(buffer, format="JPEG", quality=90)
+        return buffer.getvalue()
+
+    raw = contact_sheet([(f"f{i}", noisy()) for i in range(32)])
+    assert raw[:3] == b"\xff\xd8\xff" and len(raw) <= 400_000
 
 
 def test_contact_sheet_rejects_empty_input() -> None:

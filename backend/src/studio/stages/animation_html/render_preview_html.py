@@ -124,7 +124,7 @@ async def _handler(ctx: ToolContext, args: RenderPreviewHtmlArgs) -> ToolResult:
     lines += boundaries + pads
     lines += [f"警告：{w}" for w in smoke.warnings if w.startswith("console")]
     sheet = contact_sheet([(f"t={t:.2f} lt={t - start:.2f}", jpeg) for t, jpeg in smoke.frames])
-    image = ImageData(media_type="image/png", data_base64=base64.b64encode(sheet).decode("ascii"))
+    image = ImageData(media_type="image/jpeg", data_base64=base64.b64encode(sheet).decode("ascii"))
     return ToolResult(text="\n".join(lines), images=[image])
 
 
