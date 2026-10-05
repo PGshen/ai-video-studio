@@ -250,6 +250,7 @@ def _ctx(workdir: Path) -> ToolContext:
 @pytest.fixture
 def workdir(tmp_path: Path) -> Path:
     (tmp_path / "music").mkdir()
+    (tmp_path / "music" / "source.mp3").write_bytes(b"x")  # the tool only runs in the import form
     return tmp_path
 
 

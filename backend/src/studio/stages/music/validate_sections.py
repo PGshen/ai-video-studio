@@ -18,6 +18,7 @@ from typing import Any, TypeGuard
 from pydantic import BaseModel
 
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
+from studio.stages.music.sources import import_source
 from studio.timeline import TimelineError
 from studio.timeline.build import BPM_RANGE
 from studio.timeline.imported import ALIGN_TOLERANCE, downbeat_times, effective_grid
@@ -28,6 +29,10 @@ _ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _JOIN_TOLERANCE = 1e-3
 """秒；相邻段落首尾相接、`range` 与段落跨度一致的判定容差（只吸收取整误差）。"""
 _EPS = 1e-9
+NOT_IMPORT_MESSAGE = (
+    "还没有上传音乐：validate_sections 只用于导入形态（music/source.*）；"
+    "合成形态请写 music/compose.py 并用 render_music"
+)
 
 
 @dataclass(slots=True)
@@ -276,6 +281,8 @@ class ValidateSectionsArgs(BaseModel):
 
 
 def _handler(ctx: ToolContext, args: ValidateSectionsArgs) -> ToolResult:
+    if import_source(ctx.workdir) is None:
+        return ToolResult(text=NOT_IMPORT_MESSAGE, is_error=True)
     result = check_workspace(ctx.workdir)
     return ToolResult(text=format_check(result), is_error=not result.ok)
 
@@ -285,7 +292,7 @@ VALIDATE_SECTIONS_TOOL = ToolSpec(
     description=(
         "校验 music/sections.json：段落 id 合法唯一、有序、首尾相接并覆盖截取区间、"
         "起止对齐强拍（容差 30 ms）、落在音频长度内；range 必须与段落跨度一致且对齐强拍。"
-        "需要先 analyze_music。写完或改完 sections.json 后调用，错误会一次列全。"
+        "需要先 analyze_music，只用于导入形态。写完或改完 sections.json 后调用，错误会一次列全。"
     ),
     input_model=ValidateSectionsArgs,
     stages={"music"},
