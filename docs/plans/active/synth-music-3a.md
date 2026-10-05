@@ -63,17 +63,17 @@
 
 ## 验收标准
 
-- [ ] AC1：`build_timeline` 三种来源（短片、讲解 + 背景乐、无配乐讲解）与错误汇总符合设计 §4.1；`TimelineSources` 读取顶层与 `upstream/`、拒绝缺文件与符号链接越界；`base_hash` 不随事件与能量变化，`hash` 随之变化（验证方式：`tests/timeline/`）
-- [ ] AC2：`engines.audio` 的 WAV 读取、`analyze`（对齐率、事件匹配分类、能量曲线映射、波形包络）、分析图、`run_compose` 符合设计 §7.3（验证方式：`tests/engines/test_audio_*.py`；`-m slow` 的沙箱用例）
-- [ ] AC3：`concept`、`beatsheet` 阶段与 `check_concept`、`validate_beatsheet` 符合设计 §6.1、§6.2（验证方式：`tests/stages/test_concept_*.py`、`test_beatsheet_*.py`）
-- [ ] AC4：`render_music` 与 `music` 阶段符合设计 §7：成功路径写齐五个托管文件、失败路径不动旧产物、重定时校验、沙箱不可用、`finalize_blockers`（验证方式：`tests/stages/test_music_*.py`）
-- [ ] AC5：运行时 `env.hit/span/energy/moment` 语义符合设计 §5（验证方式：`tests/engines/test_html_browser.py` 的 slow 用例，纯逻辑部分用表驱动）
-- [ ] AC6：`animation_html` 在短片与讲解 + 背景乐下按形态生成时间轴；`validate_scenes_html`、`render_preview_html` 的短片分支符合设计 §6.3（验证方式：`tests/stages/test_animation_html_*.py`）
-- [ ] AC7：`GET /api/video-kinds` 里短片与"讲解 + 合成背景乐"可用，创建项目成功；MV 与"导入音乐"仍不可用；设置页阶段列表含三个新阶段；旧项目与 Manim 路径的现有测试全部通过（验证方式：`tests/api/test_video_kinds.py`、`test_projects.py`、前端单测、`make check`）
-- [ ] AC8：fake 运行时分别跑通短片和"讲解 + 合成背景乐"的整条流水线，每个阶段产物齐全且能定稿；联调测试从真实 `render_music` 产物走到画面校验（验证方式：`tests/api/test_synth_music_flow.py`、`-m slow`）
+- [x] AC1：`build_timeline` 三种来源（短片、讲解 + 背景乐、无配乐讲解）与错误汇总符合设计 §4.1；`TimelineSources` 读取顶层与 `upstream/`、拒绝缺文件与符号链接越界；`base_hash` 不随事件与能量变化，`hash` 随之变化（验证方式：`tests/timeline/`）
+- [x] AC2：`engines.audio` 的 WAV 读取、`analyze`（对齐率、事件匹配分类、能量曲线映射、波形包络）、分析图、`run_compose` 符合设计 §7.3（验证方式：`tests/engines/test_audio_*.py`；`-m slow` 的沙箱用例）
+- [x] AC3：`concept`、`beatsheet` 阶段与 `check_concept`、`validate_beatsheet` 符合设计 §6.1、§6.2（验证方式：`tests/stages/test_concept_*.py`、`test_beatsheet_*.py`）
+- [x] AC4：`render_music` 与 `music` 阶段符合设计 §7：成功路径写齐五个托管文件、失败路径不动旧产物、重定时校验、沙箱不可用、`finalize_blockers`（验证方式：`tests/stages/test_music_*.py`）
+- [x] AC5：运行时 `env.hit/span/energy/moment` 语义符合设计 §5（验证方式：`tests/engines/test_html_browser.py` 的 slow 用例，纯逻辑部分用表驱动）
+- [x] AC6：`animation_html` 在短片与讲解 + 背景乐下按形态生成时间轴；`validate_scenes_html`、`render_preview_html` 的短片分支符合设计 §6.3（验证方式：`tests/stages/test_animation_html_*.py`）
+- [x] AC7：`GET /api/video-kinds` 里短片与"讲解 + 合成背景乐"可用，创建项目成功；MV 与"导入音乐"仍不可用；设置页阶段列表含三个新阶段；旧项目与 Manim 路径的现有测试全部通过（验证方式：`tests/api/test_video_kinds.py`、`test_projects.py`、前端单测、`make check`）
+- [x] AC8：fake 运行时分别跑通短片和"讲解 + 合成背景乐"的整条流水线，每个阶段产物齐全且能定稿；联调测试从真实 `render_music` 产物走到画面校验（验证方式：`tests/api/test_synth_music_flow.py`、`-m slow`）
 - [x] AC9：真实模型（`claude-login`）走完一个短片小项目（2 段 × 2 小节），`validate_beatsheet`、`render_music`、`validate_scenes_html` 最终无错误（验证方式：`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`，证据写到 `data/evidence/synth-music/smoke/`）
-- [ ] AC10：L4：在内置浏览器里创建"动态图形短片"项目，阶段导航为 概念 → 节拍脚本 → 配乐 → 动画，通用画布能看到各阶段产物（验证方式：控制者截图）
-- [ ] AC11：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`docs/references/` 已同步；`make check` 全绿
+- [x] AC10：L4：在内置浏览器里创建"动态图形短片"项目，阶段导航为 概念 → 节拍脚本 → 配乐 → 动画，通用画布能看到各阶段产物（验证方式：控制者截图）
+- [x] AC11：`ARCHITECTURE.md`、`QUALITY.md`、`docs/runbooks/verification.md`、`docs/references/` 已同步；`make check` 全绿
 
 ## 任务
 
@@ -236,7 +236,7 @@
 
 ## 下一步
 
-- T10：AC9 已通过；剩 L4（AC10）、TODO 同步、验证记录 AC1–AC8/AC11，之后整分支评审。
+- T10 与整分支评审已完成，等负责人验收；验收后合并（`--no-ff`）、计划移到 `completed/`、再写计划 3B。
 
 ## 决策记录
 
@@ -301,4 +301,5 @@
 
   所有轮次 `done`。music：48 个事件，起音对齐率 87%，声明起音匹配 kick 15/15、hat 19/19、impact 1/1，重定时校验通过（11.25→14.06 秒，对齐 87%→88%）。animation_html：最终"全部 2 个镜头校验通过"。警告：仅 pydub 的 `audioop` 弃用提示（与本功能无关）。"没有累积"：每次都是新临时目录和新会话，单次耗时主要在 music 与 animation_html 的沙箱渲染和 Chromium 预览。
 - **AC10 / L4**（2026-10-05，隔离实例：api 8010、前端 5174、临时数据目录、假运行时）：`POST /api/projects` 建"动态图形短片"（`html`/无旁白/`synth`）和"讲解 + 合成背景乐"（`html`/旁白/`synth`）成功；`music_source=import` 的两种（MV、讲解 + 导入音乐）都返回 422 类错误"「配乐（导入音乐）」阶段尚未实现"。项目页阶段筛选出现"创意/节拍脚本/配乐"；短片项目导航为 创意 → 节拍脚本 → 配乐 → 动画，讲解加配乐为 选题 → 叙事 → 配乐 → 动画。发现（Minor，未改）：短片项目页面包屑显示英文阶段名 `concept`；项目列表的阶段筛选里有两个都叫"动画"的按钮（manim 与 html 的动画阶段同名）。通用画布不显示 `analysis.png` 属预期，3B 的 `MusicCanvas` 处理。
-- AC1–AC8、AC11：待填（整分支评审之后）
+- **AC1–AC8、AC11**（2026-10-05，整分支评审修复后）：`make check` → 后端 `2218 passed, 80 deselected`、前端 `108 files / 983 tests passed`、ruff、pyright（0 errors）、import-linter 契约全部 KEPT、文档检查通过；slow 用例（真实 Seatbelt + Chromium：`test_music_render`、`test_music_tool`、`test_synth_music_flow`）`3 passed`。各 AC 对应测试见任务进度行与验收标准里的验证方式；AC7 在整分支评审后收窄：Manim 加合成配乐不可用（见决策记录），`test_video_kinds.py` 同步。文档同步见提交 e56f242 与本次 references/TODO 更新。
+- **整分支评审**（opus，2026-10-05）：无 Critical；Important 2 条已修（先红后绿）；Minor 十余条记入 TODO（P1，3B 开工前）。
