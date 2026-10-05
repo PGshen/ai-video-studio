@@ -253,9 +253,45 @@ class TestPrepareTurnForMusicProjects:
         STAGE.prepare_turn(tmp_path)
         assert (tmp_path / "upstream" / "beatsheet" / "beatsheet.json").is_file()
 
+    @staticmethod
+    def _stray_sections(workdir: Path) -> None:
+        # The music stage may write music/sections.json in the synth form too; without an
+        # imported music/source.<ext> it must not turn the project into an MV.
+        path = workdir / "upstream" / "music" / "sections.json"
+        path.write_text(
+            json.dumps({"sections": [{"id": "a", "label": "A", "start": 0.0, "end": 2.0}]}),
+            encoding="utf-8",
+        )
+
+    def test_a_reel_with_a_stray_sections_json_keeps_the_synth_timeline(
+        self, tmp_path: Path
+    ) -> None:
+        self._beatsheet(tmp_path)
+        self._music(tmp_path)
+        self._stray_sections(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
+        timeline = _load(tmp_path / "upstream" / "timeline.json")
+        assert timeline["narration"] == []
+        assert timeline["grid"]["bpm"] == 128
+        assert [s["id"] for s in timeline["sections"]] == ["s1", "s2"]
+        assert timeline["music"]["events"][0]["name"] == "kick"
+
+    def test_an_explainer_bed_with_a_stray_sections_json_keeps_its_narration(
+        self, tmp_path: Path
+    ) -> None:
+        _upstream(tmp_path)
+        self._music(tmp_path, bpm=100, duration=3.0, offset=0.1)
+        self._stray_sections(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
+        timeline = _load(tmp_path / "upstream" / "timeline.json")
+        assert len(timeline["narration"]) == 2
+        assert timeline["grid"]["bpm"] == 100
+
 
 class TestPrepareTurnForMusicMv:
-    """导入音乐 MV：`upstream/music/sections.json` 存在即走导入来源（4A T8）。"""
+    """导入音乐 MV：上游有 `sections.json` 和白名单 `source.<ext>` 才走导入来源。"""
 
     ANALYSIS = {
         "source_hash": "a" * 64,
@@ -341,9 +377,29 @@ class TestPrepareTurnForMusicMv:
         assert "bridge" in reason
         assert not (tmp_path / "upstream" / "timeline.json").exists()
 
-    def test_a_missing_source_audio_is_reported(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("ext", ["mp3", "wav", "m4a", "flac", "ogg"])
+    def test_every_whitelisted_source_extension_marks_an_mv(self, tmp_path: Path, ext: str) -> None:
         self._mv(tmp_path)
-        (tmp_path / "upstream" / "music" / "source.mp3").unlink()
+        music = tmp_path / "upstream" / "music"
+        (music / "source.mp3").rename(music / f"source.{ext}")
+        STAGE.prepare_turn(tmp_path)
+        assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
+        timeline = _load(tmp_path / "upstream" / "timeline.json")
+        assert timeline["music"]["file"] == f"music/source.{ext}"
+
+    @pytest.mark.parametrize("name", [None, "source.aac", "source.mp3.part"])
+    def test_without_a_whitelisted_source_the_project_is_not_an_mv(
+        self, tmp_path: Path, name: str | None
+    ) -> None:
+        # Same signal as the music stage (`music/source.<whitelisted ext>`): sections.json alone
+        # does not make an MV, so the synth loader runs and rejects the MV-shaped beatsheet.
+        self._mv(tmp_path)
+        music = tmp_path / "upstream" / "music"
+        (music / "source.mp3").unlink()
+        if name is not None:
+            (music / name).write_bytes(b"ID3fake")
         STAGE.prepare_turn(tmp_path)
         reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
-        assert "music/source" in reason
+        assert reason.startswith("beatsheet.json：bpm 必须是数字（当前 None）")
+        assert "source.*" not in reason
+        assert not (tmp_path / "upstream" / "timeline.json").exists()
