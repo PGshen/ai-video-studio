@@ -106,7 +106,7 @@
 - **完成标准**：测试通过；契约生效（`engines.audio` 故意 import `studio.agent` 时 `lint-imports` 失败，实现后通过）。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_audio_wav.py tests/engines/test_audio_analysis.py -v && uv run lint-imports`
 
-### T3：`engines.audio` ——分析图与脚本运行器（待开始）
+### T3：`engines.audio` ——分析图与脚本运行器（完成）
 
 - **目标**：Pillow 自绘分析图；在沙箱里运行合成脚本并回收产物。
 - **涉及文件**：`backend/src/studio/engines/audio/{picture,runner}.py`；`backend/tests/engines/{test_audio_picture,test_audio_runner}.py`。
@@ -223,12 +223,13 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T3 分析图与脚本运行器 — picture 4、runner 8（含超时杀进程组、取消、环境变量隔离），slow 的真实 Seatbelt 用例通过
 - 2026-10-05 — T2 `engines.audio` WAV 与分析 — 30 个测试（wav 10、analysis 20）
 - 2026-10-05 — T1 时间轴三层与按形态读取 — timeline 78 个测试（含 `test_build_layers`、`test_sources`），`make check` 全绿
 
 ## 下一步
 
-- T3：分析图 `picture.py` 与脚本运行器 `runner.py`。
+- T4：`concept` 与 `beatsheet` 阶段。
 
 ## 决策记录
 
@@ -243,6 +244,9 @@
 
 - 2026-10-05 — T2：`analyze(samples, timeline, events, *, section_energy=None)` 多一个可选参数，`section_energy` 是 `{段落 id: low|mid|high|peak}`（来自节拍脚本，时间轴里没有），用于"能量走向"警告；`engines.audio` 接收 dict 形式的时间轴，不 import `studio.timeline`。"可检测"事件的第二条规则定为"与更早的另一个 onset 事件相距不足 40 ms 则无法区分"（设计只说被掩蔽，这条是可判定的写法）。WAV 上限：100 MB、240 秒、采样率 22050–96000。
 - 2026-10-05 — T2 发现：测试夹具里的合成底鼓若在 0.18 秒处被硬切，会产生"第二个起音"，对齐率只有约 48%；夹具改为平滑淡出后对齐率超过 90%。真实合成脚本里的硬切同样会拉低对齐率，提示词里要提醒给尾音加淡出。
+
+- 2026-10-05 — T3：**Seatbelt 配置需要放回虚拟环境的读权限**。`shell_sandbox.seatbelt_profile` 拒读仓库根，而 `.venv` 在仓库内，脚本因此 `import numpy` 失败。`render_music` 的包装在 profile 末尾追加 `(allow file-read* (subpath <venv>))`（后写的规则优先；`.venv` 里没有密钥，`backend/.env` 仍被拒读）；真实沙箱用例已验证"能 import numpy、读不到 `.env`、连不上网络"。T5 的包装函数要照做。
+- 2026-10-05 — T3：运行器只把 `PATH/LANG/LC_ALL/HOME` 加上 `STUDIO_*`、`TMPDIR`（指向 `out_dir/tmp`）传给脚本，父进程里的 API key 等不会泄给脚本；`RLIMIT_CPU` 为超时 + 10 秒；超时与取消都杀整个进程组。分析图的底部一行画的是能量曲线加检测到的起音（`MusicReport` 不保存逐帧谱流量），不是设计里的"起音强度"曲线。
 
 ## 意外与发现
 
