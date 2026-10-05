@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,7 +47,7 @@ def _env(tmp_path: Path) -> tuple[Path, Engine, BlobStore]:
 
 
 @pytest.fixture
-async def reel(tmp_path: Path) -> Iterator[Env]:
+async def reel(tmp_path: Path) -> AsyncIterator[Env]:
     data_dir, engine, blobs = _env(tmp_path)
     pid = seed.seed_reel_project(engine, blobs, data_dir=data_dir)
     env = Env(data_dir, engine, blobs, pid)
@@ -60,7 +60,7 @@ async def reel(tmp_path: Path) -> Iterator[Env]:
 
 
 @pytest.fixture
-async def bed(tmp_path: Path) -> Iterator[Env]:
+async def bed(tmp_path: Path) -> AsyncIterator[Env]:
     data_dir, engine, blobs = _env(tmp_path)
     pid = seed.seed_bed_project(engine, blobs, data_dir=data_dir)
     env = Env(data_dir, engine, blobs, pid)
