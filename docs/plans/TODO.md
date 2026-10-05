@@ -16,7 +16,7 @@
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
-| P1 | 多形态视频子项目 4B：上传端点、音乐画布的导入形态、预览播放导入音频、worker 截取与混音 | [设计 §7、§8](../design/2026-10-05-import-music-mv.md)，2026-10-05 | 4A 已完成；4B 计划需带上：上传前清理旧 `music/source.*`、`music` 定稿时拦截多个源文件、`timeline/load.py` 取源规则与 `stages.common.music_source` 对齐 |
+| P2 | 音乐 MV 的画面质量：让用户通过对话与风格库控制要生成什么样的动画 | 负责人试看 4B 冒烟成片的反馈，2026-10-06 | 4B 冒烟成片（agent 自主写的画面）效果一般；方向是让对话与风格库更强地约束画面（风格、母题、镜头语言），而不是让 agent 自由发挥。负责人系统使用后再提具体需求；强拍相位/BPM/淡出的试听核对也一并在那时做（见 [import-music-mv.md](../references/import-music-mv.md)） |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
 | P2 | 真实模型对 `animation/assets/*` 用法的验证 | 同上 | 子项目 2 的小试未覆盖 |
@@ -25,6 +25,7 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-06 | 多形态视频子项目 4B：上传、画布、预览与成片（导入音乐 + 音乐 MV，子项目 4 整体完成） | [import-music-4b.md](completed/import-music-4b.md) |
 | 2026-10-05 | 多形态视频子项目 4A：导入音乐 + 音乐 MV（agent 侧） | [import-music-4a.md](completed/import-music-4a.md) |
 | 2026-10-05 | 3A 整分支评审遗留的 Minor：NaN/Inf 与 `offset` 校验、工具文本与输出大小上限、`ulimit` 取代 `preexec_fn`、脚本快照、分析移出事件循环、"X分Y秒"解析、`analysis.png` 调色板压缩 | 无计划，见 [synth-music-3a 决策记录](completed/synth-music-3a.md) |
 | 2026-10-05 | 3B 评审遗留的 Minor（`stale` 也比 wav 哈希、哈希按 (mtime, size) 缓存、成片混私有拷贝、`final.json` 新增 `music_hash`）；manim 预览图片限制大小（共用 `stages.common.picture`，JPEG ≤ 400 kB、同一条结果总预算 600 kB） | 无计划，见 [claude-agent-sdk](../references/claude-agent-sdk.md) 末节 |
