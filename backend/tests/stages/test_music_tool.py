@@ -62,8 +62,8 @@ async def test_success_returns_text_picture_and_registers_the_managed_files(
     assert not result.is_error, result.text
     for needle in ("配乐渲染成功", "BPM 128", "段落 s1", "重定时校验通过", "kick", LISTEN_NOTE):
         assert needle in result.text
-    assert len(result.images) == 1 and result.images[0].media_type == "image/png"
-    assert base64.b64decode(result.images[0].data_base64)[:4] == b"\x89PNG"
+    assert len(result.images) == 1 and result.images[0].media_type == "image/jpeg"
+    assert base64.b64decode(result.images[0].data_base64)[:3] == b"\xff\xd8\xff"
     assert sorted(rel for rel, _ in writes) == sorted(
         f"music/{n}"
         for n in ("music.wav", "events.json", "analysis.json", "analysis.png", "render.json")
@@ -113,3 +113,18 @@ async def test_the_real_sandbox_runs_the_reference_script(reel: Path) -> None:
     result = await invoke_tool(RENDER_MUSIC_TOOL, _ctx(reel, writes), {})
     assert not result.is_error, result.text
     assert (reel / "music" / "music.wav").is_file() and len(writes) == 5
+
+
+async def test_the_attached_picture_stays_well_under_the_sdk_message_limit(
+    reel: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Claude SDK refuses one JSON message over 1 MiB (found by the real-model smoke run):
+    the picture goes back as a compressed JPEG; `music/analysis.png` keeps full quality."""
+    monkeypatch.setattr(music_tool, "sandbox_wrapper", lambda workdir: identity)
+    result = await invoke_tool(RENDER_MUSIC_TOOL, _ctx(reel, []), {})
+    assert not result.is_error, result.text
+    image = result.images[0]
+    assert image.media_type == "image/jpeg"
+    raw = base64.b64decode(image.data_base64)
+    assert raw[:3] == b"\xff\xd8\xff" and len(raw) <= 400_000
+    assert (reel / "music" / "analysis.png").read_bytes()[:4] == b"\x89PNG"

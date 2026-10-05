@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from PIL import Image
 from pydantic import BaseModel
 
 from studio.agent.events import ImageData
@@ -23,6 +25,21 @@ from studio.timeline.load import load_timeline
 
 LISTEN_NOTE = "音色、和声、混响量与声像无法由这些指标判断，需要用户试听。"
 _MAX_LISTED = 8
+_MAX_PICTURE_BYTES = 400_000
+"""返回给模型的图的字节上限：Claude SDK 单条 JSON 消息不能超过 1 MiB（真实模型冒烟实测踩到），
+base64 之后还要再大三分之一。`music/analysis.png` 仍是原图，画布用它。"""
+
+
+def compress_picture(png: bytes) -> bytes:
+    """分析图转成 JPEG 返回给模型；质量逐级下降，仍超限就缩小尺寸。"""
+    image = Image.open(io.BytesIO(png)).convert("RGB")
+    while True:
+        for quality in (85, 70, 55, 40):
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=quality, optimize=True)
+            if buffer.tell() <= _MAX_PICTURE_BYTES:
+                return buffer.getvalue()
+        image = image.resize((int(image.width * 0.8), int(image.height * 0.8)))
 
 
 def real_sandbox_wrapper(workdir: Path) -> WrapCommand | None:
@@ -132,10 +149,9 @@ async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
         )
     images = []
     if outcome.png is not None:
+        jpeg = compress_picture(outcome.png)
         images.append(
-            ImageData(
-                media_type="image/png", data_base64=base64.b64encode(outcome.png).decode("ascii")
-            )
+            ImageData(media_type="image/jpeg", data_base64=base64.b64encode(jpeg).decode("ascii"))
         )
     return ToolResult(text=format_outcome(outcome), images=images)
 
