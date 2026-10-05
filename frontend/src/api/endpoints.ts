@@ -30,6 +30,7 @@ import type {
   ProjectOut,
   ProjectSettingsPatch,
   ProjectStatus,
+  HtmlPreviewMeta,
   SceneChecksResponse,
   SessionCreate,
   SettingsOut,
@@ -389,6 +390,19 @@ export function getSceneChecks(
   return request(`/projects/${encodePathSegment(projectId)}/animation/scene-checks`, {
     query: { scene_id: [...sceneIds] },
   })
+}
+
+/** 实时预览的时间、镜头、配音与内容哈希（`GET .../animation/html-preview/meta`）。 */
+export function getHtmlPreviewMeta(projectId: string): Promise<HtmlPreviewMeta> {
+  return request(`/projects/${encodePathSegment(projectId)}/animation/html-preview/meta`)
+}
+
+/**
+ * 预览页（自包含：脚本内联、字体与资产是 data URI）的 HTML 文本，给 iframe 的 `srcdoc` 用。
+ * 沙盒 iframe 是不透明源，浏览器可能不放行它对本机服务的任何请求，所以不能让它自己去取页面或资源。
+ */
+export function getHtmlPreviewPage(projectId: string): Promise<string> {
+  return requestText(`/projects/${encodePathSegment(projectId)}/animation/html-preview/inline`)
 }
 
 /**

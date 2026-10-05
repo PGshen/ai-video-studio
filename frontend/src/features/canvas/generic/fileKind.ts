@@ -18,6 +18,7 @@ const LANGUAGE_BY_EXT: Record<string, EditorLanguage> = {
   markdown: 'markdown',
   json: 'json',
   py: 'python',
+  js: 'javascript',
 }
 
 const TEXT_EXTENSIONS = new Set([

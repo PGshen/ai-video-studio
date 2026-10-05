@@ -26,10 +26,14 @@ const props = defineProps<{
   projectId: string
   stages: StageOut[]
   currentStage: string
+  /** 只保留「重新打开」：动画阶段只能在「成片」标签里渲染后定稿，不能绕过成片直接定稿。 */
+  reopenOnly?: boolean
 }>()
 
 const status = computed(() => props.stages.find((s) => s.stage === props.currentStage)?.status)
-const canFinalize = computed(() => status.value === 'active' || status.value === 'stale')
+const canFinalize = computed(
+  () => !props.reopenOnly && (status.value === 'active' || status.value === 'stale'),
+)
 const canReopen = computed(() => status.value === 'finalized' || status.value === 'stale')
 
 const finalizeMutation = useFinalizeStageMutation(() => props.projectId)

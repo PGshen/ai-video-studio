@@ -1186,6 +1186,48 @@ def _html_tool_results(outcome: TurnOutcome, name: str) -> list[dict[str, Any]]:
     ]
 
 
+async def _render_final_html(harness: Any) -> dict[str, Any]:
+    """用 agent 刚写出的镜头渲染成片（真实 Chromium + ffmpeg，不再调用模型）：旁白用与 timing
+    等长的静音 wav 代替，断言成片时长等于时间轴、有音轨。"""
+    import subprocess
+    import time
+    import wave
+
+    from studio.jobs import create_job, get_job
+    from studio.worker import run_once
+
+    timing = json.loads((harness.workdir / "narrative" / "timing.json").read_text("utf-8"))
+    for scene in timing["scenes"]:
+        path = harness.workdir / scene["audio_path"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(path), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(24000)
+            out.writeframes(b"\0\0" * int(24000 * scene["duration_seconds"]))
+    job = create_job(harness.engine, type="final_render", project_id=harness.project_id, payload={})
+    started = time.monotonic()
+    assert await run_once(harness.engine, harness.blobs, data_dir=harness.data_dir)
+    finished = get_job(harness.engine, job.id)
+    assert finished is not None and finished.status == "done", finished and finished.error
+    elapsed = time.monotonic() - started
+    final = harness.workdir / "output" / "final.mp4"
+    probe = json.loads(
+        subprocess.run(
+            ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(final)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    expected = sum(scene["duration_seconds"] for scene in timing["scenes"])
+    seconds = float(probe["format"]["duration"])
+    assert abs(seconds - expected) < 0.2, (seconds, expected)
+    kinds = {stream["codec_type"] for stream in probe["streams"]}
+    assert kinds == {"video", "audio"}, kinds
+    return {"video_seconds": seconds, "render_wall_seconds": round(elapsed, 1)}
+
+
 async def test_animation_html_claude_login(tmp_path: Path) -> None:
     from studio.engines.render.html.pool import close_browser_pool
 
@@ -1227,6 +1269,7 @@ async def test_animation_html_claude_login(tmp_path: Path) -> None:
         evidence["preview_calls"] = len(previews)
         evidence["validate_calls"] = len(results)
         evidence["tool_calls"] = [name for t in turns for name in t.tool_names]
+        evidence["final_render"] = await _render_final_html(harness)
     finally:
         record_evidence("animation-html-claude-login", evidence, HTML_EVIDENCE_DIR)
         await close_browser_pool()

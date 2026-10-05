@@ -405,3 +405,32 @@ export interface TopicCheckOut {
   errors: string[]
   warnings: string[]
 }
+
+// ---- HTML 实时预览（对应 `api/html_preview.py`）---------------------------
+
+export interface HtmlPreviewBeat {
+  start: number
+  end: number
+  cue_text: string
+}
+
+export interface HtmlPreviewSection {
+  id: string
+  label: string
+  start: number
+  end: number
+  beats: HtmlPreviewBeat[]
+}
+
+export interface HtmlPreviewAudio {
+  section_id: string
+  url: string
+}
+
+/** `GET /projects/{id}/animation/html-preview/meta`：`hash` 变了才需要刷新 iframe。 */
+export interface HtmlPreviewMeta {
+  hash: string
+  duration: number
+  sections: HtmlPreviewSection[]
+  audio: HtmlPreviewAudio[]
+}

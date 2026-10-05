@@ -11,12 +11,11 @@ import base64
 import hashlib
 from collections.abc import Mapping
 from typing import Any, Protocol
-from urllib.parse import unquote
 
 from playwright.async_api import Browser, BrowserContext, Page, Route, async_playwright
 from playwright.async_api import Error as PlaywrightError
 
-from studio.engines.render.html.assemble import AssembledPage
+from studio.engines.render.html.assemble import AssembledPage, serve_page_path
 
 INSTALL_HINT = "uv run playwright install chromium"
 ORIGIN = "http://studio.local/"
@@ -211,23 +210,11 @@ class HtmlBrowser:
         result = HtmlPage(context, html_page, errors, render_timeout=self._render_timeout)
 
         async def handle(route: Route) -> None:
-            path = unquote(route.request.url.removeprefix(ORIGIN).split("?", 1)[0])
-            if path in ("", "index.html"):
-                await route.fulfill(body=page.html, content_type="text/html; charset=utf-8")
-                return
-            if path.startswith("scripts/") and path[len("scripts/") :] in page.scripts:
-                await route.fulfill(
-                    body=page.scripts[path[len("scripts/") :]],
-                    content_type="text/javascript; charset=utf-8",
-                )
-                return
-            file = page.routes.get(path)
-            if file is None or not file.is_file():
+            served = serve_page_path(page, route.request.url.removeprefix(ORIGIN))
+            if served is None:
                 await route.fulfill(status=404, body="not found")
                 return
-            await route.fulfill(
-                body=file.read_bytes(), content_type=_content_type(file.suffix.lower())
-            )
+            await route.fulfill(body=served.body, content_type=served.content_type)
 
         try:
             await context.route(ORIGIN + "**", handle)
@@ -257,17 +244,3 @@ class HtmlBrowser:
     async def _load(page: Page) -> None:
         await page.goto(ORIGIN + "index.html")
         await page.evaluate("window.ready")
-
-
-_CONTENT_TYPES: dict[str, str] = {
-    ".woff2": "font/woff2",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-}
-
-
-def _content_type(suffix: str) -> str:
-    return _CONTENT_TYPES.get(suffix, "application/octet-stream")

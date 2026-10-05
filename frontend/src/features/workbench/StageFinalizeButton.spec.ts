@@ -106,3 +106,26 @@ describe('StageFinalizeButton', () => {
     expect(w.get('[data-testid="stage-action-error"]').text()).toContain('定稿失败：简报没通过检查')
   })
 })
+
+describe('reopenOnly（动画阶段只能经成片定稿）', () => {
+  const mountOnly = (status: string) =>
+    mount(StageFinalizeButton, {
+      props: { projectId: 'p1', stages: [stage(status)], currentStage: 'topic', reopenOnly: true },
+    })
+
+  it('活动阶段不显示定稿按钮', () => {
+    expect(mountOnly('active').find('[data-testid="finalize-stage"]').exists()).toBe(false)
+  })
+
+  it('已定稿的阶段仍可重新打开', () => {
+    const w = mountOnly('finalized')
+    expect(w.find('[data-testid="reopen-stage"]').exists()).toBe(true)
+    expect(w.find('[data-testid="finalize-stage"]').exists()).toBe(false)
+  })
+
+  it('过期的阶段可重新打开，但不能直接定稿', () => {
+    const w = mountOnly('stale')
+    expect(w.find('[data-testid="reopen-stage"]').exists()).toBe(true)
+    expect(w.find('[data-testid="finalize-stage"]').exists()).toBe(false)
+  })
+})

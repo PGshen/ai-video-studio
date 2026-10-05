@@ -6,7 +6,7 @@
  * 规则不允许跨阶段画布互相 import，挪进 `components/` 后两边都能用）。
  * 不用 `vue-codemirror`，只用「依赖清单」里允许的四个包——`codemirror`
  * （重新导出 `EditorView`/`basicSetup`）、`@codemirror/lang-{markdown,
- * json,python}`。`codemirror` 包**不**重新导出 `EditorState`/
+ * json,python,javascript}`。`codemirror` 包**不**重新导出 `EditorState`/
  * `Compartment`，所以这里没法用 compartment 动态重新配置扩展；改用更简单
  * 但足够用的办法——`language`/`readonly` 变化时整个销毁重建
  * `EditorView`（这两者只在切换文件/切换 agent 运行状态时变化，频率很低，
@@ -19,6 +19,7 @@ import { EditorView, basicSetup } from 'codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { json } from '@codemirror/lang-json'
 import { python } from '@codemirror/lang-python'
+import { javascript } from '@codemirror/lang-javascript'
 import type { EditorLanguage } from './codeEditorLanguage'
 
 // `codemirror` 包不重新导出 `Extension` 类型（只导出 `EditorView`/
@@ -47,6 +48,8 @@ function languageExtensions(): Extension[] {
       return [json()]
     case 'python':
       return [python()]
+    case 'javascript':
+      return [javascript()]
     default:
       return []
   }

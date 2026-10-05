@@ -29,6 +29,7 @@ describe('queryKeys', () => {
     expect(queryKeys.ideas('archived')).toEqual(['ideas', 'archived'])
     expect(queryKeys.ideas(null)).toEqual(['ideas', 'active'])
     expect(queryKeys.topicCheck('p1')).toEqual(['projects', 'p1', 'topic', 'check'])
+    expect(queryKeys.htmlPreviewMeta('p1')).toEqual(['projects', 'p1', 'animation', 'html-preview-meta'])
   })
 })
 
@@ -57,6 +58,7 @@ describe('invalidateAfterWrite', () => {
     expect(keys).toContainEqual(['projects', 'p1', 'files'])
     expect(keys).toContainEqual(['projects', 'p1', 'files', 'topic/brief.md'])
     expect(keys).toContainEqual(['projects', 'p1', 'topic', 'check'])
+    expect(keys).toContainEqual(['projects', 'p1', 'animation', 'html-preview-meta'])
   })
 })
 
@@ -70,6 +72,16 @@ describe('invalidateWorkspace', () => {
     const keys = spy.mock.calls.map((call) => call[0]?.queryKey)
     expect(keys).toContainEqual(['projects', 'p1', 'files'])
     expect(keys).toContainEqual(['projects', 'p1', 'snapshots'])
+  })
+
+  it('工作区变化后重新取 HTML 预览的 meta（哈希变了才会刷新 iframe）', async () => {
+    const queryClient = new QueryClient()
+    const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await invalidateWorkspace(queryClient, 'p1')
+
+    const keys = spy.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(['projects', 'p1', 'animation', 'html-preview-meta'])
   })
 })
 
