@@ -255,3 +255,14 @@ def test_inline_assets_are_data_uris_the_runtime_can_look_up_by_name(tmp_path: P
 def test_non_inline_pages_are_unchanged(tmp_path: Path) -> None:
     html = assemble(_project(tmp_path), TIMELINE).html
     assert "__ASSET_SRC__" not in html and "data:font" not in html
+
+
+def test_global_script_can_be_left_out_of_the_page(tmp_path: Path) -> None:
+    _write(tmp_path, "animation/scenes/s-hook.js", "module.exports = { draw() {} };\n")
+    _write(tmp_path, "animation/global.js", "module.exports = { post() {} };\n")
+    with_global = assemble(tmp_path, TIMELINE)
+    without = assemble(tmp_path, TIMELINE, include_global=False)
+    assert "animation/global.js" in with_global.scripts
+    assert "animation/global.js" not in without.scripts
+    assert "__GLOBAL__" not in without.html
+    assert "animation/scenes/s-hook.js" in without.scripts

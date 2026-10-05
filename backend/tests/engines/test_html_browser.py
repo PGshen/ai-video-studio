@@ -274,3 +274,168 @@ async def test_inline_page_renders_the_same_frames_as_the_route_served_page(
     finally:
         await served.close()
         await inline.close()
+
+
+# ---- 配乐与节拍契约：env.hit / span / energy / moment（子项目 3 设计 §5） ----------------
+
+_BEAT = 60 / 128
+
+PROBE_SCENE = """
+window.__probe = window.__probe || {};
+module.exports = { draw(ctx, lt, env) {
+  const r = {
+    kick: env.hit('kick'), late: env.hit('late'), energy: env.energy(),
+    energyAt0: env.energy(0), energyFar: env.energy(1000), energyBefore: env.energy(-1000),
+    moment0: (function () { try { return env.moment(0); } catch (e) { return e.name; } })(),
+    span: env.span('riser'), bt1: env.bt(1), bar1: env.bar(1),
+  };
+  window.__probe[env.section.id + '@' + env.t.toFixed(3)] = r;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, env.W, env.H);
+} };
+"""
+
+
+def _reel_timeline() -> dict[str, Any]:
+    from fixtures.audio_engine import reel_timeline
+
+    timeline = reel_timeline(128.0, 4, sections=2)  # s1 0–3.75 s, s2 3.75–7.5 s
+    s2_start = timeline["sections"][1]["start"]
+    timeline["moments"] = [
+        {"section_id": "s2", "at": "1.3", "t": s2_start + 2 * _BEAT, "visual_action": "冲击"}
+    ]
+    timeline["music"] = {
+        "file": "music/music.wav",
+        "events": [
+            {"name": "kick", "kind": "onset", "start": 0.0, "end": 0.18},
+            {"name": "kick", "kind": "onset", "start": _BEAT, "end": _BEAT + 0.18},
+            {"name": "late", "kind": "onset", "start": 5.0, "end": 5.2},
+            {"name": "riser", "kind": "sweep", "start": 1.0, "end": 2.0},
+        ],
+        "energy": {"hop": 0.1, "values": [i / 150 for i in range(76)]},  # energy(T) = T / 15
+    }
+    return timeline
+
+
+async def _probe(browser: HtmlBrowser, tmp_path: Path, timeline: dict[str, Any]) -> HtmlPage:
+    fx.write_project(tmp_path, scenes={"s1": PROBE_SCENE, "s2": PROBE_SCENE})
+    page = await browser.open_page(assemble(tmp_path, timeline))
+    assert isinstance(page, HtmlPage)
+    return page
+
+
+async def test_hit_is_one_at_the_onset_decays_and_is_zero_before_the_first_one(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    page = await _probe(browser, tmp_path, _reel_timeline())
+    for t in (0.0, _BEAT, _BEAT + 0.18, 4.0, 5.0 + 0.36):
+        await page.render_hash(t)
+    probe = await page.evaluate("window.__probe")
+    assert probe["s1@0.000"]["kick"] == pytest.approx(1.0)
+    assert probe["s1@0.469"]["kick"] == pytest.approx(1.0)  # the later onset, not the first one
+    assert probe["s1@0.649"]["kick"] == pytest.approx(0.3679, abs=0.002)  # exp(-0.18 / 0.18)
+    assert probe["s2@4.000"]["kick"] == pytest.approx(
+        2.718281828 ** (-(4.0 - _BEAT) / 0.18), abs=1e-4
+    )
+    assert probe["s1@0.000"]["late"] == 0.0  # before its first onset
+    assert probe["s2@5.360"]["late"] == pytest.approx(2.718281828**-2.0, abs=1e-3)
+    await page.close()
+
+
+async def test_hit_on_a_sweep_or_an_unknown_name_explains_itself(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    fx.write_project(
+        tmp_path,
+        scenes={
+            "s1": "module.exports = { draw(ctx, lt, env) { env.hit('riser'); } };\n",
+            "s2": "module.exports = { draw(ctx, lt, env) { env.hit('nope'); } };\n",
+        },
+    )
+    page = await browser.open_page(assemble(tmp_path, _reel_timeline()))
+    with pytest.raises(SceneRenderError) as sweep:
+        await page.render_jpeg(1.0)
+    assert "span" in str(sweep.value) and "riser" in str(sweep.value)
+    with pytest.raises(SceneRenderError) as unknown:
+        await page.render_jpeg(4.0)
+    assert "没有这个事件" in str(unknown.value)
+    for name in ("kick", "late", "riser"):
+        assert name in str(unknown.value)
+    await page.close()
+
+
+async def test_span_lists_every_event_of_that_name_in_section_local_seconds(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    page = await _probe(browser, tmp_path, _reel_timeline())
+    await page.render_hash(1.5)
+    await page.render_hash(4.0)
+    probe = await page.evaluate("window.__probe")
+    assert probe["s1@1.500"]["span"] == [{"start": pytest.approx(1.0), "end": pytest.approx(2.0)}]
+    # section 2 starts at 3.75 s, so the same riser is in the past: local seconds go negative
+    assert probe["s2@4.000"]["span"] == [
+        {"start": pytest.approx(1.0 - 3.75), "end": pytest.approx(2.0 - 3.75)}
+    ]
+    await page.close()
+
+
+async def test_energy_interpolates_in_local_time_and_clamps_at_the_ends(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    page = await _probe(browser, tmp_path, _reel_timeline())
+    await page.render_hash(5.0)  # section 2: starts at 3.75
+    probe = (await page.evaluate("window.__probe"))["s2@5.000"]
+    assert probe["energy"] == pytest.approx(5.0 / 15, abs=1e-3)  # current time
+    assert probe["energyAt0"] == pytest.approx(3.75 / 15, abs=1e-3)  # local lt = 0
+    assert probe["energyFar"] == pytest.approx(75 / 150)  # clamped to the last value
+    assert probe["energyBefore"] == 0.0
+    await page.close()
+
+
+async def test_moment_gives_local_seconds_and_runs_out_with_a_range_error(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    page = await _probe(browser, tmp_path, _reel_timeline())
+    await page.render_hash(5.0)
+    moment = (await page.evaluate("window.__probe"))["s2@5.000"]["moment0"]
+    assert moment == {"at": "1.3", "t": pytest.approx(2 * _BEAT), "action": "冲击"}
+    fx.write_project(
+        tmp_path, scenes={"s1": "module.exports = { draw(c, lt, env) { env.moment(1); } };\n"}
+    )
+    other = await browser.open_page(assemble(tmp_path, _reel_timeline()))
+    with pytest.raises(SceneRenderError) as exc:
+        await other.render_jpeg(1.0)
+    assert "RangeError" in str(exc.value) or "只有 0 个 moment" in str(exc.value)
+    await page.close()
+    await other.close()
+
+
+async def test_bt_and_bar_are_global_beat_and_bar_indices_in_local_seconds(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    page = await _probe(browser, tmp_path, _reel_timeline())
+    await page.render_hash(5.0)
+    probe = (await page.evaluate("window.__probe"))["s2@5.000"]
+    assert probe["bt1"] == pytest.approx(_BEAT - 3.75)
+    assert probe["bar1"] == pytest.approx(4 * _BEAT - 3.75)
+    await page.close()
+
+
+async def test_without_music_the_helpers_keep_their_old_neutral_values(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    fx.write_project(
+        tmp_path,
+        scenes={
+            "s-hook": """
+window.__neutral = [];
+module.exports = { draw(ctx, lt, env) {
+  window.__neutral.push([env.hit('kick'), env.energy(), env.moment(0) === undefined,
+                         env.span('x').length]);
+} };
+"""
+        },
+    )
+    page = await _open(browser, tmp_path)
+    await page.render_hash(1.0)
+    assert (await page.evaluate("window.__neutral"))[0] == [0, 0, True, 0]
+    await page.close()

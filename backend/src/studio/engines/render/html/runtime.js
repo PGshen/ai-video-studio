@@ -53,9 +53,47 @@
       assets: assetProxy,
       bt: function (n) { needGrid(); return grid.beats[0] + n * 60 / grid.bpm - sec.start; },
       bar: function (n) { needGrid(); return grid.beats[0] + n * 240 / grid.bpm - sec.start; },
-      hit: function () { return 0; },
-      energy: function () { return 0; },
-      moment: function () { return undefined; },
+      // 配乐相关：timeline.music 为 null（无配乐的讲解）时保持中性值，不抛错。
+      hit: function (name) {
+        var music = timeline.music;
+        if (!music) return 0;
+        var named = (music.events || []).filter(function (e) { return e.name === name; });
+        if (!named.length) {
+          var names = Array.from(new Set((music.events || []).map(function (e) { return e.name; })));
+          throw new Error('env.hit("' + name + '")：没有这个事件，已有：' + (names.join(', ') || '无'));
+        }
+        if (named.every(function (e) { return e.kind === 'sweep'; })) {
+          throw new Error('env.hit("' + name + '")：这是持续的扫频事件（sweep），用 env.span("' + name + '") 取它的起止');
+        }
+        var best = -Infinity;
+        named.forEach(function (e) {
+          if (e.kind === 'onset' && e.start <= t && e.start > best) best = e.start;
+        });
+        return best === -Infinity ? 0 : Math.exp(-(t - best) / 0.18);
+      },
+      span: function (name) {
+        var music = timeline.music;
+        if (!music) return [];
+        return (music.events || [])
+          .filter(function (e) { return e.name === name; })
+          .map(function (e) { return { start: e.start - sec.start, end: e.end - sec.start }; });
+      },
+      energy: function (lt) {
+        var music = timeline.music;
+        if (!music) return 0;
+        var en = music.energy;
+        var x = (lt === undefined ? t : lt + sec.start) / en.hop;
+        var i = Math.max(0, Math.min(en.values.length - 1, Math.floor(x)));
+        var j = Math.min(en.values.length - 1, i + 1);
+        var f = Math.max(0, Math.min(1, x - i));
+        return en.values[i] + (en.values[j] - en.values[i]) * f;
+      },
+      moment: function (i) {
+        var list = timeline.moments.filter(function (m) { return m.section_id === sec.id; });
+        if (!list.length && !timeline.music) return undefined;
+        if (!list[i]) throw new RangeError('env.moment(' + i + '): 本镜头只有 ' + list.length + ' 个 moment');
+        return { at: list[i].at, t: list[i].t - sec.start, action: list[i].visual_action };
+      },
     };
   }
 

@@ -119,10 +119,14 @@ def assemble(
     *,
     preview: bool = False,
     inline: bool = False,
+    include_global: bool = True,
 ) -> AssembledPage:
     """`inline=True` 产出自包含页面：脚本内联（用 `//# sourceURL` 保留文件名）、字体和资产是
     data URI，页面不再发任何子资源请求。实时预览的 iframe 是不透明源的沙盒，浏览器可能不放行
-    它对本机服务的请求，所以预览用 `srcdoc` 加载这种页面；成片和探测仍用路由表供给文件。"""
+    它对本机服务的请求，所以预览用 `srcdoc` 加载这种页面；成片和探测仍用路由表供给文件。
+
+    `include_global=False` 不装配 `global.js`：短片的音乐平移检查要看镜头自己对节拍的响应，
+    不能被全局后期（HUD 之类读节拍的效果）掩盖。"""
     animation = workdir / "animation"
     style_fonts = _style_fonts(workdir)
     assets = list_assets(workdir)
@@ -168,7 +172,7 @@ def assemble(
             )
             parts.append(add_script(f"animation/scenes/{scene.name}", wrapped))
     global_js = animation / "global.js"
-    if global_js.is_file():
+    if include_global and global_js.is_file():
         wrapped = (
             "window.__GLOBAL__=(function(){const module={exports:{}};"
             "const exports=module.exports;"

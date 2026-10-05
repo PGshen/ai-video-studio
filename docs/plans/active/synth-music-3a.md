@@ -168,7 +168,7 @@
 - **完成标准**：测试通过；`make check-fast` 通过。
 - **验证命令**：`cd backend && uv run pytest tests/stages/test_music_stage.py tests/stages/test_music_prompt.py tests/api/test_video_kinds.py tests/api/test_projects.py -v && uv run lint-imports`；`cd frontend && pnpm test -- settings`
 
-### T7：HTML 运行时 `env.hit/span/energy/moment` 与 `include_global`（待开始）
+### T7：HTML 运行时 `env.hit/span/energy/moment` 与 `include_global`（完成）
 
 - **目标**：把运行时占位换成实现，`assemble` 支持不含 `global.js` 的组装（设计 §5、§6.3）。
 - **涉及文件**：`backend/src/studio/engines/render/html/{runtime.js,assemble.py}`；`backend/tests/engines/test_html_assemble.py`、`test_html_browser.py`（新用例）。
@@ -223,6 +223,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T7 运行时 `env` 补全与 `include_global` — 慢测 7 个新增（共 24 个通过），assemble 1 个
 - 2026-10-05 — T6 `music` 阶段与注册 — 26 个阶段测试；短片与"讲解 + 合成背景乐"在 `/api/video-kinds` 里可用，导入音乐仍不可用；`make check` 全绿
 - 2026-10-05 — T5 `render_music` 核心与工具 — 19 个测试（render 13、tool 5 + 真实 Seatbelt 1 slow），`agent.shell_sandbox.seatbelt_profile` 增加 `allow_read` 参数
 - 2026-10-05 — T4 `concept` 与 `beatsheet` 阶段 — 78 个新增测试（target_duration、concept、beatsheet），`make check` 全绿
@@ -232,7 +233,7 @@
 
 ## 下一步
 
-- T7：HTML 运行时 `env.hit/span/energy/moment` 与 `assemble(include_global=…)`。
+- T8：`animation_html` 的短片分支（`prepare_turn`、`validate_scenes_html`、`render_preview_html`、提示词）。
 
 ## 决策记录
 
