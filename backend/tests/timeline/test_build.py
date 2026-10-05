@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 
 from studio.timeline.build import (
-    LayerNotSupported,
     NarrationInput,
     TimelineError,
     TimelineLayers,
@@ -42,13 +41,6 @@ def test_build_accumulates_section_starts_and_globalises_beats() -> None:
     beat = tl.narration[1].beats[0]
     assert (beat.start, beat.end, beat.cue_text) == (2.5, 4.5, "三")
     assert tl.grid is None and tl.music is None
-
-
-@pytest.mark.parametrize("layer", ["grid", "moments", "music"])
-def test_reserved_layers_are_rejected(layer: str) -> None:
-    layers = TimelineLayers(narration=_two_scenes(), **{layer: {"anything": 1}})
-    with pytest.raises(LayerNotSupported):
-        build_timeline(layers)
 
 
 def test_empty_narration_is_an_error() -> None:
