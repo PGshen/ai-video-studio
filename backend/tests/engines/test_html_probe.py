@@ -310,3 +310,79 @@ async def test_beat_sensitivity_does_not_touch_a_poisoned_page_in_its_cleanup() 
     with pytest.raises(RenderTimeout):
         await beat_sensitivity(page, TIMELINE, "s-b")
     assert page.set_calls == page.calls_at_poison[0]  # 页面作废后，清理阶段不再碰它
+
+
+# ---- 短片：音乐平移敏感度与关键时刻采样（子项目 3 设计 §6.3） ----
+
+
+def _reel() -> dict[str, Any]:
+    from fixtures.html_engine.projects import reel_timeline
+
+    return reel_timeline()
+
+
+def test_shift_music_moves_the_grid_events_moments_and_energy_but_not_the_sections() -> None:
+    from studio.engines.render.html.probe import shift_music
+
+    original = _reel()
+    shifted = shift_music(original, 0.2)
+    assert (
+        shifted["duration"] == original["duration"] and shifted["sections"] == original["sections"]
+    )
+    assert shifted["grid"]["beats"][1] == pytest.approx(original["grid"]["beats"][1] + 0.2)
+    assert shifted["grid"]["downbeats"][0] == pytest.approx(0.2)
+    assert shifted["grid"]["offset"] == pytest.approx(0.2)
+    assert shifted["music"]["events"][0]["start"] == pytest.approx(0.2)
+    assert shifted["music"]["events"][0]["end"] == pytest.approx(
+        original["music"]["events"][0]["end"] + 0.2
+    )
+    assert shifted["moments"][1]["t"] == pytest.approx(original["moments"][1]["t"] + 0.2)
+    energy, before = shifted["music"]["energy"]["values"], original["music"]["energy"]["values"]
+    assert len(energy) == len(before) and energy[2:] == before[:-2]  # two hops later
+    assert original["grid"]["offset"] == 0.0  # the input is not touched
+
+
+def test_reel_sample_times_cover_moments_downbeats_and_the_rarest_events() -> None:
+    from studio.engines.render.html.probe import reel_sample_times
+
+    timeline = _reel()
+    section = timeline["sections"][1]
+    times = reel_sample_times(timeline, "s2")
+    assert times == sorted(set(times)) and len(times) <= 16
+    assert all(section["start"] <= t < section["end"] for t in times)
+    moment = timeline["moments"][1]["t"]
+    assert any(abs(t - (moment + 0.04)) < 1e-6 for t in times)
+    downbeat = next(d for d in timeline["grid"]["downbeats"] if d >= section["start"])
+    assert any(abs(t - (downbeat + 0.04)) < 1e-6 for t in times)
+    late = next(e for e in timeline["music"]["events"] if e["name"] == "late")
+    assert any(abs(t - (late["start"] + 0.04)) < 1e-6 for t in times)  # the rarest onset name
+
+
+async def test_music_shift_sensitivity_all_unchanged_when_nothing_follows_the_music() -> None:
+    from studio.engines.render.html.probe import music_shift_sensitivity
+
+    timeline = _reel()
+    page = FakePage(hash_fn=lambda t, tl: _digest(t))
+    report = await music_shift_sensitivity(page, timeline, "s1")
+    assert report.all_unchanged and report.unchanged == report.times and report.times
+    assert page.timeline == timeline  # restored afterwards
+
+
+async def test_music_shift_sensitivity_all_changed_when_frames_follow_the_grid() -> None:
+    from studio.engines.render.html.probe import music_shift_sensitivity
+
+    page = FakePage(hash_fn=lambda t, tl: _digest(t, tl["grid"]["beats"][:3]))
+    report = await music_shift_sensitivity(page, _reel(), "s1")
+    assert report.unchanged == [] and not report.all_unchanged
+
+
+async def test_music_shift_sensitivity_partial_names_the_frames_that_ignored_the_music() -> None:
+    from studio.engines.render.html.probe import music_shift_sensitivity
+
+    def hash_fn(t: float, tl: Mapping[str, Any]) -> str:
+        first_moment = tl["moments"][0]["t"]
+        return _digest(t, first_moment) if t < 1.0 else _digest(t)
+
+    report = await music_shift_sensitivity(FakePage(hash_fn=hash_fn), _reel(), "s1")
+    assert report.unchanged and not report.all_unchanged
+    assert all(t >= 1.0 for t in report.unchanged)

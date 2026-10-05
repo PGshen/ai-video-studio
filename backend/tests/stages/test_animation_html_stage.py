@@ -157,3 +157,98 @@ class TestPrepareTurn:
         STAGE.prepare_turn(tmp_path)
         assert (tmp_path / "upstream" / "timeline.json").is_file()
         assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
+
+
+class TestPrepareTurnForMusicProjects:
+    """短片与"讲解 + 背景乐"：时间轴带网格与配乐层（子项目 3 设计 §6.3）。"""
+
+    @staticmethod
+    def _beatsheet(workdir: Path) -> None:
+        path = workdir / "upstream" / "beatsheet" / "beatsheet.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "bpm": 128,
+                    "sections": [
+                        {
+                            "id": "s1",
+                            "label": "A",
+                            "bars": 3,
+                            "intent": "x",
+                            "energy": "low",
+                            "moments": [{"at": "1.1", "visual_action": "开场"}],
+                        },
+                        {"id": "s2", "label": "B", "bars": 3, "intent": "x", "energy": "peak"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def _music(
+        workdir: Path, *, bpm: float = 128, duration: float = 11.25, **extra: object
+    ) -> None:
+        folder = workdir / "upstream" / "music"
+        folder.mkdir(parents=True, exist_ok=True)
+        events = [{"name": "kick", "kind": "onset", "start": 0.0, "end": 0.2}]
+        (folder / "events.json").write_text(
+            json.dumps({"bpm": bpm, "duration": duration, "events": events, **extra}),
+            encoding="utf-8",
+        )
+        (folder / "analysis.json").write_text(
+            json.dumps({"hop": 0.1, "energy": [0.1, 0.5]}), encoding="utf-8"
+        )
+
+    def test_a_reel_gets_grid_moments_and_music_without_narration(self, tmp_path: Path) -> None:
+        self._beatsheet(tmp_path)
+        self._music(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        timeline = _load(tmp_path / "upstream" / "timeline.json")
+        assert timeline["narration"] == []
+        assert timeline["grid"]["bpm"] == 128
+        assert [s["id"] for s in timeline["sections"]] == ["s1", "s2"]
+        assert timeline["moments"][0]["at"] == "1.1"
+        assert timeline["music"]["events"][0]["name"] == "kick"
+        assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
+
+    def test_a_reel_without_the_rendered_music_names_the_missing_files(
+        self, tmp_path: Path
+    ) -> None:
+        self._beatsheet(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
+        assert "music/events.json" in reason
+        assert not (tmp_path / "upstream" / "timeline.json").exists()
+
+    def test_a_reel_whose_music_disagrees_with_the_beatsheet_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        self._beatsheet(tmp_path)
+        self._music(tmp_path, bpm=100)
+        STAGE.prepare_turn(tmp_path)
+        reason = (tmp_path / "upstream" / "timeline.error.txt").read_text(encoding="utf-8")
+        assert "bpm" in reason
+
+    def test_an_explainer_with_a_background_bed_takes_the_grid_from_the_declared_bpm(
+        self, tmp_path: Path
+    ) -> None:
+        _upstream(tmp_path)
+        self._music(tmp_path, bpm=100, duration=3.0, offset=0.1)
+        STAGE.prepare_turn(tmp_path)
+        timeline = _load(tmp_path / "upstream" / "timeline.json")
+        assert timeline["grid"]["bpm"] == 100 and timeline["grid"]["offset"] == pytest.approx(0.1)
+        assert len(timeline["narration"]) == 2 and timeline["music"] is not None
+
+    def test_an_explainer_without_music_is_unchanged(self, tmp_path: Path) -> None:
+        _upstream(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        timeline = _load(tmp_path / "upstream" / "timeline.json")
+        assert timeline["grid"] is None and timeline["music"] is None
+
+    def test_the_beatsheet_stays_readable_for_the_agent(self, tmp_path: Path) -> None:
+        self._beatsheet(tmp_path)
+        self._music(tmp_path)
+        STAGE.prepare_turn(tmp_path)
+        assert (tmp_path / "upstream" / "beatsheet" / "beatsheet.json").is_file()

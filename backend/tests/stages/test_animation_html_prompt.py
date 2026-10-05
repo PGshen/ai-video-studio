@@ -34,6 +34,18 @@ _REQUIRED = [
     ("回退建议工具", "suggest_upstream_change"),
     ("不要反复全量预览", "不要反复"),
     ("画面不重叠", "不重叠"),
+    ("短片分支", "短片"),
+    ("节拍脚本路径", "upstream/beatsheet/beatsheet.json"),
+    ("bt 与 bar", "env.bt"),
+    ("bar", "env.bar"),
+    ("hit 事件包络", "env.hit"),
+    ("hit 衰减常数", "0.18"),
+    ("扫频用 span", "env.span"),
+    ("能量", "env.energy"),
+    ("节拍脚本点", "env.moment"),
+    ("global 不承担节奏", "global.js"),
+    ("冲击前静默", "半拍"),
+    ("音乐平移检查", "音乐平移"),
 ]
 
 

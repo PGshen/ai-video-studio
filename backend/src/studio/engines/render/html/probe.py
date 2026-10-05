@@ -55,23 +55,14 @@ def section_info(
     return float(section["start"]), float(section["end"]), beats
 
 
-def sample_times(
-    start: float,
-    end: float,
-    beats: list[dict[str, Any]],
-    *,
-    uniform: int = 12,
-    cap: int = 16,
+def _select_times(
+    required: set[float], start: float, end: float, *, uniform: int, cap: int
 ) -> list[float]:
-    """必选点（镜头首尾、每个 beat 的起点与终点附近）优先；有余量时再补均匀采样点。"""
+    """必选点优先：超过 cap 时反复删除间距最小的相邻对；有余量时再补均匀采样点。"""
 
     def inside(values: set[float]) -> list[float]:
         return sorted({round(t, 6) for t in values if start <= t < end})
 
-    required = {start + 0.05, end - 0.05}
-    for beat in beats:
-        required.add(beat["start"] + 0.3)
-        required.add(beat["end"] - 0.1)
     times = inside(required)
     while len(times) > cap:
         gaps = [times[i + 1] - times[i] for i in range(len(times) - 1)]
@@ -86,6 +77,56 @@ def sample_times(
         times.append(best)
         times.sort()
     return times
+
+
+def sample_times(
+    start: float,
+    end: float,
+    beats: list[dict[str, Any]],
+    *,
+    uniform: int = 12,
+    cap: int = 16,
+) -> list[float]:
+    """必选点（镜头首尾、每个 beat 的起点与终点附近）优先；有余量时再补均匀采样点。"""
+    required = {start + 0.05, end - 0.05}
+    for beat in beats:
+        required.add(beat["start"] + 0.3)
+        required.add(beat["end"] - 0.1)
+    return _select_times(required, start, end, uniform=uniform, cap=cap)
+
+
+def is_reel(timeline: Mapping[str, Any]) -> bool:
+    """短片：没有旁白、有节拍网格和配乐层（时刻由音乐而不是配音决定）。"""
+    return (
+        not timeline.get("narration") and bool(timeline.get("grid")) and bool(timeline.get("music"))
+    )
+
+
+_RAREST_EVENT_NAMES = 4
+_KEY_OFFSET = 0.04
+
+
+def reel_sample_times(
+    timeline: Mapping[str, Any], scene_id: str, *, uniform: int = 12, cap: int = 16
+) -> list[float]:
+    """短片镜头的关键时刻：镜头首尾、每个节拍脚本点、每个强拍、出现次数最少的几类事件的起点
+    （通常是冲击），各加 40 ms（让起音之后的包络有可见的值），再用均匀采样补足。"""
+    start, end, _ = section_info(timeline, scene_id)
+    required = {start + 0.05, end - 0.05}
+    for moment in timeline.get("moments", []):
+        if moment["section_id"] == scene_id:
+            required.add(moment["t"] + _KEY_OFFSET)
+    for downbeat in (timeline.get("grid") or {}).get("downbeats", []):
+        required.add(downbeat + _KEY_OFFSET)
+    onsets = [e for e in (timeline.get("music") or {}).get("events", []) if e["kind"] == "onset"]
+    counts: dict[str, int] = {}
+    for event in onsets:
+        counts[event["name"]] = counts.get(event["name"], 0) + 1
+    rarest = sorted(counts, key=lambda name: (counts[name], name))[:_RAREST_EVENT_NAMES]
+    for event in onsets:
+        if event["name"] in rarest:
+            required.add(event["start"] + _KEY_OFFSET)
+    return _select_times(required, start, end, uniform=uniform, cap=cap)
 
 
 def frame_metrics(jpeg: bytes) -> FrameMetrics:
@@ -137,7 +178,7 @@ async def smoke_run(page: PageLike, timeline: Mapping[str, Any], scene_id: str) 
     seen: set[str] = set()
     flat_times: list[float] = []
     known_errors = len(page.errors)  # 只归因于本次运行期间新出现的页面错误
-    for t in sample_times(start, end, beats):
+    for t in scene_sample_times(timeline, scene_id):
         try:
             jpeg = await page.render_jpeg(t)
         except RenderTimeout:
@@ -217,4 +258,70 @@ async def beat_sensitivity(
         insensitive_beats=insensitive,
         skipped=skipped,
         all_insensitive=bool(tested) and len(insensitive) == len(tested),
+    )
+
+
+def scene_sample_times(timeline: Mapping[str, Any], scene_id: str) -> list[float]:
+    """冒烟、确定性与预览用的采样时刻：短片按音乐的关键时刻，其余按旁白 beat。"""
+    if is_reel(timeline):
+        return reel_sample_times(timeline, scene_id)
+    start, end, beats = section_info(timeline, scene_id)
+    return sample_times(start, end, beats)
+
+
+SHIFT_MUSIC_SECONDS = 0.2
+
+
+@dataclass(frozen=True, slots=True)
+class ShiftReport:
+    times: list[float]
+    """检查的关键时刻（全局秒）。"""
+    unchanged: list[float]
+    """音乐平移后画面没有变化的时刻。"""
+    all_unchanged: bool
+
+
+def shift_music(timeline: Mapping[str, Any], shift: float = SHIFT_MUSIC_SECONDS) -> dict[str, Any]:
+    """整套音乐相关的时间（网格、事件、节拍脚本点、能量曲线）整体后移 `shift` 秒；镜头不动。"""
+    shifted = copy.deepcopy(dict(timeline))
+    grid = shifted.get("grid")
+    if grid:
+        grid["offset"] += shift
+        grid["beats"] = [t + shift for t in grid["beats"]]
+        grid["downbeats"] = [t + shift for t in grid["downbeats"]]
+    for moment in shifted.get("moments", []):
+        moment["t"] += shift
+    music = shifted.get("music")
+    if music:
+        for event in music["events"]:
+            event["start"] += shift
+            event["end"] += shift
+        energy = music["energy"]
+        hops = max(1, round(shift / energy["hop"]))
+        values = energy["values"]
+        energy["values"] = ([values[0]] * hops + values)[: len(values)]
+    return shifted
+
+
+async def music_shift_sensitivity(
+    page: PageLike,
+    timeline: Mapping[str, Any],
+    scene_id: str,
+    *,
+    shift: float = SHIFT_MUSIC_SECONDS,
+) -> ShiftReport:
+    """把音乐整体后移 `shift` 秒，在相同的全局时刻重渲染镜头的关键帧；画面没变说明该处的动作
+    没有跟着音乐走（写死了时间，或只靠没装配进来的全局后期）。结束后恢复原时间轴。"""
+    times = reel_sample_times(timeline, scene_id)
+    await page.set_timeline(timeline)
+    try:
+        original = [await page.render_hash(t) for t in times]
+        await page.set_timeline(shift_music(timeline, shift))
+        moved = [await page.render_hash(t) for t in times]
+    finally:
+        if not page.poisoned:
+            await page.set_timeline(timeline)
+    unchanged = [t for t, a, b in zip(times, original, moved, strict=True) if a == b]
+    return ShiftReport(
+        times=times, unchanged=unchanged, all_unchanged=bool(times) and len(unchanged) == len(times)
     )

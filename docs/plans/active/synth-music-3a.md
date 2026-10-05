@@ -179,7 +179,7 @@
 - **完成标准**：非 `slow` 测试通过；`slow` 在本机通过；旧的运行时 slow 用例不改也通过。
 - **验证命令**：`cd backend && uv run pytest tests/engines/test_html_assemble.py -v`；`uv run pytest -m slow tests/engines/test_html_browser.py -v`
 
-### T8：`animation_html` 的短片分支（待开始）
+### T8：`animation_html` 的短片分支（完成）
 
 - **目标**：按形态生成时间轴；校验与预览工具适配短片；提示词补短片节（设计 §6.3）。
 - **涉及文件**：`backend/src/studio/stages/animation_html/{prepare,common,validate_scenes_html,render_preview_html,prompt.md}`；`backend/src/studio/engines/render/html/{probe,static_check}.py`；`backend/tests/stages/test_animation_html_{stage,tools,prompt}.py`、`backend/tests/engines/{test_html_probe,test_html_static_check}.py`。
@@ -223,6 +223,7 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-05 — 计划写成
+- 2026-10-05 — T8 `animation_html` 短片分支 — probe 5、静态检查 3 组、阶段 6、工具 8 + 1 slow（真实 Chromium：global.js 的 HUD 不能替镜头顶账）、提示词 11 条规则
 - 2026-10-05 — T7 运行时 `env` 补全与 `include_global` — 慢测 7 个新增（共 24 个通过），assemble 1 个
 - 2026-10-05 — T6 `music` 阶段与注册 — 26 个阶段测试；短片与"讲解 + 合成背景乐"在 `/api/video-kinds` 里可用，导入音乐仍不可用；`make check` 全绿
 - 2026-10-05 — T5 `render_music` 核心与工具 — 19 个测试（render 13、tool 5 + 真实 Seatbelt 1 slow），`agent.shell_sandbox.seatbelt_profile` 增加 `allow_read` 参数
@@ -233,7 +234,7 @@
 
 ## 下一步
 
-- T8：`animation_html` 的短片分支（`prepare_turn`、`validate_scenes_html`、`render_preview_html`、提示词）。
+- T9：整流水线集成与联调（`tests/api/test_synth_music_flow.py`）。
 
 ## 决策记录
 
@@ -260,6 +261,10 @@
 
 - 2026-10-05 — T6：**确认了 `unavailable_reason` 的缺口**：`music` 注册后，MV 与"导入音乐"的流水线阶段都已注册，会被误放开。`unavailable_reason(pipeline, registry, music_source=None)` 增加第三个参数，`music_source="import"` 时返回"「配乐（导入音乐）」阶段尚未实现"（措辞带"阶段尚未实现"以兼容既有断言）；`api/projects.py` 同步传入。随之改了既有测试：`test_video_kinds`（默认注册表下可用的是 5 种）、`test_projects`（MV 创建改为短片创建，MV 的流水线仍由 `tests/stages/test_pipeline.py` 覆盖）。
 - 2026-10-05 — T6：每阶段默认模型的阶段清单（`db/repo/settings.py::STAGES` 与前端 `DEFAULT_PROFILE_STAGES`）加入 `concept`、`beatsheet`、`music`（先写了红测试）。`music` 的 `finalize_blockers` 和 `prepare_turn` 都从 `upstream/` 读时间轴（`infer_sources(workdir, "upstream/")`）；`prepare_turn` 在两种上游都缺时写"缺少上游产物…"而不是抛异常。金样本 `exemplar/audio-techniques.py`（193 行）整理自探索作品，可直接运行，满足脚本契约（头部注释写了淡出与"不写死时间"两个坑）。
+
+- 2026-10-05 — T8：`prepare_turn(workdir)` 拿不到项目设置，按上游内容判断形态：`upstream/beatsheet/beatsheet.json` 存在为短片，否则有 `upstream/music/events.json` 为"讲解 + 背景乐"，两者都没有走原来的纯叙事分支（原有错误文案与测试不动）。短片与背景乐分支读时间轴用 `studio.timeline.load`。
+- 2026-10-05 — T8：采样统一为 `probe.scene_sample_times`（短片按音乐关键时刻，其余按旁白 beat），冒烟、确定性、预览共用；`probe.is_reel(timeline)` = 无旁白且有网格与配乐层。音乐平移检查把能量曲线也后移（插入两格开头值），避免只靠 `env.energy` 的镜头被误判；没有 `global.js` 时在主页面上直接做检查（同一页面即不含全局后期），有 `global.js` 时另开一个 `include_global=False` 的页面。"部分没变"只在超过一半的关键帧没变时给警告（避免离事件远的静止帧制造噪声）。字面量时刻警告只对短片启用，只认 `lt` 与 `env.t`，不认裸 `t`（缓动函数里太常见）。
+- 2026-10-05 — T8：假浏览器（`tests/fixtures/html_engine/fakes.py`）现在从装配页面里解析内嵌的时间轴作为页面的初始时间轴，并记录每次装配的页面（`assembled`）——此前假页面总是用旁白夹具的时间轴，对短片不成立。
 
 ## 意外与发现
 
