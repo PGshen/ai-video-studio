@@ -218,7 +218,7 @@ class SongAnalysis:
         }
 
 
-def _file_hash(path: Path) -> str:
+def file_hash(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
@@ -269,9 +269,13 @@ def _candidate_boundaries(
 
 def analyze_song(path: Path, *, ffmpeg: str = "ffmpeg") -> SongAnalysis:
     """解码并分析一首歌；同一输入的结果逐位一致（无随机成分）。"""
+    return analyze_samples(decode_song(path, ffmpeg=ffmpeg), source_hash=file_hash(path))
+
+
+def analyze_samples(samples: Samples, *, source_hash: str) -> SongAnalysis:
+    """分析已解码的歌曲（`decode_song` 的结果）；调用方还要画图时只需解码一次。"""
     import librosa
 
-    samples = decode_song(path, ffmpeg=ffmpeg)
     y, sr, duration = samples.data, samples.sample_rate, samples.duration
     _, detected = librosa.beat.beat_track(y=y, sr=sr, hop_length=HOP_LENGTH, units="time")
     fit = fit_grid([float(t) for t in detected])
@@ -287,7 +291,7 @@ def analyze_song(path: Path, *, ffmpeg: str = "ffmpeg") -> SongAnalysis:
     confidence = fitness * coverage
     warnings = [UNSTABLE_WARNING] if confidence < CONFIDENCE_WARN else []
     return SongAnalysis(
-        source_hash=_file_hash(path),
+        source_hash=source_hash,
         duration=duration,
         bpm=fit.bpm,
         offset=float(downbeats[0]),

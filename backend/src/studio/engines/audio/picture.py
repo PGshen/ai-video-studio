@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from studio.engines.audio.analysis import MusicReport
+from studio.engines.audio.song import SongAnalysis
 from studio.engines.audio.wav import Samples
 
 WIDTH, HEIGHT = 1800, 1000
@@ -186,6 +187,10 @@ def render_analysis_png(
         t += step
     draw.text((6, HEIGHT - 20), "orange = sections, blue = bars/beats", fill=(0, 0, 0))
 
+    return _encode(image)
+
+
+def _encode(image: Image.Image) -> bytes:
     # 256-colour palette: the spectrogram is a smooth colour map, and a truecolour PNG of noisy
     # audio is ~0.9 MB (too big for the agent to open with Read, SDK limit 1 MiB per message).
     buffer = io.BytesIO()
@@ -193,3 +198,82 @@ def render_analysis_png(
         buffer, format="PNG", optimize=True
     )
     return buffer.getvalue()
+
+
+_MIN_LINE_GAP_PX = 3.0
+"""Beat lines closer than this are skipped (a 600 s song would turn into a solid block)."""
+
+
+def render_song_png(analysis: SongAnalysis, samples: Samples) -> bytes:
+    """Analysis picture of an imported song: waveform, spectrogram, energy; thin beat lines, thick
+    downbeat lines, orange candidate boundaries."""
+    mono = samples.mono()
+    duration = analysis.duration or samples.duration or 1.0
+    plot_w = WIDTH - _LEFT - _RIGHT
+    image = Image.new("RGB", (WIDTH, HEIGHT), (250, 250, 250))
+    draw = ImageDraw.Draw(image)
+
+    def x_of(t: float) -> float:
+        return _LEFT + max(0.0, min(1.0, t / duration)) * plot_w
+
+    top, bottom = _PANELS["wave"]
+    mid, half = (top + bottom) / 2, (bottom - top) / 2
+    draw.rectangle(
+        [_LEFT, top, _LEFT + plot_w, bottom], fill=(255, 255, 255), outline=(180, 180, 180)
+    )
+    low, high = _waveform_columns(mono, plot_w)
+    for column in range(plot_w):
+        draw.line(
+            [
+                (_LEFT + column, mid - high[column] * half),
+                (_LEFT + column, mid - low[column] * half),
+            ],
+            fill=(40, 40, 40),
+        )
+    draw.text((6, top + 4), "waveform", fill=(0, 0, 0))
+
+    top, bottom = _PANELS["spec"]
+    image.paste(
+        Image.fromarray(_spectrogram(mono, samples.sample_rate, plot_w, bottom - top), "RGB"),
+        (_LEFT, top),
+    )
+    draw.text((6, top + 4), "spectrogram", fill=(0, 0, 0))
+
+    top, bottom = _PANELS["energy"]
+    draw.rectangle(
+        [_LEFT, top, _LEFT + plot_w, bottom], fill=(255, 255, 255), outline=(180, 180, 180)
+    )
+    points = [
+        (x_of(i * analysis.hop), bottom - 4 - value * (bottom - top - 8))
+        for i, value in enumerate(analysis.energy)
+    ]
+    if len(points) >= 2:
+        draw.line(points, fill=(0, 140, 90), width=2)
+    draw.text((6, top + 4), "energy 0-1", fill=(0, 0, 0))
+
+    beat_gap = (x_of(analysis.beats[1]) - x_of(analysis.beats[0])) if len(analysis.beats) > 1 else 0
+    for panel_top, panel_bottom in _PANELS.values():
+        if beat_gap >= _MIN_LINE_GAP_PX:
+            for t in analysis.beats:
+                draw.line([(x_of(t), panel_top), (x_of(t), panel_bottom)], fill=(150, 190, 255))
+        for t in analysis.downbeats:
+            draw.line([(x_of(t), panel_top), (x_of(t), panel_bottom)], fill=(40, 100, 230), width=2)
+        for t in analysis.candidates:
+            draw.line([(x_of(t), panel_top), (x_of(t), panel_bottom)], fill=(255, 140, 0), width=3)
+    for t in analysis.candidates:
+        draw.text((x_of(t) + 4, _PANELS["wave"][0] + 4), f"{t:.1f}s", fill=(200, 100, 0))
+
+    step = 5.0 if duration <= 120 else 30.0
+    t = 0.0
+    while t <= duration + 1e-9:
+        x = x_of(t)
+        draw.line([(x, _PANELS["energy"][1]), (x, _PANELS["energy"][1] + 6)], fill=(0, 0, 0))
+        draw.text((x - 6, _PANELS["energy"][1] + 8), f"{t:g}s", fill=(0, 0, 0))
+        t += step
+    draw.text(
+        (6, HEIGHT - 20),
+        f"bpm {analysis.bpm:.1f}  confidence {analysis.confidence:.2f}  "
+        "orange = candidate boundaries, thick blue = downbeats, thin blue = beats",
+        fill=(0, 0, 0),
+    )
+    return _encode(image)

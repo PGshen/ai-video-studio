@@ -72,3 +72,34 @@ def test_even_a_noisy_picture_stays_small_enough_to_be_read_by_the_agent() -> No
     png = render_analysis_png(analyze(samples, timeline, []), timeline, [], samples)
     assert len(png) <= 600_000
     assert Image.open(io.BytesIO(png)).size == (1800, 1000)
+
+
+def test_song_picture_is_a_png_of_fixed_size_with_content() -> None:
+    from engines.audio_fixtures import SAMPLE_RATE, click_track
+    from studio.engines.audio.picture import render_song_png
+    from studio.engines.audio.song import analyze_samples
+
+    samples = Samples(data=click_track(120.0, 0.5, 12.0), sample_rate=SAMPLE_RATE)
+    analysis = analyze_samples(samples, source_hash="0" * 64)
+    image = Image.open(io.BytesIO(render_song_png(analysis, samples)))
+    image.load()
+    assert image.format == "PNG"
+    assert image.size == (1800, 1000)
+    colours = image.convert("RGB").getcolors(maxcolors=1_000_000)
+    assert colours is not None and len(colours) > 50
+
+
+def test_song_picture_survives_a_long_song_without_candidates() -> None:
+    from studio.engines.audio.picture import render_song_png
+    from studio.engines.audio.song import SongAnalysis
+
+    seconds = 600
+    samples = Samples(data=np.full(seconds * SR, 0.1), sample_rate=SR)
+    analysis = SongAnalysis(
+        source_hash="0" * 64, duration=float(seconds), bpm=240.0, offset=0.0, residual_ms=1.0,
+        confidence=1.0, beats=[i * 0.25 for i in range(seconds * 4)],
+        downbeats=[i * 1.0 for i in range(seconds)], candidates=[], hop=0.05,
+        energy=[0.5] * (seconds * 20),
+    )  # fmt: skip
+    image = Image.open(io.BytesIO(render_song_png(analysis, samples)))
+    assert image.size == (1800, 1000)

@@ -55,7 +55,7 @@ async def _drain(stream: asyncio.StreamReader | None, keep: int) -> bytes:
     return tail
 
 
-def _limited(argv: list[str], cpu_seconds: int) -> list[str]:
+def limited_argv(argv: list[str], cpu_seconds: int) -> list[str]:
     """Apply resource limits with `ulimit` in a shell, not `preexec_fn` (unsafe in threaded
     processes). `ulimit -f` counts KiB on macOS (512-byte blocks in strict POSIX shells, where the
     effective cap is half of `_MAX_FILE_BYTES` — still above the 100 MB WAV limit)."""
@@ -88,7 +88,7 @@ async def run_compose(
         TMPDIR=str(tmpdir),
         PYTHONDONTWRITEBYTECODE="1",
     )
-    argv = wrap_command(_limited([sys.executable, str(script)], int(timeout) + 10), env)
+    argv = wrap_command(limited_argv([sys.executable, str(script)], int(timeout) + 10), env)
     started = time.monotonic()
     process = await asyncio.create_subprocess_exec(
         *argv,
