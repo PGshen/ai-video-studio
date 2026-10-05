@@ -35,10 +35,16 @@ class LayerNotSupported(ValueError):
     """传入了尚未实现的层（歌词）。"""
 
 
+_MAX_SHOWN_ERRORS = 20  # the message ends up in one tool result (SDK limit: 1 MiB)
+
+
 class TimelineError(ValueError):
     def __init__(self, errors: list[str] | tuple[str, ...]):
         self.errors = tuple(errors)
-        details = "\n".join(f"- {error}" for error in self.errors)
+        shown = [e if len(e) <= 300 else e[:300] + "…" for e in self.errors[:_MAX_SHOWN_ERRORS]]
+        if len(self.errors) > _MAX_SHOWN_ERRORS:
+            shown.append(f"……还有 {len(self.errors) - _MAX_SHOWN_ERRORS} 个问题未列出")
+        details = "\n".join(f"- {error}" for error in shown)
         super().__init__(f"时间轴不可用，共 {len(self.errors)} 个问题：\n{details}")
 
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import resource
 import signal
 import sys
 import time
@@ -18,7 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _STDERR_TAIL_LINES = 30
+_STDERR_TAIL_CHARS = 4000
 _STDOUT_TAIL_CHARS = 4000
+MAX_EVENTS_BYTES = 5_000_000
+_MAX_FILE_BYTES = 256_000_000  # RLIMIT_FSIZE: one script cannot fill the disk
 _SAFE_ENV = ("PATH", "LANG", "LC_ALL", "HOME")
 
 WrapCommand = Callable[[list[str], dict[str, str]], list[str]]
@@ -38,14 +40,27 @@ class RunResult:
 
 
 def _tail_lines(data: bytes) -> str:
-    return "\n".join(data.decode(errors="replace").strip().splitlines()[-_STDERR_TAIL_LINES:])
+    text = "\n".join(data.decode(errors="replace").strip().splitlines()[-_STDERR_TAIL_LINES:])
+    return text[-_STDERR_TAIL_CHARS:]
 
 
-def _limit_cpu(seconds: int) -> Callable[[], None]:
-    def apply() -> None:
-        resource.setrlimit(resource.RLIMIT_CPU, (seconds, seconds + 5))
+async def _drain(stream: asyncio.StreamReader | None, keep: int) -> bytes:
+    """Read to EOF but keep only the last `keep` bytes, so a chatty script cannot grow memory."""
+    tail = b""
+    while stream is not None:
+        chunk = await stream.read(65536)
+        if not chunk:
+            break
+        tail = (tail + chunk)[-keep:]
+    return tail
 
-    return apply
+
+def _limited(argv: list[str], cpu_seconds: int) -> list[str]:
+    """Apply resource limits with `ulimit` in a shell, not `preexec_fn` (unsafe in threaded
+    processes). `ulimit -f` counts KiB on macOS (512-byte blocks in strict POSIX shells, where the
+    effective cap is half of `_MAX_FILE_BYTES` — still above the 100 MB WAV limit)."""
+    prelude = f'ulimit -t {cpu_seconds}; ulimit -f {_MAX_FILE_BYTES // 1024}; exec "$@"'
+    return ["/bin/sh", "-c", prelude, "sh", *argv]
 
 
 def _kill_group(process: asyncio.subprocess.Process) -> None:
@@ -73,7 +88,7 @@ async def run_compose(
         TMPDIR=str(tmpdir),
         PYTHONDONTWRITEBYTECODE="1",
     )
-    argv = wrap_command([sys.executable, str(script)], env)
+    argv = wrap_command(_limited([sys.executable, str(script)], int(timeout) + 10), env)
     started = time.monotonic()
     process = await asyncio.create_subprocess_exec(
         *argv,
@@ -83,10 +98,16 @@ async def run_compose(
         cwd=out_dir,
         env=env,
         start_new_session=True,
-        preexec_fn=_limit_cpu(int(timeout) + 10),
     )
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
+        stdout, stderr, _ = await asyncio.wait_for(
+            asyncio.gather(
+                _drain(process.stdout, _STDOUT_TAIL_CHARS * 4),
+                _drain(process.stderr, _STDERR_TAIL_CHARS * 4),
+                process.wait(),
+            ),
+            timeout,
+        )
     except TimeoutError as exc:
         _kill_group(process)
         await process.wait()
@@ -105,6 +126,11 @@ async def run_compose(
         raise ComposeError("脚本没有写出 STUDIO_OUT_WAV 指定的 WAV 文件")
     if not events_path.is_file():
         raise ComposeError("脚本没有写出 STUDIO_OUT_EVENTS 指定的事件文件")
+    if events_path.stat().st_size > MAX_EVENTS_BYTES:
+        raise ComposeError(
+            f"events.json 过大（{events_path.stat().st_size / 1e6:.1f} MB，"
+            f"上限 {MAX_EVENTS_BYTES / 1e6:.0f} MB）；只声明鼓点等需要对齐的事件，不要逐采样写"
+        )
     return RunResult(
         wav_path=wav_path,
         events_path=events_path,

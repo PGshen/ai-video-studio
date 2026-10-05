@@ -190,3 +190,11 @@ def test_an_unusable_offset_is_reported(offset) -> None:
 
 def test_a_sensible_offset_is_accepted() -> None:
     assert validate_events(_doc(offset=0.12), reel_timeline(BPM, 2)) == []
+
+
+def test_a_flood_of_bad_events_gives_a_short_report() -> None:
+    """Tool results travel in one SDK message (1 MiB): list the first problems, count the rest."""
+    bad = [{"name": "k" * 500, "kind": "boom", "start": 0, "end": 1}] * 5000
+    problems = validate_events(_doc(events=bad), reel_timeline(BPM, 2))
+    assert len(problems) <= 21 and any("还有" in p for p in problems)
+    assert sum(len(p) for p in problems) < 6000

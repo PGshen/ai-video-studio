@@ -185,3 +185,10 @@ def test_non_finite_music_values_are_rejected(bad: float) -> None:
         )
     with pytest.raises(TimelineError):
         build_timeline(_reel_layers(music=_music(declared_duration=bad)))
+
+
+def test_a_flood_of_bad_music_events_gives_a_short_message() -> None:
+    bad = [{"name": "k" * 500, "kind": "boom", "start": 0, "end": 1}] * 5000
+    with pytest.raises(TimelineError) as info:
+        build_timeline(_reel_layers(music=_music(events=bad)))
+    assert len(str(info.value)) < 8000 and "还有" in str(info.value)
