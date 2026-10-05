@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成（2026-10-05 验收，已合并 main） |
 | 里程碑 | 多形态视频流水线 · 子项目 2/4 · 计划 2B |
 | 设计依据 | [子项目 2 设计](../../design/2026-10-04-timeline-html-engine.md)（已批准）§5.5、§6.3（`scene_checks` 衔接）、§7、§8、§9；[总设计](../../design/2026-10-04-html-video-pipeline.md)；[计划 2A](../completed/html-engine-2a.md)（已完成，已合并 main） |
 | 分支 | `html-engine-2b` |
