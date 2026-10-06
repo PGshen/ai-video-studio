@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 多形态视频后续（子项目 3、4 的重构） |
 | 设计依据 | [produce-stage 设计](../../design/2026-10-06-produce-stage.md)；被取代范围见该设计 §10 |
 | 分支 | `feat/produce-stage`（从 `feat/session-chat-layout` 末端切出，设计文档提交 `c33a258` 在其上） |
