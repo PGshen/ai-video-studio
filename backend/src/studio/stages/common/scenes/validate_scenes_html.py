@@ -38,6 +38,7 @@ from studio.engines.render.html.static_check import (
     strip_comments,
 )
 from studio.stages.common.scenes.helpers import (
+    MAX_SHOTS,
     browser_error_text,
     load_timeline,
     scene_exists,
@@ -171,9 +172,11 @@ def _scene_failed(report: _Report, sid: str) -> bool:
 
 
 async def _check_music_shift(
-    page: PageLike, timeline: dict[str, Any], sid: str, report: _Report
+    page: PageLike, timeline: dict[str, Any], sid: str, report: _Report, *, strict: bool = True
 ) -> None:
-    """短片：音乐整体平移后，镜头自己的关键帧应当跟着变（设计 §6.3）。"""
+    """短片：音乐整体平移后，镜头自己的关键帧应当跟着变（设计 §6.3）。
+
+    `strict=False`（`produce` 阶段）：镜头可以有意不跟音乐，所以全部没反应也只是警告。"""
     try:
         shift = await music_shift_sensitivity(page, timeline, sid)
     except BrowserClosed:
@@ -183,7 +186,14 @@ async def _check_music_shift(
         return
     if not shift.times:
         return
-    if shift.all_unchanged:
+    if shift.all_unchanged and not strict:
+        report.warn(
+            f"整个镜头对音乐平移 {SHIFT_MUSIC_SECONDS:g} 秒毫无反应：疑似把时刻写成了字面量，"
+            "或只靠 global.js 响应音乐；如果不是有意让它不跟音乐，请改用 env.hit / env.span / "
+            "env.energy 取音乐事件",
+            sid,
+        )
+    elif shift.all_unchanged:
         report.error(
             f"整个镜头对音乐平移 {SHIFT_MUSIC_SECONDS:g} 秒毫无反应：疑似把时刻写成了字面量，"
             "或只靠 global.js 响应节拍；请改用 env.bt / env.bar / env.hit / env.moment",
@@ -198,7 +208,12 @@ async def _check_music_shift(
 
 
 async def _shift_pass(
-    workdir: Path, timeline: dict[str, Any], targets: list[str], report: _Report
+    workdir: Path,
+    timeline: dict[str, Any],
+    targets: list[str],
+    report: _Report,
+    *,
+    strict: bool = True,
 ) -> None:
     """装配时不含 `global.js` 的页面上做音乐平移检查：全局后期读节拍不能替镜头顶账。"""
     remaining = list(targets)
@@ -208,7 +223,7 @@ async def _shift_pass(
             page_source = assemble(workdir, timeline, include_global=False)
             async with get_browser_pool().acquire(page_source) as page:
                 while remaining:
-                    await _check_music_shift(page, timeline, remaining[0], report)
+                    await _check_music_shift(page, timeline, remaining[0], report, strict=strict)
                     remaining.pop(0)
                     if page.poisoned:
                         break
@@ -238,7 +253,12 @@ def _report_page_errors(page: PageLike, seen: set[str], report: _Report) -> None
 
 
 async def _browser_checks(
-    workdir: Path, timeline: dict[str, Any], targets: list[str], report: _Report
+    workdir: Path,
+    timeline: dict[str, Any],
+    targets: list[str],
+    report: _Report,
+    *,
+    strict: bool = True,
 ) -> None:
     remaining = list(targets)
     seen_page_errors: set[str] = set()
@@ -254,7 +274,7 @@ async def _browser_checks(
                     await _check_scene(page, timeline, sid, report)
                     if reel and not has_global and not _scene_failed(report, sid):
                         await _check_music_shift(
-                            page, timeline, sid, report
+                            page, timeline, sid, report, strict=strict
                         )  # 同一页面即不含全局后期
                     remaining.pop(0)
                     if page.poisoned:  # 卡死的页面不再使用，剩余镜头换新页面
@@ -295,12 +315,15 @@ async def _handler(ctx: ToolContext, args: ValidateScenesHtmlArgs) -> ToolResult
     targets = [args.scene_id] if args.scene_id is not None else ids
 
     report = _Report()
+    strict = ctx.stage != "produce"
+    if not strict and len(ids) > MAX_SHOTS:
+        report.warn(f"镜头数 {len(ids)} 超过 {MAX_SHOTS}：切得太碎会让每个镜头都很短、难以维护")
     _pre_browser_checks(ctx.workdir, timeline, targets, single, report)
     if not report.errors:
-        await _browser_checks(ctx.workdir, timeline, targets, report)
+        await _browser_checks(ctx.workdir, timeline, targets, report, strict=strict)
         if is_reel(timeline) and (ctx.workdir / "animation" / "global.js").is_file():
             passed = [sid for sid in targets if not _scene_failed(report, sid)]
-            await _shift_pass(ctx.workdir, timeline, passed, report)
+            await _shift_pass(ctx.workdir, timeline, passed, report, strict=strict)
     return _render(report, targets, single)
 
 
@@ -308,9 +331,11 @@ VALIDATE_SCENES_HTML_TOOL = ToolSpec(
     name="validate_scenes_html",
     description=(
         "校验 HTML 镜头脚本：静态规则、真实浏览器冒烟运行、确定性、beat 敏感度（有旁白）或"
-        "音乐平移敏感度（短片）、字号与字符覆盖、资产。不传 scene_id 校验全部镜头。"
+        "音乐平移敏感度（短片；配乐与动画阶段只给警告）、字号与字符覆盖、资产。"
+        "配乐与动画阶段会先按 animation/shots.json 与 music/ 构建时间轴。"
+        "不传 scene_id 校验全部镜头。"
     ),
     input_model=ValidateScenesHtmlArgs,
-    stages={"animation_html"},
+    stages={"animation_html", "produce"},
     handler=_handler,
 )

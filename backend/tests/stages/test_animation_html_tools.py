@@ -86,8 +86,8 @@ def _set_timeline(workdir: Path, mutate: Callable[[dict[str, Any]], None]) -> No
 
 
 def test_tools_are_scoped_and_registered_on_the_stage() -> None:
-    assert VALIDATE_SCENES_HTML_TOOL.stages == {"animation_html"}
-    assert RENDER_PREVIEW_HTML_TOOL.stages == {"animation_html"}
+    assert VALIDATE_SCENES_HTML_TOOL.stages == {"animation_html", "produce"}
+    assert RENDER_PREVIEW_HTML_TOOL.stages == {"animation_html", "produce"}
     assert {t.name for t in STAGE.tools()} == {
         "validate_scenes_html",
         "render_preview_html",

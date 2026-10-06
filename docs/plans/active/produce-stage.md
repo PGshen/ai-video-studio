@@ -128,7 +128,7 @@
 - **完成标准**：阶段可被注册表取得；T2、T3 的产物读写在阶段层测试里连通。
 - **验证命令**：`make check`。
 
-### T5：校验与预览的适配（待开始）
+### T5：校验与预览的适配（完成）
 
 - **目标**：`validate_scenes_html`、`render_preview_html` 在 `produce` 形态下按设计 §7 工作。
 - **涉及文件**：`backend/src/studio/stages/animation_html/validate_scenes_html.py`、`render_preview_html.py`、`common.py`（时间轴即时构建的读取入口，取代读 `upstream/timeline.json`）、`engines/render/html/static_check.py`（如需）、对应测试 `test_animation_html_tools.py`、`test_animation_preview.py`、`test_animation_html_stage.py`。
@@ -209,6 +209,7 @@
 
 ## 进度
 
+- 2026-10-06 — T5 — 完成：`validate_scenes_html`/`render_preview_html` 的 `stages` 加 `produce`；`helpers.load_timeline` 在 `produce` 阶段按 `shots.json` 与 `music/` 即时构建时间轴；音乐平移检查在 `produce` 下降为警告；镜头数 > 40 警告；`probe.is_reel` 不再要求网格、关键时刻加入能量峰值并只取罕见事件名（≤ 12 次）。`make check` 全绿。
 - 2026-10-06 — T4 — 完成：`stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`）、金样本移到 `common/{score,scenes}/exemplar`、`main.py` 注册、import-linter 契约加入 `produce`；`make check` 全绿。`validate_scenes_html`/`render_preview_html` 在 `produce` 下的行为留给 T5（其 `stages` 集合在 T5 补）。
 - 2026-10-06 — T4 前置 — 完成：共用工具搬到 `stages/common/score`、`common/scenes`（D7），`make check` 全绿。
 - 2026-10-06 — T3 — 完成：`render_music_core(timeline=None)` 自由模式（脚本无时间轴输入、不重定时、`render.json` 无 `base_hash`、`bpm` 可选；`run_compose` 的 `timeline_path` 可空；`validate_events(bpm_required=…)`）；`render_music` 按 `ctx.stage == "produce"` 分流，`analyze_music` 在 `concept`/`produce` 给出 `range.json` 的提示；`compose_free.py` 夹具。
@@ -217,10 +218,11 @@
 
 ## 下一步
 
-- 从 T5 开始：先改 `backend/tests/stages/test_animation_html_tools.py` / `test_animation_preview.py`（`produce` 形态的用例：镜头来自 `shots.json`、无 `upstream/timeline.json`、音乐平移警告降级、预览采样、图片预算），再改 `stages/common/scenes/helpers.py`（时间轴读取入口：`ctx.stage == "produce"` 时用 `load_timeline(TimelineSources(..., produce=True))`）、`validate_scenes_html.py`、`render_preview_html.py`，并把两个工具的 `stages` 集合加上 `"produce"`。（以下是已完成的 T4 记录，保留作参考：）先写 `backend/tests/stages/test_produce_stage.py`（写入范围、`finalize_blockers`、`status_summary`、形态判断、错误形态的工具提示）和 `test_produce_prompt.py`，再建 `backend/src/studio/stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`），在 `main.py` 注册。`render_music` / `analyze_music` 的 `stages` 已含 `produce`，其余工具（`validate_scenes_html`、`render_preview_html`、`suggest_upstream_change`）的 `stages` 在 T4/T5 补。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
+- 从 T6 开始：先写 `backend/tests/stages/test_concept_stage.py`、`test_concept_check.py` 的新用例（缺「硬性要求」章节报错；MV 项目 `concept` 阶段的工具与写入范围）和 `tests/api/test_music_upload.py`（`concept`/`produce` 阶段允许上传，讲解类仍拒绝），再改 `stages/concept/{__init__,check_concept,prompt.md}` 与 `api/music_import.py`。`analyze_music` 的 `stages` 已含 `concept`。
 
 ## 决策记录
 
+- D8（2026-10-06）：预览采样的「最少见的几类事件」限定为整条时间轴里出现次数 ≤ 12 的名字——否则 MV 的 `beat`/`downbeat`（几十到上百次）会占满 16 张预览。设计 §7 写的「出现次数最少的几类事件」按此落实。
 - D7（2026-10-06）：T4 发现 import-linter 契约「各阶段之间互不 import（规则 3）」禁止 `produce` 直接复用 `music`、`animation_html` 里的工具。处理：把共用的工具实现纯搬迁（行为不变）到 `stages/common/`——`music/{render,tool,analyze,sources}.py` → `common/score/`，`animation_html/{common,validate_scenes_html,render_preview_html}.py` → `common/scenes/`（`common.py` 改名 `helpers.py`，并带走 `TIMELINE_PATH`/`ERROR_PATH`）；两个旧阶段改为从 `common` 导入。没有改任何公共接口，也没有放宽契约。
 - D6（2026-10-06）：自由模式下没有时间轴，长度以音频本身为准，`events.json` 声明的 `duration` 只做与实际音频一致的校验（沿用 0.05 秒容差）；不再对总长设上下限（WAV 读取已有大小与时长上限）。
 - D4（2026-10-06）：T2 只**新增** `produce` 读取路径，不删 `imported.py`、`layers_from_beatsheet` 等旧路径——旧阶段在 T7 之前仍在用，删除放在 T7，保证每个任务结束时 `make check` 为绿。

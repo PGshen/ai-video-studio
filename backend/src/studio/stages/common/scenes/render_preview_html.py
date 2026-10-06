@@ -139,6 +139,6 @@ RENDER_PREVIEW_HTML_TOOL = ToolSpec(
         "预览单个 HTML 镜头：先做静态检查和冒烟运行，再返回关键时刻的缩略图拼图与每帧指标。"
     ),
     input_model=RenderPreviewHtmlArgs,
-    stages={"animation_html"},
+    stages={"animation_html", "produce"},
     handler=_handler,
 )

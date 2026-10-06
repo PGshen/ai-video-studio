@@ -9,13 +9,41 @@ from typing import Any
 from studio.agent.tools import ToolContext, ToolResult
 from studio.engines.render.html.browser import ChromiumUnavailable, PageNotReady
 from studio.engines.render.html.pool import PoolBusy
+from studio.stages.common.music_source import find_source
+from studio.timeline import TimelineError
+from studio.timeline.load import TimelineSources
+from studio.timeline.load import load_timeline as read_timeline
 
 TIMELINE_PATH = "upstream/timeline.json"
 ERROR_PATH = "upstream/timeline.error.txt"
 _DEFAULT_REASON = "upstream/timeline.json 不存在（叙事阶段需要先定稿并完成配音）"
 
 
+MAX_SHOTS = 40
+"""镜头数超过它时给警告（`produce` 阶段）。"""
+
+
+def _produce_timeline(ctx: ToolContext) -> tuple[dict[str, Any] | None, ToolResult | None]:
+    """`produce` 阶段没有上游时间轴：镜头划分和配乐都是本阶段自己写的，每次调用即时构建。"""
+    sources = TimelineSources(
+        ctx.workdir,
+        narration=False,
+        music_source="synth" if find_source(ctx.workdir / "music") is None else "import",
+        produce=True,
+    )
+    try:
+        loaded = read_timeline(sources)
+    except TimelineError as exc:
+        return None, ToolResult(text=f"时间轴不可用：{exc}", is_error=True)
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        reason = f"产物的结构不符合预期：{type(exc).__name__}: {exc}"
+        return None, ToolResult(text=f"时间轴不可用：{reason}", is_error=True)
+    return loaded.timeline.model_dump(mode="json"), None
+
+
 def load_timeline(ctx: ToolContext) -> tuple[dict[str, Any] | None, ToolResult | None]:
+    if ctx.stage == "produce":
+        return _produce_timeline(ctx)
     timeline = ctx.workdir / TIMELINE_PATH
     if timeline.is_file():
         return json.loads(timeline.read_text(encoding="utf-8")), None

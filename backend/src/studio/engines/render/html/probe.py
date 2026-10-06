@@ -96,23 +96,44 @@ def sample_times(
 
 
 def is_reel(timeline: Mapping[str, Any]) -> bool:
-    """短片：没有旁白、有节拍网格和配乐层（时刻由音乐而不是配音决定）。"""
-    return (
-        not timeline.get("narration") and bool(timeline.get("grid")) and bool(timeline.get("music"))
-    )
+    """短片、MV：没有旁白、有配乐层（时刻由音乐而不是配音决定）；节拍网格可有可无。"""
+    return not timeline.get("narration") and bool(timeline.get("music"))
 
 
 _RAREST_EVENT_NAMES = 4
+_RARE_MAX_COUNT = 12
 _KEY_OFFSET = 0.04
+_ENERGY_PEAKS = 3
+_MIN_PEAK_GAP = 1.0
+
+
+def _energy_peak_times(timeline: Mapping[str, Any], start: float, end: float) -> list[float]:
+    """镜头内能量最高的几个时刻（相互至少隔 1 秒），是能量转折、通常也是画面该有反应的地方。"""
+    energy = (timeline.get("music") or {}).get("energy") or {}
+    values, hop = energy.get("values") or [], energy.get("hop") or 0.0
+    if not values or hop <= 0:
+        return []
+    first, last = max(0, int(start / hop)), min(len(values), int(end / hop) + 1)
+    ranked = sorted(range(first, last), key=lambda i: (-values[i], i))
+    peaks: list[float] = []
+    for index in ranked:
+        t = index * hop
+        if start <= t < end and all(abs(t - other) >= _MIN_PEAK_GAP for other in peaks):
+            peaks.append(t)
+        if len(peaks) == _ENERGY_PEAKS:
+            break
+    return peaks
 
 
 def reel_sample_times(
     timeline: Mapping[str, Any], scene_id: str, *, uniform: int = 12, cap: int = 16
 ) -> list[float]:
-    """短片镜头的关键时刻：镜头首尾、每个节拍脚本点、每个强拍、出现次数最少的几类事件的起点
-    （通常是冲击），各加 40 ms（让起音之后的包络有可见的值），再用均匀采样补足。"""
+    """短片、MV 镜头的关键时刻：镜头首尾、每个节拍脚本点、每个强拍、能量峰值、出现次数最少的
+    几类事件的起点（通常是冲击），事件起点各加 40 ms（让起音之后的包络有可见的值），再用均匀
+    采样补足。"""
     start, end, _ = section_info(timeline, scene_id)
     required = {start + 0.05, end - 0.05}
+    required.update(_energy_peak_times(timeline, start, end))
     for moment in timeline.get("moments", []):
         if moment["section_id"] == scene_id:
             required.add(moment["t"] + _KEY_OFFSET)
@@ -122,7 +143,9 @@ def reel_sample_times(
     counts: dict[str, int] = {}
     for event in onsets:
         counts[event["name"]] = counts.get(event["name"], 0) + 1
-    rarest = sorted(counts, key=lambda name: (counts[name], name))[:_RAREST_EVENT_NAMES]
+    # Only genuinely rare names (impacts, stabs): hundreds of beats would flood the samples.
+    rare = [name for name in counts if counts[name] <= _RARE_MAX_COUNT]
+    rarest = sorted(rare, key=lambda name: (counts[name], name))[:_RAREST_EVENT_NAMES]
     for event in onsets:
         if event["name"] in rarest:
             required.add(event["start"] + _KEY_OFFSET)
