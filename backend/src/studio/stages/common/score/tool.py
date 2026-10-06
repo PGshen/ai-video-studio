@@ -18,16 +18,12 @@ from studio.engines.audio.analysis import MusicReport
 from studio.engines.audio.runner import WrapCommand
 from studio.stages.common.picture import compress_png
 from studio.stages.common.score.render import RenderOutcome, render_music_core
-from studio.stages.common.score.sources import import_source, infer_sources, section_energy
+from studio.stages.common.score.sources import import_source, infer_sources
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 
 LISTEN_NOTE = "音色、和声、混响量与声像无法由这些指标判断，需要用户试听。"
 _MAX_LISTED = 8
-IMPORT_FORM_MESSAGE = (
-    "导入形态不用合成脚本：工作区里有用户上传的 music/source.*，"
-    "请用 analyze_music 分析歌曲、写 music/sections.json 并用 validate_sections 校验"
-)
 PRODUCE_IMPORT_MESSAGE = (
     "这个项目用的是用户上传的歌曲（music/source.*），不用合成脚本：请用 analyze_music 分析歌曲，"
     "需要截取时写 music/range.json（起止秒），再写镜头划分和画面"
@@ -123,9 +119,7 @@ class RenderMusicArgs(BaseModel):
 async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
     produce = ctx.stage == "produce"
     if import_source(ctx.workdir) is not None:
-        return ToolResult(
-            text=PRODUCE_IMPORT_MESSAGE if produce else IMPORT_FORM_MESSAGE, is_error=True
-        )
+        return ToolResult(text=PRODUCE_IMPORT_MESSAGE, is_error=True)
     wrap = sandbox_wrapper(ctx.workdir)
     if wrap is None:
         return ToolResult(text="当前平台没有沙箱，不能运行合成脚本。", is_error=True)
@@ -141,7 +135,6 @@ async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
             ctx.workdir,
             timeline=loaded.timeline.model_dump(mode="json"),
             base_hash=loaded.base_hash,
-            section_energy=section_energy(loaded.beatsheet),
             wrap_command=wrap,
         )
     if not outcome.ok:

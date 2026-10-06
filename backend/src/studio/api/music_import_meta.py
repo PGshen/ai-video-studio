@@ -1,6 +1,9 @@
-"""导入形态的 `music/meta`（子项目 4B 设计 §3.2）：只读文件，缺失或损坏都降级成 `None` 字段。
+"""歌曲形态（MV）的 `music/meta`（子项目 4B 设计 §3.2，produce-stage 设计 §6）：只读文件，缺失或
+损坏都降级成 `None` 字段。
 
-有效网格与有效区间走 `studio.timeline.imported` 的同一套规则，这里不重算。
+没有 `sections.json`：网格是分析的**参考**值（BPM、第一个强拍），截取区间来自模型写的
+`music/range.json`（缺省整首歌），`sections` 是模型写的镜头划分（`animation/shots.json`，成片秒）
+平移到整曲秒，方便画在整首歌的波形上。
 """
 
 from __future__ import annotations
@@ -17,12 +20,11 @@ from studio.api.schemas import (
     MusicRangeOut,
     MusicSectionOut,
     MusicSourceInfo,
-    SectionsCheckOut,
 )
 from studio.stages.common.music_source import find_source
-from studio.stages.music.validate_sections import check_workspace
 from studio.timeline import TimelineError
-from studio.timeline.imported import downbeat_times, effective_grid, effective_range
+from studio.timeline.imported import downbeat_times, effective_grid
+from studio.timeline.shots import RANGE_PATH, SHOTS_PATH, parse_range, parse_shots
 from studio.workspace import file_sha256
 
 
@@ -38,22 +40,17 @@ def _number(value: Any) -> float | None:
     return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
 
 
-def _sections(doc: dict[str, Any] | None) -> list[MusicSectionOut]:
-    result: list[MusicSectionOut] = []
-    raw = doc.get("sections") if doc is not None else None
-    for item in raw if isinstance(raw, list) else []:
-        if not isinstance(item, dict):
-            return []
-        start, end = _number(item.get("start")), _number(item.get("end"))
-        if start is None or end is None or not isinstance(item.get("id"), str):
-            return []
-        label = item.get("label")
-        result.append(
-            MusicSectionOut(
-                id=item["id"], label=label if isinstance(label, str) else "", start=start, end=end
-            )
-        )
-    return result
+def shot_sections(workdir: Path, offset: float = 0.0) -> list[MusicSectionOut]:
+    """`animation/shots.json` 的镜头，起止加上 `offset`（MV：截取区间起点）；缺失或不合法为空。"""
+    try:
+        document = json.loads((workdir / SHOTS_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    shots = parse_shots(document, [])
+    return [
+        MusicSectionOut(id=s.id, label=s.label, start=s.start + offset, end=s.end + offset)
+        for s in shots or []
+    ]
 
 
 def _analysis_out(doc: dict[str, Any]) -> MusicAnalysisOut | None:
@@ -74,7 +71,6 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
         return MusicMetaOut(form="import", rendered=False, stale=False)
     digest = file_sha256(source_path)
     analysis_doc = _read_json(music / "analysis.json")
-    sections_doc = _read_json(music / "sections.json")
     stale = analysis_doc is not None and analysis_doc.get("source_hash") != digest
     current = analysis_doc if analysis_doc is not None and not stale else None
     analysis = _analysis_out(current) if current is not None else None
@@ -96,30 +92,26 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
         ):
             energy = MusicEnergyOut(hop=hop, values=[float(v) for v in energy_values])
         try:
-            bpm, offset = effective_grid(analysis_doc, sections_doc or {})
+            bpm, offset = effective_grid(analysis_doc)
             grid = MusicGridOut(
                 bpm=bpm, offset=offset, downbeats=downbeat_times(bpm, offset, analysis.duration)
             )
         except TimelineError:
             pass
-    if sections_doc is not None:
-        try:
-            start, end = effective_range(sections_doc)
-            range_ = MusicRangeOut(start=start, end=end)
-        except TimelineError:
-            pass
-    check = check_workspace(workdir)
+    if analysis is not None:
+        window = parse_range(_read_json(workdir / RANGE_PATH), analysis.duration, [])
+        if window is not None:
+            range_ = MusicRangeOut(start=window[0], end=window[1])
     return MusicMetaOut(
         form="import",
         rendered=True,
         stale=stale,
         hash=digest,
         duration=analysis.duration if analysis is not None else None,
-        sections=_sections(sections_doc),
+        sections=shot_sections(workdir, range_.start if range_ is not None else 0.0),
         source=source,
         analysis=analysis,
         grid=grid,
         range=range_,
         energy=energy,
-        sections_check=SectionsCheckOut(ok=check.ok, errors=check.errors, warnings=check.warnings),
     )

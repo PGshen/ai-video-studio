@@ -49,7 +49,6 @@ from studio.db.repo.profiles import seed_model_profiles
 from studio.engines.render.html.pool import close_browser_pool
 from studio.stages.animation import STAGE as ANIMATION_STAGE
 from studio.stages.animation_html import STAGE as ANIMATION_HTML_STAGE
-from studio.stages.beatsheet import STAGE as BEATSHEET_STAGE
 from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.concept import STAGE as CONCEPT_STAGE
 from studio.stages.music import STAGE as MUSIC_STAGE
@@ -76,7 +75,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         ANIMATION_STAGE,
         ANIMATION_HTML_STAGE,
         CONCEPT_STAGE,
-        BEATSHEET_STAGE,
         MUSIC_STAGE,
         PRODUCE_STAGE,
         STYLE_STAGE,

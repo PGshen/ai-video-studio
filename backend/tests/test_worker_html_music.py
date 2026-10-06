@@ -22,7 +22,7 @@ from fixtures.html_engine.worker_fakes import ExplodingManim, FakeBackend
 from fixtures.import_music import write_mv_workspace
 from fixtures.import_music.seed import seed_mv_project
 from fixtures.synth_music import seed
-from fixtures.synth_music.products import render_products
+from fixtures.synth_music.products import render_free_products, render_products
 from studio.db.engine import make_engine, migrate
 from studio.engines.render.mix import MV_FADE_IN, MV_FADE_OUT, AudioTrack, MusicMix
 from studio.jobs import create_job, get_job
@@ -54,9 +54,9 @@ async def reel(tmp_path: Path) -> AsyncIterator[Env]:
     data_dir, engine, blobs = _env(tmp_path)
     pid = seed.seed_reel_project(engine, blobs, data_dir=data_dir)
     env = Env(data_dir, engine, blobs, pid)
-    (env.workdir / "beatsheet").mkdir()
-    (env.workdir / "beatsheet" / "beatsheet.json").write_text(seed.BEATSHEET, encoding="utf-8")
-    await render_products(env.workdir)
+    await render_free_products(env.workdir)
+    (env.workdir / "animation").mkdir(exist_ok=True)
+    (env.workdir / "animation" / "shots.json").write_text(json.dumps(seed.SHOTS), encoding="utf-8")
     fx.write_project(env.workdir, scenes={"s1": fx.PURE_SCENE_PLAIN, "s2": fx.PURE_SCENE_PLAIN})
     yield env
     engine.dispose()
@@ -156,12 +156,13 @@ def _break(env: Env, how: str) -> None:
         (music / "analysis.json").unlink()
     elif how == "render-missing":
         (music / "render.json").unlink()
-    elif how == "beatsheet-bars":
-        path = env.workdir / "beatsheet" / "beatsheet.json"
-        path.write_text(path.read_text().replace('"bars": 3', '"bars": 4', 1), encoding="utf-8")
-    elif how == "beatsheet-label":  # same length, different timeline: only `base_hash` notices
-        path = env.workdir / "beatsheet" / "beatsheet.json"
-        path.write_text(path.read_text().replace("BUILD", "RISE", 1), encoding="utf-8")
+    elif how == "shots-short":  # the shots no longer cover the rendered audio
+        path = env.workdir / "animation" / "shots.json"
+        path.write_text(path.read_text().replace('"end": 16.0', '"end": 12.0', 1), encoding="utf-8")
+    elif how == "shots-missing":
+        (env.workdir / "animation" / "shots.json").unlink()
+    elif how == "scene-missing":
+        (env.workdir / "animation" / "scenes" / "s2.js").unlink()
     elif how == "wav-replaced":
         shutil.copyfile(music / "music.wav", music / "other.wav")
         data = bytearray((music / "music.wav").read_bytes())
@@ -178,8 +179,9 @@ def _break(env: Env, how: str) -> None:
         ("events-missing", "music/events.json"),
         ("analysis-missing", "music/analysis.json"),
         ("render-missing", "music/render.json"),
-        ("beatsheet-bars", "到配乐阶段重新渲染"),
-        ("beatsheet-label", "配乐与当前时间轴不一致"),
+        ("shots-short", "到「配乐与动画」阶段重新渲染或调整镜头"),
+        ("shots-missing", "animation/shots.json"),
+        ("scene-missing", "s2"),
         ("wav-replaced", "music.wav 与 render.json 记录的不一致"),
     ],
 )
@@ -199,7 +201,7 @@ async def test_a_stale_score_keeps_the_previous_final_video(reel: Env) -> None:
     out = reel.workdir / "output"
     out.mkdir(exist_ok=True)
     (out / "final.mp4").write_bytes(b"previous final")
-    _break(reel, "beatsheet-label")
+    _break(reel, "shots-short")
     assert _job(reel, await _run(reel, FakeBackend())).status == "failed"
     assert (out / "final.mp4").read_bytes() == b"previous final"
 
@@ -257,7 +259,7 @@ async def test_real_render_of_a_reel_has_the_score_as_its_audio(reel: Env) -> No
     final = reel.workdir / "output" / "final.mp4"
     info = _probe(final)
     assert [s["codec_name"] for s in info["streams"] if s["codec_type"] == "audio"] == ["aac"]
-    assert abs(float(info["format"]["duration"]) - 11.25) <= 0.1
+    assert abs(float(info["format"]["duration"]) - 16.0) <= 0.1
     assert _loudness_db(final, 1.0, 10.0) > -40  # the score is audible, not a silent track
 
 
@@ -328,19 +330,19 @@ async def test_a_music_video_is_mixed_from_the_range_start_of_the_song(mv: Env) 
     job = _job(mv, await _run(mv, backend))
     assert job.status == "done", job.error
     [call] = backend.mix_calls
-    assert call["tracks"] == [] and call["duration"] == pytest.approx(18.0)
+    assert call["tracks"] == [] and call["duration"] == pytest.approx(20.0)
     music = call["music"]
-    assert music.track.source_start == 0.5 and music.duck_under_narration is False
+    assert music.track.source_start == 0.0 and music.duck_under_narration is False
     assert (music.fade_in, music.fade_out) == (MV_FADE_IN, MV_FADE_OUT)
     assert music.track.path != mv.workdir / "music" / "source.wav"
     source_hash = _sha(mv.workdir / "music" / "source.wav")
     final = _final(mv)
-    assert final["audio_sources"] == {"music": {"hash": source_hash, "range": [0.5, 18.5]}}
+    assert final["audio_sources"] == {"music": {"hash": source_hash, "range": [0.0, 20.0]}}
     assert "music_hash" not in final
 
 
 async def test_an_explicit_range_sets_the_start_and_the_duration(mv: Env) -> None:
-    write_mv_workspace(mv.workdir, range_=(4.5, 18.5), refs=("verse", "chorus"))
+    write_mv_workspace(mv.workdir, range_=(4.5, 18.5))
     backend = FakeBackend()
     job = _job(mv, await _run(mv, backend))
     assert job.status == "done", job.error
@@ -353,7 +355,7 @@ async def test_an_explicit_range_sets_the_start_and_the_duration(mv: Env) -> Non
     ("victim", "needle"),
     [
         ("music/analysis.json", "analysis.json"),
-        ("music/sections.json", "sections.json"),
+        ("animation/shots.json", "shots.json"),
         ("music/source.wav", "source"),
     ],
 )
@@ -408,7 +410,7 @@ async def test_the_silent_video_is_cached_until_the_range_or_the_song_changes(mv
     assert _job(mv, await _run(mv, backend)).status == "done"
     assert len(backend.video_calls) == 1  # identical inputs: cache hit
 
-    write_mv_workspace(mv.workdir, range_=(4.5, 18.5), refs=("verse", "chorus"))
+    write_mv_workspace(mv.workdir, range_=(4.5, 18.5))
     assert _job(mv, await _run(mv, backend)).status == "done"
     assert len(backend.video_calls) == 2  # a different range is a different film
 
@@ -436,8 +438,8 @@ async def test_real_render_of_a_music_video_has_the_song_as_its_audio(mv: Env) -
     final = mv.workdir / "output" / "final.mp4"
     info = _probe(final)
     assert [s["codec_name"] for s in info["streams"] if s["codec_type"] == "audio"] == ["aac"]
-    assert abs(float(info["format"]["duration"]) - 18.0) <= 0.15
-    assert _loudness_db(final, 1.0, 17.0) > -50  # clicks are audible, not a silent track
+    assert abs(float(info["format"]["duration"]) - 20.0) <= 0.15
+    assert _loudness_db(final, 1.0, 19.0) > -50  # clicks are audible, not a silent track
 
 
 async def test_a_song_that_vanishes_before_the_copy_asks_for_reanalysis(

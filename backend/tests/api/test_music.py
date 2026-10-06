@@ -11,13 +11,10 @@ from pathlib import Path
 import pytest
 
 from fixtures.synth_music import seed
-from fixtures.synth_music.products import REF, render_products
+from fixtures.synth_music.products import FREE, render_free_products
 from studio.stages.common.score import tool as music_tool
 
 from .conftest import ApiEnv
-
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
-HARDCODED = FIXTURES / "synth_music" / "compose_hardcoded.py"
 
 
 def _identity(workdir: Path):
@@ -36,13 +33,13 @@ async def _reel(api_env: ApiEnv, *, render: bool = True) -> tuple[str, Path]:
     engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
     pid = seed.seed_reel_project(engine, blobs, data_dir=api_env.data_dir)
     workdir = api_env.workdir(pid)
-    (workdir / "beatsheet").mkdir()
-    (workdir / "beatsheet" / "beatsheet.json").write_text(seed.BEATSHEET, encoding="utf-8")
+    (workdir / "animation").mkdir(exist_ok=True)
+    (workdir / "animation" / "shots.json").write_text(json.dumps(seed.SHOTS), encoding="utf-8")
     if render:
-        await render_products(workdir)
+        await render_free_products(workdir)
     else:
         (workdir / "music").mkdir()
-        shutil.copyfile(REF, workdir / "music" / "compose.py")
+        shutil.copyfile(FREE, workdir / "music" / "compose.py")
     return pid, workdir
 
 
@@ -59,7 +56,7 @@ async def test_meta_describes_the_rendered_score(api_env: ApiEnv) -> None:
     render = json.loads((workdir / "music" / "render.json").read_text())
     assert body["rendered"] is True and body["stale"] is False
     assert body["hash"] == render["wav_hash"]
-    assert body["bpm"] == 128 and body["duration"] == pytest.approx(11.25, abs=0.02)
+    assert body["bpm"] == 120 and body["duration"] == pytest.approx(16.0, abs=0.02)
     assert len(body["waveform"]) == 1000 and body["events"]
     assert {"name", "kind", "start", "end"} <= set(body["events"][0])
     assert [s["id"] for s in body["sections"]] == ["s1", "s2"]
@@ -75,12 +72,23 @@ async def test_meta_without_products_says_not_rendered(api_env: ApiEnv) -> None:
     assert [s["id"] for s in body["sections"]] == ["s1", "s2"]  # the script tab still has them
 
 
-async def test_meta_marks_a_score_for_an_older_beatsheet_as_stale(api_env: ApiEnv) -> None:
+async def test_meta_without_bpm_still_describes_the_score(api_env: ApiEnv) -> None:
     pid, workdir = await _reel(api_env)
-    path = workdir / "beatsheet" / "beatsheet.json"
-    path.write_text(path.read_text().replace("BUILD", "RISE", 1), encoding="utf-8")
+    path = workdir / "music" / "render.json"
+    record = json.loads(path.read_text())
+    record["bpm"] = None
+    path.write_text(json.dumps(record))
     body = (await api_env.client.get(_url(pid, "meta"))).json()
-    assert body["rendered"] is True and body["stale"] is True
+    assert body["rendered"] is True and body["bpm"] is None and body["stale"] is False
+
+
+async def test_meta_does_not_need_a_timeline_to_be_usable(api_env: ApiEnv) -> None:
+    """The score and the shots are both the model's own work: a broken shots file does not make
+    the rendered score stale, the sections are simply empty."""
+    pid, workdir = await _reel(api_env)
+    (workdir / "animation" / "shots.json").write_text("{not json", encoding="utf-8")
+    body = (await api_env.client.get(_url(pid, "meta"))).json()
+    assert body["rendered"] is True and body["stale"] is False and body["sections"] == []
 
 
 async def test_meta_survives_corrupt_products(api_env: ApiEnv) -> None:
@@ -151,7 +159,7 @@ async def test_render_runs_the_script_and_returns_the_report(api_env: ApiEnv) ->
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["ok"] is True and body["errors"] == []
-    assert "配乐渲染成功" in body["text"] and body["retime_note"]
+    assert "配乐渲染成功" in body["text"] and body["retime_note"] == ""
     assert body["metrics"]["onsets"] > 0
     jpeg = base64.b64decode(body["picture_base64"])
     assert body["picture_media_type"] == "image/jpeg" and jpeg[:3] == b"\xff\xd8\xff"
@@ -166,11 +174,11 @@ async def test_a_failing_script_is_a_business_result_and_keeps_the_old_products(
 ) -> None:
     pid, workdir = await _reel(api_env)
     before = {p.name: p.read_bytes() for p in (workdir / "music").iterdir() if p.is_file()}
-    shutil.copyfile(HARDCODED, workdir / "music" / "compose.py")
+    (workdir / "music" / "compose.py").write_text("raise RuntimeError('boom in script')\n")
     response = await api_env.client.post(_url(pid, "render"))
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is False and any("写死" in e for e in body["errors"])
+    assert body["ok"] is False and any("boom in script" in e for e in body["errors"])
     assert body["picture_base64"] is None
     after = {p.name: p.read_bytes() for p in (workdir / "music").iterdir() if p.is_file()}
     after.pop("compose.py")
@@ -229,17 +237,16 @@ async def test_a_second_render_while_one_runs_is_refused(
     assert (await first).status_code == 200
 
 
-async def test_render_with_an_unusable_timeline_is_a_conflict_with_the_reason(
-    api_env: ApiEnv,
-) -> None:
+async def test_a_reel_render_needs_no_timeline(api_env: ApiEnv) -> None:
+    """The script picks tempo and length itself: the endpoint works with no shots yet."""
     pid, workdir = await _reel(api_env, render=False)
-    (workdir / "beatsheet" / "beatsheet.json").unlink()
-    response = await api_env.client.post(_url(pid, "render"))
-    assert response.status_code == 409 and "beatsheet" in response.json()["detail"]
+    (workdir / "animation" / "shots.json").unlink()
+    body = (await api_env.client.post(_url(pid, "render"))).json()
+    assert body["ok"] is True, body
 
 
 async def test_render_hash_matches_what_the_worker_checks(api_env: ApiEnv) -> None:
-    """The products from the endpoint pass the same `base_hash` check as the final render."""
+    """The endpoint's products pass the same wav check as the preview and the final render."""
     pid, workdir = await _reel(api_env, render=False)
     await api_env.client.post(_url(pid, "render"))
     render = json.loads((workdir / "music" / "render.json").read_text())

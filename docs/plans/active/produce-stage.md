@@ -155,7 +155,7 @@
 - **完成标准**：MV 在 `concept` 阶段能走完"上传 → 分析 → 写 brief → 定稿"。
 - **验证命令**：`make check`。
 
-### T7：流水线、预设、API 与旧路径清理（待开始）
+### T7：流水线、预设、API 与旧路径清理（完成）
 
 - **目标**：把形态与阶段表改成新流水线，删除 `beatsheet`，清理 `music`、`animation_html` 里只为短片与 MV 服务的分支。
 - **涉及文件**：`backend/src/studio/stages/pipeline.py`、`api/video_kinds.py`、`api/schemas.py`（预设文案）、`db/repo/settings.py`、`main.py`（注册 `produce`，去掉 `beatsheet`）、删除 `stages/beatsheet/`、`stages/music/validate_sections.py`、`timeline/build.py` 里的 `layers_from_beatsheet` 与 `GridInput`/`MomentInput` 中仅短片用到的路径（讲解 + 合成配乐仍用 `GridInput`，保留）、`stages/music/__init__.py` 与 `prepare.py`、`sources.py`（`infer_sources` 的"有 beatsheet 即短片"判断删除，只服务讲解）、`stages/animation_html/prepare.py` 与 `__init__.py`（删除短片、MV 分支，`reads` 改为 `["narrative", "music"]`）、相关测试（删除 `test_beatsheet_*.py`、`test_validate_sections.py`、`test_music_video_pipeline.py` 中被取代的部分，改写 `test_pipeline.py`、`test_video_kinds.py`、`test_projects.py`、`test_settings.py`）。
@@ -168,7 +168,7 @@
 - **完成标准**：AC2 的 grep 条件满足；讲解类项目创建与阶段行为不变。
 - **验证命令**：`make check`。
 
-### T8：api 与成片 worker（待开始）
+### T8：api 与成片 worker（完成）
 
 - **目标**：预览、音频、渲染端点和成片前置检查适配 `produce`。
 - **涉及文件**：`backend/src/studio/api/html_preview.py`、`api/music.py`、`api/music_import_meta.py`、`worker_html.py`、`worker.py`（按需）、`engines/render/mix.py`（按需）、测试 `test_html_preview.py`、`test_music.py`、`test_music_import_meta.py`、`test_synth_music_flow.py`、`test_html_render_flow.py`、`tests/test_worker_html_music.py`。
@@ -209,6 +209,7 @@
 
 ## 进度
 
+- 2026-10-06 — T7 + T8 — 完成（合并实施）：流水线 `concept → produce`；删除 `beatsheet` 阶段、`validate_sections`、`notation.py`、`layers_from_beatsheet`/`layers_from_import`、`SectionInput`/`MomentInput`；`music`、`animation_html` 只服务讲解；`api/music*`、`html_preview`、`worker_html`、`animation_stage`（出片阶段解析为 `produce`）、`scene_checks`、`reopen` 适配；`music/meta` 去掉 `sections_check`；短片 `render.json` 无 `base_hash`；测试与夹具全部迁到 `produce` 形态（新增 `test_produce_pipeline.py` 等），冒烟用例改为 `concept → produce`。`make check` 全绿，`-m slow` 77 个全过（真实 Chromium、ffmpeg、沙箱）。
 - 2026-10-06 — T6 — 完成：`SECTIONS` 加「硬性要求」（八章）；`concept` 增加 `analyze_music` 工具、`music/source.*`/`analysis.*` 托管、`artifact_dirs = [concept, music]`；`concept` 提示词改写（两种项目、硬性要求、MV 先上传再分析）；`produce` 提示词补「简报写明基于歌曲但没有 source 时请用户先上传」。上传端点本来就不绑定阶段（按项目形态放行），无需改动，`test_music_upload.py` 在 `concept` 阶段上传的用例已覆盖。`make check` 全绿（夹具 `fixtures/synth_music/seed.py` 的简报补了「硬性要求」；教训：提交前必须看 `make check` 的结果，上一个提交 `e857a2f` 当时有 4 个测试失败，由紧随其后的提交修好）。
 - 2026-10-06 — T5 — 完成：`validate_scenes_html`/`render_preview_html` 的 `stages` 加 `produce`；`helpers.load_timeline` 在 `produce` 阶段按 `shots.json` 与 `music/` 即时构建时间轴；音乐平移检查在 `produce` 下降为警告；镜头数 > 40 警告；`probe.is_reel` 不再要求网格、关键时刻加入能量峰值并只取罕见事件名（≤ 12 次）。`make check` 全绿。
 - 2026-10-06 — T4 — 完成：`stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`）、金样本移到 `common/{score,scenes}/exemplar`、`main.py` 注册、import-linter 契约加入 `produce`；`make check` 全绿。`validate_scenes_html`/`render_preview_html` 在 `produce` 下的行为留给 T5（其 `stages` 集合在 T5 补）。
@@ -219,10 +220,13 @@
 
 ## 下一步
 
-- 从 T7 开始（流水线、预设、API 与旧路径清理）：先改 `backend/tests/stages/test_pipeline.py`、`tests/api/test_video_kinds.py`、`test_projects.py`、`test_settings.py`、`tests/db/test_repo_stages.py`、`tests/fixtures/{synth_music,import_music}/seed.py`（流水线改为 `["concept", "produce"]`），再改 `stages/pipeline.py`、`api/video_kinds.py`（`STAGE_TITLES`）、`main.py`（去掉 `BEATSHEET_STAGE`）、预设文案；然后删除 `stages/beatsheet/`、`stages/music/validate_sections.py`、`timeline/build.py` 里的 `layers_from_beatsheet`、`timeline/imported.py` 的旧 MV 路径，清理 `music`/`animation_html` 里只服务短片与 MV 的分支。**注意**：`api/music*.py`、`api/html_preview.py`、`worker_html.py` 现在仍按旧的 `beatsheet`/`sections.json` 读 MV 与短片，T7 删旧路径前要先让它们走 `produce` 读取（T8 的内容），所以建议 T7 与 T8 交错做：先做 T8 的后端适配，再回来删旧路径。
+- 从 T9 开始（前端画布与导航）：后端已全部切到 `concept → produce`，前端还停在旧结构。先写 vitest：`stageTitles`（加 `produce`、去 `beatsheet`）、`settingsView`、`videoKindsFixture`（两种形态的流水线为 `['concept','produce']`）、`stageActions`（`produce` 属出片阶段，没有定稿按钮，靠成片后定稿）、`ProjectWorkbenchPage` 的阶段分发（`produce` → 画布；MV 的 `concept` 阶段显示上传区）、`CreateProjectDialog`；再做 `produce` 画布（以 `HtmlAnimationCanvas` 为主体，加配乐标签页）和 `concept` 的上传区迁移；类型 `types/api.ts` 去掉 `sections_check`。后端接口：`GET /music/meta`（MV：`range`、`grid`（参考）、`sections`=镜头平移到整曲秒、无 `sections_check`；短片：`bpm` 可空）、`POST /music/render`（短片，`retime_note` 为空）、`POST /music/source`、`GET /animation/html-preview/meta`、`POST /animation/finalize-render`（返回 `stage: "produce"`）。
 
 ## 决策记录
 
+- D11（2026-10-06）：T7 与 T8 合并实施——旧路径（`beatsheet`、`sections.json`）还被 api/worker/预览读着，必须先让它们走 `produce` 再删，分开提交会有一段红灯。`music` 阶段瘦身为只服务「讲解 + 背景乐」，`render_music_core` 去掉 `section_energy`；`engines.audio.analyze` 的 `section_energy` 形参保留（引擎层纯能力，其测试覆盖了趋势警告）。
+- D12（2026-10-06）：`api/projects.py` 的 `reopen` 原来只对 `animation` 撤销「已完成」标记；改为对项目的出片阶段（`animation`/`animation_html`/`produce`）都撤销——顺带修了 `animation_html` 的同类遗漏。
+- D13（2026-10-06）：`validate_scenes_html` 的音乐平移检查彻底降为警告（不再保留 `strict` 分支）——旧的错误级别只服务过去的短片/MV，现在它们都是 `produce`。
 - D9（2026-10-06）：「硬性要求」放在「目标时长」之后、「情绪与能量走向」之前（第 3 章）；MV 项目靠 `music/source.*` 是否存在区分形态，阶段拿不到项目设置，所以 `concept`/`produce` 的提示词都写了「简报说基于歌曲但没有上传时请用户先上传」。
 - D10（2026-10-06）：`concept` 的 `artifact_dirs` 含 `music`，意味着重新定稿 `concept` 时若 `music/` 下内容与 `produce` 所基于的快照不同（换歌，或 `produce` 之后又写了配乐产物）就会把 `produce` 标为 stale；换歌触发 stale 是想要的，「`concept` 内容没变也 stale」是已知的小误报（`stage_flow` 只按目录前缀比较），记入 tech-debt 即可。
 - D8（2026-10-06）：预览采样的「最少见的几类事件」限定为整条时间轴里出现次数 ≤ 12 的名字——否则 MV 的 `beat`/`downbeat`（几十到上百次）会占满 16 张预览。设计 §7 写的「出现次数最少的几类事件」按此落实。

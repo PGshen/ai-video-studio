@@ -20,8 +20,8 @@ CASES = [
     (ProjectKind("html", True, "none"), ["topic", "narrative", "animation_html"]),
     (ProjectKind("html", True, "synth"), ["topic", "narrative", "music", "animation_html"]),
     (ProjectKind("html", True, "import"), ["topic", "narrative", "music", "animation_html"]),
-    (ProjectKind("html", False, "synth"), ["concept", "beatsheet", "music", "animation_html"]),
-    (ProjectKind("html", False, "import"), ["concept", "music", "beatsheet", "animation_html"]),
+    (ProjectKind("html", False, "synth"), ["concept", "produce"]),
+    (ProjectKind("html", False, "import"), ["concept", "produce"]),
 ]
 
 

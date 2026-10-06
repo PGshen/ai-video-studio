@@ -21,20 +21,17 @@ from studio.timeline.build import (
     TimelineError,
     TimelineLayers,
     build_timeline,
-    layers_from_beatsheet,
     narration_from_documents,
     timeline_hash,
 )
-from studio.timeline.imported import import_hash, layers_from_import
+from studio.timeline.imported import import_hash
 from studio.timeline.schema import Timeline
 from studio.timeline.shots import RANGE_PATH, SHOTS_PATH, parse_range, parse_shots
 
 _NARRATIVE = "narrative/narrative.json"
 _TIMING = "narrative/timing.json"
-_BEATSHEET = "beatsheet/beatsheet.json"
 _EVENTS = "music/events.json"
 _ANALYSIS = "music/analysis.json"
-_SECTIONS = "music/sections.json"
 _SOURCE_STEM = "source"
 
 
@@ -63,7 +60,6 @@ class LoadedTimeline:
     MV 里两者相同：`sha256(timeline_hash + source_hash + range)`。"""
     narrative: dict[str, Any]
     timing: dict[str, Any]
-    beatsheet: dict[str, Any] | None
     range: tuple[float, float] | None = None
     """MV 的有效截取区间（全局秒）；其他形态为 `None`。成片据此从原曲的这一秒起截取。"""
     source_hash: str | None = None
@@ -94,7 +90,6 @@ def _music_input(events_doc: dict[str, Any], analysis_doc: dict[str, Any]) -> Mu
     if not isinstance(energy, list) or isinstance(hop, bool) or not isinstance(hop, int | float):
         raise TimelineError(["music/analysis.json：需要 hop（数字）和 energy（列表）"])
     declared_duration = events_doc.get("duration")
-    declared_bpm = events_doc.get("bpm")
     return MusicInput(
         events=events,
         energy_hop=float(hop),
@@ -102,7 +97,6 @@ def _music_input(events_doc: dict[str, Any], analysis_doc: dict[str, Any]) -> Mu
         declared_duration=float(declared_duration)
         if isinstance(declared_duration, int | float)
         else None,
-        declared_bpm=float(declared_bpm) if isinstance(declared_bpm, int | float) else None,
     )
 
 
@@ -119,26 +113,6 @@ def _source_file(root: Path, prefix: str) -> str:
     if len(found) > 1:
         raise TimelineError([f"{prefix}music/ 下有多个音乐源文件：{', '.join(found)}"])
     return f"music/{found[0]}"
-
-
-def _load_import(sources: TimelineSources) -> LoadedTimeline:
-    root, prefix = sources.root, sources.prefix
-    if sources.narration:
-        raise TimelineError(["导入音乐（MV）的项目不支持旁白"])
-    hint = "音乐阶段需要先分析并定稿段落"
-    analysis = _read_document(root, f"{prefix}{_ANALYSIS}", hint)
-    sections_doc = _read_document(root, f"{prefix}{_SECTIONS}", hint)
-    beatsheet_rel = f"{prefix}{_BEATSHEET}"
-    beatsheet: dict[str, Any] | None = None
-    if sources.with_music or (root / beatsheet_rel).exists():
-        beatsheet = _read_document(root, beatsheet_rel, "节拍脚本阶段需要先定稿")
-    source_file = _source_file(root, prefix) if sources.with_music else None
-    imported = layers_from_import(analysis, sections_doc, beatsheet, source_file=source_file)
-    timeline = build_timeline(imported.layers)
-    digest = import_hash(timeline_hash(timeline), imported.source_hash, imported.range)
-    return LoadedTimeline(
-        timeline, digest, digest, {}, {}, beatsheet, imported.range, imported.source_hash
-    )
 
 
 _SHOTS_HINT = "在 animation/shots.json 里写镜头划分"
@@ -200,7 +174,7 @@ def _load_produce_synth(sources: TimelineSources) -> LoadedTimeline:
     music = _music_input(events_doc, analysis_doc)
     timeline = build_timeline(TimelineLayers([], music=music, timed_sections=shots))
     digest = timeline_hash(timeline)
-    return LoadedTimeline(timeline, digest, digest, {}, {}, None)
+    return LoadedTimeline(timeline, digest, digest, {}, {})
 
 
 def _load_produce_import(sources: TimelineSources) -> LoadedTimeline:
@@ -245,7 +219,7 @@ def _load_produce_import(sources: TimelineSources) -> LoadedTimeline:
     timeline = build_timeline(TimelineLayers([], music=music, timed_sections=shots))
     digest = import_hash(timeline_hash(timeline), source_hash, (round(start, 6), round(end, 6)))
     return LoadedTimeline(
-        timeline, digest, digest, {}, {}, None, (round(start, 6), round(end, 6)), source_hash
+        timeline, digest, digest, {}, {}, (round(start, 6), round(end, 6)), source_hash
     )
 
 
@@ -256,56 +230,38 @@ def load_timeline(sources: TimelineSources) -> LoadedTimeline:
         if sources.music_source == "import":
             return _load_produce_import(sources)
         return _load_produce_synth(sources)
+    if not sources.narration:
+        raise TimelineError(["没有旁白的项目（短片、MV）由 produce 阶段读取"])
     if sources.music_source == "import":
-        return _load_import(sources)
+        raise TimelineError(["导入音乐只用于没有旁白的 MV（produce 阶段）"])
     root, prefix = sources.root, sources.prefix
-    narrative: dict[str, Any] = {}
-    timing: dict[str, Any] = {}
-    beatsheet: dict[str, Any] | None = None
-
-    if sources.narration:
-        narrative = _read_document(root, f"{prefix}{_NARRATIVE}", "叙事阶段需要先定稿并完成配音")
-        timing = _read_document(root, f"{prefix}{_TIMING}", "叙事阶段需要先定稿并完成配音")
-        base = TimelineLayers(narration_from_documents(narrative, timing))
-    else:
-        beatsheet = _read_document(root, f"{prefix}{_BEATSHEET}", "节拍脚本阶段需要先定稿")
-        grid, sections, moments = layers_from_beatsheet(beatsheet)
-        base = TimelineLayers([], grid=grid, moments=moments, sections=sections)
+    narrative = _read_document(root, f"{prefix}{_NARRATIVE}", "叙事阶段需要先定稿并完成配音")
+    timing = _read_document(root, f"{prefix}{_TIMING}", "叙事阶段需要先定稿并完成配音")
+    base = TimelineLayers(narration_from_documents(narrative, timing))
     base_timeline = build_timeline(base)
     base_hash = timeline_hash(base_timeline)
 
     if not (sources.with_music and sources.music_source == "synth"):
-        return LoadedTimeline(base_timeline, base_hash, base_hash, narrative, timing, beatsheet)
+        return LoadedTimeline(base_timeline, base_hash, base_hash, narrative, timing)
 
     hint = "配乐阶段需要先渲染并定稿"
     events_doc = _read_document(root, f"{prefix}{_EVENTS}", hint)
     analysis_doc = _read_document(root, f"{prefix}{_ANALYSIS}", hint)
     music = _music_input(events_doc, analysis_doc)
-    grid_input = base.grid
-    if sources.narration:
-        bpm, offset = events_doc.get("bpm"), events_doc.get("offset", 0.0)
-        if isinstance(bpm, bool) or not isinstance(bpm, int | float):
-            raise TimelineError(["music/events.json：有旁白的项目必须声明数字 bpm"])
-        if (
-            isinstance(offset, bool)
-            or not isinstance(offset, int | float)
-            or not 0 <= offset < max(base_timeline.duration, 0.001)
-        ):
-            raise TimelineError(
-                [f"music/events.json：offset 必须是 [0, {base_timeline.duration:.3f}) 秒内的数字"]
-            )
-        grid_input = GridInput(float(bpm), float(offset))
-    full = TimelineLayers(
-        base.narration,
-        grid=grid_input,
-        moments=base.moments,
-        music=music,
-        sections=base.sections,
-    )
+    bpm, offset = events_doc.get("bpm"), events_doc.get("offset", 0.0)
+    if isinstance(bpm, bool) or not isinstance(bpm, int | float):
+        raise TimelineError(["music/events.json：有旁白的项目必须声明数字 bpm"])
+    if (
+        isinstance(offset, bool)
+        or not isinstance(offset, int | float)
+        or not 0 <= offset < max(base_timeline.duration, 0.001)
+    ):
+        raise TimelineError(
+            [f"music/events.json：offset 必须是 [0, {base_timeline.duration:.3f}) 秒内的数字"]
+        )
+    full = TimelineLayers(base.narration, grid=GridInput(float(bpm), float(offset)), music=music)
     timeline = build_timeline(full)
-    return LoadedTimeline(
-        timeline, timeline_hash(timeline), base_hash, narrative, timing, beatsheet
-    )
+    return LoadedTimeline(timeline, timeline_hash(timeline), base_hash, narrative, timing)
 
 
 def load_workspace_timeline(workdir: Path) -> LoadedTimeline:

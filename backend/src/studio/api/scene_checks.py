@@ -78,6 +78,14 @@ _PROFILES = {
         "animation/scenes/{scene_id}.js",
         True,
     ),
+    # `produce` (reel, MV) uses the same two tools and scene files as the HTML explainer.
+    "produce": _Profile(
+        "produce",
+        "validate_scenes_html",
+        "render_preview_html",
+        "animation/scenes/{scene_id}.js",
+        True,
+    ),
 }
 
 CheckOutcome = Literal["passed", "failed", "not_checked"]

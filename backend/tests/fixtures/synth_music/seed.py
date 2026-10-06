@@ -1,4 +1,5 @@
-"""Projects for the synth-music flows (3A T9): a motion reel and an explainer with a background bed.
+"""Projects for the synth-music flows: a motion reel (`concept → produce`) and an explainer with a
+background bed.
 
 Same approach as `fixtures.animation_html.seed`: stage rows follow the project pipeline, upstream
 stages are finalised from fixture artifacts so the stage under test is unlocked.
@@ -17,14 +18,14 @@ from studio.agent.stage_flow import finalize
 from studio.db.repo.projects import create_project
 from studio.db.repo.stages import create_stage
 from studio.stages.animation_html import STAGE as ANIMATION_HTML_STAGE
-from studio.stages.beatsheet import STAGE as BEATSHEET_STAGE
 from studio.stages.concept import STAGE as CONCEPT_STAGE
 from studio.stages.music import STAGE as MUSIC_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
+from studio.stages.produce import STAGE as PRODUCE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
 from studio.workspace import BlobStore, create_snapshot, init_workspace
 
-REEL_PIPELINE = ["concept", "beatsheet", "music", "animation_html"]
+REEL_PIPELINE = ["concept", "produce"]
 BED_PIPELINE = ["topic", "narrative", "music", "animation_html"]
 
 BRIEF = "\n".join(
@@ -37,27 +38,25 @@ BRIEF = "\n".join(
         ("视觉母题", "白色圆点与方形轨道"),
         ("参考与灵感", "动态图形短片"),
         ("段落草图", "两段：蓄力与释放"),
-        ("风险点", "节奏容易散，靠网格约束"),
+        ("风险点", "节奏容易散"),
     ]
 )
 
-BEATSHEET = """{
-  "bpm": 128,
-  "sections": [
-    {"id": "s1", "label": "BUILD", "bars": 3, "intent": "蓄力", "energy": "low",
-     "moments": [{"at": "1.1", "visual_action": "圆点呼吸"}]},
-    {"id": "s2", "label": "DROP", "bars": 3, "intent": "释放", "energy": "peak",
-     "moments": [{"at": "1.1", "visual_action": "炸开"}, {"at": "2.3", "visual_action": "回收"}]}
-  ]
+DURATION = 16.0
+"""Length of the audio `compose_free.py` renders (8 bars of 4 beats at 120 BPM)."""
+SHOTS = {
+    "shots": [
+        {"id": "s1", "label": "BUILD", "start": 0.0, "end": 8.0},
+        {"id": "s2", "label": "DROP", "start": 8.0, "end": DURATION},
+    ]
 }
-"""
 
-# Time comes only from env.bt / env.hit: the shift check and the retiming check both rely on it.
+# Time comes only from env.hit / env.energy: the shift check relies on it.
 REEL_SCENE = """
 module.exports = { draw(ctx, lt, env) {
   ctx.fillStyle = '#102030'; ctx.fillRect(0, 0, env.W, env.H);
   ctx.fillStyle = '#fff';
-  ctx.fillRect(100 + 40 * env.bt(1), 100, 200 + 600 * env.hit('kick'), 120);
+  ctx.fillRect(100, 100, 200 + 600 * env.hit('kick'), 120);
 } };
 """
 
@@ -68,8 +67,8 @@ def registry() -> StageRegistry:
         TOPIC_STAGE,
         NARRATIVE_STAGE,
         CONCEPT_STAGE,
-        BEATSHEET_STAGE,
         MUSIC_STAGE,
+        PRODUCE_STAGE,
         ANIMATION_HTML_STAGE,
     ):
         registry.register(stage)

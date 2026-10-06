@@ -52,10 +52,8 @@ def build_pipeline(kind: ProjectKind) -> list[str]:
     if errors:
         raise ValueError("；".join(errors))
     video_kind = video_kind_of(kind)
-    if video_kind == "motion_reel":
-        return ["concept", "beatsheet", "music", "animation_html"]
-    if video_kind == "music_video":
-        return ["concept", "music", "beatsheet", "animation_html"]
+    if video_kind in ("motion_reel", "music_video"):
+        return ["concept", "produce"]
     stages = ["topic", "narrative"]
     if kind.music_source != "none":
         stages.append("music")
@@ -102,14 +100,14 @@ PRESETS: tuple[Preset, ...] = (
     Preset(
         video_kind="motion_reel",
         label="动态图形短片",
-        description="无旁白的动态图形短片，先定概念与节拍，再配合合成配乐出片。",
+        description="无旁白的动态图形短片，先定创意与要求，再由模型一并完成配乐与动画。",
         music_choices=("synth",),
         default=ProjectKind("html", False, "synth"),
     ),
     Preset(
         video_kind="music_video",
         label="音乐 MV",
-        description="无旁白的音乐 MV，导入现成音乐后按节拍编排画面。",
+        description="无旁白的音乐 MV，先基于上传的歌曲定创意与要求，再由模型完成画面。",
         music_choices=("import",),
         default=ProjectKind("html", False, "import"),
     ),

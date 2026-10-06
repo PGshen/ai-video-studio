@@ -1,4 +1,5 @@
-"""项目的动画阶段名：`animation`（Manim）或 `animation_html`（HTML 引擎）。
+"""项目的"出片阶段"名：`animation`（Manim）、`animation_html`（讲解的 HTML 动画）或
+`produce`（短片、MV 的配乐与动画）。
 
 由项目流水线（`settings["pipeline"]`）决定；老项目没有该字段时回落 `animation`。渲染任务、
 成片定稿和镜头检查状态共用这一处解析，不再各自写死阶段名。
@@ -15,12 +16,16 @@ from studio.db.repo.projects import get_project
 
 MANIM_STAGE = "animation"
 HTML_STAGE = "animation_html"
+PRODUCE_STAGE = "produce"
 
 
 def animation_stage_of(settings: Mapping[str, Any]) -> str:
     pipeline = settings.get("pipeline")
-    if isinstance(pipeline, list) and HTML_STAGE in pipeline:
-        return HTML_STAGE
+    if isinstance(pipeline, list):
+        if PRODUCE_STAGE in pipeline:
+            return PRODUCE_STAGE
+        if HTML_STAGE in pipeline:
+            return HTML_STAGE
     return MANIM_STAGE
 
 

@@ -12,7 +12,7 @@ import pytest
 from studio.agent.tools import ToolContext, invoke_tool
 from studio.stages.common.score import analyze as analyze_module
 from studio.stages.common.score import tool as music_tool
-from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL, NO_SOURCE_PRODUCE_MESSAGE
+from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL, NO_SOURCE_MESSAGE
 from studio.stages.common.score.tool import RENDER_MUSIC_TOOL
 
 FREE = Path(__file__).resolve().parents[1] / "fixtures" / "synth_music" / "compose_free.py"
@@ -82,7 +82,7 @@ async def test_render_music_in_the_music_stage_still_needs_the_timeline(project:
 async def test_analyze_music_without_a_song_asks_for_an_upload(tmp_path: Path) -> None:
     for stage in ("concept", "produce"):
         result = await invoke_tool(ANALYZE_MUSIC_TOOL, _ctx(tmp_path, [], stage=stage), {})
-        assert result.is_error and result.text == NO_SOURCE_PRODUCE_MESSAGE
+        assert result.is_error and result.text == NO_SOURCE_MESSAGE
 
 
 def test_analysis_summary_points_to_range_json_not_sections_json() -> None:
@@ -95,10 +95,8 @@ def test_analysis_summary_points_to_range_json_not_sections_json() -> None:
         "candidates": [8.0, 16.0],
         "warnings": [],
     }
-    produce = analyze_module._summary(doc, produce=True)
-    assert "range.json" in produce and "sections.json" not in produce
-    legacy = analyze_module._summary(doc)
-    assert "sections.json" in legacy
+    text = analyze_module._summary(doc)
+    assert "range.json" in text and "sections.json" not in text
     json.dumps(doc)  # the doc stays plain data
 
 

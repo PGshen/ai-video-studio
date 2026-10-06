@@ -99,7 +99,6 @@ async def _run_and_check(
     timeline: dict[str, Any] | None,
     run_dir: Path,
     *,
-    section_energy: Mapping[str, str],
     wrap_command: WrapCommand,
     timeout: float,
 ) -> _Run | list[str]:
@@ -132,9 +131,7 @@ async def _run_and_check(
     if problems:
         return problems
     analysis_timeline = _with_declared_grid(timeline, doc)
-    report = await asyncio.to_thread(
-        analyze, samples, analysis_timeline, doc["events"], section_energy=section_energy
-    )
+    report = await asyncio.to_thread(analyze, samples, analysis_timeline, doc["events"])
     return _Run(samples, doc, report, result.wav_path, result.events_path, analysis_timeline)
 
 
@@ -247,13 +244,11 @@ async def render_music_core(
     *,
     timeline: dict[str, Any] | None = None,
     base_hash: str | None = None,
-    section_energy: Mapping[str, str] | None = None,
     wrap_command: WrapCommand,
     timeout: float = _TIMEOUT,
 ) -> RenderOutcome:
     """`timeline=None` 是 `produce` 阶段：脚本没有时间轴输入，自己决定速度、长度和结构，
     所以不做重定时校验，`render.json` 里没有 `base_hash`，`bpm` 可以不声明。"""
-    energy_by_section = section_energy or {}
     script = workdir / "music" / "compose.py"
     if not script.is_file():
         return RenderOutcome(ok=False, errors=["music/compose.py 不存在，先写合成脚本"])
@@ -265,7 +260,7 @@ async def render_music_core(
         script.write_bytes(script_bytes)
         first = await _run_and_check(
             script, timeline, run_root / "main",
-            section_energy=energy_by_section, wrap_command=wrap_command, timeout=timeout,
+            wrap_command=wrap_command, timeout=timeout,
         )  # fmt: skip
         if isinstance(first, list):
             return RenderOutcome(ok=False, errors=first)
@@ -276,7 +271,7 @@ async def render_music_core(
             retimed = retime_timeline(timeline)
             retime_run = await _run_and_check(
                 script, retimed, run_root / "retime",
-                section_energy=energy_by_section, wrap_command=wrap_command, timeout=timeout,
+                wrap_command=wrap_command, timeout=timeout,
             )  # fmt: skip
             problems = _retime_problems(first, retime_run, timeline)
             if problems:

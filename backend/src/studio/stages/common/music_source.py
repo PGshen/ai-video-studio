@@ -1,7 +1,6 @@
-"""导入音乐的源文件 `music/source.<ext>`：判断项目是否为导入形态（音乐 MV）的唯一信号。
+"""用户上传的歌曲 `music/source.<ext>`：判断项目是否为歌曲形态（音乐 MV）的唯一信号。
 
-`music` 阶段用它分流两种形态，`animation_html` 用同一规则读上游 `upstream/music/`；
-只有 `sections.json` 而没有源文件（例如合成形态留下的文件）不算导入形态。
+`produce`、`concept` 与各工具用同一规则：工作区里有源文件就是 MV，没有就是（合成配乐的）短片。
 """
 
 from __future__ import annotations

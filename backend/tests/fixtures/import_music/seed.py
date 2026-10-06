@@ -1,4 +1,4 @@
-"""A music-video project (imported song): `concept → music → beatsheet → animation_html`."""
+"""A music-video project (imported song): `concept → produce`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from sqlalchemy import Engine
 from fixtures.synth_music.seed import _create
 from studio.workspace import BlobStore
 
-MV_PIPELINE = ["concept", "music", "beatsheet", "animation_html"]
+MV_PIPELINE = ["concept", "produce"]
 
 
 def seed_mv_project(engine: Engine, blobs: BlobStore, *, data_dir: Path) -> str:

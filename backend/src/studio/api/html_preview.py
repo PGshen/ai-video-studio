@@ -34,7 +34,6 @@ from studio.engines.render.mix import BED_GAIN_DB
 from studio.stages.common.music_source import find_source
 from studio.stages.pipeline import kind_from_settings
 from studio.timeline import TimelineError
-from studio.timeline.imported import effective_range
 from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
 from studio.workspace import file_sha256, project_dir
 
@@ -52,7 +51,13 @@ def _load(engine: Engine, settings: Settings, project_id: str) -> tuple[LoadedTi
     workdir = project_dir(settings.data_dir, project_id)
     try:
         kind = kind_from_settings(project.settings)
-        sources = TimelineSources(workdir, narration=kind.narration, music_source=kind.music_source)
+        # Silent-narration projects (reel, MV) are `produce` projects: shots come from the model.
+        sources = TimelineSources(
+            workdir,
+            narration=kind.narration,
+            music_source=kind.music_source,
+            produce=not kind.narration,
+        )
         return load_timeline(sources), workdir
     except TimelineError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -61,12 +66,16 @@ def _load(engine: Engine, settings: Settings, project_id: str) -> tuple[LoadedTi
 def _preview_music(
     project_id: str, workdir: Path, loaded: LoadedTimeline, narration: bool
 ) -> HtmlPreviewMusic | None:
-    """配乐已渲染、文件没被换过、且对着当前时间轴渲染的才给预览用（与成片的前置检查同一标准）。"""
+    """配乐已渲染、文件没被换过、且（讲解）对着当前时间轴渲染的才给预览用（与成片的前置检查同一
+    标准）。`produce` 项目的 `render.json` 没有 `base_hash`：配乐和镜头都是模型自己写的，没有上游
+    时间轴可对照。"""
     wav = workdir / "music" / "music.wav"
     try:
         render = json.loads((workdir / "music" / "render.json").read_text(encoding="utf-8"))
         wav_hash = file_sha256(wav)
-        current = render["base_hash"] == loaded.base_hash and render["wav_hash"] == wav_hash
+        current = render["wav_hash"] == wav_hash and (
+            "base_hash" not in render or render["base_hash"] == loaded.base_hash
+        )
     except (OSError, ValueError, KeyError, TypeError):
         return None
     if not current:
@@ -76,22 +85,21 @@ def _preview_music(
     return HtmlPreviewMusic(url=url, gain=gain)
 
 
-def _preview_import_music(project_id: str, workdir: Path) -> HtmlPreviewMusic | None:
-    """源文件在、分析对着当前这份文件做的、段落能读出区间，才给预览用（同合成形态的标准）。"""
+def _preview_import_music(
+    project_id: str, workdir: Path, loaded: LoadedTimeline
+) -> HtmlPreviewMusic | None:
+    """源文件在、分析对着当前这份文件做的，才给预览用；音频从截取区间的起点放（同合成形态的标准）。"""
     source = find_source(workdir / "music")
-    if source is None:
+    if source is None or loaded.range is None:
         return None
     try:
-        analysis = json.loads((workdir / "music" / "analysis.json").read_text(encoding="utf-8"))
-        sections = json.loads((workdir / "music" / "sections.json").read_text(encoding="utf-8"))
         digest = file_sha256(source)
-        if analysis.get("source_hash") != digest:
-            return None
-        start, _ = effective_range(sections)
-    except (OSError, ValueError, AttributeError, TimelineError):
+    except OSError:
+        return None
+    if loaded.source_hash != digest:
         return None
     url = f"/api/projects/{quote(project_id, safe='')}/music/audio?v={digest}"
-    return HtmlPreviewMusic(url=url, gain=1.0, offset=start)
+    return HtmlPreviewMusic(url=url, gain=1.0, offset=loaded.range[0])
 
 
 @router.get("/projects/{project_id}/animation/html-preview/meta", response_model=HtmlPreviewMeta)
@@ -144,7 +152,7 @@ def html_preview_meta_endpoint(
         music=(
             _preview_music(project_id, workdir, loaded, kind.narration)
             if kind.music_source == "synth"
-            else _preview_import_music(project_id, workdir)
+            else _preview_import_music(project_id, workdir, loaded)
             if kind.music_source == "import"
             else None
         ),

@@ -28,8 +28,8 @@ STAGE_TITLES: dict[str, str] = {
     "topic": "选题",
     "concept": "创意",
     "narrative": "叙事",
-    "beatsheet": "节拍脚本",
     "music": "配乐",
+    "produce": "配乐与动画",
     "animation": "动画",
     "animation_html": "动画",
 }

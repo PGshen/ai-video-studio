@@ -154,7 +154,6 @@ class TestLoadSynth:
         assert timeline.music is not None
         assert [e.name for e in timeline.music.events] == ["kick", "riser"]
         assert loaded.hash == loaded.base_hash and loaded.range is None
-        assert loaded.beatsheet is None
 
     def test_bpm_is_optional(self, tmp_path: Path) -> None:
         _synth(tmp_path, bpm=None)
@@ -280,3 +279,39 @@ class TestLoadImport:
         assert not (tmp_path / "music" / "sections.json").exists()
         assert not (tmp_path / "beatsheet").exists()
         load_timeline(_sources(tmp_path, "import"))
+
+    def test_a_missing_analysis_names_the_file(self, tmp_path: Path) -> None:
+        _import(tmp_path)
+        (tmp_path / "music" / "analysis.json").unlink()
+        with pytest.raises(TimelineError, match=r"music/analysis\.json"):
+            load_timeline(_sources(tmp_path, "import"))
+
+    def test_a_broken_analysis_is_a_timeline_error(self, tmp_path: Path) -> None:
+        _import(tmp_path)
+        (tmp_path / "music" / "analysis.json").write_text("{nope", encoding="utf-8")
+        with pytest.raises(TimelineError):
+            load_timeline(_sources(tmp_path, "import"))
+
+    def test_an_analysis_missing_fields_asks_to_analyze_again(self, tmp_path: Path) -> None:
+        _import(tmp_path)
+        _write(tmp_path, "music/analysis.json", {"duration": 40.0})
+        with pytest.raises(TimelineError, match="analyze_music"):
+            load_timeline(_sources(tmp_path, "import"))
+
+    def test_the_energy_values_do_not_change_the_hash_when_only_beats_change(
+        self, tmp_path: Path
+    ) -> None:
+        _import(tmp_path, range_doc={"start": 10, "end": 22})
+        first = load_timeline(_sources(tmp_path, "import")).hash
+        analysis = json.loads((tmp_path / "music" / "analysis.json").read_text())
+        analysis["candidates"] = [1.0, 2.0]  # a field that does not shape the timeline
+        _write(tmp_path, "music/analysis.json", analysis)
+        assert load_timeline(_sources(tmp_path, "import")).hash == first
+
+    def test_a_project_with_narration_is_not_read_as_produce(self, tmp_path: Path) -> None:
+        _import(tmp_path)
+        sources = TimelineSources(
+            root=tmp_path, narration=True, music_source="import", produce=True
+        )
+        with pytest.raises(TimelineError, match="produce"):
+            load_timeline(sources)

@@ -49,7 +49,7 @@ class AnimationHtmlStage:
         return _WRITE_SCOPE
 
     def reads(self) -> list[str]:
-        return ["narrative", "beatsheet", "music"]
+        return ["narrative", "music"]
 
     def prepare_turn(self, workdir: Path) -> None:
         prepare_turn(workdir)

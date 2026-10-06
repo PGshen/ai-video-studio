@@ -26,7 +26,7 @@ def doc_bpm(workdir: Path) -> float:
 def _ctx(workdir: Path, writes: list[tuple[str, str]]) -> ToolContext:
     return ToolContext(
         project_id="p",
-        stage="music",
+        stage="produce",
         workdir=workdir,
         record_tool_write=lambda rel, digest: writes.append((rel, digest)),
     )
@@ -73,7 +73,7 @@ def test_import_source_finds_whitelisted_extensions(tmp_path: Path) -> None:
 
 def test_tool_registration() -> None:
     assert ANALYZE_MUSIC_TOOL.name == "analyze_music"
-    assert ANALYZE_MUSIC_TOOL.stages == {"music", "concept", "produce"}
+    assert ANALYZE_MUSIC_TOOL.stages == {"concept", "produce"}
 
 
 def test_success_text_picture_and_files(analyzed: tuple[Path, ToolResult, list]) -> None:
@@ -115,7 +115,7 @@ async def test_repeat_call_gives_identical_products(
 async def test_no_source_is_a_clear_error(tmp_path: Path) -> None:
     writes: list[tuple[str, str]] = []
     result = await invoke_tool(ANALYZE_MUSIC_TOOL, _ctx(tmp_path, writes), {})
-    assert result.is_error and "还没有上传音乐，请让用户在音乐画布上传" in result.text
+    assert result.is_error and "还没有上传歌曲" in result.text
     assert writes == [] and result.images == []
 
 
@@ -163,7 +163,7 @@ async def test_passes_absolute_resolved_paths(
     assert seen["out_dir"] != project / "music"
 
 
-async def test_low_confidence_suggests_manual_sections(
+async def test_low_confidence_points_to_the_analysis_picture_and_range_json(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     real = analyze_module.run_song_analysis
@@ -178,7 +178,8 @@ async def test_low_confidence_suggests_manual_sections(
     monkeypatch.setattr(analyze_module, "run_song_analysis", lowered)
     result = await invoke_tool(ANALYZE_MUSIC_TOOL, _ctx(project, []), {})
     assert not result.is_error
-    assert "手动修正" in result.text and "拍点分散" in result.text
+    assert "只是参考" in result.text and "range.json" in result.text
+    assert "sections.json" not in result.text and "拍点分散" in result.text
 
 
 async def test_picture_compression_failure_leaves_products_untouched(

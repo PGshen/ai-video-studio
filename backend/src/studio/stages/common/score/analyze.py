@@ -24,9 +24,7 @@ from studio.engines.audio.song_job import DEFAULT_TIMEOUT, SongJobError, run_son
 from studio.stages.common.score.sources import import_source
 from studio.stages.common.score.tool import LISTEN_NOTE, compress_picture
 
-NO_SOURCE_MESSAGE = "还没有上传音乐，请让用户在音乐画布上传"
-NO_SOURCE_PRODUCE_MESSAGE = "还没有上传歌曲：这个项目没有可分析的音乐，请让用户先上传歌曲"
-_PRODUCE_STAGES = ("concept", "produce")
+NO_SOURCE_MESSAGE = "还没有上传歌曲：这个项目没有可分析的音乐，请让用户先上传歌曲"
 RESIDUAL_WARN_MS = 30.0
 _PRODUCTS = ("analysis.json", "analysis.png")
 _MAX_CANDIDATES = 24
@@ -48,7 +46,7 @@ def _install(temp_dir: Path, music_dir: Path) -> None:
             hidden.unlink(missing_ok=True)
 
 
-def _summary(doc: dict[str, Any], *, produce: bool = False) -> str:
+def _summary(doc: dict[str, Any]) -> str:
     candidates = [c for c in doc.get("candidates", []) if isinstance(c, int | float)]
     shown = ", ".join(f"{c:.2f}" for c in candidates[:_MAX_CANDIDATES])
     more = (
@@ -64,15 +62,10 @@ def _summary(doc: dict[str, Any], *, produce: bool = False) -> str:
     ]
     warnings = list(doc.get("warnings", []))
     low_confidence = doc["confidence"] < CONFIDENCE_WARN or doc["residual_ms"] > RESIDUAL_WARN_MS
-    if low_confidence and produce:
+    if low_confidence:
         lines.append(
             "置信度低或拟合残差大：自动网格与分段只是参考，请对照分析图自己判断节拍；"
-            "需要截取时写 music/range.json。"
-        )
-    elif low_confidence:
-        lines.append(
-            "置信度低或拟合残差大：自动网格与分段可能不准，请对照分析图手动修正 "
-            "sections.json（含 bpm/offset）；这不阻止定稿。"
+            "需要截取时写 music/range.json。这不阻止定稿。"
         )
     if warnings:
         lines.append(f"警告（{len(warnings)} 条）：")
@@ -88,11 +81,9 @@ class AnalyzeMusicArgs(BaseModel):
 
 async def _handler(ctx: ToolContext, args: AnalyzeMusicArgs) -> ToolResult:
     workdir = ctx.workdir.resolve()
-    produce = ctx.stage in _PRODUCE_STAGES
     source = import_source(workdir)
     if source is None:
-        message = NO_SOURCE_PRODUCE_MESSAGE if produce else NO_SOURCE_MESSAGE
-        return ToolResult(text=message, is_error=True)
+        return ToolResult(text=NO_SOURCE_MESSAGE, is_error=True)
     # The child runs with cwd=out_dir, so both paths must be absolute and resolved.
     source = source.resolve()
     with tempfile.TemporaryDirectory(prefix="song-analysis-") as raw_temp:
@@ -100,7 +91,7 @@ async def _handler(ctx: ToolContext, args: AnalyzeMusicArgs) -> ToolResult:
         try:
             result = await run_song_analysis(source, temp_dir, timeout=DEFAULT_TIMEOUT)
             doc = json.loads(result.analysis_path.read_text(encoding="utf-8"))
-            summary = _summary(doc, produce=produce)
+            summary = _summary(doc)
             jpeg = compress_picture(result.picture_path.read_bytes())  # before installing
             _install(temp_dir, workdir / "music")
         except SongJobError as exc:
@@ -125,6 +116,6 @@ ANALYZE_MUSIC_TOOL = ToolSpec(
         "没有上传音乐时会报错。你听不到声音，靠这张图和指标判断。"
     ),
     input_model=AnalyzeMusicArgs,
-    stages={"music", "concept", "produce"},
+    stages={"concept", "produce"},
     handler=_handler,
 )

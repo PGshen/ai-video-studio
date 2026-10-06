@@ -4,8 +4,8 @@
   `MAX_UPLOAD_BYTES` 立即中止；文件先落在 `.cache/tmp` 下的私有目录，`ffprobe` 确认是音频且时长合
   格后，才原子改名为 `music/source.<ext>` 并清掉别的扩展名的旧源文件。原文件名只用来取扩展名，不参
   与任何路径拼接。不触发分析（分析是 agent 工具的事）。
-- 换歌不删 `analysis.*` 与 `sections.json`：它们的 `source_hash` 与新文件对不上，定稿条件与时间轴
-  读取已把这种状态当成 stale/阻塞。
+- 换歌不删 `analysis.*` 与 `range.json`：`analysis.json` 的 `source_hash` 与新文件对不上，
+  定稿条件与预览已把这种状态当成 stale/阻塞。
 
 `async def` 端点：忙碌检查与登记"上传中"之间不 `await`（同 `api.music` 的约定）。
 """

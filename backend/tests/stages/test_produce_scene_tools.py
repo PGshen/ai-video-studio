@@ -297,3 +297,46 @@ async def test_beat_and_downbeat_events_from_a_song_do_not_flood_the_samples(
     result = await _preview(tmp_path, scene_id="all")
     assert not result.is_error, result.text
     assert len([line for line in result.text.splitlines() if line.startswith("t=")]) == 16
+
+
+@pytest.fixture
+async def real_pool() -> AsyncIterator[None]:
+    pool = BrowserPool()
+    set_browser_pool(pool)
+    yield
+    set_browser_pool(None)
+    await pool.close()
+
+
+@pytest.mark.slow
+async def test_real_browser_global_post_cannot_vouch_for_a_scene(
+    project: Path, real_pool: None
+) -> None:
+    """A HUD in `global.js` that reads the music on every frame would make every frame change;
+    the shift check assembles the page without it, so a scene that ignores the music is named."""
+    follows = (
+        "module.exports = { draw(ctx, lt, env) {\n"
+        "  ctx.fillStyle = '#102030'; ctx.fillRect(0, 0, env.W, env.H);\n"
+        "  ctx.fillStyle = '#fff';\n"
+        "  ctx.fillRect(100, 100, 200 + 600 * env.hit('kick'), 120);\n"
+        "} };\n"
+    )
+    ignores = (
+        "module.exports = { draw(ctx, lt, env) {\n"
+        "  ctx.fillStyle = '#102030'; ctx.fillRect(0, 0, env.W, env.H);\n"
+        "  ctx.fillStyle = '#fff'; ctx.fillRect(100 + lt * 50, 100, 200, 120);\n"
+        "} };\n"
+    )
+    hud = (
+        "module.exports = { post(ctx, t, env) {\n"
+        "  ctx.fillStyle = '#f00'; ctx.fillRect(1800, 20, 10 + 100 * env.energy(), 10);\n"
+        "  ctx.fillRect(1700, 20, 10 + 100 * env.hit('kick'), 10);\n"
+        "} };\n"
+    )
+    fx.write_project(project, scenes={"intro": follows, "drop": ignores}, global_js=hud)
+    result = await _validate(project)
+    assert not result.is_error, result.text  # only a warning: a scene may ignore the music
+    assert "警告 镜头 drop：整个镜头对音乐平移" in result.text
+    assert "镜头 intro：" not in result.text
+    preview = await _preview(project, scene_id="intro")
+    assert not preview.is_error, preview.text

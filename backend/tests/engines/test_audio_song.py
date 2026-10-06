@@ -214,7 +214,7 @@ def test_loose_and_drifting_beats_get_low_confidence(tmp_path: Path) -> None:
     drifting = analyze_song(_write(tmp_path, click_times(drift, 30.0), "d.wav"))
     for a in (loose, scattered, drifting):
         assert a.confidence < 0.5
-        assert any("拍点不稳" in w and "sections.json" in w for w in a.warnings)
+        assert any("拍点不稳" in w and "sections.json" not in w for w in a.warnings)
 
 
 def test_analysis_is_deterministic(regular: tuple[Path, song.SongAnalysis]) -> None:

@@ -248,23 +248,19 @@ async def test_meta_of_a_reel_project_has_music_timeline_sections_and_no_narrati
         {"narration": False, "music_source": "synth", "video_kind": "motion_reel"},
     )
     work = api_env.workdir(project_id)
-    bar = 4 * 60 / 128
-    (work / "beatsheet").mkdir()
-    (work / "beatsheet" / "beatsheet.json").write_text(
+    (work / "animation").mkdir(exist_ok=True)
+    (work / "animation" / "shots.json").write_text(
         json.dumps(
             {
-                "bpm": 128,
-                "sections": [
-                    {"id": "s1-intro", "label": "INTRO", "bars": 2, "moments": []},
-                    {"id": "s2-drop", "label": "DROP", "bars": 2, "moments": []},
-                ],
+                "shots": [
+                    {"id": "s1-intro", "label": "INTRO", "start": 0, "end": 4},
+                    {"id": "s2-drop", "label": "DROP", "start": 4, "end": 8},
+                ]
             }
         )
     )
     (work / "music").mkdir()
-    (work / "music" / "events.json").write_text(
-        json.dumps({"bpm": 128, "duration": 4 * bar, "events": []})
-    )
+    (work / "music" / "events.json").write_text(json.dumps({"duration": 8.0, "events": []}))
     (work / "music" / "analysis.json").write_text(json.dumps({"hop": 0.1, "energy": [0.5]}))
     fx.write_project(work, scenes={"s1-intro": fx.PURE_SCENE_PLAIN, "s2-drop": fx.PURE_SCENE_PLAIN})
 
@@ -274,7 +270,7 @@ async def test_meta_of_a_reel_project_has_music_timeline_sections_and_no_narrati
     assert [s["id"] for s in meta["sections"]] == ["s1-intro", "s2-drop"]
     assert all(s["beats"] == [] for s in meta["sections"])
     assert meta["audio"] == []
-    assert meta["duration"] == pytest.approx(4 * bar)
+    assert meta["duration"] == pytest.approx(8.0)
 
 
 # ---- the score (3B T4) ------------------------------------------------------------------
@@ -282,20 +278,21 @@ async def test_meta_of_a_reel_project_has_music_timeline_sections_and_no_narrati
 
 async def _scored(api_env: ApiEnv, kind: str):
     from fixtures.synth_music import seed
-    from fixtures.synth_music.products import render_products
+    from fixtures.synth_music.products import render_free_products, render_products
 
     engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
     if kind == "reel":
         project_id = seed.seed_reel_project(engine, blobs, data_dir=api_env.data_dir)
         work = api_env.workdir(project_id)
-        (work / "beatsheet").mkdir()
-        (work / "beatsheet" / "beatsheet.json").write_text(seed.BEATSHEET, encoding="utf-8")
+        await render_free_products(work)
+        (work / "animation").mkdir(exist_ok=True)
+        (work / "animation" / "shots.json").write_text(json.dumps(seed.SHOTS), encoding="utf-8")
         scenes = ["s1", "s2"]
     else:
         project_id = seed.seed_bed_project(engine, blobs, data_dir=api_env.data_dir)
         work = api_env.workdir(project_id)
         scenes = ["s-hook", "s-explain"]
-    await render_products(work)
+        await render_products(work)
     fx.write_project(work, scenes={name: fx.PURE_SCENE_PLAIN for name in scenes})
     return project_id, work
 
@@ -325,8 +322,8 @@ async def test_meta_has_no_music_when_nothing_is_rendered_or_the_score_is_stale(
     api_env: ApiEnv,
 ) -> None:
     pid, work = await _scored(api_env, "reel")
-    path = work / "beatsheet" / "beatsheet.json"
-    path.write_text(path.read_text().replace("BUILD", "RISE", 1), encoding="utf-8")
+    wav = work / "music" / "music.wav"
+    wav.write_bytes(wav.read_bytes() + b"\0\0")  # replaced after the render
     assert (await api_env.client.get(f"{_base(pid)}/meta")).json()["music"] is None
 
     (work / "music" / "render.json").unlink()
@@ -353,19 +350,9 @@ async def test_meta_gives_no_music_to_a_project_that_is_not_a_synth_one(api_env:
 
 # ---- imported song (4B T3) ----------------------------------------------------------------
 
-_MV_SECTIONS = [
-    {"id": "intro", "label": "intro", "start": 0.5, "end": 4.5},
-    {"id": "verse", "label": "verse", "start": 4.5, "end": 12.5},
-    {"id": "chorus", "label": "chorus", "start": 12.5, "end": 18.5},
-]
 
-
-async def _mv(
-    api_env: ApiEnv, *, sections_extra: dict | None = None, refs: tuple[str, ...] | None = None
-):
-    import hashlib
-
-    from fixtures.import_music import write_click_song
+async def _mv(api_env: ApiEnv, *, range_: tuple[float, float] | None = None):
+    from fixtures.import_music import write_mv_workspace
     from studio.db.repo.projects import update_project_settings
 
     project_id = seed_animation_html_project(
@@ -377,54 +364,22 @@ async def _mv(
         {"narration": False, "music_source": "import", "video_kind": "music_video"},
     )
     work = api_env.workdir(project_id)
-    (work / "music").mkdir()
-    (work / "beatsheet").mkdir()
-    song = write_click_song(work / "music" / "source.wav")
-    digest = hashlib.sha256(song.read_bytes()).hexdigest()
-    (work / "music" / "analysis.json").write_text(
-        json.dumps(
-            {
-                "source_hash": digest,
-                "duration": 20.0,
-                "bpm": 120.0,
-                "offset": 0.5,
-                "hop": 0.1,
-                "energy": [0.5] * 200,
-            }
-        )
-    )
-    (work / "music" / "sections.json").write_text(
-        json.dumps({"sections": _MV_SECTIONS, **(sections_extra or {})})
-    )
-    (work / "beatsheet" / "beatsheet.json").write_text(
-        json.dumps(
-            {
-                "sections": [
-                    {"ref": s["id"], "intent": "x", "energy": "low", "moments": []}
-                    for s in _MV_SECTIONS
-                    if refs is None or s["id"] in refs
-                ]
-            }
-        )
-    )
-    fx.write_project(work, scenes={s["id"]: fx.PURE_SCENE_PLAIN for s in _MV_SECTIONS})
+    digest = write_mv_workspace(work, range_=range_)
     return project_id, work, digest
 
 
-async def test_meta_of_a_music_video_offsets_the_song_by_the_range_start(api_env: ApiEnv) -> None:
+async def test_meta_of_a_music_video_plays_the_whole_song_without_a_range(api_env: ApiEnv) -> None:
     pid, _, digest = await _mv(api_env)
     meta = (await api_env.client.get(f"{_base(pid)}/meta")).json()
     assert meta["music"] == {
         "url": f"/api/projects/{pid}/music/audio?v={digest}",
         "gain": 1.0,
-        "offset": 0.5,  # first section start: no explicit range
+        "offset": 0.0,  # no range.json: the whole song
     }
 
 
-async def test_meta_of_a_music_video_uses_an_explicit_range_start(api_env: ApiEnv) -> None:
-    pid, _, _ = await _mv(
-        api_env, sections_extra={"range": {"start": 4.5, "end": 18.5}}, refs=("verse", "chorus")
-    )
+async def test_meta_of_a_music_video_offsets_the_song_by_the_range_start(api_env: ApiEnv) -> None:
+    pid, _, _ = await _mv(api_env, range_=(4.5, 18.5))
     meta = (await api_env.client.get(f"{_base(pid)}/meta")).json()
     assert meta["music"]["offset"] == 4.5
     assert meta["duration"] == pytest.approx(14.0)

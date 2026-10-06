@@ -172,11 +172,11 @@ def _scene_failed(report: _Report, sid: str) -> bool:
 
 
 async def _check_music_shift(
-    page: PageLike, timeline: dict[str, Any], sid: str, report: _Report, *, strict: bool = True
+    page: PageLike, timeline: dict[str, Any], sid: str, report: _Report
 ) -> None:
-    """短片：音乐整体平移后，镜头自己的关键帧应当跟着变（设计 §6.3）。
+    """短片、MV：音乐整体平移后，镜头自己的关键帧应当跟着变（produce 设计 §7）。
 
-    `strict=False`（`produce` 阶段）：镜头可以有意不跟音乐，所以全部没反应也只是警告。"""
+    只给警告：镜头可以有意不跟音乐，但要有理由。"""
     try:
         shift = await music_shift_sensitivity(page, timeline, sid)
     except BrowserClosed:
@@ -186,17 +186,11 @@ async def _check_music_shift(
         return
     if not shift.times:
         return
-    if shift.all_unchanged and not strict:
+    if shift.all_unchanged:
         report.warn(
             f"整个镜头对音乐平移 {SHIFT_MUSIC_SECONDS:g} 秒毫无反应：疑似把时刻写成了字面量，"
             "或只靠 global.js 响应音乐；如果不是有意让它不跟音乐，请改用 env.hit / env.span / "
             "env.energy 取音乐事件",
-            sid,
-        )
-    elif shift.all_unchanged:
-        report.error(
-            f"整个镜头对音乐平移 {SHIFT_MUSIC_SECONDS:g} 秒毫无反应：疑似把时刻写成了字面量，"
-            "或只靠 global.js 响应节拍；请改用 env.bt / env.bar / env.hit / env.moment",
             sid,
         )
     elif len(shift.unchanged) / len(shift.times) > _MOSTLY_UNCHANGED:
@@ -212,8 +206,6 @@ async def _shift_pass(
     timeline: dict[str, Any],
     targets: list[str],
     report: _Report,
-    *,
-    strict: bool = True,
 ) -> None:
     """装配时不含 `global.js` 的页面上做音乐平移检查：全局后期读节拍不能替镜头顶账。"""
     remaining = list(targets)
@@ -223,7 +215,7 @@ async def _shift_pass(
             page_source = assemble(workdir, timeline, include_global=False)
             async with get_browser_pool().acquire(page_source) as page:
                 while remaining:
-                    await _check_music_shift(page, timeline, remaining[0], report, strict=strict)
+                    await _check_music_shift(page, timeline, remaining[0], report)
                     remaining.pop(0)
                     if page.poisoned:
                         break
@@ -257,8 +249,6 @@ async def _browser_checks(
     timeline: dict[str, Any],
     targets: list[str],
     report: _Report,
-    *,
-    strict: bool = True,
 ) -> None:
     remaining = list(targets)
     seen_page_errors: set[str] = set()
@@ -274,7 +264,7 @@ async def _browser_checks(
                     await _check_scene(page, timeline, sid, report)
                     if reel and not has_global and not _scene_failed(report, sid):
                         await _check_music_shift(
-                            page, timeline, sid, report, strict=strict
+                            page, timeline, sid, report
                         )  # 同一页面即不含全局后期
                     remaining.pop(0)
                     if page.poisoned:  # 卡死的页面不再使用，剩余镜头换新页面
@@ -315,15 +305,14 @@ async def _handler(ctx: ToolContext, args: ValidateScenesHtmlArgs) -> ToolResult
     targets = [args.scene_id] if args.scene_id is not None else ids
 
     report = _Report()
-    strict = ctx.stage != "produce"
-    if not strict and len(ids) > MAX_SHOTS:
+    if is_reel(timeline) and len(ids) > MAX_SHOTS:
         report.warn(f"镜头数 {len(ids)} 超过 {MAX_SHOTS}：切得太碎会让每个镜头都很短、难以维护")
     _pre_browser_checks(ctx.workdir, timeline, targets, single, report)
     if not report.errors:
-        await _browser_checks(ctx.workdir, timeline, targets, report, strict=strict)
+        await _browser_checks(ctx.workdir, timeline, targets, report)
         if is_reel(timeline) and (ctx.workdir / "animation" / "global.js").is_file():
             passed = [sid for sid in targets if not _scene_failed(report, sid)]
-            await _shift_pass(ctx.workdir, timeline, passed, report, strict=strict)
+            await _shift_pass(ctx.workdir, timeline, passed, report)
     return _render(report, targets, single)
 
 

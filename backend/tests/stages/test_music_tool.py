@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import shutil
 import sys
 from pathlib import Path
@@ -25,15 +24,11 @@ def identity(argv: list[str], env: dict[str, str]) -> list[str]:
 
 @pytest.fixture
 def reel(tmp_path: Path) -> Path:
-    sheet = {
-        "bpm": 128,
-        "sections": [
-            {"id": "s1", "label": "S1", "bars": 3, "intent": "x", "energy": "low", "moments": []},
-            {"id": "s2", "label": "S2", "bars": 3, "intent": "x", "energy": "peak", "moments": []},
-        ],
-    }
-    (tmp_path / "upstream" / "beatsheet").mkdir(parents=True)
-    (tmp_path / "upstream" / "beatsheet" / "beatsheet.json").write_text(json.dumps(sheet))
+    """An explainer workspace (the `music` stage only serves narrated projects)."""
+    target = tmp_path / "upstream" / "narrative"
+    target.mkdir(parents=True)
+    for name in ("narrative.json", "timing.json"):
+        shutil.copyfile(FIXTURES / "animation" / name, target / name)
     (tmp_path / "music").mkdir()
     shutil.copyfile(REF, tmp_path / "music" / "compose.py")
     return tmp_path
@@ -60,7 +55,7 @@ async def test_success_returns_text_picture_and_registers_the_managed_files(
     writes: list[tuple[str, str]] = []
     result = await invoke_tool(RENDER_MUSIC_TOOL, _ctx(reel, writes), {})
     assert not result.is_error, result.text
-    for needle in ("配乐渲染成功", "BPM 128", "段落 s1", "重定时校验通过", "kick", LISTEN_NOTE):
+    for needle in ("配乐渲染成功", "BPM 100", "段落 s-hook", "重定时校验通过", "kick", LISTEN_NOTE):
         assert needle in result.text
     assert len(result.images) == 1 and result.images[0].media_type == "image/jpeg"
     assert base64.b64decode(result.images[0].data_base64)[:3] == b"\xff\xd8\xff"

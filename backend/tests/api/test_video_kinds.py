@@ -40,8 +40,8 @@ async def test_default_registry_makes_the_four_presets_available(api_env: ApiEnv
     ]
     assert available[0]["pipeline"] == ["topic", "narrative", "animation"]
     assert available[1]["pipeline"] == ["topic", "narrative", "animation_html"]
-    assert available[3]["pipeline"] == ["concept", "beatsheet", "music", "animation_html"]
-    assert available[4]["pipeline"] == ["concept", "music", "beatsheet", "animation_html"]
+    assert available[3]["pipeline"] == ["concept", "produce"]
+    assert available[4]["pipeline"] == ["concept", "produce"]
     assert all(k["unavailable_reason"] is None for k in available)
     for kind in kinds:
         if not kind["available"]:
@@ -57,9 +57,9 @@ def test_unavailable_reason_lists_missing_stages_in_pipeline_order() -> None:
 
     registry = StageRegistry()
     registry.register(ANIMATION_HTML)
-    reel = ["concept", "beatsheet", "music", "animation_html"]
+    reel = ["concept", "produce"]
 
-    assert unavailable_reason(reel, registry) == "「创意」「节拍脚本」「配乐」阶段尚未实现"
+    assert unavailable_reason(reel, registry) == "「创意」「配乐与动画」阶段尚未实现"
     assert unavailable_reason(["animation_html"], registry) is None
     assert unavailable_reason(["animation_html"], registry, "import") is None
     assert unavailable_reason(["animation_html"], registry, "import", "html", False) is None
@@ -68,7 +68,7 @@ def test_unavailable_reason_lists_missing_stages_in_pipeline_order() -> None:
     assert unavailable_reason(["animation_html"], registry, "import", "manim", True) == only_mv
     # a missing stage is reported first
     assert unavailable_reason(reel, registry, "import", "html", False) == (
-        "「创意」「节拍脚本」「配乐」阶段尚未实现"
+        "「创意」「配乐与动画」阶段尚未实现"
     )
 
 
