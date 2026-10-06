@@ -285,19 +285,24 @@ def _capped(problems: list[str]) -> list[str]:
     return [*shown[:_MAX_PROBLEMS], f"……还有 {len(shown) - _MAX_PROBLEMS} 条同类问题未列出"]
 
 
-def validate_events(doc: Any, timeline: Mapping[str, Any]) -> list[str]:
-    return _capped(_event_problems(doc, timeline))
+def validate_events(
+    doc: Any, timeline: Mapping[str, Any], *, bpm_required: bool = True
+) -> list[str]:
+    return _capped(_event_problems(doc, timeline, bpm_required))
 
 
-def _event_problems(doc: Any, timeline: Mapping[str, Any]) -> list[str]:
-    """`events.json` 的结构与声明值检查；有旁白的项目不核对 bpm（网格取自它），但必须声明。"""
+def _event_problems(doc: Any, timeline: Mapping[str, Any], bpm_required: bool = True) -> list[str]:
+    """`events.json` 的结构与声明值检查；有旁白的项目不核对 bpm（网格取自它），但必须声明。
+    `bpm_required=False`（`produce` 阶段）时 bpm 可以不写，写了就必须在合理范围内。"""
     if not isinstance(doc, dict):
         return ["events.json 的顶层应为对象 {bpm, duration, events}"]
     problems: list[str] = []
     duration = float(timeline.get("duration") or 0.0)
     bpm = doc.get("bpm")
     low, high = BPM_RANGE
-    if not _number(bpm) or not low <= bpm <= high:
+    if bpm is None and not bpm_required:
+        pass
+    elif not _number(bpm) or not low <= bpm <= high:
         problems.append(f"bpm 必须是 {low:g}–{high:g} 之间的数字（当前 {bpm!r}）")
     else:
         grid = timeline.get("grid")

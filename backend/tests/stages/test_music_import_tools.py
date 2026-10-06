@@ -73,7 +73,7 @@ def test_import_source_finds_whitelisted_extensions(tmp_path: Path) -> None:
 
 def test_tool_registration() -> None:
     assert ANALYZE_MUSIC_TOOL.name == "analyze_music"
-    assert ANALYZE_MUSIC_TOOL.stages == {"music"}
+    assert ANALYZE_MUSIC_TOOL.stages == {"music", "concept", "produce"}
 
 
 def test_success_text_picture_and_files(analyzed: tuple[Path, ToolResult, list]) -> None:

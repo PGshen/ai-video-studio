@@ -70,7 +70,7 @@ def _kill_group(process: asyncio.subprocess.Process) -> None:
 
 async def run_compose(
     script: Path,
-    timeline_path: Path,
+    timeline_path: Path | None,
     out_dir: Path,
     *,
     timeout: float,
@@ -81,8 +81,9 @@ async def run_compose(
     tmpdir.mkdir(exist_ok=True)
     wav_path, events_path = out_dir / "music.wav", out_dir / "events.json"
     env = {key: os.environ[key] for key in _SAFE_ENV if key in os.environ}
+    if timeline_path is not None:  # `produce` scripts decide tempo and length themselves
+        env["STUDIO_TIMELINE"] = str(timeline_path)
     env.update(
-        STUDIO_TIMELINE=str(timeline_path),
         STUDIO_OUT_WAV=str(wav_path),
         STUDIO_OUT_EVENTS=str(events_path),
         TMPDIR=str(tmpdir),

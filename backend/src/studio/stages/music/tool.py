@@ -28,6 +28,10 @@ IMPORT_FORM_MESSAGE = (
     "导入形态不用合成脚本：工作区里有用户上传的 music/source.*，"
     "请用 analyze_music 分析歌曲、写 music/sections.json 并用 validate_sections 校验"
 )
+PRODUCE_IMPORT_MESSAGE = (
+    "这个项目用的是用户上传的歌曲（music/source.*），不用合成脚本：请用 analyze_music 分析歌曲，"
+    "需要截取时写 music/range.json（起止秒），再写镜头划分和画面"
+)
 
 
 def compress_picture(png: bytes) -> bytes:
@@ -99,9 +103,11 @@ def format_outcome(outcome: RenderOutcome) -> str:
         lines += [f"- {error}" for error in outcome.errors]
         return "\n".join(lines)
     assert outcome.report is not None
-    lines = [f"配乐渲染成功：BPM {outcome.declared_bpm:g}，{outcome.event_count} 个事件。"]
+    bpm = "未声明 BPM" if outcome.declared_bpm is None else f"BPM {outcome.declared_bpm:g}"
+    lines = [f"配乐渲染成功：{bpm}，{outcome.event_count} 个事件。"]
     lines += _lines(outcome.report)
-    lines.append(outcome.retime_note)
+    if outcome.retime_note:
+        lines.append(outcome.retime_note)
     if outcome.report.warnings:
         lines.append(f"警告（{len(outcome.report.warnings)} 条）：")
         lines += [f"- {w}" for w in outcome.report.warnings]
@@ -115,23 +121,29 @@ class RenderMusicArgs(BaseModel):
 
 
 async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
+    produce = ctx.stage == "produce"
     if import_source(ctx.workdir) is not None:
-        return ToolResult(text=IMPORT_FORM_MESSAGE, is_error=True)
+        return ToolResult(
+            text=PRODUCE_IMPORT_MESSAGE if produce else IMPORT_FORM_MESSAGE, is_error=True
+        )
     wrap = sandbox_wrapper(ctx.workdir)
     if wrap is None:
         return ToolResult(text="当前平台没有沙箱，不能运行合成脚本。", is_error=True)
-    try:
-        loaded = load_timeline(infer_sources(ctx.workdir, "upstream/", with_music=False))
-    except TimelineError as exc:
-        return ToolResult(text=f"时间轴不可用：{exc}", is_error=True)
-    energy = section_energy(loaded.beatsheet)
-    outcome = await render_music_core(
-        ctx.workdir,
-        timeline=loaded.timeline.model_dump(mode="json"),
-        base_hash=loaded.base_hash,
-        section_energy=energy,
-        wrap_command=wrap,
-    )
+    if produce:
+        # The script picks tempo, length and structure itself: no timeline in, no retime check.
+        outcome = await render_music_core(ctx.workdir, wrap_command=wrap)
+    else:
+        try:
+            loaded = load_timeline(infer_sources(ctx.workdir, "upstream/", with_music=False))
+        except TimelineError as exc:
+            return ToolResult(text=f"时间轴不可用：{exc}", is_error=True)
+        outcome = await render_music_core(
+            ctx.workdir,
+            timeline=loaded.timeline.model_dump(mode="json"),
+            base_hash=loaded.base_hash,
+            section_energy=section_energy(loaded.beatsheet),
+            wrap_command=wrap,
+        )
     if not outcome.ok:
         return ToolResult(text=format_outcome(outcome), is_error=True)
     for relpath in outcome.written:
@@ -151,12 +163,13 @@ RENDER_MUSIC_TOOL = ToolSpec(
     name="render_music",
     description=(
         "在沙箱里运行 music/compose.py，校验产物并返回分析图与指标。"
-        "会自动用另一套 BPM 或总长重跑一遍，抓写死秒数的脚本。"
+        "讲解与背景乐阶段会自动用另一套 BPM 或总长重跑一遍，抓写死秒数的脚本；"
+        "配乐与动画阶段脚本自己决定速度、长度和结构，不重跑。"
         "你听不到声音，只能靠这张图（波形、谱图、能量、起音）和指标判断；"
         "指标只证明对齐，不证明好听。每次改动脚本后都调用一次并看图。"
         "只用于合成形态；导入形态（有 music/source.*）会报错。"
     ),
     input_model=RenderMusicArgs,
-    stages={"music"},
+    stages={"music", "produce"},
     handler=_handler,
 )

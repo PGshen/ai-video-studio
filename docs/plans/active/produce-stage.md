@@ -100,7 +100,7 @@
 - **完成标准**：讲解类的时间轴测试不变且通过；`produce` 形态的读取覆盖上述情形。
 - **验证命令**：`make check`。
 
-### T3：配乐渲染与导入分析去掉时间轴依赖（待开始）
+### T3：配乐渲染与导入分析去掉时间轴依赖（完成）
 
 - **目标**：`render_music` 不再需要上游时间轴；`render.json` 不含 `base_hash`；MV 的分析不再依赖 `sections.json`。
 - **涉及文件**：`backend/src/studio/stages/music/render.py`、`music/tool.py`、`music/analyze.py`、`engines/audio/runner.py`（去掉 `STUDIO_TIMELINE` 注入，保留给讲解类的可选入参）、`engines/audio/analysis.py`、`engines/audio/song.py`（按需）、对应测试 `test_music_render.py`、`test_music_tool.py`、`test_music_import_tools.py`。
@@ -209,15 +209,17 @@
 
 ## 进度
 
+- 2026-10-06 — T3 — 完成：`render_music_core(timeline=None)` 自由模式（脚本无时间轴输入、不重定时、`render.json` 无 `base_hash`、`bpm` 可选；`run_compose` 的 `timeline_path` 可空；`validate_events(bpm_required=…)`）；`render_music` 按 `ctx.stage == "produce"` 分流，`analyze_music` 在 `concept`/`produce` 给出 `range.json` 的提示；`compose_free.py` 夹具。
 - 2026-10-06 — T2 — 完成：`timeline/shots.py`（`parse_shots`、`parse_range`）、`TimelineSources.produce`、短片与 MV 的读取（MV 事件由 `beats`/`downbeats` 生成 `beat`/`downbeat`）；`runtime.js` 的 `bt/bar/moment` 报错加了替代写法；`make check` 全绿。
 - 2026-10-06 — T1 — 完成：图片预算按两份折算（总 base64 ≤ 400 kB）、`invoke_tool` 兜底（文本 ≤ 60 000 字节、超预算图片整组丢弃）、`max_buffer_size` 8 MiB、references 补记；`make check` 全绿。
 
 ## 下一步
 
-- 从 T3 开始：先改 `backend/tests/stages/test_music_render.py`、`test_music_tool.py`、`test_music_import_tools.py`，加无时间轴渲染（`timeline=None`）的用例，再改 `stages/music/render.py`、`tool.py`、`analyze.py`。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
+- 从 T4 开始：先写 `backend/tests/stages/test_produce_stage.py`（写入范围、`finalize_blockers`、`status_summary`、形态判断、错误形态的工具提示）和 `test_produce_prompt.py`，再建 `backend/src/studio/stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`），在 `main.py` 注册。`render_music` / `analyze_music` 的 `stages` 已含 `produce`，其余工具（`validate_scenes_html`、`render_preview_html`、`suggest_upstream_change`）的 `stages` 在 T4/T5 补。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
 
 ## 决策记录
 
+- D6（2026-10-06）：自由模式下没有时间轴，长度以音频本身为准，`events.json` 声明的 `duration` 只做与实际音频一致的校验（沿用 0.05 秒容差）；不再对总长设上下限（WAV 读取已有大小与时长上限）。
 - D4（2026-10-06）：T2 只**新增** `produce` 读取路径，不删 `imported.py`、`layers_from_beatsheet` 等旧路径——旧阶段在 T7 之前仍在用，删除放在 T7，保证每个任务结束时 `make check` 为绿。
 - D5（2026-10-06）：相邻镜头的缝隙 ≤ 1 ms 时由 `parse_shots` 自动贴合（设计 §5.3 的 1 ms 容差落在解析处），其余首尾相接判断仍用 `build_timeline` 的 1e-6 精度；末端与音频时长的差值用 0.05 秒（D1）。
 - D1（草稿，2026-10-06）：`shots.json` 的末端与音频时长的容差沿用 `timeline.build` 现有的 `_DURATION_TOLERANCE`（0.05 秒），而不是设计 §5.3 写的 1 ms——避免模型为一个毫秒级差值反复改镜头；相邻镜头首尾相接仍按 1 ms。若负责人要严格按设计，T2 里改一个常量即可。
