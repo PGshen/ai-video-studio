@@ -104,9 +104,10 @@ async def test_music_video_claude_login(tmp_path: Path) -> None:
             assert blockers == [], (stage, blockers)
             finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, stage)
             if stage == "concept":
-                evidence["analysis"] = _readings(work)
+                evidence["analysis"] = _analysis_readings(work)
 
         shots = json.loads((work / "animation" / "shots.json").read_text("utf-8"))
+        evidence["shots"] = shots
         for shot in shots["shots"]:
             assert (work / "animation" / "scenes" / f"{shot['id']}.js").is_file(), shot
         calls = evidence["stages"]["produce"]["tool_calls"]
@@ -118,10 +119,9 @@ async def test_music_video_claude_login(tmp_path: Path) -> None:
         harness.engine.dispose()
 
 
-def _readings(work: Path) -> dict[str, Any]:
-    """The fit readings the owner compares with what they hear (phase, bpm, section boundaries)."""
+def _analysis_readings(work: Path) -> dict[str, Any]:
+    """The fit readings the owner compares with what they hear (phase, bpm, confidence)."""
     analysis = json.loads((work / "music" / "analysis.json").read_text("utf-8"))
-    shots = json.loads((work / "animation" / "shots.json").read_text("utf-8"))
     return {
         "bpm": analysis["bpm"],
         "offset": analysis["offset"],
@@ -130,7 +130,6 @@ def _readings(work: Path) -> dict[str, Any]:
         "duration": analysis["duration"],
         "warnings": analysis["warnings"],
         "candidates": analysis["candidates"],
-        "shots": shots,
     }
 
 

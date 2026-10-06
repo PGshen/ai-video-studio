@@ -221,7 +221,7 @@
 
 ## 下一步
 
-- T10 进行中：文档已同步并提交；浏览器 L4 已在隔离实例上走完（见「验证记录」）；**短片的真实模型冒烟正在后台运行**（`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`，日志 `/tmp/smoke_reel.log`）。结果出来后：1）把冒烟读数（用量、轮数、对齐/平移警告、出片时长）写进「验证记录」与 `docs/references/`（新建 `produce-stage.md`，只记实测事实）；2）有歌（`docs/temp/海阔天空.mp3` 存在）就再跑 MV 冒烟 `-k music_video_claude_login`；3）检查冒烟的 CLI 会话记录里最长一行是否 < 1 MiB（验证 T1）；4）收尾：TODO 里把本条移到「已完成」并追加「讲解类是否也取消阶段拆分」P2；5）按 SOP 做整分支独立评审（`code-review`），修完后让负责人验收。
+- T10 已完成：文档、浏览器 L4、两条真实模型冒烟都已记入「验证记录」。剩余：1）整分支独立评审（`code-review`）并修完；2）`make check`；3）把状态改为待验收，交负责人验收（含 MV 成片试听，文件在 `data/evidence/import-music/smoke/music-video-final.mp4`）。
 
 ## 决策记录
 
@@ -257,3 +257,7 @@
   - 控制台无报错。
   - 发现并记下的环境事项：隔离实例要单独起 `studio.worker`，否则成片任务一直「排队中」（不是缺陷）。
 - 1 MiB 问题的现场复测（项目 `f67bd800…` 的毒化会话）**未做**：那是负责人的真实数据，且旧流水线项目已作废；用 SDK 的单行解析测试（`TestMessageBuffer`）与冒烟记录的最长行代替，见上。
+- 真实模型冒烟（2026-10-06，Claude 本地登录，详见 `docs/references/produce-stage.md`）：
+  - 短片：通过，26 分 19 秒；`produce` 会话最长一行 565 778 字节（< 1 MiB）。
+  - MV（海阔天空，324.8 秒）：通过，14 分 13 秒；`produce` 42 步、6 个镜头，成片 324.83 秒；听感待负责人试听。第一次运行失败是冒烟用例的读取顺序错误（已修）。
+  - 意外：MV 的 `produce` 会话里模型用内置 `Read` 读了 `music/analysis.png`，得到 1 065 448 字节的一行（> 1 MiB），靠 8 MiB 缓冲才通过。
