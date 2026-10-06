@@ -21,10 +21,10 @@ from studio.agent.events import ImageData
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.engines.audio.song import CONFIDENCE_WARN
 from studio.engines.audio.song_job import DEFAULT_TIMEOUT, SongJobError, run_song_analysis
-from studio.stages.music.sources import import_source
-from studio.stages.music.tool import LISTEN_NOTE, compress_picture
+from studio.stages.common.score.sources import import_source
+from studio.stages.common.score.tool import LISTEN_NOTE, compress_picture
 
-NO_SOURCE_MESSAGE = "还没有上传音乐，请让用户在音乐画布上传"
+NO_SOURCE_MESSAGE = "还没有上传歌曲：这个项目没有可分析的音乐，请让用户先上传歌曲"
 RESIDUAL_WARN_MS = 30.0
 _PRODUCTS = ("analysis.json", "analysis.png")
 _MAX_CANDIDATES = 24
@@ -61,10 +61,11 @@ def _summary(doc: dict[str, Any]) -> str:
         f"候选段落边界（强拍，秒）：{shown or '无'}{more}",
     ]
     warnings = list(doc.get("warnings", []))
-    if doc["confidence"] < CONFIDENCE_WARN or doc["residual_ms"] > RESIDUAL_WARN_MS:
+    low_confidence = doc["confidence"] < CONFIDENCE_WARN or doc["residual_ms"] > RESIDUAL_WARN_MS
+    if low_confidence:
         lines.append(
-            "置信度低或拟合残差大：自动网格与分段可能不准，请对照分析图手动修正 "
-            "sections.json（含 bpm/offset）；这不阻止定稿。"
+            "置信度低或拟合残差大：自动网格与分段只是参考，请对照分析图自己判断节拍；"
+            "需要截取时写 music/range.json。这不阻止定稿。"
         )
     if warnings:
         lines.append(f"警告（{len(warnings)} 条）：")
@@ -115,6 +116,6 @@ ANALYZE_MUSIC_TOOL = ToolSpec(
         "没有上传音乐时会报错。你听不到声音，靠这张图和指标判断。"
     ),
     input_model=AnalyzeMusicArgs,
-    stages={"music"},
+    stages={"concept", "produce"},
     handler=_handler,
 )

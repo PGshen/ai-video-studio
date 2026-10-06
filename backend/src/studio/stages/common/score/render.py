@@ -79,8 +79,9 @@ def retime_timeline(timeline: Mapping[str, Any], factor: float = RETIME_FACTOR) 
 
 
 def _with_declared_grid(timeline: dict[str, Any], doc: Mapping[str, Any]) -> dict[str, Any]:
-    """有旁白的项目时间轴里没有网格；分析对齐率时用脚本声明的 BPM 与偏移补一个。"""
-    if timeline.get("grid"):
+    """没有网格的时间轴（有旁白的项目、`produce`）：分析对齐率时用脚本声明的 BPM 与偏移补一个；
+    脚本没声明 BPM 就不补，对齐率为空。"""
+    if timeline.get("grid") or doc.get("bpm") is None:
         return timeline
     return {
         **timeline,
@@ -95,16 +96,18 @@ def _with_declared_grid(timeline: dict[str, Any], doc: Mapping[str, Any]) -> dic
 
 async def _run_and_check(
     script: Path,
-    timeline: dict[str, Any],
+    timeline: dict[str, Any] | None,
     run_dir: Path,
     *,
-    section_energy: Mapping[str, str],
     wrap_command: WrapCommand,
     timeout: float,
 ) -> _Run | list[str]:
+    """`timeline=None`：`produce` 阶段，脚本不收到时间轴，长度以音频本身为准。"""
     run_dir.mkdir(parents=True, exist_ok=True)
-    timeline_path = run_dir / "timeline.json"
-    timeline_path.write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
+    timeline_path: Path | None = None
+    if timeline is not None:
+        timeline_path = run_dir / "timeline.json"
+        timeline_path.write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
     try:
         result = await run_compose(
             script, timeline_path, run_dir, timeout=timeout, wrap_command=wrap_command
@@ -116,7 +119,10 @@ async def _run_and_check(
         doc = json.loads(result.events_path.read_text(encoding="utf-8"))
     except ValueError as exc:
         return [f"STUDIO_OUT_EVENTS 写出的不是合法的 JSON：{exc}"]
-    problems = validate_events(doc, timeline)
+    free = timeline is None
+    if timeline is None:
+        timeline = {"duration": samples.duration}
+    problems = validate_events(doc, timeline, bpm_required=not free)
     if abs(samples.duration - timeline["duration"]) > DURATION_TOLERANCE:
         problems.append(
             f"音频时长 {samples.duration:.3f} 秒与时间轴 {timeline['duration']:.3f} 秒"
@@ -125,9 +131,7 @@ async def _run_and_check(
     if problems:
         return problems
     analysis_timeline = _with_declared_grid(timeline, doc)
-    report = await asyncio.to_thread(
-        analyze, samples, analysis_timeline, doc["events"], section_energy=section_energy
-    )
+    report = await asyncio.to_thread(analyze, samples, analysis_timeline, doc["events"])
     return _Run(samples, doc, report, result.wav_path, result.events_path, analysis_timeline)
 
 
@@ -238,12 +242,13 @@ def _publish(music_dir: Path, files: dict[str, bytes]) -> None:
 async def render_music_core(
     workdir: Path,
     *,
-    timeline: dict[str, Any],
-    base_hash: str,
-    section_energy: Mapping[str, str],
+    timeline: dict[str, Any] | None = None,
+    base_hash: str | None = None,
     wrap_command: WrapCommand,
     timeout: float = _TIMEOUT,
 ) -> RenderOutcome:
+    """`timeline=None` 是 `produce` 阶段：脚本没有时间轴输入，自己决定速度、长度和结构，
+    所以不做重定时校验，`render.json` 里没有 `base_hash`，`bpm` 可以不声明。"""
     script = workdir / "music" / "compose.py"
     if not script.is_file():
         return RenderOutcome(ok=False, errors=["music/compose.py 不存在，先写合成脚本"])
@@ -255,20 +260,25 @@ async def render_music_core(
         script.write_bytes(script_bytes)
         first = await _run_and_check(
             script, timeline, run_root / "main",
-            section_energy=section_energy, wrap_command=wrap_command, timeout=timeout,
+            wrap_command=wrap_command, timeout=timeout,
         )  # fmt: skip
         if isinstance(first, list):
             return RenderOutcome(ok=False, errors=first)
 
-        retimed = retime_timeline(timeline)
-        second = await _run_and_check(
-            script, retimed, run_root / "retime",
-            section_energy=section_energy, wrap_command=wrap_command, timeout=timeout,
-        )  # fmt: skip
-        problems = _retime_problems(first, second, timeline)
-        if problems:
-            return RenderOutcome(ok=False, errors=problems, report=first.report)
-        assert not isinstance(second, list)
+        second: _Run | None = None
+        retimed: dict[str, Any] | None = None
+        if timeline is not None:
+            retimed = retime_timeline(timeline)
+            retime_run = await _run_and_check(
+                script, retimed, run_root / "retime",
+                wrap_command=wrap_command, timeout=timeout,
+            )  # fmt: skip
+            problems = _retime_problems(first, retime_run, timeline)
+            if problems:
+                return RenderOutcome(ok=False, errors=problems, report=first.report)
+            assert not isinstance(retime_run, list)
+            second = retime_run
+        duration = float(first.analysis_timeline["duration"])
 
         wav_bytes = first.wav_path.read_bytes()
         events_bytes = first.events_path.read_bytes()
@@ -284,18 +294,19 @@ async def render_music_core(
         analysis = {
             "hop": report.energy_hop,
             "energy": report.energy,
-            "duration": timeline["duration"],
+            "duration": duration,
             "sample_rate": report.sample_rate,
             "waveform": report.waveform,
             "metrics": metrics_of(report),
             "wav_hash": wav_hash,
         }
-        render = {
-            "script_hash": _sha256(script_bytes),
-            "base_hash": base_hash,
+        render: dict[str, Any] = {"script_hash": _sha256(script_bytes)}
+        if base_hash is not None:
+            render["base_hash"] = base_hash
+        render |= {
             "wav_hash": wav_hash,
-            "bpm": first.doc["bpm"],
-            "duration": timeline["duration"],
+            "bpm": first.doc.get("bpm"),
+            "duration": duration,
             "rendered_at": datetime.now(UTC).isoformat(),
         }
         _publish(
@@ -312,20 +323,23 @@ async def render_music_core(
                 ).encode("utf-8"),
             },
         )
-        before = first.report.grid_alignment
-        after = second.report.grid_alignment
-        note = (
-            f"重定时校验通过：总长 {timeline['duration']:.2f}→{retimed['duration']:.2f} 秒，"
-            f"事件名一致"
-            + (f"，起音对齐率 {before:.0%}→{(after or 0):.0%}" if before is not None else "")
-        )
+        note = ""
+        if second is not None and retimed is not None and timeline is not None:
+            before = first.report.grid_alignment
+            after = second.report.grid_alignment
+            note = (
+                f"重定时校验通过：总长 {timeline['duration']:.2f}→{retimed['duration']:.2f} 秒，"
+                f"事件名一致"
+                + (f"，起音对齐率 {before:.0%}→{(after or 0):.0%}" if before is not None else "")
+            )
+        declared = first.doc.get("bpm")
         return RenderOutcome(
             ok=True,
             report=report,
             png=png,
             retime_note=note,
             written=[f"music/{name}" for name in PRODUCTS],
-            declared_bpm=float(first.doc["bpm"]),
+            declared_bpm=float(declared) if declared is not None else None,
             event_count=len(first.doc["events"]),
         )
     finally:

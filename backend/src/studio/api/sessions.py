@@ -70,6 +70,7 @@ from studio.db.repo.projects import get_project
 from studio.db.repo.sessions import (
     SessionValue,
     create_session,
+    delete_session_if_idle,
     get_session,
     list_sessions,
     set_session_model_if_idle,
@@ -97,6 +98,7 @@ WIRE_EVENT_TYPES = frozenset(
         "error",
         "workspace_changed",
         "turn_status",
+        "session_title",
     }
 )
 """SSE 上实际会出现的全部事件名（任务简报列出的 9 种，M5 T9 增加 `suggestion`，对话页重做增加
@@ -245,6 +247,21 @@ async def switch_session_model_endpoint(
     if updated is None:
         raise HTTPException(status_code=409, detail="会话正在运行或排队中，等这一轮结束后再换模型")
     return session_out(updated)
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_session_endpoint(session_id: str, engine: Engine = Depends(get_engine)) -> None:
+    """删除会话及其全部轮次和事件；有排队/运行中的 turn 时 409（先停止再删）。
+
+    写成 `async def`，与 `TurnRunner.start_turn` 在同一事件循环上串行；仓储函数再在事务里检查一次。
+    """
+    _require_session(engine, session_id)
+    try:
+        deleted = delete_session_if_idle(engine, session_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail=f"会话不存在：{session_id}") from None
+    if not deleted:
+        raise HTTPException(status_code=409, detail="会话正在运行或排队中，先停止这一轮再删除")
 
 
 @router.get("/projects/{project_id}/stages/{stage}/sessions", response_model=list[SessionOut])

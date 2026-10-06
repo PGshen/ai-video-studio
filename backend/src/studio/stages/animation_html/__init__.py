@@ -12,9 +12,9 @@ from pathlib import Path
 
 from studio.agent.tools import ToolSpec
 from studio.stages.animation_html.prepare import TIMELINE_PATH, prepare_turn
-from studio.stages.animation_html.render_preview_html import RENDER_PREVIEW_HTML_TOOL
-from studio.stages.animation_html.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
+from studio.stages.common.scenes.render_preview_html import RENDER_PREVIEW_HTML_TOOL
+from studio.stages.common.scenes.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
@@ -49,7 +49,7 @@ class AnimationHtmlStage:
         return _WRITE_SCOPE
 
     def reads(self) -> list[str]:
-        return ["narrative", "beatsheet", "music"]
+        return ["narrative", "music"]
 
     def prepare_turn(self, workdir: Path) -> None:
         prepare_turn(workdir)

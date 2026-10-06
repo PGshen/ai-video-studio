@@ -8,7 +8,8 @@
 import { useQueryClient } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
 import SessionPanel from '@/components/session/SessionPanel.vue'
-import SessionPicker from '@/components/session/SessionPicker.vue'
+import SessionModelTool from '@/components/session/SessionModelTool.vue'
+import SessionSwitcher from '@/components/session/SessionSwitcher.vue'
 import { useEnsureSession } from '@/components/session/useEnsureSession'
 import { queryKeys } from '@/composables/queries'
 import { styleScope } from '@/composables/sessionScope'
@@ -66,7 +67,7 @@ async function onSending(value: boolean): Promise<void> {
     <p class="text-muted-foreground text-xs">
       告诉 AI 想怎么改这套风格；改动会出现在左边的草稿里，满意了再点「保存」。
     </p>
-    <SessionPicker
+    <SessionSwitcher
       v-model:session-id="sessionId"
       :scope="scope"
     />
@@ -77,6 +78,13 @@ async function onSending(value: boolean): Promise<void> {
       :before-send="beforeSend"
       @accepted="onAccepted"
       @sending="onSending"
-    />
+    >
+      <template #tools>
+        <SessionModelTool
+          :scope="scope"
+          :session-id="sessionId"
+        />
+      </template>
+    </SessionPanel>
   </aside>
 </template>

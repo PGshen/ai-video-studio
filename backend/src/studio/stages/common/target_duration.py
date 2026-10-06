@@ -1,4 +1,4 @@
-"""从 `concept/brief.md` 的「目标时长」章节读出秒数（`concept` 与 `beatsheet` 共用）。"""
+"""从 `concept/brief.md` 的「目标时长」章节读出秒数（`concept` 的 `check_concept` 用）。"""
 
 from __future__ import annotations
 

@@ -1,7 +1,8 @@
 """Real-model smoke for the music video (imported song) pipeline (4B T10). Run with `make smoke`.
 
-`concept → music → beatsheet → animation_html` with a real song and the local Claude login, then a
-real Chromium + ffmpeg final render. The song is the owner's file, never committed: it comes from
+`concept → produce` with a real song (uploaded and analysed in `concept`) and the local Claude
+login, then a real Chromium + ffmpeg final render. The song is the owner's file, never committed:
+it comes from
 `STUDIO_SMOKE_SONG` (the `make smoke` whitelist passes `STUDIO_*` variables) or defaults to
 `docs/temp/海阔天空.mp3`; the case skips when the file is missing.
 
@@ -40,22 +41,15 @@ DEFAULT_SONG = REPO_ROOT / "docs" / "temp" / "海阔天空.mp3"
 
 _CONCEPT_PROMPT = (
     "我们要给工作区里的这首歌（music/source.mp3，已上传）做一支没有旁白的音乐 MV。"
-    "按提示词写出 concept/brief.md：情绪走向、视觉母题、段落草图；目标时长按整首歌。"
+    "先调用 analyze_music 看歌的 BPM、总长和能量曲线，再按提示词写出 concept/brief.md："
+    "情绪走向、视觉母题、段落草图；目标时长按整首歌，硬性要求写“只用黑白灰加一种强调色”。"
     "写完用 check_concept 检查并修好。不需要联网查资料。"
 )
-_MUSIC_PROMPT = (
-    "先调用 analyze_music 分析这首歌，看图与候选段落边界，然后写 music/sections.json"
-    "（起止落在强拍上，标签有意义，如 intro/verse/chorus），不写 range（用整首歌）。"
-    "用 validate_sections 校验并修好；最后说明你靠什么判断、哪些东西你无法验证。"
-)
-_BEATSHEET_PROMPT = (
-    "按概念简报和音乐的段落写节拍脚本：段落用 ref 指向 sections.json 的段落 id，"
-    "每段给 1 到 2 个 moments；写完用 validate_beatsheet 校验并修好。"
-)
-_ANIMATION_PROMPT = (
-    "按提示词为时间轴里的每个镜头各写一个场景脚本，画面对齐网格与 env.energy。"
-    "按镜头顺序逐个做：写完先用 validate_scenes_html 校验该镜头，再用 render_preview_html 看图；"
-    "全部做完后做一次全量校验。"
+_PRODUCE_PROMPT = (
+    "按创意简报为这首歌做画面：先看分析图（需要时调用 analyze_music），不截取（用整首歌），"
+    "按歌的结构写 animation/shots.json 和每个镜头的场景脚本，画面对齐 beat/downbeat 事件与"
+    "env.energy。按镜头顺序逐个做：写完先用 validate_scenes_html 校验该镜头，再用 "
+    "render_preview_html 看图；全部做完后做一次全量校验。最后说明你靠什么判断、哪些东西无法验证。"
 )
 _FOLLOW_UP = "上一轮的最终结果还有错误。根据工具返回的错误继续修复，直到全部通过。"
 
@@ -75,10 +69,8 @@ async def test_music_video_claude_login(tmp_path: Path) -> None:
     harness = build_harness(tmp_path, real_stages=True, music_video=True)
     evidence: dict[str, Any] = {"song": song.name, "stages": {}}
     stage_plan = [
-        ("concept", _CONCEPT_PROMPT, "check_concept", 40),
-        ("music", _MUSIC_PROMPT, "validate_sections", 60),
-        ("beatsheet", _BEATSHEET_PROMPT, "validate_beatsheet", 40),
-        ("animation_html", _ANIMATION_PROMPT, "validate_scenes_html", 120),
+        ("concept", _CONCEPT_PROMPT, ("check_concept", "analyze_music"), 60),
+        ("produce", _PRODUCE_PROMPT, ("validate_scenes_html",), 160),
     ]
     try:
         work = harness.workdir
@@ -89,32 +81,36 @@ async def test_music_video_claude_login(tmp_path: Path) -> None:
         (work / "music").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(song, work / "music" / f"source{song.suffix.lower()}")
 
-        for stage, prompt, tool, steps in stage_plan:
+        for stage, prompt, tools, steps in stage_plan:
             profile = harness.profile("claude-login", max_steps_per_turn=steps, suffix=f"-{stage}")
             session = harness.session(profile, "claude", stage=stage)
             turns = [await harness.turn(session, prompt)]
-            if _last_ok(turns, tool) is None:
+            if any(_last_ok(turns, tool) is None for tool in tools):
                 turns.append(await harness.turn(session, _FOLLOW_UP))
             assert all(t.turn.status == "done" for t in turns), [
                 (t.turn.status, t.turn.error) for t in turns
             ]
-            final = _last_ok(turns, tool)
-            assert final is not None, f"{stage}：最后一次 {tool} 没有成功"
+            finals = {tool: _last_ok(turns, tool) for tool in tools}
+            for tool, final in finals.items():
+                assert final is not None, f"{stage}：最后一次 {tool} 没有成功"
             evidence["stages"][stage] = {
                 "turns": [outcome_summary(t) for t in turns],
                 "tool_calls": [name for t in turns for name in t.tool_names],
-                "final_text": final["text"][:2000],
+                "final_text": {
+                    tool: final["text"][:2000] for tool, final in finals.items() if final
+                },
             }
             blockers = harness.registry.get(stage).finalize_blockers(work)
             assert blockers == [], (stage, blockers)
             finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, stage)
-            if stage == "music":
-                evidence["analysis"] = _readings(work)
+            if stage == "concept":
+                evidence["analysis"] = _analysis_readings(work)
 
-        sheet = json.loads((work / "beatsheet" / "beatsheet.json").read_text("utf-8"))
-        for section in sheet["sections"]:
-            assert (work / "animation" / "scenes" / f"{section['ref']}.js").is_file(), section
-        calls = evidence["stages"]["animation_html"]["tool_calls"]
+        shots = json.loads((work / "animation" / "shots.json").read_text("utf-8"))
+        evidence["shots"] = shots
+        for shot in shots["shots"]:
+            assert (work / "animation" / "scenes" / f"{shot['id']}.js").is_file(), shot
+        calls = evidence["stages"]["produce"]["tool_calls"]
         assert "render_preview_html" in calls, "没有调用 render_preview_html"
         evidence["final"] = await _render_final(harness)
     finally:
@@ -123,10 +119,9 @@ async def test_music_video_claude_login(tmp_path: Path) -> None:
         harness.engine.dispose()
 
 
-def _readings(work: Path) -> dict[str, Any]:
-    """The fit readings the owner compares with what they hear (phase, bpm, section boundaries)."""
+def _analysis_readings(work: Path) -> dict[str, Any]:
+    """The fit readings the owner compares with what they hear (phase, bpm, confidence)."""
     analysis = json.loads((work / "music" / "analysis.json").read_text("utf-8"))
-    sections = json.loads((work / "music" / "sections.json").read_text("utf-8"))
     return {
         "bpm": analysis["bpm"],
         "offset": analysis["offset"],
@@ -135,7 +130,6 @@ def _readings(work: Path) -> dict[str, Any]:
         "duration": analysis["duration"],
         "warnings": analysis["warnings"],
         "candidates": analysis["candidates"],
-        "sections": sections,
     }
 
 
@@ -146,7 +140,7 @@ async def _render_final(harness: Any) -> dict[str, Any]:
     from studio.worker import run_once
 
     expected = load_timeline(
-        TimelineSources(harness.workdir, narration=False, music_source="import")
+        TimelineSources(harness.workdir, narration=False, music_source="import", produce=True)
     ).timeline.duration
     job = create_job(harness.engine, type="final_render", project_id=harness.project_id, payload={})
     started = time.monotonic()

@@ -154,4 +154,56 @@ describe('HtmlAnimationCanvas', () => {
     expect(await tabOf({ kind: { music_source: 'none' } }, META)).toBe('false')
     expect(await tabOf(undefined, META)).toBe('false')
   })
+
+  it('also tells it for a song project (music_source import) whose song is not usable', async () => {
+    state.project = { kind: { music_source: 'import' } }
+    state.meta = META
+    const wrapper = mountCanvas()
+    await wrapper.findAll('button').find((b) => b.text() === '实时预览')!.trigger('click')
+    expect(wrapper.find('[data-testid="preview-pane"]').attributes('data-score-missing')).toBe(
+      'true',
+    )
+  })
+
+  describe('produce stage (reel, music video)', () => {
+    const mountProduce = (withMusicSlot = true) =>
+      mount(HtmlAnimationCanvas, {
+        props: { projectId: 'p1', busy: false, stage: 'produce' },
+        slots: withMusicSlot
+          ? { music: () => h('div', { 'data-testid': 'music-slot' }, '配乐内容') }
+          : {},
+        global: { stubs },
+      })
+
+    it('adds a 配乐 tab that shows the music slot, next to 镜头 / 实时预览 / 成片', async () => {
+      const wrapper = mountProduce()
+      const tabs = wrapper.find('[data-testid="animation-tabbar"]').text()
+      expect(tabs).toContain('镜头（2）')
+      expect(tabs).toContain('实时预览')
+      expect(tabs).toContain('配乐')
+      expect(tabs).toContain('成片')
+      const panel = () => wrapper.find('[data-testid="music-panel"]')
+      expect(panel().attributes('style') ?? '').toContain('display: none')
+      await wrapper.find('[data-testid="tab-music"]').trigger('click')
+      expect(panel().attributes('style') ?? '').not.toContain('display: none')
+      expect(wrapper.find('[data-testid="music-slot"]').text()).toBe('配乐内容')
+    })
+
+    it('has no 配乐 tab without a music slot, and not for the explainer stage', () => {
+      expect(mountProduce(false).find('[data-testid="tab-music"]').exists()).toBe(false)
+      expect(mountCanvas().find('[data-testid="tab-music"]').exists()).toBe(false)
+    })
+
+    it('saves scene code under the produce stage', async () => {
+      const wrapper = mountProduce()
+      await wrapper.findAll('li button')[0]!.trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="code-editor"]').trigger('click')
+      await wrapper.findAll('button').find((b) => b.text() === '保存')!.trigger('click')
+      await flushPromises()
+      expect(state.written).toEqual([
+        { path: 'animation/scenes/s-hook.js', stage: 'produce', content: 'edited();\n' },
+      ])
+    })
+  })
 })

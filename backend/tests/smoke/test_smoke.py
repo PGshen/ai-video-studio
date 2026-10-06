@@ -1281,22 +1281,15 @@ async def test_animation_html_claude_login(tmp_path: Path) -> None:
 _REEL_CONCEPT_PROMPT = (
     "我们要做一支 12 秒左右、没有旁白的动态图形短片，主题是“一个白点的裂变与回收”：圆点呼吸、"
     "裂成方形轨道上的四个点、爆开成粒子、再收回成一个点。按提示词写出 concept/brief.md，"
-    "目标时长写 12 秒；写完用 check_concept 检查并修好。不需要联网查资料。"
+    "目标时长写 12 秒，硬性要求写“总长 10–14 秒、只用黑白灰加一种强调色”；"
+    "写完用 check_concept 检查并修好。不需要联网查资料。"
 )
-_REEL_BEATSHEET_PROMPT = (
-    "按概念简报写节拍脚本：128 BPM，两个段落（第一段蓄力、第二段释放），每段 3 小节，"
-    "每段给 1 到 2 个 moments；写完用 validate_beatsheet 校验并修好。"
-)
-_REEL_MUSIC_PROMPT = (
-    "按提示词写 music/compose.py 并用 render_music 渲染：第一段稀疏低能量，第二段全编制顶点，"
-    "第二段起点是一记冲击，冲击前留半拍静默。至少渲染并看一次图，修到 render_music 成功为止；"
-    "最后说明你靠什么判断、哪些东西无法验证。"
-)
-_REEL_ANIMATION_PROMPT = (
-    "按提示词为时间轴里的 2 个镜头各写一个场景脚本，画面踩在节拍上，"
-    "用 env.hit / env.bt / env.moment。"
-    "按镜头顺序逐个做：写完先用 validate_scenes_html 校验该镜头，再用 render_preview_html 看图；"
-    "全部做完后做一次全量校验。"
+_REEL_PRODUCE_PROMPT = (
+    "按创意简报完成这支短片的配乐和画面：先写 music/compose.py 并 render_music（看图、"
+    "至少渲染并看一次），再写 animation/shots.json 和每个镜头的场景脚本，画面踩在声音事件上"
+    "（env.hit / env.span / env.energy）。按镜头顺序逐个做：写完先用 validate_scenes_html "
+    "校验该镜头，再用 render_preview_html 看图；全部做完后做一次全量校验。"
+    "最后说明你靠什么判断对得上、哪些东西无法验证。"
 )
 _REEL_FOLLOW_UP = "上一轮的最终结果还有错误。根据工具返回的错误继续修复，直到全部通过。"
 
@@ -1315,27 +1308,28 @@ async def test_motion_reel_claude_login(tmp_path: Path) -> None:
     harness = build_harness(tmp_path, real_stages=True, reel=True)
     evidence: dict[str, Any] = {"stages": {}}
     stage_plan = [
-        ("concept", _REEL_CONCEPT_PROMPT, "check_concept", 40),
-        ("beatsheet", _REEL_BEATSHEET_PROMPT, "validate_beatsheet", 40),
-        ("music", _REEL_MUSIC_PROMPT, "render_music", 80),
-        ("animation_html", _REEL_ANIMATION_PROMPT, "validate_scenes_html", 80),
+        ("concept", _REEL_CONCEPT_PROMPT, ("check_concept",), 40),
+        ("produce", _REEL_PRODUCE_PROMPT, ("render_music", "validate_scenes_html"), 160),
     ]
     try:
-        for stage, prompt, tool, steps in stage_plan:
+        for stage, prompt, tools, steps in stage_plan:
             profile = harness.profile("claude-login", max_steps_per_turn=steps, suffix=f"-{stage}")
             session = harness.session(profile, "claude", stage=stage)
             turns = [await harness.turn(session, prompt)]
-            if _last_ok(turns, tool) is None:
+            if any(_last_ok(turns, tool) is None for tool in tools):
                 turns.append(await harness.turn(session, _REEL_FOLLOW_UP))
             assert all(t.turn.status == "done" for t in turns), [
                 (t.turn.status, t.turn.error) for t in turns
             ]
-            final = _last_ok(turns, tool)
-            assert final is not None, f"{stage}：最后一次 {tool} 没有成功"
+            finals = {tool: _last_ok(turns, tool) for tool in tools}
+            for tool, final in finals.items():
+                assert final is not None, f"{stage}：最后一次 {tool} 没有成功"
             evidence["stages"][stage] = {
                 "turns": [outcome_summary(t) for t in turns],
                 "tool_calls": [name for t in turns for name in t.tool_names],
-                "final_text": final["text"][:2000],
+                "final_text": {
+                    tool: final["text"][:2000] for tool, final in finals.items() if final
+                },
             }
             blockers = harness.registry.get(stage).finalize_blockers(harness.workdir)
             assert blockers == [], (stage, blockers)
@@ -1344,9 +1338,9 @@ async def test_motion_reel_claude_login(tmp_path: Path) -> None:
         work = harness.workdir
         for name in ("music.wav", "events.json", "analysis.json", "analysis.png", "render.json"):
             assert (work / "music" / name).is_file(), name
-        sheet = json.loads((work / "beatsheet" / "beatsheet.json").read_text("utf-8"))
-        for section in sheet["sections"]:
-            assert (work / "animation" / "scenes" / f"{section['id']}.js").is_file(), section["id"]
+        shots = json.loads((work / "animation" / "shots.json").read_text("utf-8"))
+        for shot in shots["shots"]:
+            assert (work / "animation" / "scenes" / f"{shot['id']}.js").is_file(), shot["id"]
         previews = _html_tool_results_all(evidence)
         evidence["preview_calls"] = previews
         assert previews >= 1, "没有调用 render_preview_html"
@@ -1363,10 +1357,12 @@ async def _render_reel_final(harness: Any) -> dict[str, Any]:
     import time
 
     from studio.jobs import create_job, get_job
+    from studio.timeline.load import TimelineSources, load_timeline
     from studio.worker import run_once
 
-    sheet = json.loads((harness.workdir / "beatsheet" / "beatsheet.json").read_text("utf-8"))
-    expected = sum(int(sec["bars"]) for sec in sheet["sections"]) * 4 * 60 / float(sheet["bpm"])
+    expected = load_timeline(
+        TimelineSources(harness.workdir, narration=False, music_source="synth", produce=True)
+    ).timeline.duration
     job = create_job(harness.engine, type="final_render", project_id=harness.project_id, payload={})
     started = time.monotonic()
     assert await run_once(harness.engine, harness.blobs, data_dir=harness.data_dir) is True
@@ -1397,5 +1393,5 @@ async def _render_reel_final(harness: Any) -> dict[str, Any]:
 
 
 def _html_tool_results_all(evidence: dict[str, Any]) -> int:
-    calls = evidence["stages"].get("animation_html", {}).get("tool_calls", [])
+    calls = evidence["stages"].get("produce", {}).get("tool_calls", [])
     return sum(1 for name in calls if name == "render_preview_html")

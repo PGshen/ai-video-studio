@@ -269,7 +269,8 @@ class TestWireEventTypesEnforcement:
         await gen.aclose()
 
     def test_wire_event_types_has_exactly_the_documented_names(self) -> None:
-        """T8 简报 9 种；M5 T9 加 `suggestion`；对话页重做加两个 thinking 事件，共 12 种。"""
+        """T8 简报 9 种；M5 T9 加 `suggestion`；对话页重做加两个 thinking 事件；
+        会话自动命名加 `session_title`，共 13 种。"""
         assert WIRE_EVENT_TYPES == {
             "text_delta",
             "text",
@@ -283,6 +284,7 @@ class TestWireEventTypesEnforcement:
             "error",
             "workspace_changed",
             "turn_status",
+            "session_title",
         }
 
 

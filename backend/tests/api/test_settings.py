@@ -86,7 +86,7 @@ class TestPatchSettings:
         assert response.status_code == 200
         assert response.json()["stage_default_profile"] == {"animation_html": fake_id}
 
-    @pytest.mark.parametrize("stage", ["concept", "beatsheet", "music"])
+    @pytest.mark.parametrize("stage", ["concept", "produce", "music"])
     async def test_the_reel_and_music_stages_can_have_a_default_model(
         self, api_env: ApiEnv, stage: str
     ) -> None:

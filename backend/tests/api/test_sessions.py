@@ -655,3 +655,130 @@ class TestSwitchModel:
 
         assert response.status_code == 200
         assert response.json()["project_id"] is None
+
+
+class TestDeleteSession:
+    async def test_unknown_session_is_404(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.delete("/api/sessions/does-not-exist")
+        assert response.status_code == 404
+
+    async def test_deletes_session_with_turns_and_promotes_latest_active(
+        self, api_env: ApiEnv
+    ) -> None:
+        pid = await _project(api_env)
+        profile_id = _fake_profile_id(api_env)
+        first = (
+            await api_env.client.post(
+                f"/api/projects/{pid}/stages/topic/sessions", json={"model_profile_id": profile_id}
+            )
+        ).json()
+        second = (
+            await api_env.client.post(
+                f"/api/projects/{pid}/stages/topic/sessions", json={"model_profile_id": profile_id}
+            )
+        ).json()
+        turn = create_turn_if_session_idle(api_env.app.state.engine, second["id"], "你好")
+        assert turn is not None
+        mark_turn_running(api_env.app.state.engine, turn.id, start_snapshot_id=None)
+        finish_turn(
+            api_env.app.state.engine,
+            turn.id,
+            status="done",
+            end_snapshot_id=None,
+            usage=None,
+            cost_usd=None,
+            error=None,
+            resume_ref=None,
+        )
+
+        response = await api_env.client.delete(f"/api/sessions/{second['id']}")
+
+        assert response.status_code == 204
+        assert (await api_env.client.get(f"/api/sessions/{second['id']}")).status_code == 404
+        remaining = (await api_env.client.get(f"/api/projects/{pid}/stages/topic/sessions")).json()
+        assert [s["id"] for s in remaining] == [first["id"]]
+        assert remaining[0]["is_active"] is True
+
+    async def test_busy_session_is_409_and_kept(self, api_env: ApiEnv) -> None:
+        pid = await _project(api_env)
+        session_id, turn_id = await _make_busy_session(api_env, pid)
+        try:
+            response = await api_env.client.delete(f"/api/sessions/{session_id}")
+            assert response.status_code == 409
+            assert_detail(response)
+            assert (await api_env.client.get(f"/api/sessions/{session_id}")).status_code == 200
+        finally:
+            await _release_busy_session(api_env, turn_id)
+
+
+class TestAutoTitle:
+    async def test_untitled_until_first_message_then_named_after_it(self, api_env: ApiEnv) -> None:
+        pid = await _project(api_env)
+        session = (
+            await api_env.client.post(
+                f"/api/projects/{pid}/stages/topic/sessions",
+                json={"model_profile_id": _fake_profile_id(api_env)},
+            )
+        ).json()
+        assert session["title"] is None
+
+        engine = api_env.app.state.engine
+        for text in ("继续", "  帮我想几个\n关于算法的选题  "):
+            turn = create_turn_if_session_idle(engine, session["id"], text)
+            assert turn is not None
+            mark_turn_running(engine, turn.id, start_snapshot_id=None)
+            finish_turn(
+                engine,
+                turn.id,
+                status="done",
+                end_snapshot_id=None,
+                usage=None,
+                cost_usd=None,
+                error=None,
+                resume_ref=None,
+            )
+
+        listed = (await api_env.client.get(f"/api/projects/{pid}/stages/topic/sessions")).json()
+        assert listed[0]["title"] == "帮我想几个"
+        detail = (await api_env.client.get(f"/api/sessions/{session['id']}")).json()
+        assert detail["title"] == "帮我想几个"
+
+    async def test_long_message_is_truncated(self, api_env: ApiEnv) -> None:
+        from studio.db.repo.sessions import TITLE_MAX_CHARS, derive_title
+
+        title = derive_title("长" * 100)
+        assert title == "长" * TITLE_MAX_CHARS + "…"
+        assert derive_title("  \n ") is None
+
+
+class TestModelTitle:
+    async def test_first_message_names_session_with_generated_title(self, api_env: ApiEnv) -> None:
+        import asyncio
+
+        calls: list[str] = []
+
+        async def fake_titler(_profile: object, message: str) -> str | None:
+            calls.append(message)
+            return "算法选题"
+
+        api_env.app.state.turn_runner._title_generator = fake_titler
+        pid = await _project(api_env)
+        session = (
+            await api_env.client.post(
+                f"/api/projects/{pid}/stages/topic/sessions",
+                json={"model_profile_id": _fake_profile_id(api_env)},
+            )
+        ).json()
+
+        response = await api_env.client.post(
+            f"/api/sessions/{session['id']}/messages", json={"text": "帮我想几个算法相关的选题"}
+        )
+        assert response.status_code == 202
+        title: str | None = None
+        for _ in range(100):
+            title = (await api_env.client.get(f"/api/sessions/{session['id']}")).json()["title"]
+            if title == "算法选题":
+                break
+            await asyncio.sleep(0.05)
+        assert title == "算法选题"
+        assert calls == ["帮我想几个算法相关的选题"]

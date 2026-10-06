@@ -403,3 +403,55 @@ async def test_music_shift_sensitivity_partial_names_the_frames_that_ignored_the
     report = await music_shift_sensitivity(FakePage(hash_fn=hash_fn), _reel(), "s1")
     assert report.unchanged and not report.all_unchanged
     assert all(t >= 1.0 for t in report.unchanged)
+
+
+# ---- produce：没有网格的短片与 MV ----
+
+
+def _gridless() -> dict[str, Any]:
+    timeline = _reel()
+    timeline["grid"] = None
+    timeline["moments"] = []
+    return timeline
+
+
+def test_a_reel_without_a_grid_is_still_a_reel() -> None:
+    from studio.engines.render.html.probe import is_reel
+
+    assert is_reel(_gridless())
+    assert not is_reel({**_gridless(), "music": None})
+    assert not is_reel({**_gridless(), "narration": [{"scene_id": "s1"}]})
+
+
+def test_reel_sample_times_include_the_energy_peaks_of_the_shot() -> None:
+    from studio.engines.render.html.probe import reel_sample_times
+
+    timeline = _gridless()
+    section = timeline["sections"][1]
+    hop = timeline["music"]["energy"]["hop"]
+    values = timeline["music"]["energy"]["values"]
+    flat = [0.1] * len(values)
+    peak_index = int((section["start"] + 1.5) / hop)
+    flat[peak_index] = 0.95
+    timeline["music"]["energy"]["values"] = flat
+    times = reel_sample_times(timeline, "s2")
+    assert any(abs(t - peak_index * hop) < 1e-6 for t in times)
+    assert all(section["start"] <= t < section["end"] for t in times) and len(times) <= 16
+
+
+def test_frequent_event_names_do_not_flood_the_samples() -> None:
+    from studio.engines.render.html.probe import reel_sample_times
+
+    timeline = _gridless()
+    kicks = [e for e in timeline["music"]["events"] if e["name"] == "kick"]
+    assert len(kicks) > 12  # the fixture's kick is a frequent name
+    section = timeline["sections"][1]
+    times = reel_sample_times(timeline, "s2")
+    late = next(e for e in timeline["music"]["events"] if e["name"] == "late")
+    assert any(abs(t - (late["start"] + 0.04)) < 1e-6 for t in times)
+    near_kicks = [
+        t
+        for t in times
+        if any(abs(t - (k["start"] + 0.04)) < 1e-6 for k in kicks if section["start"] <= k["start"])
+    ]
+    assert len(near_kicks) < len(times)

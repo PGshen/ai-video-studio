@@ -34,25 +34,16 @@ _REQUIRED = [
     ("回退建议工具", "suggest_upstream_change"),
     ("不要反复全量预览", "不要反复"),
     ("画面不重叠", "不重叠"),
-    ("短片分支", "短片"),
-    ("节拍脚本路径", "upstream/beatsheet/beatsheet.json"),
-    ("bt 与 bar", "env.bt"),
-    ("bar", "env.bar"),
-    ("hit 事件包络", "env.hit"),
-    ("hit 衰减常数", "0.18"),
-    ("扫频用 span", "env.span"),
-    ("能量", "env.energy"),
-    ("节拍脚本点", "env.moment"),
-    ("global 不承担节奏", "global.js"),
-    ("冲击前静默", "半拍"),
-    ("音乐平移检查", "音乐平移"),
-    ("MV 章节", "## 音乐 MV"),
-    ("MV 段落即场景", "sections.json"),
-    ("MV 不依赖 hit/span", "没有命名事件"),
-    ("MV 时间零点", "截取区间起点"),
 ]
 
 
 @pytest.mark.parametrize(("what", "needle"), _REQUIRED, ids=[w for w, _ in _REQUIRED])
 def test_prompt_keeps_the_rule(what: str, needle: str) -> None:
     assert needle in STAGE.system_prompt(), what
+
+
+@pytest.mark.parametrize(
+    "gone", ["beatsheet", "sections.json", "## 短片", "## 音乐 MV", "音乐平移", "env.moment("]
+)
+def test_prompt_no_longer_teaches_the_silent_forms(gone: str) -> None:
+    assert gone not in STAGE.system_prompt(), gone

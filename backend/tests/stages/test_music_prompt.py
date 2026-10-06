@@ -1,4 +1,4 @@
-"""`music` 阶段提示词：契约与要领都在（子项目 3 设计 §7.5）。"""
+"""`music` 阶段（讲解 + 背景乐）提示词：契约与要领都在（子项目 3 设计 §7.5）。"""
 
 from __future__ import annotations
 
@@ -34,45 +34,25 @@ def test_prompt_is_honest_about_what_the_metrics_prove() -> None:
     assert "无法验证" in PROMPT
 
 
-def test_prompt_covers_both_arrangements_and_the_retime_rule() -> None:
-    assert "短片" in PROMPT and "背景乐" in PROMPT
+def test_prompt_covers_the_bed_and_the_retime_rule() -> None:
+    assert "背景乐" in PROMPT and "不抢旁白" in PROMPT
     assert "不许写死" in PROMPT or "不能写死" in PROMPT
     assert "淡出" in PROMPT  # smooth tails: a hard cut reads as a second onset
     for name in ("kick", "clap", "hat", "impact", "riser"):
         assert name in PROMPT
 
 
-def test_prompt_first_decides_the_form() -> None:
-    assert "先判断形态" in PROMPT
-    assert "music/source.*" in PROMPT
-    # the decision comes before either form's chapter
-    assert PROMPT.index("# 先判断形态") < PROMPT.index("# 配乐阶段（合成）")
-    assert PROMPT.index("# 先判断形态") < PROMPT.index("# 导入形态")
-
-
 @pytest.mark.parametrize(
-    "needle",
+    "gone",
     [
-        "analyze_music",
+        "beatsheet",
+        "sections.json",
         "validate_sections",
-        "music/sections.json",
-        "强拍",
-        "range",
-        "offset",
-        "置信度",
-        "残差",
+        "analyze_music",
+        "music/source",
+        "导入形态",
+        "短片",
     ],
 )
-def test_import_chapter_covers_the_workflow(needle: str) -> None:
-    chapter = PROMPT[PROMPT.index("# 导入形态") :]
-    assert needle in chapter
-
-
-def test_import_chapter_is_honest_about_listening_and_derived_data() -> None:
-    chapter = PROMPT[PROMPT.index("# 导入形态") :]
-    assert "听不到" in chapter
-    assert "音色" in chapter and "情绪" in chapter
-    assert "能量曲线" in chapter
-    assert "不要改" in chapter and "analysis.json" in chapter
-    assert "如实告诉用户" in chapter or "如实转告用户" in chapter
-    assert "用户确认" in chapter
+def test_prompt_is_only_about_the_explainer_bed(gone: str) -> None:
+    assert gone not in PROMPT, gone

@@ -50,7 +50,7 @@ MIN_SECTIONS = 2
 MAX_SECTIONS = 12
 CONFIDENCE_RESIDUAL_FRACTION = 0.15
 CONFIDENCE_WARN = 0.5
-UNSTABLE_WARNING = "拍点不稳（可能是散拍或变速），请手动修正 sections.json 的 bpm/offset"
+UNSTABLE_WARNING = "拍点不稳（可能是散拍或变速），自动网格只能当参考，请对照分析图自己判断节拍"
 _ROUND = 6
 
 

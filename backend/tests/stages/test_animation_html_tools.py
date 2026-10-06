@@ -31,8 +31,8 @@ from studio.engines.render.html.browser import (
 )
 from studio.engines.render.html.pool import BrowserPool, PoolBusy, set_browser_pool
 from studio.stages.animation_html import STAGE
-from studio.stages.animation_html.render_preview_html import RENDER_PREVIEW_HTML_TOOL
-from studio.stages.animation_html.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
+from studio.stages.common.scenes.render_preview_html import RENDER_PREVIEW_HTML_TOOL
+from studio.stages.common.scenes.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 
 
 @pytest.fixture
@@ -86,8 +86,8 @@ def _set_timeline(workdir: Path, mutate: Callable[[dict[str, Any]], None]) -> No
 
 
 def test_tools_are_scoped_and_registered_on_the_stage() -> None:
-    assert VALIDATE_SCENES_HTML_TOOL.stages == {"animation_html"}
-    assert RENDER_PREVIEW_HTML_TOOL.stages == {"animation_html"}
+    assert VALIDATE_SCENES_HTML_TOOL.stages == {"animation_html", "produce"}
+    assert RENDER_PREVIEW_HTML_TOOL.stages == {"animation_html", "produce"}
     assert {t.name for t in STAGE.tools()} == {
         "validate_scenes_html",
         "render_preview_html",
@@ -484,153 +484,3 @@ async def test_real_browser_violations_are_caught(tmp_path: Path, real_pool: Non
     thrown = await _validate(tmp_path)
     assert thrown.is_error
     assert "镜头 s-explain：" in thrown.text and "[scene s-explain" in thrown.text
-
-
-# ---- 短片（无旁白，音乐驱动）：音乐平移检查与关键时刻预览（子项目 3 设计 §6.3） ----
-
-_REEL_SCENE = (
-    "module.exports = { draw(ctx, lt, env) { ctx.fillRect(0, 0, 10 + env.hit('kick'), 10); } };\n"
-)
-
-
-@pytest.fixture
-def reel(tmp_path: Path) -> Path:
-    from fixtures.html_engine.projects import reel_timeline
-
-    (tmp_path / "upstream").mkdir()
-    (tmp_path / "upstream" / "timeline.json").write_text(
-        json.dumps(reel_timeline(), ensure_ascii=False), encoding="utf-8"
-    )
-    fx.write_project(
-        tmp_path,
-        scenes={"s1": _REEL_SCENE, "s2": _REEL_SCENE},
-        global_js="module.exports = { post(ctx, t, env) {} };\n",
-    )
-    return tmp_path
-
-
-def _follows_the_grid(t: float, tl: Mapping[str, Any]) -> str:
-    return _digest(t, tl["grid"]["beats"][:3], tl["moments"][0]["t"])
-
-
-async def test_reel_scene_that_follows_the_music_passes(reel: Path, behaviour: Behaviour) -> None:
-    behaviour.hash_fn = _follows_the_grid
-    result = await _validate(reel)
-    assert not result.is_error, result.text
-    assert "全部 2 个镜头校验通过" in result.text
-
-
-async def test_the_music_shift_check_runs_on_a_page_without_global_js(
-    reel: Path, behaviour: Behaviour
-) -> None:
-    behaviour.hash_fn = _follows_the_grid
-    await _validate(reel)
-    with_global = [p for p in behaviour.assembled if "animation/global.js" in p.scripts]
-    without = [p for p in behaviour.assembled if "animation/global.js" not in p.scripts]
-    assert (
-        with_global and without
-    )  # the normal checks keep the global pass; the shift check drops it
-
-
-async def test_without_a_global_script_one_page_is_enough(reel: Path, behaviour: Behaviour) -> None:
-    (reel / "animation" / "global.js").unlink()
-    behaviour.hash_fn = _follows_the_grid
-    await _validate(reel)
-    assert behaviour.opened == 1
-
-
-async def test_reel_scene_that_ignores_the_music_is_an_error(
-    reel: Path, behaviour: Behaviour
-) -> None:
-    behaviour.hash_fn = lambda t, tl: _digest(t)
-    result = await _validate(reel, scene_id="s1")
-    assert result.is_error
-    assert "镜头 s1：整个镜头对音乐平移 0.2 秒毫无反应" in result.text
-    assert "global.js" in result.text and "env.bt" in result.text
-
-
-async def test_reel_scene_that_ignores_most_of_the_music_is_a_warning(
-    reel: Path, behaviour: Behaviour
-) -> None:
-    def hash_fn(t: float, tl: Mapping[str, Any]) -> str:
-        return _digest(t, tl["moments"][0]["t"]) if t < 0.5 else _digest(t)
-
-    behaviour.hash_fn = hash_fn
-    result = await _validate(reel, scene_id="s1")
-    assert not result.is_error, result.text
-    assert "警告 镜头 s1：" in result.text and "音乐平移" in result.text
-
-
-async def test_a_literal_time_comparison_is_a_warning_for_reels_only(
-    reel: Path, behaviour: Behaviour
-) -> None:
-    behaviour.hash_fn = _follows_the_grid
-    (reel / "animation" / "scenes" / "s1.js").write_text(
-        "module.exports = { draw(ctx, lt, env) { if (lt > 3.5) ctx.fillRect(0, 0, 1, 1); } };\n"
-    )
-    result = await _validate(reel, scene_id="s1")
-    assert not result.is_error
-    assert "警告 镜头 s1：animation/scenes/s1.js:1" in result.text and "字面量" in result.text
-
-
-async def test_reel_scenes_do_not_get_the_beat_checks(reel: Path, behaviour: Behaviour) -> None:
-    behaviour.hash_fn = _follows_the_grid
-    result = await _validate(reel)
-    assert "旁白 beat" not in result.text and "env.cue" not in result.text
-
-
-async def test_reel_preview_samples_moments_and_downbeats(reel: Path, behaviour: Behaviour) -> None:
-    from fixtures.html_engine.projects import reel_timeline
-
-    timeline = reel_timeline()
-    result = await _preview(reel, scene_id="s2")
-    assert not result.is_error, result.text
-    lines = [line for line in result.text.splitlines() if line.startswith("t=")]
-    seen = [float(line.split()[0][2:]) for line in lines]
-    moment = timeline["moments"][1]["t"]
-    assert any(abs(t - (moment + 0.04)) < 0.01 for t in seen)
-    section = timeline["sections"][1]
-    assert all(section["start"] <= t < section["end"] for t in seen)
-    assert len(result.images) == 1
-
-
-@pytest.mark.slow
-async def test_real_browser_reel_global_post_cannot_vouch_for_a_scene(
-    tmp_path: Path, real_pool: None
-) -> None:
-    from fixtures.html_engine.projects import reel_timeline
-
-    (tmp_path / "upstream").mkdir()
-    (tmp_path / "upstream" / "timeline.json").write_text(
-        json.dumps(reel_timeline()), encoding="utf-8"
-    )
-    follows = (
-        "module.exports = { draw(ctx, lt, env) {\n"
-        "  ctx.fillStyle = '#102030'; ctx.fillRect(0, 0, env.W, env.H);\n"
-        "  ctx.fillStyle = '#fff';\n"
-        "  ctx.fillRect(100, 100, 200 + 600 * env.hit('kick'), 120);\n"
-        "} };\n"
-    )
-    ignores = (
-        "module.exports = { draw(ctx, lt, env) {\n"
-        "  ctx.fillStyle = '#102030'; ctx.fillRect(0, 0, env.W, env.H);\n"
-        "  ctx.fillStyle = '#fff'; ctx.fillRect(100 + lt * 50, 100, 200, 120);\n"
-        "} };\n"
-    )
-    # A HUD that reads the grid on every frame: it would make every frame change.
-    hud = (
-        "module.exports = { post(ctx, t, env) {\n"
-        "  const bar = Math.floor((t - env.grid.beats[0]) / (240 / env.grid.bpm));\n"
-        "  ctx.fillStyle = '#f00'; ctx.fillRect(1800, 20, 10 + bar, 10);\n"
-        "  ctx.fillRect(1700, 20, 10 + 40 * (env.grid.beats[1] - env.grid.beats[0]), 10);\n"
-        "} };\n"
-    )
-    fx.write_project(tmp_path, scenes={"s1": follows, "s2": ignores}, global_js=hud)
-    result = await _validate(tmp_path)
-    assert result.is_error, result.text
-    assert "镜头 s2：整个镜头对音乐平移" in result.text
-    assert "镜头 s1：" not in result.text
-    ok = await _validate(tmp_path, scene_id="s1")
-    assert not ok.is_error, ok.text
-    preview = await _preview(tmp_path, scene_id="s1")
-    assert not preview.is_error, preview.text

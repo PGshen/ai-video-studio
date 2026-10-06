@@ -34,7 +34,7 @@
       return { start: b.start - sec.start, end: b.end - sec.start, text: b.cue_text };
     });
     function needGrid() {
-      if (!grid) throw new Error('env: 本项目没有节拍网格，请用 cue(i) 驱动节奏');
+      if (!grid) throw new Error('env: 本项目没有节拍网格（bt/bar 不可用），请用 env.hit(name)、env.span(name)、env.energy() 取音乐事件；有旁白的项目用 cue(i) 驱动节奏');
     }
     return {
       W: W, H: H, CX: W / 2, CY: H / 2,
@@ -92,7 +92,10 @@
       moment: function (i) {
         var list = timeline.moments.filter(function (m) { return m.section_id === sec.id; });
         if (!list.length && !timeline.music) return undefined;
-        if (!list[i]) throw new RangeError('env.moment(' + i + '): 本镜头只有 ' + list.length + ' 个 moment');
+        if (!list[i]) {
+          var hint = timeline.moments.length ? '' : '（本项目没有节拍脚本点，请用 env.hit/span/energy）';
+          throw new RangeError('env.moment(' + i + '): 本镜头只有 ' + list.length + ' 个 moment' + hint);
+        }
         return { at: list[i].at, t: list[i].t - sec.start, action: list[i].visual_action };
       },
     };

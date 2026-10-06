@@ -24,14 +24,13 @@ from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
 from studio.api.deps import get_engine, get_settings, get_turn_runner
-from studio.api.music_import_meta import build_import_meta
+from studio.api.music_import_meta import build_import_meta, shot_sections
 from studio.api.schemas import MusicEventOut, MusicMetaOut, MusicRenderOut, MusicSectionOut
 from studio.config import Settings
 from studio.db.repo.projects import get_project
 from studio.stages.common.music_source import find_source
-from studio.stages.music import tool as music_tool
-from studio.stages.music.render import metrics_of, render_music_core
-from studio.stages.music.sources import section_energy
+from studio.stages.common.score import tool as music_tool
+from studio.stages.common.score.render import metrics_of, render_music_core
 from studio.timeline import TimelineError
 from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
 from studio.workspace import ScopeError, file_sha256, project_dir, safe_path
@@ -98,9 +97,14 @@ def music_meta_endpoint(
     workdir = project_dir(settings.data_dir, project_id)
     if form == "import":
         return build_import_meta(workdir)
-    loaded = _load_base(workdir, narration)
+    # Silent-narration projects (reel) are `produce` projects: no upstream timeline to compare
+    # with, the sections are the model's own shots.
+    produce = not narration
+    loaded = None if produce else _load_base(workdir, narration)
     sections = (
-        [
+        shot_sections(workdir)
+        if produce
+        else [
             MusicSectionOut(id=s.id, label=s.label, start=s.start, end=s.end)
             for s in loaded.timeline.sections
         ]
@@ -123,13 +127,15 @@ def music_meta_endpoint(
         wav_hash = file_sha256(music / "music.wav")
         return MusicMetaOut(
             rendered=True,
-            # 与实时预览、成片前置检查同一标准：对着当前时间轴渲染的，且 wav 没被换过。
-            stale=loaded is None
+            # 与实时预览、成片前置检查同一标准：（讲解）对着当前时间轴渲染的，且 wav 没被换过。
+            stale=render.get("wav_hash") != wav_hash
+            if produce
+            else loaded is None
             or render.get("base_hash") != loaded.base_hash
             or render.get("wav_hash") != wav_hash,
             hash=wav_hash,
             duration=float(analysis["duration"]),
-            bpm=float(render["bpm"]),
+            bpm=float(render["bpm"]) if isinstance(render.get("bpm"), int | float) else None,
             events=events,
             sections=sections,
             waveform=[float(v) for v in analysis["waveform"]],
@@ -187,20 +193,24 @@ async def music_render_endpoint(
     wrap = music_tool.sandbox_wrapper(workdir)
     if wrap is None:
         raise HTTPException(status_code=409, detail="当前平台没有沙箱，不能运行合成脚本")
-    try:
-        loaded = load_timeline(_sources(workdir, narration))
-    except TimelineError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    loaded: LoadedTimeline | None = None
+    if narration:
+        try:
+            loaded = load_timeline(_sources(workdir, narration))
+        except TimelineError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     running.add(project_id)
     try:
-        outcome = await render_music_core(
-            workdir,
-            timeline=loaded.timeline.model_dump(mode="json"),
-            base_hash=loaded.base_hash,
-            section_energy=section_energy(loaded.beatsheet),
-            wrap_command=wrap,
-        )
+        if loaded is None:  # `produce`: the script picks tempo and length itself
+            outcome = await render_music_core(workdir, wrap_command=wrap)
+        else:
+            outcome = await render_music_core(
+                workdir,
+                timeline=loaded.timeline.model_dump(mode="json"),
+                base_hash=loaded.base_hash,
+                wrap_command=wrap,
+            )
     finally:
         running.discard(project_id)
 

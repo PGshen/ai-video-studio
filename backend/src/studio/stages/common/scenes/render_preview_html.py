@@ -21,7 +21,7 @@ from studio.engines.render.html.probe import (
     smoke_run,
 )
 from studio.engines.render.html.static_check import static_check
-from studio.stages.animation_html.common import (
+from studio.stages.common.scenes.helpers import (
     browser_error_text,
     load_timeline,
     scene_exists,
@@ -139,6 +139,6 @@ RENDER_PREVIEW_HTML_TOOL = ToolSpec(
         "预览单个 HTML 镜头：先做静态检查和冒烟运行，再返回关键时刻的缩略图拼图与每帧指标。"
     ),
     input_model=RenderPreviewHtmlArgs,
-    stages={"animation_html"},
+    stages={"animation_html", "produce"},
     handler=_handler,
 )

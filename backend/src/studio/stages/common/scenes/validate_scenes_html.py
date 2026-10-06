@@ -37,7 +37,8 @@ from studio.engines.render.html.static_check import (
     static_check,
     strip_comments,
 )
-from studio.stages.animation_html.common import (
+from studio.stages.common.scenes.helpers import (
+    MAX_SHOTS,
     browser_error_text,
     load_timeline,
     scene_exists,
@@ -173,7 +174,9 @@ def _scene_failed(report: _Report, sid: str) -> bool:
 async def _check_music_shift(
     page: PageLike, timeline: dict[str, Any], sid: str, report: _Report
 ) -> None:
-    """短片：音乐整体平移后，镜头自己的关键帧应当跟着变（设计 §6.3）。"""
+    """短片、MV：音乐整体平移后，镜头自己的关键帧应当跟着变（produce 设计 §7）。
+
+    只给警告：镜头可以有意不跟音乐，但要有理由。"""
     try:
         shift = await music_shift_sensitivity(page, timeline, sid)
     except BrowserClosed:
@@ -184,9 +187,10 @@ async def _check_music_shift(
     if not shift.times:
         return
     if shift.all_unchanged:
-        report.error(
+        report.warn(
             f"整个镜头对音乐平移 {SHIFT_MUSIC_SECONDS:g} 秒毫无反应：疑似把时刻写成了字面量，"
-            "或只靠 global.js 响应节拍；请改用 env.bt / env.bar / env.hit / env.moment",
+            "或只靠 global.js 响应音乐；如果不是有意让它不跟音乐，请改用 env.hit / env.span / "
+            "env.energy 取音乐事件",
             sid,
         )
     elif len(shift.unchanged) / len(shift.times) > _MOSTLY_UNCHANGED:
@@ -198,7 +202,10 @@ async def _check_music_shift(
 
 
 async def _shift_pass(
-    workdir: Path, timeline: dict[str, Any], targets: list[str], report: _Report
+    workdir: Path,
+    timeline: dict[str, Any],
+    targets: list[str],
+    report: _Report,
 ) -> None:
     """装配时不含 `global.js` 的页面上做音乐平移检查：全局后期读节拍不能替镜头顶账。"""
     remaining = list(targets)
@@ -238,7 +245,10 @@ def _report_page_errors(page: PageLike, seen: set[str], report: _Report) -> None
 
 
 async def _browser_checks(
-    workdir: Path, timeline: dict[str, Any], targets: list[str], report: _Report
+    workdir: Path,
+    timeline: dict[str, Any],
+    targets: list[str],
+    report: _Report,
 ) -> None:
     remaining = list(targets)
     seen_page_errors: set[str] = set()
@@ -295,6 +305,8 @@ async def _handler(ctx: ToolContext, args: ValidateScenesHtmlArgs) -> ToolResult
     targets = [args.scene_id] if args.scene_id is not None else ids
 
     report = _Report()
+    if is_reel(timeline) and len(ids) > MAX_SHOTS:
+        report.warn(f"镜头数 {len(ids)} 超过 {MAX_SHOTS}：切得太碎会让每个镜头都很短、难以维护")
     _pre_browser_checks(ctx.workdir, timeline, targets, single, report)
     if not report.errors:
         await _browser_checks(ctx.workdir, timeline, targets, report)
@@ -308,9 +320,11 @@ VALIDATE_SCENES_HTML_TOOL = ToolSpec(
     name="validate_scenes_html",
     description=(
         "校验 HTML 镜头脚本：静态规则、真实浏览器冒烟运行、确定性、beat 敏感度（有旁白）或"
-        "音乐平移敏感度（短片）、字号与字符覆盖、资产。不传 scene_id 校验全部镜头。"
+        "音乐平移敏感度（短片；配乐与动画阶段只给警告）、字号与字符覆盖、资产。"
+        "配乐与动画阶段会先按 animation/shots.json 与 music/ 构建时间轴。"
+        "不传 scene_id 校验全部镜头。"
     ),
     input_model=ValidateScenesHtmlArgs,
-    stages={"animation_html"},
+    stages={"animation_html", "produce"},
     handler=_handler,
 )

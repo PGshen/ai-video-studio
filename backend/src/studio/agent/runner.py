@@ -48,6 +48,7 @@ from studio.agent.runtime import (
     effort_from_settings,
 )
 from studio.agent.stage import StageRegistry, upstream_of
+from studio.agent.titler import TitleGenerator
 from studio.agent.tools import ToolSpec
 from studio.agent.turn_events import TOOL_RESULT_MAX_CHARS
 from studio.agent.turn_state import _Job, _State
@@ -55,7 +56,7 @@ from studio.config import Settings
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
 from studio.db.repo.projects import get_project
-from studio.db.repo.sessions import get_session
+from studio.db.repo.sessions import derive_title, get_session, set_session_title_if_unset
 from studio.db.repo.settings import effective_web_mode
 from studio.db.repo.snapshots import latest_snapshot
 from studio.styles import store as style_store
@@ -104,6 +105,7 @@ class TurnRunner:
         settings: Settings,
         *,
         cancel_grace_seconds: float = 10.0,
+        title_generator: TitleGenerator | None = None,
     ) -> None:
         self._engine = engine
         self._blobs = blobs
@@ -116,6 +118,8 @@ class TurnRunner:
         self._queue: deque[_Job] = deque()
         self._running: dict[str, _Job] = {}
         self._shutting_down = False
+        self._title_generator = title_generator
+        self._naming: dict[str, asyncio.Task[None]] = {}
 
     # ---- public API ---------------------------------------------------
 
@@ -141,7 +145,38 @@ class TurnRunner:
         self._queue.append(job)
         self._publish_status(job, "queued")
         self._schedule()
+        self._name_session_soon(session.id, profile)
         return turn.id
+
+    def _name_session_soon(self, session_id: str, profile: ModelProfileValue) -> None:
+        """会话还没有（显式）标题时，后台让模型按第一条消息起一个短标题；失败只是不改。"""
+        if self._title_generator is None or session_id in self._naming:
+            return
+        task = asyncio.create_task(self._name_session(session_id, profile, self._title_generator))
+        self._naming[session_id] = task
+        task.add_done_callback(lambda _t: self._naming.pop(session_id, None))
+
+    async def _name_session(
+        self, session_id: str, profile: ModelProfileValue, generate: TitleGenerator
+    ) -> None:
+        try:
+            first = next(
+                (
+                    t.user_message
+                    for t in turns_repo.list_turns(self._engine, session_id)
+                    if derive_title(t.user_message) and t.user_message.strip() != "继续"
+                ),
+                None,
+            )
+            if first is None:
+                return
+            title = await generate(profile, first)
+            if title and set_session_title_if_unset(self._engine, session_id, title):
+                self._bus.publish(session_id, BusEvent("session_title", {"title": title}))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("会话 %s 自动命名出错", session_id)
 
     def cancel(self, turn_id: str) -> bool:
         """取消排队或运行中的 turn；turn 不在本进程中时返回 `False`。
@@ -194,6 +229,8 @@ class TurnRunner:
         状态记为 `interrupted`，和重启后 `recover_on_startup` 的结果一致，可以"继续"。
         """
         self._shutting_down = True
+        for naming in list(self._naming.values()):
+            naming.cancel()
         for job in list(self._queue):
             self._queue.remove(job)
             try:

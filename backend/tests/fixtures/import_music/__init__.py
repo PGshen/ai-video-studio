@@ -23,22 +23,29 @@ def write_silence(path: Path, seconds: float = 10.0) -> Path:
     return write_wav(path, np.zeros(int(SAMPLE_RATE * seconds)), SAMPLE_RATE)
 
 
-MV_SECTIONS = [
-    {"id": "intro", "label": "intro", "start": 0.5, "end": 4.5},
-    {"id": "verse", "label": "verse", "start": 4.5, "end": 12.5},
-    {"id": "chorus", "label": "chorus", "start": 12.5, "end": 18.5},
-]
+def _shots(length: float) -> dict:
+    """Three shots that cover `length` seconds: 25% / 50% / 25%."""
+    first, second = round(length * 0.25, 3), round(length * 0.75, 3)
+    return {
+        "shots": [
+            {"id": "intro", "label": "intro", "start": 0.0, "end": first},
+            {"id": "verse", "label": "verse", "start": first, "end": second},
+            {"id": "chorus", "label": "chorus", "start": second, "end": round(length, 3)},
+        ]
+    }
+
+
+MV_SHOT_IDS = ("intro", "verse", "chorus")
 
 
 def write_mv_workspace(
     workdir: Path,
     *,
     range_: tuple[float, float] | None = None,
-    refs: tuple[str, ...] | None = None,
 ) -> str:
-    """Source song + hand-made `analysis.json`/`sections.json` + beatsheet + trivial scenes.
+    """Source song + hand-made `analysis.json` + shots (+ `range.json`) + trivial scenes.
 
-    Returns the source hash. With `range_`, `refs` must list the sections inside it.
+    The song is `SECONDS` long; without `range_` the whole song is used. Returns the source hash.
     """
     import hashlib
     import json
@@ -46,9 +53,9 @@ def write_mv_workspace(
     from fixtures.html_engine import projects as fx
 
     (workdir / "music").mkdir(exist_ok=True)
-    (workdir / "beatsheet").mkdir(exist_ok=True)
     song = write_click_song(workdir / "music" / "source.wav")
     digest = hashlib.sha256(song.read_bytes()).hexdigest()
+    beats = [round(OFFSET + 0.5 * i, 3) for i in range(int((SECONDS - OFFSET) / 0.5))]
     (workdir / "music" / "analysis.json").write_text(
         json.dumps(
             {
@@ -58,8 +65,8 @@ def write_mv_workspace(
                 "offset": OFFSET,
                 "residual_ms": 4.0,
                 "confidence": 0.9,
-                "beats": [],
-                "downbeats": [],
+                "beats": beats,
+                "downbeats": beats[::4],
                 "candidates": [],
                 "hop": 0.1,
                 "energy": [0.5] * int(SECONDS * 10),
@@ -67,20 +74,10 @@ def write_mv_workspace(
             }
         )
     )
-    sections: dict = {"sections": MV_SECTIONS}
+    start, end = range_ if range_ is not None else (0.0, SECONDS)
     if range_ is not None:
-        sections["range"] = {"start": range_[0], "end": range_[1]}
-    (workdir / "music" / "sections.json").write_text(json.dumps(sections))
-    (workdir / "beatsheet" / "beatsheet.json").write_text(
-        json.dumps(
-            {
-                "sections": [
-                    {"ref": s["id"], "intent": "x", "energy": "low", "moments": []}
-                    for s in MV_SECTIONS
-                    if refs is None or s["id"] in refs
-                ]
-            }
-        )
-    )
-    fx.write_project(workdir, scenes={s["id"]: fx.PURE_SCENE_PLAIN for s in MV_SECTIONS})
+        (workdir / "music" / "range.json").write_text(json.dumps({"start": start, "end": end}))
+    (workdir / "animation").mkdir(exist_ok=True)
+    (workdir / "animation" / "shots.json").write_text(json.dumps(_shots(end - start)))
+    fx.write_project(workdir, scenes={sid: fx.PURE_SCENE_PLAIN for sid in MV_SHOT_IDS})
     return digest

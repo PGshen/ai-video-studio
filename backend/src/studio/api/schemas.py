@@ -503,7 +503,7 @@ class MusicAnalysisOut(BaseModel):
 
 
 class MusicGridOut(BaseModel):
-    """有效网格（`sections.json` 的覆盖优先）；`downbeats` 是整曲内的强拍时刻（秒）。"""
+    """分析给出的参考网格；`downbeats` 是整曲内的强拍时刻（秒）。"""
 
     bpm: float
     offset: float
@@ -520,23 +520,18 @@ class MusicEnergyOut(BaseModel):
     values: list[float]
 
 
-class SectionsCheckOut(BaseModel):
-    ok: bool
-    errors: list[str] = []
-    warnings: list[str] = []
-
-
 class MusicMetaOut(BaseModel):
     """`GET .../music/meta`：配乐画布和预览需要的全部信息；没有产物时 `rendered=false`。
 
-    导入形态（`form="import"`）：`rendered` 表示"已上传源文件"，`hash` 是源文件的哈希，`stale` 表示
-    分析不是对着当前源文件做的，`sections` 是 `sections.json` 的段落（整曲秒，不按区间截）。
+    歌曲形态（`form="import"`，MV）：`rendered` 表示"已上传源文件"，`hash` 是源文件的哈希，`stale`
+    表示分析不是对着当前源文件做的，`range` 是截取区间（缺省整首歌），`grid` 是分析给出的参考网格，
+    `sections` 是模型写的镜头划分（`animation/shots.json`）平移到整曲秒。
     """
 
     form: Literal["synth", "import"] = "synth"
     rendered: bool
     stale: bool
-    """产物是对着另一版时间轴渲染的（节拍脚本或旁白变了），成片会拒绝它。"""
+    """产物对不上当前文件（`music.wav` 被换过，或讲解的旁白变了），成片会拒绝它。"""
     hash: str | None = None
     """`music.wav`（导入形态是源文件）的哈希；音频地址的版本号。"""
     duration: float | None = None
@@ -550,7 +545,6 @@ class MusicMetaOut(BaseModel):
     grid: MusicGridOut | None = None
     range: MusicRangeOut | None = None
     energy: MusicEnergyOut | None = None
-    sections_check: SectionsCheckOut | None = None
 
 
 class MusicSourceOut(BaseModel):

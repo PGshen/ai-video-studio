@@ -171,9 +171,7 @@ class TestCreateProjectKinds:
         stages = list_stages(api_env.app.state.engine, body["id"])
         assert [(s.stage, s.status) for s in stages] == [
             ("concept", "active"),
-            ("beatsheet", "locked"),
-            ("music", "locked"),
-            ("animation_html", "locked"),
+            ("produce", "locked"),
         ]
         assert (api_env.workdir(body["id"]) / "concept/notes/idea-card.md").is_file()
         assert not (api_env.workdir(body["id"]) / "topic").exists()

@@ -23,6 +23,7 @@ from studio.agent.openai_runtime import register_openai
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
+from studio.agent.titler import make_title_generator
 from studio.api.animation import router as animation_router
 from studio.api.blobs import router as blobs_router
 from studio.api.brainstorm import router as brainstorm_router
@@ -48,11 +49,11 @@ from studio.db.repo.profiles import seed_model_profiles
 from studio.engines.render.html.pool import close_browser_pool
 from studio.stages.animation import STAGE as ANIMATION_STAGE
 from studio.stages.animation_html import STAGE as ANIMATION_HTML_STAGE
-from studio.stages.beatsheet import STAGE as BEATSHEET_STAGE
 from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.concept import STAGE as CONCEPT_STAGE
 from studio.stages.music import STAGE as MUSIC_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
+from studio.stages.produce import STAGE as PRODUCE_STAGE
 from studio.stages.style import STAGE as STYLE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
 from studio.workspace import BlobStore
@@ -74,8 +75,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         ANIMATION_STAGE,
         ANIMATION_HTML_STAGE,
         CONCEPT_STAGE,
-        BEATSHEET_STAGE,
         MUSIC_STAGE,
+        PRODUCE_STAGE,
         STYLE_STAGE,
     ):
         registry.register(stage)
@@ -88,7 +89,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     bus = SessionBus()
     blobs = BlobStore(settings.data_dir / "blobs")
-    turn_runner = TurnRunner(engine, blobs, registry, runtime_factory, bus, settings)
+    turn_runner = TurnRunner(
+        engine,
+        blobs,
+        registry,
+        runtime_factory,
+        bus,
+        settings,
+        title_generator=make_title_generator(settings.data_dir),
+    )
     turn_runner.recover_on_startup()
 
     app.state.engine = engine

@@ -62,14 +62,7 @@ export const VIDEO_KINDS_FIXTURE: VideoKindsOut = {
     kind('explainer_html', 'html', true, 'none', [...EXPLAINER, 'animation_html']),
     kind('explainer_html', 'html', true, 'synth', [...EXPLAINER, 'music', 'animation_html']),
     kind('explainer_html', 'html', true, 'import', [...EXPLAINER, 'music', 'animation_html']),
-    kind('motion_reel', 'html', false, 'synth', ['concept', 'beatsheet', 'music', 'animation_html']),
-    kind(
-      'music_video',
-      'html',
-      false,
-      'import',
-      ['concept', 'music', 'beatsheet', 'animation_html'],
-      true,
-    ),
+    kind('motion_reel', 'html', false, 'synth', ['concept', 'produce']),
+    kind('music_video', 'html', false, 'import', ['concept', 'produce'], true),
   ],
 }

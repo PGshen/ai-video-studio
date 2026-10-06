@@ -34,10 +34,11 @@ def _write(workdir: Path, text: str) -> None:
     (workdir / "concept" / "brief.md").write_text(text, encoding="utf-8")
 
 
-def test_sections_are_the_seven_from_the_design() -> None:
+def test_sections_are_the_eight_from_the_design() -> None:
     assert SECTIONS == (
         "主题",
         "目标时长",
+        "硬性要求",
         "情绪与能量走向",
         "视觉母题",
         "参考与灵感",
@@ -54,7 +55,7 @@ def test_a_complete_brief_passes_and_reports_the_target() -> None:
 def test_empty_text_and_missing_sections_are_errors_listed_together() -> None:
     assert any("为空" in e for e in check_concept_text("").errors)
     result = check_concept_text("## 主题\n\n只有这一章\n")
-    assert sum("缺少章节" in e for e in result.errors) == 6
+    assert sum("缺少章节" in e for e in result.errors) == 7
 
 
 def test_empty_section_is_an_error() -> None:
@@ -97,10 +98,31 @@ def test_missing_file_is_an_error(tmp_path: Path) -> None:
 
 async def test_tool_reports_pass_errors_and_is_registered_for_concept_only(tmp_path: Path) -> None:
     assert CHECK_CONCEPT_TOOL.stages == {"concept"}
-    assert {"check_concept", "web_search", "fetch_url"} == {t.name for t in STAGE.tools()}
+    assert {"check_concept", "web_search", "fetch_url", "analyze_music"} == {
+        t.name for t in STAGE.tools()
+    }
     _write(tmp_path, _brief())
     ok = await invoke_tool(CHECK_CONCEPT_TOOL, _ctx(tmp_path), {})
     assert not ok.is_error and "通过" in ok.text
     _write(tmp_path, "## 主题\n\nx\n")
     bad = await invoke_tool(CHECK_CONCEPT_TOOL, _ctx(tmp_path), {})
-    assert bad.is_error and bad.text.count("缺少章节") == 6
+    assert bad.is_error and bad.text.count("缺少章节") == 7
+
+
+def test_the_hard_requirements_section_is_required() -> None:
+    without = "\n".join(
+        f"## {name}\n\n{'30 秒' if name == '目标时长' else '内容。'}\n"
+        for name in SECTIONS
+        if name != "硬性要求"
+    )
+    result = check_concept_text(without)
+    assert any("缺少章节「硬性要求」" in e for e in result.errors)
+
+
+def test_an_empty_hard_requirements_section_is_an_error() -> None:
+    result = check_concept_text(_brief(硬性要求="  "))
+    assert any("「硬性要求」没有内容" in e for e in result.errors)
+
+
+def test_the_hard_requirements_content_is_not_judged() -> None:
+    assert check_concept_text(_brief(硬性要求="- 不要出现人脸\n- 总长不超过 40 秒")).errors == []

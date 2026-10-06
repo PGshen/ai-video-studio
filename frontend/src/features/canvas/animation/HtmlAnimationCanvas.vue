@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * HTML 动画阶段（`animation_html`）的专属画布（子项目 2 设计 §7.2）：三个标签。
+ * HTML 动画阶段（`animation_html`）与短片、MV 的「配乐与动画」阶段（`produce`）的专属画布
+ * （子项目 2 设计 §7.2，produce 设计 §9）：三个标签；`produce` 多一个由 `music` 槽提供的「配乐」标签。
  *
  * - **镜头**：镜头列表来自 `html-preview/meta`（不依赖 `upstream/` 要等第一轮才物化），附
  *   "代码是否存在 / 检查状态"；代码用 `CodeEditor`（javascript）编辑，保存的阶段是
@@ -12,7 +13,7 @@
  * `meta` 在 `workspace_changed` 之后重新取（`invalidateWorkspace`）；它不可用（叙事没定稿、配音
  * 没做完，409）时在每个标签里显示原因，不影响其余标签。
  */
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, ref, useSlots, watch, watchEffect } from 'vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import {
@@ -41,21 +42,29 @@ import SceneList from './SceneList.vue'
 import SceneReference, { type ReferenceTab } from './SceneReference.vue'
 import { sceneInfoFromSection } from './htmlSceneInfo'
 
-const props = defineProps<{
-  projectId: string
-  /** 当前项目是否有一轮正在跑；运行中编辑器只读。 */
-  busy: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    projectId: string
+    /** 当前项目是否有一轮正在跑；运行中编辑器只读。 */
+    busy: boolean
+    /** 讲解的 `animation_html`，或短片、MV 的 `produce`（多一个「配乐」标签，由 `music` 槽提供）。 */
+    stage?: 'animation_html' | 'produce'
+  }>(),
+  { stage: 'animation_html' },
+)
 
-const STAGE = 'animation_html'
+const slots = useSlots()
+const hasMusicTab = computed(() => props.stage === 'produce' && slots.music !== undefined)
 
-const tab = ref<'scenes' | 'preview' | 'final'>('scenes')
+const tab = ref<'scenes' | 'preview' | 'music' | 'final'>('scenes')
 
 const { data: meta, error: metaError } = useHtmlPreviewMetaQuery(() => props.projectId)
 const { data: project } = useProjectQuery(() => props.projectId)
 const sections = computed(() => meta.value?.sections ?? [])
 const scoreMissing = computed(
-  () => project.value?.kind?.music_source === 'synth' && meta.value?.music === null,
+  () =>
+    (project.value?.kind?.music_source === 'synth' || project.value?.kind?.music_source === 'import') &&
+    meta.value?.music === null,
 )
 const sceneIds = computed(() => sections.value.map((section) => section.id))
 
@@ -151,7 +160,7 @@ async function onSave(): Promise<void> {
   if (!buffer.value || !path) return
   saveError.value = null
   try {
-    await writeMutation.mutateAsync({ path, stage: STAGE, content: buffer.value.content })
+    await writeMutation.mutateAsync({ path, stage: props.stage, content: buffer.value.content })
     // 不在这里置 `hadContent`：文件树重新拉取之前会有一段"曾有内容但文件不存在"的窗口，
     // 会让 `fileMissing` 误判（同 `AnimationCanvas.vue` 的决策记录）。
     buffer.value = saved(buffer.value, buffer.value.content)
@@ -192,6 +201,16 @@ function onLoadLatest(): void {
         @click="tab = 'preview'"
       >
         实时预览
+      </button>
+      <button
+        v-if="hasMusicTab"
+        type="button"
+        class="rounded px-3 py-1 whitespace-nowrap"
+        :class="tab === 'music' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+        data-testid="tab-music"
+        @click="tab = 'music'"
+      >
+        配乐
       </button>
       <button
         type="button"
@@ -343,6 +362,15 @@ function onLoadLatest(): void {
         加载中…
       </p>
     </template>
+
+    <div
+      v-if="hasMusicTab"
+      v-show="tab === 'music'"
+      class="flex min-h-0 flex-1 flex-col"
+      data-testid="music-panel"
+    >
+      <slot name="music" />
+    </div>
 
     <div
       v-show="tab === 'final'"

@@ -1,6 +1,6 @@
-"""短片与"讲解 + 背景乐"的整条流水线（3A T9）：真实 `TurnRunner` + `FakeRuntime`。
+"""短片（`concept → produce`）与"讲解 + 背景乐"的整条流水线：真实 `TurnRunner` + `FakeRuntime`。
 
-每个阶段一轮：agent 写产物并调用阶段工具，之后定稿，下游的 `upstream/` 与时间轴随之变化。
+每个阶段一轮：agent 写产物并调用阶段工具，之后定稿；`produce` 一轮里配乐与画面一起做。
 非 `slow` 版用假浏览器池与恒等的脚本包装；`slow` 版用真实 Chromium 和真实 Seatbelt 沙箱，并检查
 "`events.json` → 时间轴 → `env`"整条路径。
 """
@@ -28,12 +28,14 @@ from studio.db.repo.snapshots import latest_snapshot
 from studio.db.repo.stages import list_stages
 from studio.db.repo.turns import get_turn, list_events
 from studio.engines.render.html.pool import BrowserPool, set_browser_pool
-from studio.stages.music import tool as music_tool
+from studio.stages.common.score import tool as music_tool
 from studio.worker import run_once
 
 from .conftest import ApiEnv
 
-REF = Path(__file__).resolve().parents[1] / "fixtures" / "synth_music" / "compose_ref.py"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synth_music"
+REF = FIXTURES / "compose_ref.py"
+FREE = FIXTURES / "compose_free.py"
 
 
 def _identity(workdir: Path):
@@ -56,6 +58,7 @@ async def fake_pool() -> AsyncIterator[Behaviour]:
     behaviour.hash_fn = lambda t, tl: _digest(
         t,
         (tl.get("grid") or {}).get("beats", [])[:2],
+        [e["start"] for e in (tl.get("music") or {}).get("events", [])[:2]],
         [b["start"] for n in tl["narration"] for b in n["beats"]],
     )
 
@@ -115,7 +118,8 @@ def _status(api_env: ApiEnv, pid: str) -> dict[str, str]:
     return {s.stage: s.status for s in list_stages(api_env.app.state.engine, pid)}
 
 
-async def _run_reel_up_to_music(api_env: ApiEnv) -> str:
+async def _run_reel_through_produce(api_env: ApiEnv) -> str:
+    """concept (brief) → produce (score + shots + scenes in one turn); produce is left active."""
     engine, blobs = api_env.app.state.engine, api_env.app.state.blobs
     pid = seed.seed_reel_project(engine, blobs, data_dir=api_env.data_dir)
 
@@ -129,95 +133,77 @@ async def _run_reel_up_to_music(api_env: ApiEnv) -> str:
     events = await _turn(
         api_env,
         pid,
-        "beatsheet",
-        [write("beatsheet/beatsheet.json", seed.BEATSHEET), call_tool("validate_beatsheet")],
-    )
-    sheet = _results(events)["validate_beatsheet"][0]
-    assert sheet["is_error"] is False and "11.25" in sheet["text"], sheet["text"]
-    _finalize(api_env, pid, "beatsheet")
-
-    events = await _turn(
-        api_env,
-        pid,
-        "music",
-        [write("music/compose.py", REF.read_text()), call_tool("render_music")],
-    )
-    render = _results(events)["render_music"][0]
-    assert render["is_error"] is False, render["text"]
-    assert "配乐渲染成功" in render["text"] and "重定时校验通过" in render["text"]
-    assert len(render["images"]) == 1
-    _finalize(api_env, pid, "music")
-    return pid
-
-
-async def _animation_turn(api_env: ApiEnv, pid: str) -> dict[str, list[dict[str, Any]]]:
-    events = await _turn(
-        api_env,
-        pid,
-        "animation_html",
+        "produce",
         [
+            write("music/compose.py", FREE.read_text()),
+            call_tool("render_music"),
+            write("animation/shots.json", json.dumps(seed.SHOTS)),
             write("animation/scenes/s1.js", seed.REEL_SCENE),
             write("animation/scenes/s2.js", seed.REEL_SCENE),
             call_tool("validate_scenes_html"),
             call_tool("render_preview_html", {"scene_id": "s2"}),
         ],
     )
-    return _results(events)
-
-
-async def _check_reel(api_env: ApiEnv, pid: str) -> None:
-    results = await _animation_turn(api_env, pid)
+    results = _results(events)
+    render = results["render_music"][0]
+    assert render["is_error"] is False, render["text"]
+    assert "配乐渲染成功" in render["text"] and "重定时" not in render["text"]
+    assert len(render["images"]) == 1
     validate = results["validate_scenes_html"][0]
     assert validate["is_error"] is False, validate["text"]
     assert validate["text"].splitlines()[0] == "全部 2 个镜头校验通过。"
     preview = results["render_preview_html"][0]
     assert preview["is_error"] is False, preview["text"]
-    assert "镜头 s2 预览：时长 5.6" in preview["text"] and len(preview["images"]) == 1
+    assert "镜头 s2 预览：时长 8.00" in preview["text"] and len(preview["images"]) == 1
+    return pid
 
+
+def _check_reel_snapshot(api_env: ApiEnv, pid: str) -> None:
     snapshot = latest_snapshot(api_env.app.state.engine, pid)
     assert snapshot is not None
     manifest = snapshot.manifest
     assert {
         "concept/brief.md",
-        "beatsheet/beatsheet.json",
         "music/compose.py",
         "music/music.wav",
         "music/events.json",
         "music/analysis.json",
         "music/analysis.png",
         "music/render.json",
+        "animation/shots.json",
         "animation/scenes/s1.js",
+        "animation/scenes/s2.js",
     } <= set(manifest)
     assert not any(path.startswith("upstream/") for path in manifest)
+    assert "beatsheet/beatsheet.json" not in manifest
 
 
 async def test_motion_reel_pipeline_with_fakes(
     api_env: ApiEnv, plain_scripts: None, fake_pool: Behaviour
 ) -> None:
-    pid = await _run_reel_up_to_music(api_env)
-    assert _status(api_env, pid) == {
-        "concept": "finalized",
-        "beatsheet": "finalized",
-        "music": "finalized",
-        "animation_html": "active",
-    }
-    await _check_reel(api_env, pid)
+    pid = await _run_reel_through_produce(api_env)
+    assert _status(api_env, pid) == {"concept": "finalized", "produce": "active"}
+    assert api_env.app.state.registry.get("produce").finalize_blockers(api_env.workdir(pid)) == []
+    _check_reel_snapshot(api_env, pid)
 
 
-async def test_changing_the_beatsheet_makes_the_music_stale_and_blocks_its_finalise(
+async def test_reopening_the_concept_and_changing_the_brief_makes_produce_stale(
     api_env: ApiEnv, plain_scripts: None, fake_pool: Behaviour
 ) -> None:
-    pid = await _run_reel_up_to_music(api_env)
-    longer = seed.BEATSHEET.replace('"bars": 3, "intent": "蓄力"', '"bars": 4, "intent": "蓄力"')
-    assert longer != seed.BEATSHEET
-    await _turn(api_env, pid, "beatsheet", [write("beatsheet/beatsheet.json", longer)])
-    _finalize(api_env, pid, "beatsheet")
-    assert _status(api_env, pid)["music"] == "stale"
+    pid = await _run_reel_through_produce(api_env)
+    _finalize(api_env, pid, "produce")
+    assert _status(api_env, pid)["produce"] == "finalized"
 
-    # The next music turn refreshes `upstream/`; the old render no longer matches the new grid.
-    await _turn(api_env, pid, "music", [])
-    blockers = api_env.app.state.registry.get("music").finalize_blockers(api_env.workdir(pid))
-    assert any("上次渲染之后变了" in b for b in blockers), blockers
+    reopened = await api_env.client.post(f"/api/projects/{pid}/stages/concept/reopen")
+    assert reopened.status_code == 200, reopened.text
+    await _turn(
+        api_env,
+        pid,
+        "concept",
+        [write("concept/brief.md", seed.BRIEF.replace("一个点的裂变与回收", "一个点的另一种命运"))],
+    )
+    _finalize(api_env, pid, "concept")
+    assert _status(api_env, pid)["produce"] == "stale"
 
 
 async def test_explainer_with_a_background_bed_pipeline_with_fakes(
@@ -271,8 +257,8 @@ def _bed_scene() -> str:
 async def test_motion_reel_pipeline_with_the_real_sandbox_and_chromium(
     api_env: ApiEnv, real_pool: None
 ) -> None:
-    pid = await _run_reel_up_to_music(api_env)
-    await _check_reel(api_env, pid)
+    pid = await _run_reel_through_produce(api_env)
+    _check_reel_snapshot(api_env, pid)
 
 
 @pytest.mark.slow
@@ -284,9 +270,11 @@ async def test_events_json_reaches_the_scenes_through_the_timeline(
     from studio.engines.render.html.browser import HtmlBrowser
     from studio.timeline.load import TimelineSources, load_timeline
 
-    pid = await _run_reel_up_to_music(api_env)
+    pid = await _run_reel_through_produce(api_env)
     workdir = api_env.workdir(pid)
-    loaded = load_timeline(TimelineSources(workdir, narration=False, music_source="synth"))
+    loaded = load_timeline(
+        TimelineSources(workdir, narration=False, music_source="synth", produce=True)
+    )
     timeline = loaded.timeline.model_dump(mode="json")
     kicks = [
         e
@@ -367,8 +355,7 @@ async def _render_final(api_env: ApiEnv, pid: str, backend: FakeBackend | None =
 async def test_a_reel_goes_from_the_score_to_a_finalised_render_with_fakes(
     api_env: ApiEnv, plain_scripts: None, fake_pool: Behaviour
 ) -> None:
-    pid = await _run_reel_up_to_music(api_env)
-    await _animation_turn(api_env, pid)
+    pid = await _run_reel_through_produce(api_env)
     backend = FakeBackend()
     final = await _render_final(api_env, pid, backend)
     assert final.is_file()
@@ -377,7 +364,8 @@ async def test_a_reel_goes_from_the_score_to_a_finalised_render_with_fakes(
 
     done = await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
     assert done.status_code == 200, done.text
-    assert _status(api_env, pid)["animation_html"] == "finalized"
+    assert done.json()["stage"] == "produce"
+    assert _status(api_env, pid)["produce"] == "finalized"
 
 
 async def test_an_explainer_bed_goes_to_a_finalised_render_with_fakes(
@@ -392,13 +380,12 @@ async def test_an_explainer_bed_goes_to_a_finalised_render_with_fakes(
     assert done.status_code == 200, done.text
 
 
-async def test_a_score_made_stale_after_the_scenes_blocks_the_render_with_the_reason(
+async def test_a_score_replaced_after_the_scenes_blocks_the_render_with_the_reason(
     api_env: ApiEnv, plain_scripts: None, fake_pool: Behaviour
 ) -> None:
-    pid = await _run_reel_up_to_music(api_env)
-    await _animation_turn(api_env, pid)
-    path = api_env.workdir(pid) / "beatsheet" / "beatsheet.json"
-    path.write_text(path.read_text().replace("BUILD", "RISE", 1), encoding="utf-8")
+    pid = await _run_reel_through_produce(api_env)
+    wav = api_env.workdir(pid) / "music" / "music.wav"
+    wav.write_bytes(wav.read_bytes() + b"\0\0")  # replaced after the render, before the film
     created = await api_env.client.post(f"/api/projects/{pid}/render")
     backend = FakeBackend()
     await run_once(
@@ -408,7 +395,7 @@ async def test_a_score_made_stale_after_the_scenes_blocks_the_render_with_the_re
         html_backend=backend.as_backend(),
     )
     job = (await api_env.client.get(f"/api/projects/{pid}/jobs/{created.json()['id']}")).json()
-    assert job["status"] == "failed" and "配乐与当前时间轴不一致" in job["error"]
+    assert job["status"] == "failed" and "music.wav 与 render.json 记录的不一致" in job["error"]
     assert backend.video_calls == []
 
 
@@ -430,12 +417,11 @@ def _audio_streams(path: Path) -> tuple[list[dict[str, Any]], float]:
 async def test_a_reel_final_has_the_score_as_its_only_audio_with_real_ffmpeg(
     api_env: ApiEnv, real_pool: None
 ) -> None:
-    pid = await _run_reel_up_to_music(api_env)
-    await _animation_turn(api_env, pid)
+    pid = await _run_reel_through_produce(api_env)
     final = await _render_final(api_env, pid)
     audio, duration = _audio_streams(final)
     assert [a["codec_name"] for a in audio] == ["aac"]
-    assert abs(duration - 11.25) <= 0.1
+    assert abs(duration - 16.0) <= 0.1
     meta = json.loads((api_env.workdir(pid) / "output" / "final.json").read_text())
     assert meta["audio_sources"] == {} and len(meta["music_hash"]) == 64
 

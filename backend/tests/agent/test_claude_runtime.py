@@ -30,7 +30,7 @@ from pydantic import BaseModel
 from studio.agent import events
 from studio.agent.claude_env import DEFAULT_BASE_URL, LOGIN_BLANKED_ENV, build_env
 from studio.agent.claude_messages import build_sdk_tool
-from studio.agent.claude_runtime import ClaudeRuntime, register_claude
+from studio.agent.claude_runtime import MAX_BUFFER_BYTES, ClaudeRuntime, register_claude
 from studio.agent.claude_scope import sandbox_settings
 from studio.agent.runtime import (
     Budget,
@@ -274,6 +274,7 @@ class TestOptions:
         assert options.include_partial_messages is True
         assert options.thinking == {"type": "adaptive", "display": "summarized"}
         assert options.effort is None
+        assert options.max_buffer_size == MAX_BUFFER_BYTES
         assert options.tools == ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
         assert options.sandbox is not None and options.sandbox.get("enabled") is True
         assert options.hooks is not None and "PreToolUse" in options.hooks
@@ -1217,6 +1218,32 @@ class TestSandbox:
         assert value is not None
         cli_settings = json.loads(value)
         assert cli_settings["sandbox"]["filesystem"]["allowRead"] == [str(workdir.resolve())]
+
+
+class TestMessageBuffer:
+    """2026-10-06: the CLI writes a tool-result image twice into one line, so a 394 kB JPEG made a
+    1 054 050 byte line and the default 1 MiB buffer failed the whole turn (and every retry, since
+    the resumed history carries the line)."""
+
+    def test_buffer_leaves_room_over_the_sdk_default(self) -> None:
+        assert MAX_BUFFER_BYTES >= 8 * 1024 * 1024
+
+    async def test_a_poisoned_history_line_is_accepted(self, workdir: Path, data_dir: Path) -> None:
+        from claude_agent_sdk._internal.transport.subprocess_cli import _LineFramer
+
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir))
+        transport = SubprocessCLITransport(prompt="", options=clients.last.options)
+
+        image = {"type": "image", "source": {"type": "base64", "data": "A" * 525_324}}
+        line = json.dumps(
+            {"type": "user", "message": {"content": [image]}, "toolUseResult": [image]}
+        )
+        assert len(line) > 1_048_576
+        framer = _LineFramer()
+        lines = framer.push(line + "\n")
+        assert [len(entry) for entry in lines] == [len(line)]
+        assert len(line) <= transport._max_buffer_size
 
 
 class TestRegister:

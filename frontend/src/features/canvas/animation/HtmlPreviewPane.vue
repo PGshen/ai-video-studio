@@ -25,7 +25,7 @@ const FPS = 30
 const props = defineProps<{
   projectId: string
   meta: HtmlPreviewMeta
-  /** 项目有合成配乐，但配乐还没渲染或与当前时间轴对不上（`meta.music` 为空）：提示去配乐阶段。 */
+  /** 项目有配乐，但配乐还没渲染或与当前文件对不上（`meta.music` 为空）：提示重新渲染。 */
   scoreMissing?: boolean
 }>()
 
@@ -205,7 +205,7 @@ function onScrub(event: Event): void {
       role="status"
       data-testid="preview-score-missing"
     >
-      配乐还没渲染，或与当前节拍脚本、旁白对不上，预览没有声音。到「配乐」阶段重新渲染后会自动刷新。
+      配乐还没渲染，或与当前文件对不上（旁白变了、音频被换过），预览没有声音。重新渲染配乐后会自动刷新。
     </p>
 
     <div class="relative">

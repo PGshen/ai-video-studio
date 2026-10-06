@@ -73,6 +73,10 @@ watch(
   },
 )
 
+/** 歌曲只在「创意与要求」进行中才能换；定稿后换歌不会让下游变 stale，要先重新打开这一阶段。 */
+const conceptOpen = computed(
+  () => project.value?.stages.find((s) => s.stage === 'concept')?.status === 'active',
+)
 const scope = computed(() => projectScope(projectId.value, stage.value))
 const createSession = useEnsureSession(scope, sessionId)
 
@@ -208,7 +212,7 @@ const canvasBusy = computed(() =>
           <template #canvas="{ railCollapsed: snapshotsHidden, toggleRail, narrow: stacked }">
             <Card class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4">
               <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative、music、animation 阶段并进标签行（见画布的 actions 插槽）。动画阶段（`animation`/`animation_html`）没有定稿按钮：只能在“成片”标签里渲染后定稿，否则可以绕过成片直接定稿。 -->
+                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative、music、produce、animation 阶段并进标签行（见画布的 actions 插槽）。动画阶段（`animation`/`animation_html`/`produce`）没有定稿按钮：只能在“成片”标签里渲染后定稿，否则可以绕过成片直接定稿。 -->
                 <div
                   v-if="!STAGES_WITH_OWN_ACTIONS.includes(stage)"
                   class="flex shrink-0 items-center justify-end gap-2"
@@ -222,6 +226,19 @@ const canvasBusy = computed(() =>
                     v-if="!stacked"
                     :collapsed="snapshotsHidden"
                     @toggle="toggleRail"
+                  />
+                </div>
+                <!-- 歌曲项目（MV）的歌曲在「创意与要求」阶段上传并分析：上传区与分析摘要放在文件画布上方。 -->
+                <div
+                  v-if="stage === 'concept' && isImportMusic(project.settings)"
+                  class="max-h-96 shrink-0 overflow-y-auto rounded border p-3"
+                  data-testid="concept-song"
+                >
+                  <ImportMusicCanvas
+                    :project-id="projectId"
+                    :busy="canvasBusy"
+                    :allow-upload="conceptOpen"
+                    compact
                   />
                 </div>
                 <AnimationCanvas
@@ -244,10 +261,29 @@ const canvasBusy = computed(() =>
                   </template>
                 </AnimationCanvas>
                 <HtmlAnimationCanvas
-                  v-else-if="stage === 'animation_html'"
+                  v-else-if="stage === 'animation_html' || stage === 'produce'"
                   :project-id="projectId"
                   :busy="canvasBusy"
+                  :stage="stage === 'produce' ? 'produce' : 'animation_html'"
                 >
+                  <template
+                    v-if="stage === 'produce'"
+                    #music
+                  >
+                    <ImportMusicCanvas
+                      v-if="isImportMusic(project.settings)"
+                      :project-id="projectId"
+                      :busy="canvasBusy"
+                      :allow-upload="false"
+                      compact
+                    />
+                    <MusicCanvas
+                      v-else
+                      :project-id="projectId"
+                      :busy="canvasBusy"
+                      stage="produce"
+                    />
+                  </template>
                   <template #actions>
                     <StageFinalizeButton
                       :project-id="projectId"
@@ -262,24 +298,6 @@ const canvasBusy = computed(() =>
                     />
                   </template>
                 </HtmlAnimationCanvas>
-                <ImportMusicCanvas
-                  v-else-if="stage === 'music' && isImportMusic(project.settings)"
-                  :project-id="projectId"
-                  :busy="canvasBusy"
-                >
-                  <template #actions>
-                    <StageFinalizeButton
-                      :project-id="projectId"
-                      :stages="project.stages"
-                      :current-stage="stage"
-                    />
-                    <RailToggleButton
-                      v-if="!stacked"
-                      :collapsed="snapshotsHidden"
-                      @toggle="toggleRail"
-                    />
-                  </template>
-                </ImportMusicCanvas>
                 <MusicCanvas
                   v-else-if="stage === 'music'"
                   :project-id="projectId"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 配乐阶段的画布（子项目 3 设计 §9.2）：三个标签。
+ * 配乐的画布（子项目 3 设计 §9.2）：三个标签；讲解的配乐阶段单独用它，短片把它嵌在「配乐与动画」里。
  * - **播放**：试听、波形、段落与事件标记、指标与分析图；还没渲染时是空状态。
  * - **脚本**：编辑 `music/compose.py`，保存走普通的文件保存（阶段 `music`）；"渲染"按钮不经 agent，
  *   直接运行脚本并给出报告（旧产物在失败时不动）。有一轮在跑时只读、不能渲染。
@@ -32,13 +32,16 @@ import EventTable from './EventTable.vue'
 import MusicPlayer from './MusicPlayer.vue'
 import RenderReport from './RenderReport.vue'
 
-const props = defineProps<{
-  projectId: string
-  /** 当前项目是否有一轮正在跑；运行中编辑器只读、不能渲染。 */
-  busy: boolean
-}>()
-
-const STAGE = 'music'
+const props = withDefaults(
+  defineProps<{
+    projectId: string
+    /** 当前项目是否有一轮正在跑；运行中编辑器只读、不能渲染。 */
+    busy: boolean
+    /** 保存脚本时写入的阶段：讲解的配乐阶段是 `music`，短片嵌在「配乐与动画」里是 `produce`。 */
+    stage?: string
+  }>(),
+  { stage: 'music' },
+)
 const SCRIPT = 'music/compose.py'
 
 const tab = ref<'play' | 'script' | 'events'>('play')
@@ -91,7 +94,11 @@ async function onSave(): Promise<void> {
   if (!buffer.value) return
   saveError.value = null
   try {
-    await writeMutation.mutateAsync({ path: SCRIPT, stage: STAGE, content: buffer.value.content })
+    await writeMutation.mutateAsync({
+      path: SCRIPT,
+      stage: props.stage,
+      content: buffer.value.content,
+    })
     buffer.value = saved(buffer.value, buffer.value.content)
   } catch (error) {
     saveError.value =
@@ -167,7 +174,7 @@ async function onRender(): Promise<void> {
       role="status"
       data-testid="music-stale"
     >
-      这份配乐是对着旧版节拍脚本或旁白渲染的，成片会拒绝它。到「脚本」标签重新渲染。
+      这份配乐与当前文件对不上（旁白变了，或音频被换过），成片会拒绝它。到「脚本」标签重新渲染。
     </p>
 
     <div

@@ -15,13 +15,16 @@ from fixtures.synth_music.seed import seed_reel_project
 from .conftest import ApiEnv
 
 DURATION = 20.0
-SECTIONS = {
-    "sections": [
-        {"id": "intro", "label": "intro", "start": 0.5, "end": 4.5},
-        {"id": "verse", "label": "verse", "start": 4.5, "end": 12.5},
-        {"id": "chorus", "label": "chorus", "start": 12.5, "end": 18.5},
-    ]
-}
+
+
+def _shots(length: float) -> dict:
+    half = length / 2
+    return {
+        "shots": [
+            {"id": "a", "label": "A", "start": 0.0, "end": half},
+            {"id": "b", "label": "B", "start": half, "end": length},
+        ]
+    }
 
 
 def _mv(api_env: ApiEnv) -> tuple[str, Path]:
@@ -60,9 +63,14 @@ def _analysis(workdir: Path, source_hash: str, **extra: object) -> None:
     (workdir / "music" / "analysis.json").write_text(json.dumps(doc), encoding="utf-8")
 
 
-def _sections(workdir: Path, doc: dict | None = None) -> None:
-    (workdir / "music" / "sections.json").write_text(
-        json.dumps(doc if doc is not None else SECTIONS), encoding="utf-8"
+def _shots_file(workdir: Path, length: float = DURATION) -> None:
+    (workdir / "animation").mkdir(exist_ok=True)
+    (workdir / "animation" / "shots.json").write_text(json.dumps(_shots(length)), encoding="utf-8")
+
+
+def _range(workdir: Path, start: float, end: float) -> None:
+    (workdir / "music" / "range.json").write_text(
+        json.dumps({"start": start, "end": end}), encoding="utf-8"
     )
 
 
@@ -77,7 +85,7 @@ async def test_not_uploaded(api_env: ApiEnv) -> None:
     body = await _meta(api_env, pid)
     assert body["form"] == "import" and body["rendered"] is False and body["stale"] is False
     assert body["source"] is None and body["analysis"] is None and body["grid"] is None
-    assert body["range"] is None and body["energy"] is None and body["sections_check"] is None
+    assert body["range"] is None and body["energy"] is None
     assert body["sections"] == []
 
 
@@ -93,7 +101,7 @@ async def test_uploaded_but_not_analysed(api_env: ApiEnv) -> None:
     assert body["analysis"] is None and body["energy"] is None and body["duration"] is None
 
 
-async def test_analysed_without_sections(api_env: ApiEnv) -> None:
+async def test_analysed_without_shots_or_range(api_env: ApiEnv) -> None:
     pid, workdir = _mv(api_env)
     _analysis(workdir, _source(workdir))
     body = await _meta(api_env, pid)
@@ -108,59 +116,63 @@ async def test_analysed_without_sections(api_env: ApiEnv) -> None:
     assert body["energy"]["hop"] == 0.1 and len(body["energy"]["values"]) == 200
     assert body["grid"]["bpm"] == 120.0 and body["grid"]["offset"] == 0.5
     assert body["grid"]["downbeats"][:3] == [0.5, 2.5, 4.5]
-    assert body["sections"] == [] and body["range"] is None
-    assert body["sections_check"]["ok"] is False  # sections.json is missing
+    assert body["sections"] == []
+    assert body["range"] == {"start": 0.0, "end": DURATION}  # no range.json: the whole song
+    assert "sections_check" not in body
 
 
-async def test_analysed_with_valid_sections(api_env: ApiEnv) -> None:
+async def test_shots_are_listed_as_sections_in_song_seconds(api_env: ApiEnv) -> None:
     pid, workdir = _mv(api_env)
     _analysis(workdir, _source(workdir))
-    _sections(workdir)
+    _shots_file(workdir)
     body = await _meta(api_env, pid)
-    assert body["sections_check"]["ok"] is True and body["sections_check"]["errors"] == []
-    assert [s["id"] for s in body["sections"]] == ["intro", "verse", "chorus"]
-    assert body["sections"][1]["start"] == 4.5  # whole-song seconds, not range-relative
-    assert body["range"] == {"start": 0.5, "end": 18.5}
-    assert body["stale"] is False
+    assert [s["id"] for s in body["sections"]] == ["a", "b"]
+    assert body["sections"][1]["start"] == 10.0 and body["stale"] is False
 
 
-async def test_explicit_range_and_grid_override_win(api_env: ApiEnv) -> None:
+async def test_a_range_moves_the_shots_onto_the_song_timeline(api_env: ApiEnv) -> None:
     pid, workdir = _mv(api_env)
     _analysis(workdir, _source(workdir))
-    doc = {**SECTIONS, "bpm": 60.0, "offset": 0.5, "range": {"start": 0.5, "end": 18.5}}
-    _sections(workdir, doc)
+    _range(workdir, 5.0, 15.0)
+    _shots_file(workdir, 10.0)
     body = await _meta(api_env, pid)
-    assert body["grid"]["bpm"] == 60.0
-    assert body["grid"]["downbeats"][:3] == [0.5, 4.5, 8.5]
-    assert body["range"] == {"start": 0.5, "end": 18.5}
+    assert body["range"] == {"start": 5.0, "end": 15.0}
+    assert [(s["start"], s["end"]) for s in body["sections"]] == [(5.0, 10.0), (10.0, 15.0)]
+    assert body["grid"]["bpm"] == 120.0  # the analysis value: the model is free to ignore it
 
 
-async def test_sections_check_reports_errors(api_env: ApiEnv) -> None:
+async def test_an_invalid_range_is_left_out(api_env: ApiEnv) -> None:
     pid, workdir = _mv(api_env)
     _analysis(workdir, _source(workdir))
-    _sections(workdir, {"sections": [{"id": "a", "label": "a", "start": 0.7, "end": 4.5}]})
+    _range(workdir, 15.0, 90.0)
     body = await _meta(api_env, pid)
-    assert body["sections_check"]["ok"] is False and body["sections_check"]["errors"]
+    assert body["range"] is None
 
 
 async def test_changed_song_is_stale(api_env: ApiEnv) -> None:
     pid, workdir = _mv(api_env)
     _source(workdir)
     _analysis(workdir, "0" * 64)
-    _sections(workdir)
     body = await _meta(api_env, pid)
     assert body["stale"] is True
     assert body["source"]["duration"] is None  # the analysis does not describe this file
 
 
-@pytest.mark.parametrize("victim", ["analysis.json", "sections.json"])
+@pytest.mark.parametrize(
+    "victim", ["music/analysis.json", "music/range.json", "animation/shots.json"]
+)
 async def test_corrupt_documents_degrade_to_empty_fields(api_env: ApiEnv, victim: str) -> None:
     pid, workdir = _mv(api_env)
     _analysis(workdir, _source(workdir))
-    _sections(workdir)
-    (workdir / "music" / victim).write_text("{broken", encoding="utf-8")
+    _range(workdir, 5.0, 15.0)
+    _shots_file(workdir, 10.0)
+    (workdir / victim).write_text("{broken", encoding="utf-8")
     body = await _meta(api_env, pid)
-    assert body["source"] is not None and body["sections_check"]["ok"] is False
+    assert body["source"] is not None
+    if victim == "music/analysis.json":
+        assert body["analysis"] is None
+    if victim == "animation/shots.json":
+        assert body["sections"] == []
 
 
 async def test_audio_serves_source_with_range_and_media_type(api_env: ApiEnv) -> None:

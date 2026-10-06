@@ -40,11 +40,11 @@ from studio.db.repo.stages import create_stage
 from studio.db.repo.turns import TurnEventValue, TurnValue, get_turn, list_events
 from studio.stages.animation import STAGE as ANIMATION
 from studio.stages.animation_html import STAGE as ANIMATION_HTML
-from studio.stages.beatsheet import STAGE as BEATSHEET
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 from studio.stages.concept import STAGE as CONCEPT
 from studio.stages.music import STAGE as MUSIC
 from studio.stages.narrative import STAGE as NARRATIVE
+from studio.stages.produce import STAGE as PRODUCE
 from studio.stages.style import STAGE as STYLE
 from studio.stages.topic import STAGE as TOPIC
 from studio.workspace import BlobStore, create_snapshot, project_dir
@@ -351,8 +351,8 @@ def build_harness(
             TOPIC,
             NARRATIVE,
             CONCEPT,
-            BEATSHEET,
             MUSIC,
+            PRODUCE,
             ANIMATION,
             ANIMATION_HTML,
             STYLE,
@@ -378,13 +378,7 @@ def build_harness(
     )
 
     last = "animation_html" if html or reel or music_video else "animation"
-    pipeline = (
-        ["concept", "music", "beatsheet", "animation_html"]
-        if music_video
-        else ["concept", "beatsheet", "music", "animation_html"]
-        if reel
-        else ["topic", "narrative", last]
-    )
+    pipeline = ["concept", "produce"] if music_video or reel else ["topic", "narrative", last]
     project_settings = (
         {
             "video_kind": "music_video",

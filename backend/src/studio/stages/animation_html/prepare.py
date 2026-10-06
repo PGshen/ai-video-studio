@@ -11,13 +11,12 @@ import json
 import shutil
 from pathlib import Path
 
-from studio.stages.common.music_source import find_source
+from studio.stages.common.scenes import CANVAS_EXEMPLAR
+from studio.stages.common.scenes.helpers import ERROR_PATH, TIMELINE_PATH
 from studio.timeline import TimelineError, TimelineLayers, build_timeline, narration_from_documents
 from studio.timeline.load import TimelineSources, load_timeline
 
-_EXEMPLAR = Path(__file__).parent / "exemplar" / "canvas-techniques.js"
-TIMELINE_PATH = "upstream/timeline.json"
-ERROR_PATH = "upstream/timeline.error.txt"
+_EXEMPLAR = CANVAS_EXEMPLAR
 
 
 def _read_json(path: Path) -> dict:
@@ -33,25 +32,9 @@ def _fail(workdir: Path, reason: str) -> None:
     error.write_text(reason + "\n", encoding="utf-8")
 
 
-def _is_music_video(upstream: Path) -> bool:
-    """MV = 上游音乐是导入形态：有 `music/source.<ext>`（与 `music` 阶段同一信号）
-    且有 `sections.json`。只有 `sections.json`（合成形态也允许写它）不算 MV。
-    """
-    music = upstream / "music"
-    return (music / "sections.json").is_file() and find_source(music) is not None
-
-
 def _prepare_music_project(workdir: Path) -> None:
-    """短片、MV 与"讲解 + 背景乐"：按上游内容选来源，读出带网格与配乐层的时间轴。"""
-    upstream = workdir / "upstream"
-    reel = (upstream / "beatsheet" / "beatsheet.json").is_file()
-    mv = _is_music_video(upstream)
-    sources = TimelineSources(
-        workdir,
-        narration=not reel and not mv,
-        music_source="import" if mv else "synth",
-        prefix="upstream/",
-    )
+    """ "讲解 + 背景乐"：读出带网格与配乐层的时间轴。"""
+    sources = TimelineSources(workdir, narration=True, music_source="synth", prefix="upstream/")
     try:
         loaded = load_timeline(sources)
     except TimelineError as exc:
@@ -71,12 +54,7 @@ def prepare_turn(workdir: Path) -> None:
     exemplar.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(_EXEMPLAR, exemplar)
 
-    upstream = workdir / "upstream"
-    if (
-        (upstream / "beatsheet" / "beatsheet.json").is_file()
-        or (upstream / "music" / "events.json").is_file()
-        or _is_music_video(upstream)
-    ):
+    if (workdir / "upstream" / "music" / "events.json").is_file():
         _prepare_music_project(workdir)
         return
 

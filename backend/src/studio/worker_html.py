@@ -163,31 +163,34 @@ def _copy_with_hash(source: Path, target: Path) -> str:
 
 
 def _music_source(
-    workdir: Path, base_hash: str, errors: list[str], scratch: list[Path]
+    workdir: Path, base_hash: str | None, errors: list[str], scratch: list[Path]
 ) -> _Score | None:
-    """配乐文件齐全，且是对着当前时间轴渲染的那一份（`render.json` 的哈希对得上）。
+    """配乐文件齐全，且（讲解）是对着当前时间轴渲染的那一份（`render.json` 的哈希对得上）。
+    `base_hash=None`（`produce`）：配乐和镜头都是模型自己写的，没有上游时间轴可对照，只核对 wav。
 
     `music.wav` 先复制到 `.cache/tmp` 下的私有目录（目录登记进 `scratch`，任务结束时清理），哈希与
     混音都用这份拷贝：手动渲染是另一个进程，可能在检查之后换掉原文件，`final.json` 记的哈希必须
     就是混进成片的那些字节。"""
     music = workdir / "music"
+    where = "配乐阶段" if base_hash is not None else "配乐与动画阶段"
     missing = [name for name in _MUSIC_FILES if not (music / name).is_file()]
     if missing:
-        errors += [f"配乐缺少 music/{name}，需要在配乐阶段渲染" for name in missing]
+        errors += [f"配乐缺少 music/{name}，需要在{where}渲染" for name in missing]
         return None
     try:
         render = json.loads((music / "render.json").read_text(encoding="utf-8"))
-        recorded_base, recorded_wav = render["base_hash"], render["wav_hash"]
+        recorded_base = render["base_hash"] if base_hash is not None else None
+        recorded_wav = render["wav_hash"]
     except (ValueError, KeyError, TypeError):
-        errors.append("music/render.json 损坏或缺字段，需要在配乐阶段重新渲染")
+        errors.append(f"music/render.json 损坏或缺字段，需要在{where}重新渲染")
         return None
     private = workdir / ".cache" / "tmp" / f"mix-{uuid.uuid4().hex[:8]}"
     scratch.append(private)
     wav_hash = _copy_with_hash(music / "music.wav", private / "music.wav")
     if recorded_base != base_hash:
-        errors.append("配乐与当前时间轴不一致，需要在配乐阶段重新渲染（节拍脚本或旁白变了）")
+        errors.append("配乐与当前时间轴不一致，需要在配乐阶段重新渲染（旁白变了）")
     if wav_hash != recorded_wav:
-        errors.append("music.wav 与 render.json 记录的不一致，需要在配乐阶段重新渲染")
+        errors.append(f"music.wav 与 render.json 记录的不一致，需要在{where}重新渲染")
     return _Score(private / "music.wav", wav_hash)
 
 
@@ -202,7 +205,7 @@ def _import_score(
     """导入的原曲：复制到私有目录并边拷边算哈希，哈希要与分析记录的 `source_hash` 一致。
 
     与合成形态同一套防"检查之后又被换"的做法：混音与 `final.json` 用的是被检查过的这份拷贝。
-    `analysis.json`/`sections.json`/源文件缺失已由时间轴读取报出，这里只管哈希。"""
+    `analysis.json`/源文件缺失已由时间轴读取报出，这里只管哈希。"""
     try:
         source = safe_path(workdir, source_file)  # `music/source.<ext>`, picked by the timeline
     except ScopeError:
@@ -213,10 +216,10 @@ def _import_score(
     try:
         digest = _copy_with_hash(source, private / source.name)
     except OSError:
-        errors.append("源文件已更换，需要在配乐阶段重新分析")
+        errors.append("源文件已更换，需要在配乐与动画阶段重新分析")
         return None
     if digest != analysis_hash:
-        errors.append("源文件已更换，需要在配乐阶段重新分析")
+        errors.append("源文件已更换，需要在配乐与动画阶段重新分析")
     return _Score(private / source.name, digest, start)
 
 
@@ -314,9 +317,16 @@ async def _run_html_job(
 ) -> None:
     """成功返回；失败抛 `HtmlJobError`，已有的 `output/final.mp4` 保持不变。"""
     try:
-        loaded = load_timeline(TimelineSources(workdir, narration, music_source))
+        loaded = load_timeline(
+            TimelineSources(workdir, narration, music_source, produce=not narration)
+        )
     except TimelineError as exc:
-        hint = "\n（若是配乐与时间轴不一致，到配乐阶段重新渲染）" if music_source == "synth" else ""
+        stage = "配乐与动画" if not narration else "配乐"
+        hint = (
+            f"\n（若是配乐与镜头不一致，到「{stage}」阶段重新渲染或调整镜头）"
+            if music_source == "synth"
+            else ""
+        )
         raise HtmlJobError(str(exc) + hint) from exc
     timeline = loaded.timeline.model_dump(mode="json")
     sections = loaded.timeline.sections
@@ -328,7 +338,7 @@ async def _run_html_job(
     audio = _audio_sources(workdir, loaded.timing, sections, errors) if narration else []
     score: _Score | None = None
     if music_source == "synth":
-        score = _music_source(workdir, loaded.base_hash, errors, scratch)
+        score = _music_source(workdir, None if not narration else loaded.base_hash, errors, scratch)
     elif music_source == "import":
         assert loaded.range is not None and loaded.source_hash is not None
         assert loaded.timeline.music is not None

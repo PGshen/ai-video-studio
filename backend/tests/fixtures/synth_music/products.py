@@ -9,11 +9,12 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from studio.stages.music.render import RenderOutcome, render_music_core
-from studio.stages.music.sources import infer_sources
+from studio.stages.common.score.render import RenderOutcome, render_music_core
+from studio.stages.common.score.sources import infer_sources
 from studio.timeline.load import load_timeline
 
 REF = Path(__file__).with_name("compose_ref.py")
+FREE = Path(__file__).with_name("compose_free.py")
 
 
 def _identity(argv: list[str], env: dict[str, str]) -> list[str]:
@@ -21,17 +22,24 @@ def _identity(argv: list[str], env: dict[str, str]) -> list[str]:
 
 
 async def render_products(workdir: Path, *, script: Path = REF) -> RenderOutcome:
-    """Write `music/compose.py` and render it against the workspace's current timeline."""
+    """Explainer bed: write `music/compose.py` and render it against the workspace's timeline."""
     (workdir / "music").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(script, workdir / "music" / "compose.py")
     loaded = load_timeline(infer_sources(workdir, "", with_music=False))
-    energy = {s["id"]: s["energy"] for s in (loaded.beatsheet or {}).get("sections", [])}
     outcome = await render_music_core(
         workdir,
         timeline=loaded.timeline.model_dump(mode="json"),
         base_hash=loaded.base_hash,
-        section_energy=energy,
         wrap_command=_identity,
     )
+    assert outcome.ok, outcome.errors
+    return outcome
+
+
+async def render_free_products(workdir: Path) -> RenderOutcome:
+    """The `produce` form: the free-form script renders with no timeline (16 s, 120 BPM)."""
+    (workdir / "music").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(FREE, workdir / "music" / "compose.py")
+    outcome = await render_music_core(workdir, wrap_command=_identity)
     assert outcome.ok, outcome.errors
     return outcome

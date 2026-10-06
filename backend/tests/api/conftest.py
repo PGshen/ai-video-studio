@@ -92,7 +92,7 @@ def assert_detail(response: HttpxResponse) -> str:
 
 
 class FakeStage:
-    """Test-only stand-in for not-yet-implemented stages (concept, beatsheet, ...)."""
+    """Test-only stand-in for not-yet-implemented stages (concept, produce, ...)."""
 
     allow_web = False
     workspaceless = False
@@ -130,8 +130,6 @@ class FakeStage:
 def register_reel_stages(registry: StageRegistry) -> None:
     for stage in (
         FakeStage("concept", [], "concept"),
-        FakeStage("beatsheet", ["concept", "music"], "beatsheet"),
-        FakeStage("music", ["concept", "narrative", "beatsheet"], "music"),
-        FakeStage("animation_html", ["narrative", "beatsheet", "music"], "animation"),
+        FakeStage("produce", ["concept"], "music"),
     ):
         registry.register(stage)

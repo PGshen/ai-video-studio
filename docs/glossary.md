@@ -46,7 +46,10 @@
 | 预览渲染 | preview render | 低清渲染单个镜头并抽取关键帧，供视觉自检使用 |
 | 视觉自检 | visual self-check | agent 查看预览关键帧，自己发现并修复画面问题 |
 | 成片 | final render | worker 以最终画质一次渲染全部镜头，合成音频（不叠字幕，见 ADR 0016） |
-| sections.json | sections.json | 导入音乐形态下 `music/sections.json`：音乐阶段手写的段落（`id`、`label`、`start`、`end`，可选 `range`），起止对齐强拍、首尾相接；节拍脚本用 `ref` 引用它的 `id` |
+| ~~sections.json~~ | sections.json | **已删除（produce-stage，2026-10-06）**：MV 的段落由模型自己写的 `animation/shots.json`（镜头划分）取代，歌曲的 BPM、强拍只是 `analysis.json` 里的参考值 |
 | 拟合网格 | fitted grid | 歌曲分析给歌曲拟合出的恒定节拍网格（`bpm` + `offset`，`offset` 是第一个强拍的时刻）；与实际拍点的偏差记为拟合残差，变速或散拍的歌残差大、置信度低 |
-| 有效截取区间 | `range` / effective range | MV 取用歌曲的哪一段，`{start, end}`（秒）；缺省取 `sections.json` 的段落跨度，显式写出时必须与段落跨度一致；时间轴的 0 秒就是 `range` 起点；`range` 起点处或之后的第一个强拍只决定网格的 offset（相对区间起点） |
+| 有效截取区间 | `range` / effective range | MV 取用歌曲的哪一段，`music/range.json` 的 `{start, end}`（秒，相对源文件；缺省整首歌，不要求落在强拍上） |
 | 源文件偏移 | `source_start` / `music.offset` | 导入音乐的区间起点：混音从原曲的这一秒起读（`AudioTrack.source_start`），预览里音频时间 = 预览时间 + `music.offset` |
+| produce 阶段 | produce stage | 短片与 MV 的第二个阶段「配乐与动画」：模型自己决定节拍、镜头划分与对齐，配乐和画面放在一起做；上游只有 `concept/brief.md` |
+| 镜头划分 | shots / `shots.json` | `animation/shots.json`：模型写的 `[{id, label, start, end}]`（秒，首尾相接、覆盖整段音频），系统只检查这三条 |
+| 硬性要求 | hard requirements | `concept/brief.md` 里用户确认的必须项与禁忌；`produce` 不能放宽 |

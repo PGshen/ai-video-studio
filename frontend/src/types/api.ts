@@ -476,7 +476,7 @@ export interface MusicAnalysisOut {
   warnings: string[]
 }
 
-/** 有效网格（`sections.json` 的覆盖优先）；`downbeats` 是整曲内的强拍时刻（秒）。 */
+/** 有效网格（分析的参考值）；`downbeats` 是整曲内的强拍时刻（秒）。 */
 export interface MusicGridOut {
   bpm: number
   offset: number
@@ -491,12 +491,6 @@ export interface MusicRangeOut {
 export interface MusicEnergyOut {
   hop: number
   values: number[]
-}
-
-export interface SectionsCheckOut {
-  ok: boolean
-  errors: string[]
-  warnings: string[]
 }
 
 /** `POST .../music/source` 的响应。 */
@@ -529,7 +523,6 @@ export interface MusicMetaOut {
   grid: MusicGridOut | null
   range: MusicRangeOut | null
   energy: MusicEnergyOut | null
-  sections_check: SectionsCheckOut | null
 }
 
 /** `POST .../music/render`：脚本的问题是 `ok=false`（HTTP 仍是 200）。 */
