@@ -1,6 +1,7 @@
-"""`concept/brief.md` 的结构检查与 `check_concept` 工具（子项目 3 设计 §6.1）。
+"""`concept/brief.md` 的结构检查与 `check_concept` 工具（子项目 3 设计 §6.1、produce 设计 §4）。
 
-只检查章节齐全、有内容、目标时长能解析出秒数，不评价内容。错误阻止定稿；章节顺序不对或出现
+只检查章节齐全、有内容、目标时长能解析出秒数，不评价内容（「硬性要求」也只看有没有写）。
+错误阻止定稿；章节顺序不对或出现
 约定之外的章节只是警告。
 """
 
@@ -18,6 +19,7 @@ from studio.stages.common.target_duration import parse_target_seconds
 SECTIONS: tuple[str, ...] = (
     "主题",
     "目标时长",
+    "硬性要求",
     "情绪与能量走向",
     "视觉母题",
     "参考与灵感",
@@ -119,7 +121,8 @@ def _handler(ctx: ToolContext, args: CheckConceptArgs) -> ToolResult:
 CHECK_CONCEPT_TOOL = ToolSpec(
     name="check_concept",
     description=(
-        "检查 concept/brief.md 的结构：七个章节是否齐全且有内容，「目标时长」是否带单位。"
+        "检查 concept/brief.md 的结构：八个章节（含「硬性要求」）是否齐全且有内容，"
+        "「目标时长」是否带单位。"
         "写完或改完简报后调用，错误全部修完再交给用户定稿。"
     ),
     input_model=CheckConceptArgs,

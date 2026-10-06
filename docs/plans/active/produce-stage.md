@@ -142,7 +142,7 @@
 - **完成标准**：同一份 `validate_scenes_html` 对三类形态各自正确。
 - **验证命令**：`make check`。
 
-### T6：`concept` 的「硬性要求」与 MV 的上传分析（待开始）
+### T6：`concept` 的「硬性要求」与 MV 的上传分析（完成）
 
 - **目标**：`brief.md` 增加「硬性要求」；MV 在 `concept` 阶段就能上传歌曲、分析并据此写创意。
 - **涉及文件**：`backend/src/studio/stages/concept/__init__.py`、`check_concept.py`、`prompt.md`、`stages/music/analyze.py`（`ANALYZE_MUSIC_TOOL.stages` 加 `"concept"`）、`api/music_import.py`（上传端点放行 `concept` 阶段）、`stages/common/target_duration.py`（如依赖 `beatsheet`）、`tests/stages/test_concept_stage.py`、`test_concept_check.py`、`tests/api/test_music_upload.py`。
@@ -209,6 +209,7 @@
 
 ## 进度
 
+- 2026-10-06 — T6 — 完成：`SECTIONS` 加「硬性要求」（八章）；`concept` 增加 `analyze_music` 工具、`music/source.*`/`analysis.*` 托管、`artifact_dirs = [concept, music]`；`concept` 提示词改写（两种项目、硬性要求、MV 先上传再分析）；`produce` 提示词补「简报写明基于歌曲但没有 source 时请用户先上传」。上传端点本来就不绑定阶段（按项目形态放行），无需改动，`test_music_upload.py` 在 `concept` 阶段上传的用例已覆盖。`make check` 见下。
 - 2026-10-06 — T5 — 完成：`validate_scenes_html`/`render_preview_html` 的 `stages` 加 `produce`；`helpers.load_timeline` 在 `produce` 阶段按 `shots.json` 与 `music/` 即时构建时间轴；音乐平移检查在 `produce` 下降为警告；镜头数 > 40 警告；`probe.is_reel` 不再要求网格、关键时刻加入能量峰值并只取罕见事件名（≤ 12 次）。`make check` 全绿。
 - 2026-10-06 — T4 — 完成：`stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`）、金样本移到 `common/{score,scenes}/exemplar`、`main.py` 注册、import-linter 契约加入 `produce`；`make check` 全绿。`validate_scenes_html`/`render_preview_html` 在 `produce` 下的行为留给 T5（其 `stages` 集合在 T5 补）。
 - 2026-10-06 — T4 前置 — 完成：共用工具搬到 `stages/common/score`、`common/scenes`（D7），`make check` 全绿。
@@ -218,10 +219,12 @@
 
 ## 下一步
 
-- 从 T6 开始：先写 `backend/tests/stages/test_concept_stage.py`、`test_concept_check.py` 的新用例（缺「硬性要求」章节报错；MV 项目 `concept` 阶段的工具与写入范围）和 `tests/api/test_music_upload.py`（`concept`/`produce` 阶段允许上传，讲解类仍拒绝），再改 `stages/concept/{__init__,check_concept,prompt.md}` 与 `api/music_import.py`。`analyze_music` 的 `stages` 已含 `concept`。
+- 从 T7 开始（流水线、预设、API 与旧路径清理）：先改 `backend/tests/stages/test_pipeline.py`、`tests/api/test_video_kinds.py`、`test_projects.py`、`test_settings.py`、`tests/db/test_repo_stages.py`、`tests/fixtures/{synth_music,import_music}/seed.py`（流水线改为 `["concept", "produce"]`），再改 `stages/pipeline.py`、`api/video_kinds.py`（`STAGE_TITLES`）、`main.py`（去掉 `BEATSHEET_STAGE`）、预设文案；然后删除 `stages/beatsheet/`、`stages/music/validate_sections.py`、`timeline/build.py` 里的 `layers_from_beatsheet`、`timeline/imported.py` 的旧 MV 路径，清理 `music`/`animation_html` 里只服务短片与 MV 的分支。**注意**：`api/music*.py`、`api/html_preview.py`、`worker_html.py` 现在仍按旧的 `beatsheet`/`sections.json` 读 MV 与短片，T7 删旧路径前要先让它们走 `produce` 读取（T8 的内容），所以建议 T7 与 T8 交错做：先做 T8 的后端适配，再回来删旧路径。
 
 ## 决策记录
 
+- D9（2026-10-06）：「硬性要求」放在「目标时长」之后、「情绪与能量走向」之前（第 3 章）；MV 项目靠 `music/source.*` 是否存在区分形态，阶段拿不到项目设置，所以 `concept`/`produce` 的提示词都写了「简报说基于歌曲但没有上传时请用户先上传」。
+- D10（2026-10-06）：`concept` 的 `artifact_dirs` 含 `music`，意味着重新定稿 `concept` 时若 `music/` 下内容与 `produce` 所基于的快照不同（换歌，或 `produce` 之后又写了配乐产物）就会把 `produce` 标为 stale；换歌触发 stale 是想要的，「`concept` 内容没变也 stale」是已知的小误报（`stage_flow` 只按目录前缀比较），记入 tech-debt 即可。
 - D8（2026-10-06）：预览采样的「最少见的几类事件」限定为整条时间轴里出现次数 ≤ 12 的名字——否则 MV 的 `beat`/`downbeat`（几十到上百次）会占满 16 张预览。设计 §7 写的「出现次数最少的几类事件」按此落实。
 - D7（2026-10-06）：T4 发现 import-linter 契约「各阶段之间互不 import（规则 3）」禁止 `produce` 直接复用 `music`、`animation_html` 里的工具。处理：把共用的工具实现纯搬迁（行为不变）到 `stages/common/`——`music/{render,tool,analyze,sources}.py` → `common/score/`，`animation_html/{common,validate_scenes_html,render_preview_html}.py` → `common/scenes/`（`common.py` 改名 `helpers.py`，并带走 `TIMELINE_PATH`/`ERROR_PATH`）；两个旧阶段改为从 `common` 导入。没有改任何公共接口，也没有放宽契约。
 - D6（2026-10-06）：自由模式下没有时间轴，长度以音频本身为准，`events.json` 声明的 `duration` 只做与实际音频一致的校验（沿用 0.05 秒容差）；不再对总长设上下限（WAV 读取已有大小与时长上限）。
