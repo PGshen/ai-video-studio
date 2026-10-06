@@ -71,3 +71,9 @@ def test_prompt_covers_hard_requirements_and_song_projects() -> None:
         assert needle in prompt
     for gone in ("节拍脚本", "beatsheet"):
         assert gone not in prompt
+
+
+def test_the_prompt_explains_the_optional_lyrics_and_the_imagery_chapter() -> None:
+    prompt = STAGE.system_prompt()
+    for needle in ("music/lyrics.lrc", "歌词意象", "逐字引用", "不要自己编歌词", "check_concept"):
+        assert needle in prompt, needle

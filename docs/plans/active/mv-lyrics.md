@@ -96,7 +96,7 @@
 - **完成标准**：现有歌曲上传、元数据测试不变且通过。
 - **验证命令**：`make check`。
 
-### T4：`concept` 的「歌词意象」（待开始）
+### T4：`concept` 的「歌词意象」（完成）
 
 - **目标**：有歌词时简报多一章「歌词意象」，并被检查。
 - **涉及文件**：`backend/src/studio/stages/concept/check_concept.py`、`stages/concept/__init__.py`、`stages/concept/prompt.md`；测试 `tests/stages/test_concept*.py`。
@@ -153,9 +153,11 @@
 - T2 完成（`Timeline.lyrics` 有类型，`_load_produce_import` 读 `music/lyrics.lrc` 并按 `range` 截取，`runtime.js` 的 `env.lyrics`/`env.lyric()`；7 个时间轴测试 + 3 个真实 Chromium 用例；`make check` 绿，相关 `slow` 用例 31 个通过）。
 - T3 完成（`POST/DELETE /music/lyrics`、`MusicMetaOut.lyrics`、`analyze_music` 的 `lyrics_note`、`music/lyrics.lrc` 进 `concept`/`produce` 的托管文件；11 个接口测试 + 3 个概况测试 + 范围与 stale 测试；`make check` 绿）。
 
+- T4 完成（`sections_for`、`check_concept_text(text, lyrics)`、`workspace_lyrics`、提示词、`status_summary`；12 个新测试，`make check` 绿）。
+
 ## 下一步
 
-- T4：`concept` 的「歌词意象」。
+- T5：`produce` 的歌词支持。
 
 ## 决策记录
 
