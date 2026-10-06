@@ -19,18 +19,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from python_multipart.multipart import MultipartParser, parse_options_header
 from sqlalchemy import Engine
+from starlette.datastructures import UploadFile
 
 from studio.agent.runner import TurnRunner
 from studio.api.deps import get_engine, get_settings, get_turn_runner
 from studio.api.music import require_music_project
-from studio.api.schemas import MusicSourceOut
+from studio.api.schemas import MusicLyricsOut, MusicSourceOut
 from studio.config import Settings
 from studio.engines.audio.probe import AudioProbeError, probe_audio
 from studio.engines.audio.song import MAX_SONG_SECONDS, MIN_SONG_SECONDS
-from studio.stages.common.music_source import SOURCE_EXTENSIONS
+from studio.stages.common.music_source import SOURCE_EXTENSIONS, find_source
+from studio.timeline.lyrics import LYRICS_PATH, MAX_LRC_BYTES, LyricsError, parse_lrc
 from studio.workspace import project_dir
 
 if TYPE_CHECKING:
@@ -197,3 +199,80 @@ async def upload_music_source_endpoint(
     finally:
         uploading.discard(project_id)
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _guard_lyrics_request(
+    request: Request, engine: Engine, project_id: str, turn_runner: TurnRunner
+) -> None:
+    form, _ = require_music_project(engine, project_id)
+    if form != "import":
+        raise HTTPException(status_code=404, detail="这个项目没有导入音乐")
+    if turn_runner.is_project_busy(project_id):
+        raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请等它结束再改歌词")
+    if project_id in request.app.state.music_uploads:
+        raise HTTPException(status_code=409, detail="这个项目正在上传音乐，请稍后再试")
+
+
+@router.post("/projects/{project_id}/music/lyrics", response_model=MusicLyricsOut)
+async def upload_music_lyrics_endpoint(
+    project_id: str,
+    request: Request,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+    turn_runner: TurnRunner = Depends(get_turn_runner),
+) -> MusicLyricsOut:
+    """Validate an `.lrc` against the uploaded song, then atomically replace `music/lyrics.lrc`."""
+    _guard_lyrics_request(request, engine, project_id, turn_runner)
+    uploading: set[str] = request.app.state.music_uploads
+    uploading.add(project_id)
+    workdir = project_dir(settings.data_dir, project_id)
+    scratch = workdir / ".cache" / "tmp" / f"lyrics-{uuid4().hex[:8]}"
+    try:
+        if int(request.headers.get("content-length") or 0) > MAX_LRC_BYTES * 2:
+            raise _unprocessable(f"歌词文件超过 {MAX_LRC_BYTES // 1000} KB")
+        try:
+            form = await request.form()
+        except Exception as exc:  # malformed multipart bodies surface as several error types
+            raise _unprocessable("请求体不是合法的 multipart/form-data") from exc
+        upload = form.get("file")
+        if not isinstance(upload, UploadFile):
+            raise _unprocessable("没有收到文件，字段名应为 file")
+        data = await upload.read(MAX_LRC_BYTES + 1)
+        if not data:
+            raise _unprocessable("没有收到文件，或者文件是空的")
+        song = find_source(workdir / "music")
+        if song is None:
+            raise _unprocessable("先上传歌曲，再上传歌词")
+        try:
+            probe = await probe_audio(song)
+        except AudioProbeError as exc:
+            raise _unprocessable(f"歌曲不可用：{exc}") from exc
+        try:
+            lines = parse_lrc(data, probe.duration)
+        except LyricsError as exc:
+            raise _unprocessable(str(exc)) from exc
+        stored = data.decode("utf-8-sig").encode("utf-8")
+        scratch.mkdir(parents=True)
+        staged = scratch / "lyrics.lrc"
+        staged.write_bytes(stored)
+        final = workdir / LYRICS_PATH
+        final.parent.mkdir(exist_ok=True)
+        os.replace(staged, final)
+        return MusicLyricsOut(lines=len(lines), sha256=hashlib.sha256(stored).hexdigest())
+    finally:
+        uploading.discard(project_id)
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+@router.delete("/projects/{project_id}/music/lyrics", status_code=204)
+async def delete_music_lyrics_endpoint(
+    project_id: str,
+    request: Request,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+    turn_runner: TurnRunner = Depends(get_turn_runner),
+) -> Response:
+    """Idempotent: deleting lyrics that are not there succeeds too."""
+    _guard_lyrics_request(request, engine, project_id, turn_runner)
+    (project_dir(settings.data_dir, project_id) / LYRICS_PATH).unlink(missing_ok=True)
+    return Response(status_code=204)

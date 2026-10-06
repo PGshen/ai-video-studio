@@ -119,6 +119,7 @@ class TestDefinition:
             ("music/analysis.png", False),
             ("music/render.json", False),
             ("music/source.mp3", False),
+            ("music/lyrics.lrc", False),
             ("music/sections.json", False),
             ("animation/other.js", False),
             ("concept/brief.md", False),

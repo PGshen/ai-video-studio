@@ -198,3 +198,29 @@ async def test_picture_compression_failure_leaves_products_untouched(
     assert writes == []
     assert (project / "music" / "analysis.json").read_text() == '{"old": true}'
     assert (project / "music" / "analysis.png").read_bytes() == b"old-png"
+
+
+# ---- lyrics overview in the analysis text (mv-lyrics design §4) ------------------------------
+
+
+def test_lyrics_note_reports_lines_coverage_and_the_longest_silence(tmp_path: Path) -> None:
+    (tmp_path / "music").mkdir()
+    (tmp_path / "music" / "lyrics.lrc").write_text(
+        "[00:10.00]一\n[00:20.00]二\n[00:22.00]\n[00:60.00]三\n[01:20.00]\n", encoding="utf-8"
+    )
+    note = analyze_module.lyrics_note(tmp_path, 100.0)
+    assert note is not None
+    assert "歌词 3 句" in note
+    assert "覆盖歌曲时长的 32%" in note  # 一 10–20, 二 20–22, 三 60–80 of 100 s
+    assert "最长无歌词间隔 38.0 秒（22.0–60.0）" in note
+
+
+def test_lyrics_note_is_absent_without_lyrics(tmp_path: Path) -> None:
+    assert analyze_module.lyrics_note(tmp_path, 100.0) is None
+
+
+def test_lyrics_note_flags_a_file_that_no_longer_fits_the_song(tmp_path: Path) -> None:
+    (tmp_path / "music").mkdir()
+    (tmp_path / "music" / "lyrics.lrc").write_text("[05:00.00]太晚\n", encoding="utf-8")
+    note = analyze_module.lyrics_note(tmp_path, 100.0)
+    assert note is not None and "歌词不可用" in note and "重新上传" in note

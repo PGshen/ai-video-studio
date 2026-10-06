@@ -23,6 +23,7 @@ from studio.engines.audio.song import CONFIDENCE_WARN
 from studio.engines.audio.song_job import DEFAULT_TIMEOUT, SongJobError, run_song_analysis
 from studio.stages.common.score.sources import import_source
 from studio.stages.common.score.tool import LISTEN_NOTE, compress_picture
+from studio.timeline.lyrics import LYRICS_PATH, LyricsError, parse_lrc
 
 NO_SOURCE_MESSAGE = "还没有上传歌曲：这个项目没有可分析的音乐，请让用户先上传歌曲"
 RESIDUAL_WARN_MS = 30.0
@@ -75,6 +76,33 @@ def _summary(doc: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def lyrics_note(workdir: Path, duration: float) -> str | None:
+    """One paragraph about `music/lyrics.lrc` for the analysis text; `None` when there is none."""
+    path = workdir / LYRICS_PATH
+    if not path.is_file():
+        return None
+    try:
+        lines = parse_lrc(path.read_bytes(), duration)
+    except (OSError, LyricsError) as exc:
+        return f"歌词不可用：{exc}。请在「创意与要求」阶段重新上传歌词。"
+    spans = sorted((line.start, line.end) for line in lines)
+    merged: list[list[float]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    covered = sum(end - start for start, end in merged)
+    edges = [0.0, *[edge for pair in merged for edge in pair], duration]
+    gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges), 2)]
+    start, end = max(gaps, key=lambda gap: gap[1] - gap[0])
+    return (
+        f"歌词 {len(lines)} 句，覆盖歌曲时长的 {covered / duration:.0%}；"
+        f"最长无歌词间隔 {end - start:.1f} 秒（{start:.1f}–{end:.1f}）。"
+        "歌词在 music/lyrics.lrc，时间以整曲秒计。"
+    )
+
+
 class AnalyzeMusicArgs(BaseModel):
     pass
 
@@ -92,6 +120,9 @@ async def _handler(ctx: ToolContext, args: AnalyzeMusicArgs) -> ToolResult:
             result = await run_song_analysis(source, temp_dir, timeout=DEFAULT_TIMEOUT)
             doc = json.loads(result.analysis_path.read_text(encoding="utf-8"))
             summary = _summary(doc)
+            note = lyrics_note(workdir, float(doc["duration"]))
+            if note:
+                summary += "\n" + note
             jpeg = compress_picture(result.picture_path.read_bytes())  # before installing
             _install(temp_dir, workdir / "music")
         except SongJobError as exc:

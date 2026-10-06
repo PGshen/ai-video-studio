@@ -32,6 +32,7 @@ def test_song_files_are_tool_managed_not_agent_writable() -> None:
         "music/source.wav",
         "music/analysis.json",
         "music/analysis.png",
+        "music/lyrics.lrc",
     ):
         assert is_writable(scope, relpath) is False
         assert relpath in scope.tool_managed or any(

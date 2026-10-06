@@ -38,6 +38,7 @@ _WRITE_SCOPE = WriteScope(
         "music/analysis.png",
         "music/render.json",
         *(f"music/source.{ext}" for ext in SOURCE_EXTENSIONS),  # written by the upload endpoint
+        "music/lyrics.lrc",  # written by the upload endpoint
     ],
 )
 _TOOLS: list[ToolSpec] = [

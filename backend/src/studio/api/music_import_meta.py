@@ -9,10 +9,12 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 from studio.api.schemas import (
+    LyricLineOut,
     MusicAnalysisOut,
     MusicEnergyOut,
     MusicGridOut,
@@ -24,6 +26,7 @@ from studio.api.schemas import (
 from studio.stages.common.music_source import find_source
 from studio.timeline import TimelineError
 from studio.timeline.imported import downbeat_times, effective_grid
+from studio.timeline.lyrics import LYRICS_PATH, LyricsError, parse_lrc
 from studio.timeline.shots import RANGE_PATH, SHOTS_PATH, parse_range, parse_shots
 from studio.workspace import file_sha256
 
@@ -51,6 +54,16 @@ def shot_sections(workdir: Path, offset: float = 0.0) -> list[MusicSectionOut]:
         MusicSectionOut(id=s.id, label=s.label, start=s.start + offset, end=s.end + offset)
         for s in shots or []
     ]
+
+
+def lyric_lines(workdir: Path, duration: float | None) -> list[LyricLineOut]:
+    """`music/lyrics.lrc` in song seconds; missing or unusable files give no lines."""
+    try:
+        data = (workdir / LYRICS_PATH).read_bytes()
+        parsed = parse_lrc(data, duration if duration is not None else math.inf)
+    except (OSError, LyricsError):
+        return []
+    return [LyricLineOut(text=x.text, start=x.start, end=x.end) for x in parsed]
 
 
 def _analysis_out(doc: dict[str, Any]) -> MusicAnalysisOut | None:
@@ -109,6 +122,7 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
         hash=digest,
         duration=analysis.duration if analysis is not None else None,
         sections=shot_sections(workdir, range_.start if range_ is not None else 0.0),
+        lyrics=lyric_lines(workdir, analysis.duration if analysis is not None else None),
         source=source,
         analysis=analysis,
         grid=grid,

@@ -486,6 +486,20 @@ class MusicSectionOut(BaseModel):
     end: float
 
 
+class LyricLineOut(BaseModel):
+    text: str
+    start: float
+    end: float
+    """整曲秒（不随 `range` 平移，和 `sections` 一致）。"""
+
+
+class MusicLyricsOut(BaseModel):
+    """`POST .../music/lyrics`：上传成功后的歌词信息。"""
+
+    lines: int
+    sha256: str
+
+
 class MusicSourceInfo(BaseModel):
     filename: str
     size: int
@@ -538,6 +552,8 @@ class MusicMetaOut(BaseModel):
     bpm: float | None = None
     events: list[MusicEventOut] = []
     sections: list[MusicSectionOut] = []
+    lyrics: list[LyricLineOut] = []
+    """歌曲形态：`music/lyrics.lrc` 的歌词行（整曲秒）；没有或不可用为空。"""
     waveform: list[float] = []
     metrics: dict[str, Any] | None = None
     source: MusicSourceInfo | None = None

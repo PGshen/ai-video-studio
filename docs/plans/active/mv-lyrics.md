@@ -83,7 +83,7 @@
 - **完成标准**：讲解类与短片的时间轴、运行时测试全部不变且通过。
 - **验证命令**：`make check`（含 `-m slow` 的相关用例单独跑一遍确认）。
 
-### T3：上传接口、概况与托管文件（待开始）
+### T3：上传接口、概况与托管文件（完成）
 
 - **目标**：歌词可上传/覆盖/删除，分析结果带歌词概况，接口元数据返回歌词行。
 - **涉及文件**：`backend/src/studio/api/music_import.py`（`POST`/`DELETE /projects/{id}/music/lyrics`，复用上传的忙与并发检查）、`api/music_import_meta.py` 与 `api/schemas.py`（`MusicMetaOut.lyrics`）、`backend/src/studio/stages/common/score/analyze.py`（工具文本附歌词概况）、`stages/concept/__init__.py` 与 `stages/produce/__init__.py`（`music/lyrics.lrc` 加入托管文件）、`stages/common/music_source.py`（放 `LYRICS_PATH` 常量与「找歌词文件」的小函数，供 `concept`/`produce` 共用）；测试 `tests/api/test_music_lyrics.py`、`tests/stages/` 里 `analyze_music` 的用例。
@@ -151,10 +151,11 @@
 
 - T1 完成（`timeline/lyrics.py`、`LyricLine`、27 个解析测试，`make check` 绿）。
 - T2 完成（`Timeline.lyrics` 有类型，`_load_produce_import` 读 `music/lyrics.lrc` 并按 `range` 截取，`runtime.js` 的 `env.lyrics`/`env.lyric()`；7 个时间轴测试 + 3 个真实 Chromium 用例；`make check` 绿，相关 `slow` 用例 31 个通过）。
+- T3 完成（`POST/DELETE /music/lyrics`、`MusicMetaOut.lyrics`、`analyze_music` 的 `lyrics_note`、`music/lyrics.lrc` 进 `concept`/`produce` 的托管文件；11 个接口测试 + 3 个概况测试 + 范围与 stale 测试；`make check` 绿）。
 
 ## 下一步
 
-- T3：上传接口、概况与托管文件。
+- T4：`concept` 的「歌词意象」。
 
 ## 决策记录
 
@@ -167,6 +168,7 @@
 - 2026-10-07：解析时落在 `[歌曲时长, 时长+1 秒]` 内的句子（如歌曲末尾稍晚的时间戳）不报错，但自身不成为歌词行（`start >= duration` 丢弃），仍作为上一句的结束边界；晚于 `时长+1` 才报错。`[offset:]` 造成的负时间钳到 0，不报错。
 
 - 2026-10-07：`env.lyric()` 同一时刻多句时取开始最晚的，并列取文件里靠前的（双语歌词的第二句要从 `env.lyrics` 里取）；`LYRICS_PATH` 常量放在 `timeline/lyrics.py`（`stages` 可以 import `timeline`），T3 直接复用，不再放 `stages/common/music_source.py`。
+- 2026-10-07：歌词上传端点用 `request.form()`（歌词 ≤ 200 KB，不需要像歌曲那样流式解析）；`Content-Length` 超过 400 KB 直接拒绝。meta 里的歌词按整曲秒给（不随 `range` 平移，与 `sections` 一致）；歌曲未分析时没有时长，最后一句取开始后 5 秒。
 
 ## 阻塞
 
