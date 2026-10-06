@@ -209,7 +209,7 @@
 
 ## 进度
 
-- 2026-10-06 — T6 — 完成：`SECTIONS` 加「硬性要求」（八章）；`concept` 增加 `analyze_music` 工具、`music/source.*`/`analysis.*` 托管、`artifact_dirs = [concept, music]`；`concept` 提示词改写（两种项目、硬性要求、MV 先上传再分析）；`produce` 提示词补「简报写明基于歌曲但没有 source 时请用户先上传」。上传端点本来就不绑定阶段（按项目形态放行），无需改动，`test_music_upload.py` 在 `concept` 阶段上传的用例已覆盖。`make check` 见下。
+- 2026-10-06 — T6 — 完成：`SECTIONS` 加「硬性要求」（八章）；`concept` 增加 `analyze_music` 工具、`music/source.*`/`analysis.*` 托管、`artifact_dirs = [concept, music]`；`concept` 提示词改写（两种项目、硬性要求、MV 先上传再分析）；`produce` 提示词补「简报写明基于歌曲但没有 source 时请用户先上传」。上传端点本来就不绑定阶段（按项目形态放行），无需改动，`test_music_upload.py` 在 `concept` 阶段上传的用例已覆盖。`make check` 全绿（夹具 `fixtures/synth_music/seed.py` 的简报补了「硬性要求」；教训：提交前必须看 `make check` 的结果，上一个提交 `e857a2f` 当时有 4 个测试失败，由紧随其后的提交修好）。
 - 2026-10-06 — T5 — 完成：`validate_scenes_html`/`render_preview_html` 的 `stages` 加 `produce`；`helpers.load_timeline` 在 `produce` 阶段按 `shots.json` 与 `music/` 即时构建时间轴；音乐平移检查在 `produce` 下降为警告；镜头数 > 40 警告；`probe.is_reel` 不再要求网格、关键时刻加入能量峰值并只取罕见事件名（≤ 12 次）。`make check` 全绿。
 - 2026-10-06 — T4 — 完成：`stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`）、金样本移到 `common/{score,scenes}/exemplar`、`main.py` 注册、import-linter 契约加入 `produce`；`make check` 全绿。`validate_scenes_html`/`render_preview_html` 在 `produce` 下的行为留给 T5（其 `stages` 集合在 T5 补）。
 - 2026-10-06 — T4 前置 — 完成：共用工具搬到 `stages/common/score`、`common/scenes`（D7），`make check` 全绿。
