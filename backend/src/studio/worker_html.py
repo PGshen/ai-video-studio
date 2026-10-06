@@ -188,7 +188,7 @@ def _music_source(
     scratch.append(private)
     wav_hash = _copy_with_hash(music / "music.wav", private / "music.wav")
     if recorded_base != base_hash:
-        errors.append("配乐与当前时间轴不一致，需要在配乐阶段重新渲染（节拍脚本或旁白变了）")
+        errors.append("配乐与当前时间轴不一致，需要在配乐阶段重新渲染（旁白变了）")
     if wav_hash != recorded_wav:
         errors.append(f"music.wav 与 render.json 记录的不一致，需要在{where}重新渲染")
     return _Score(private / "music.wav", wav_hash)

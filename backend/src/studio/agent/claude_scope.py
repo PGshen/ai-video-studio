@@ -121,6 +121,25 @@ def _escapes(workdir: Path, raw: str) -> bool:
     return resolved != workdir and workdir not in resolved.parents
 
 
+MAX_READ_IMAGE_BYTES = 300_000
+"""Largest image/PDF the built-in `Read` may open. The CLI writes a result's base64 twice per
+transcript line, so a larger file can push one line past the SDK message buffer."""
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"}
+
+
+def _too_big_to_read(workdir: Path, raw: str) -> bool:
+    target = Path(raw)
+    if not target.is_absolute():
+        target = workdir / target
+    try:
+        return (
+            target.suffix.lower() in _IMAGE_SUFFIXES
+            and target.stat().st_size > MAX_READ_IMAGE_BYTES
+        )
+    except OSError:
+        return False
+
+
 def read_denial_reason(workdir: Path, tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Read/Glob/Grep 的目标不在工作区内时返回拒绝原因，否则 `None`（I5）。
 
@@ -133,7 +152,14 @@ def read_denial_reason(workdir: Path, tool_name: str, tool_input: dict[str, Any]
         raw = tool_input.get("file_path")
         if not isinstance(raw, str) or not raw:
             return refuse.format("无法确定读取路径")
-        return refuse.format(raw) if _escapes(workdir, raw) else None
+        if _escapes(workdir, raw):
+            return refuse.format(raw)
+        if _too_big_to_read(workdir, raw):
+            return (
+                f"{raw} 超过 {MAX_READ_IMAGE_BYTES // 1000} kB，不能用 Read 读（会撑爆缓冲区）。"
+                "请看工具返回的附图（render_preview_html、analyze_music、render_music）。"
+            )
+        return None
 
     raw_path = tool_input.get("path")
     if raw_path is not None and (not isinstance(raw_path, str) or _escapes(workdir, raw_path)):

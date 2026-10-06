@@ -230,7 +230,7 @@
 - D12（2026-10-06）：`api/projects.py` 的 `reopen` 原来只对 `animation` 撤销「已完成」标记；改为对项目的出片阶段（`animation`/`animation_html`/`produce`）都撤销——顺带修了 `animation_html` 的同类遗漏。
 - D13（2026-10-06）：`validate_scenes_html` 的音乐平移检查彻底降为警告（不再保留 `strict` 分支）——旧的错误级别只服务过去的短片/MV，现在它们都是 `produce`。
 - D9（2026-10-06）：「硬性要求」放在「目标时长」之后、「情绪与能量走向」之前（第 3 章）；MV 项目靠 `music/source.*` 是否存在区分形态，阶段拿不到项目设置，所以 `concept`/`produce` 的提示词都写了「简报说基于歌曲但没有上传时请用户先上传」。
-- D10（2026-10-06）：`concept` 的 `artifact_dirs` 含 `music`，意味着重新定稿 `concept` 时若 `music/` 下内容与 `produce` 所基于的快照不同（换歌，或 `produce` 之后又写了配乐产物）就会把 `produce` 标为 stale；换歌触发 stale 是想要的，「`concept` 内容没变也 stale」是已知的小误报（`stage_flow` 只按目录前缀比较），记入 tech-debt 即可。
+- D10（2026-10-06）：`concept` 的 `artifact_dirs` 含 `music`，意味着重新定稿 `concept` 时若 `music/` 下内容与 `produce` 所基于的快照不同（换歌，或 `produce` 之后又写了配乐产物）就会把 `produce` 标为 stale；换歌触发 stale 是想要的，「`concept` 内容没变也 stale」是已知的小误报（`stage_flow` 只按目录前缀比较），已记入 tech-debt TD-80。
 - D8（2026-10-06）：预览采样的「最少见的几类事件」限定为整条时间轴里出现次数 ≤ 12 的名字——否则 MV 的 `beat`/`downbeat`（几十到上百次）会占满 16 张预览。设计 §7 写的「出现次数最少的几类事件」按此落实。
 - D7（2026-10-06）：T4 发现 import-linter 契约「各阶段之间互不 import（规则 3）」禁止 `produce` 直接复用 `music`、`animation_html` 里的工具。处理：把共用的工具实现纯搬迁（行为不变）到 `stages/common/`——`music/{render,tool,analyze,sources}.py` → `common/score/`，`animation_html/{common,validate_scenes_html,render_preview_html}.py` → `common/scenes/`（`common.py` 改名 `helpers.py`，并带走 `TIMELINE_PATH`/`ERROR_PATH`）；两个旧阶段改为从 `common` 导入。没有改任何公共接口，也没有放宽契约。
 - D6（2026-10-06）：自由模式下没有时间轴，长度以音频本身为准，`events.json` 声明的 `duration` 只做与实际音频一致的校验（沿用 0.05 秒容差）；不再对总长设上下限（WAV 读取已有大小与时长上限）。
@@ -261,3 +261,4 @@
   - 短片：通过，26 分 19 秒；`produce` 会话最长一行 565 778 字节（< 1 MiB）。
   - MV（海阔天空，324.8 秒）：通过，14 分 13 秒；`produce` 42 步、6 个镜头，成片 324.83 秒；听感待负责人试听。第一次运行失败是冒烟用例的读取顺序错误（已修）。
   - 意外：MV 的 `produce` 会话里模型用内置 `Read` 读了 `music/analysis.png`，得到 1 065 448 字节的一行（> 1 MiB），靠 8 MiB 缓冲才通过。
+- 整分支独立评审（2026-10-07，独立评审者，静态阅读 + `lint-imports`：25 个契约保持）：无阻塞缺陷。已处理：内置 `Read` 读大图（>300 kB 的图片/PDF 在 `read_scope_hook` 里拒绝，提示词补一句，测试 `tests/agent/test_read_size_limit.py`）；歌曲上传区只在「创意与要求」进行中显示；`worker_html` 的旧文案。登记不修：concept 的 `music/` 前缀造成的 stale 误报（TD-80）、上传端点不看阶段状态与成片不核对脚本哈希（TD-81）。

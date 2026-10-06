@@ -73,6 +73,10 @@ watch(
   },
 )
 
+/** 歌曲只在「创意与要求」进行中才能换；定稿后换歌不会让下游变 stale，要先重新打开这一阶段。 */
+const conceptOpen = computed(
+  () => project.value?.stages.find((s) => s.stage === 'concept')?.status === 'active',
+)
 const scope = computed(() => projectScope(projectId.value, stage.value))
 const createSession = useEnsureSession(scope, sessionId)
 
@@ -233,6 +237,7 @@ const canvasBusy = computed(() =>
                   <ImportMusicCanvas
                     :project-id="projectId"
                     :busy="canvasBusy"
+                    :allow-upload="conceptOpen"
                     compact
                   />
                 </div>

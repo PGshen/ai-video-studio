@@ -95,7 +95,7 @@ defineExpose({ seek })
         class="text-muted-foreground text-sm"
         data-testid="music-upload-elsewhere"
       >
-        还没有上传歌曲。回到「创意与要求」阶段上传，上传后让 agent 分析。
+        还没有上传歌曲。在「创意与要求」阶段（进行中）上传，上传后让 agent 分析；已定稿的话先重新打开该阶段。
       </p>
     </div>
 

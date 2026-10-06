@@ -77,4 +77,4 @@ cd backend && uv run pytest -m slow tests/engines/test_html_video.py tests/engin
 
 ### 配乐画布与成片的 L4（子项目 3B）
 
-隔离实例（api 8010、前端 5174、临时数据目录，假运行时）。种子：用 `tests/fixtures/synth_music/seed.py` 的 `seed_reel_project`/`seed_bed_project` 建项目，写入节拍脚本与镜头，再用 `fixtures.synth_music.products.render_products` 渲染出配乐产物并定稿各阶段。走查：配乐阶段（`/music`）——播放器能放、点波形跳转、播放位置跟着走、事件标签点行回到播放；脚本标签改一个字后"渲染"被禁用并说明"先保存"，保存后渲染得到报告和分析图；动画阶段的"实时预览"有静音按钮、播放时配乐在放且时钟跟着配乐；配乐过期（改节拍脚本标签）时预览出现"配乐还没渲染…"提示。注意 jsdom 看不出布局问题——3B 的 L4 在这里发现过两处（播放器被压成 0 高、渲染报告压住编辑器），改版后要在浏览器里看一遍。
+隔离实例（api 8010、前端 5174、临时数据目录，假运行时）。种子：用 `tests/fixtures/synth_music/seed.py` 的 `seed_reel_project`/`seed_bed_project` 建项目，写入镜头（`animation/shots.json`），再用 `fixtures.synth_music.products.render_products` 渲染出配乐产物并定稿各阶段。走查：配乐阶段（讲解类的 `/music`；短片、MV 在 `produce` 的「配乐」标签）——播放器能放、点波形跳转、播放位置跟着走、事件标签点行回到播放；脚本标签改一个字后"渲染"被禁用并说明"先保存"，保存后渲染得到报告和分析图；动画阶段的"实时预览"有静音按钮、播放时配乐在放且时钟跟着配乐；配乐过期（改旁白）时预览出现"配乐还没渲染…"提示。注意 jsdom 看不出布局问题——3B 的 L4 在这里发现过两处（播放器被压成 0 高、渲染报告压住编辑器），改版后要在浏览器里看一遍。

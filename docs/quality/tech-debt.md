@@ -44,6 +44,8 @@
 | TD-77 | 2026-10-05 | `api/music_import.py` | 流式解析 multipart 时在事件循环里同步写文件与算哈希；150 MB 上限内每个数据块很小，但整次上传会占用事件循环一段时间 | 单人本地使用，上传期间别的请求会略有延迟 | 把写入与哈希放到线程里，或分块让出事件循环 | import-music-4b |
 | TD-78 | 2026-10-05 | `frontend/.../importView.ts`、`api/music_import.py` | 上传上限 150 MB 与扩展名白名单在前后端各写一份（前端注释注明与后端一致） | 改一处忘改另一处时，前端提示与服务端判断不一致（服务端为准，只是提示不准） | 由接口下发上限与白名单，前端不写死 | import-music-4b |
 | TD-79 | 2026-10-05 | `frontend/.../ImportMusicCanvas.vue` | 导入音乐画布的双栏布局用视口断点（`lg:`），不是容器宽度；工作台右侧画布窄时，分析摘要栏会被挤得很窄 | 窄画布下摘要换行多、不好读 | 改用容器查询，或让摘要栏在窄宽度时落到曲线下方 | import-music-4b L4 |
+| TD-80 | 2026-10-07 | `stages/concept/__init__.py`（`artifact_dirs` 含 `music`）、`agent/stage_flow.py`（按目录前缀比较） | `concept` 为了让「换歌」使 `produce` 变 stale，把整个 `music/` 算进自己的产物；但 `produce` 之后写出的 `music.wav`、`events.json`、`range.json` 等也在这个前缀下，重新定稿 `concept`（即使内容没改）会把 `produce` 误标 stale，短片尤其明显（定稿 `concept` 时 `music/` 为空） | 重新打开再定稿「创意与要求」后要重新定稿「配乐与动画」，多一次确认；现有测试夹具在 `concept` 定稿时 `music/` 已是终态，没覆盖这条路径 | `_artifacts_of` 支持文件级前缀，`concept` 只声明 `music/source.*` 与 `music/analysis.json` | produce-stage 评审 |
+| TD-81 | 2026-10-07 | `api/music_import.py`（上传端点）、`worker_html.py: _music_source` | ① 上传端点不看阶段状态：`concept` 已定稿时直接上传仍会换掉 `music/source.*`，`produce` 不会因此 stale（只靠 `source_hash` 在 `produce` 里拦）；前端已在非进行中时隐藏上传区，后端未拒绝；② 直接发起成片渲染只核对 wav 哈希，不核对 `compose.py` 与 wav 是否一致（定稿时 `_reel_blockers` 才核对） | 绕过前端调接口、或改了脚本没重新渲染就点成片时，没有明确提示 | ① 后端按 `concept` 阶段状态拒绝；② 成片前也核对脚本哈希 | produce-stage 评审 |
 
 ## 已处理
 
