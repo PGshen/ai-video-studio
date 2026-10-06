@@ -497,6 +497,13 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
         if (styleId) invalidateStyleDraft(queryClient, styleId)
         break
       }
+      case 'session_title': {
+        // 标题由后端按第一条消息异步生成：会话列表（气泡菜单里的标题）要重取。
+        void queryClient.invalidateQueries({
+          predicate: (query) => query.queryKey[query.queryKey.length - 1] === 'sessions',
+        })
+        break
+      }
       case 'turn_status': {
         const payload = event.payload as TurnStatusPayload
         statusVersion += 1

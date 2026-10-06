@@ -11,9 +11,9 @@ vi.mock('@/components/session/useEnsureSession', () => ({
     return sessionId.value
   },
 }))
-vi.mock('@/components/session/SessionPicker.vue', () => ({
+vi.mock('@/components/session/SessionSwitcher.vue', () => ({
   default: {
-    name: 'SessionPickerStub',
+    name: 'SessionSwitcherStub',
     props: ['scope', 'sessionId'],
     emits: ['update:sessionId'],
     setup: (props: { scope?: unknown }, { emit }: { emit: (e: string, v: string) => void }) => () =>

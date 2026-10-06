@@ -277,6 +277,17 @@ export function useCreateSessionMutation(scope: MaybeRefOrGetter<SessionScope>) 
   })
 }
 
+export function useDeleteSessionMutation(scope: MaybeRefOrGetter<SessionScope>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (sessionId: string) => api.deleteSession(sessionId),
+    onSuccess: (_data, sessionId) => {
+      queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsFor(toValue(scope)) })
+    },
+  })
+}
+
 export function useSessionQuery(sessionId: MaybeRefOrGetter<string | null>) {
   return useQuery({
     queryKey: computed(() => queryKeys.session(toValue(sessionId) ?? '')),
@@ -291,6 +302,10 @@ export function useSendMessageMutation(sessionId: MaybeRefOrGetter<string>) {
     mutationFn: (body: MessageCreate) => api.sendMessage(toValue(sessionId), body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.session(toValue(sessionId)) })
+      // 会话标题由后端按第一条消息自动生成：发完消息后列表要重取，标题才会出现。
+      void queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[query.queryKey.length - 1] === 'sessions',
+      })
     },
   })
 }

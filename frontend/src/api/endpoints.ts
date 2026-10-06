@@ -154,6 +154,11 @@ export function switchSessionModel(sessionId: string, modelProfileId: string): P
   })
 }
 
+/** 删除会话及其全部轮次（有排队/运行中的 turn 时 409）。 */
+export function deleteSession(sessionId: string): Promise<void> {
+  return request(`/sessions/${encodePathSegment(sessionId)}`, { method: 'DELETE' })
+}
+
 export function createSession(
   projectId: string,
   stage: string,

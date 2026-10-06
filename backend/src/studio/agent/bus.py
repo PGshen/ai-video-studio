@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 TRANSIENT_EVENT_TYPES = frozenset(
-    {"text_delta", "thinking_delta", "workspace_changed", "turn_status"}
+    {"text_delta", "thinking_delta", "workspace_changed", "turn_status", "session_title"}
 )
 
 

@@ -23,6 +23,7 @@ from studio.agent.openai_runtime import register_openai
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
+from studio.agent.titler import make_title_generator
 from studio.api.animation import router as animation_router
 from studio.api.blobs import router as blobs_router
 from studio.api.brainstorm import router as brainstorm_router
@@ -88,7 +89,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     bus = SessionBus()
     blobs = BlobStore(settings.data_dir / "blobs")
-    turn_runner = TurnRunner(engine, blobs, registry, runtime_factory, bus, settings)
+    turn_runner = TurnRunner(
+        engine,
+        blobs,
+        registry,
+        runtime_factory,
+        bus,
+        settings,
+        title_generator=make_title_generator(settings.data_dir),
+    )
     turn_runner.recover_on_startup()
 
     app.state.engine = engine

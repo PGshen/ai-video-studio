@@ -4,7 +4,7 @@
  * 交给 `SessionPanel`。模型不在这里选：[新会话] 用该阶段的默认模型（设置页里设的），旁边的下拉
  * 可以换一个模型新建；会话内换模型在输入框工具栏（`ModelSwitcher`）。
  * `collapsed`（竖栏折叠）时只剩两个图标：会话气泡菜单（列表 + 新建）和快捷新建。
- * 头脑风暴抽屉仍用旧的 `SessionPicker`。
+ * 头脑风暴抽屉和风格编辑用 `SessionSwitcher`（一行气泡菜单，可删除会话）。
  */
 import { Check, ChevronDown, MessagesSquare, Plus } from '@lucide/vue'
 import { computed, watch } from 'vue'
@@ -46,7 +46,7 @@ const createSessionMutation = useCreateSessionMutation(() => props.scope)
 
 const stageKey = computed(() => (props.scope.kind === 'brainstorm' ? 'brainstorm' : props.scope.stage))
 
-// 默认模型：该阶段的默认模型 → 第一个已配置的（与旧 SessionPicker 的预选规则一致）。
+// 默认模型：该阶段的默认模型 → 第一个已配置的（与 SessionSwitcher 的预选规则一致）。
 const defaultProfileId = computed(() =>
   profiles.value && settings.value
     ? preselectProfileId(profiles.value, settings.value.stage_default_profile, stageKey.value)
@@ -116,7 +116,7 @@ function profileLabel(profile: { id: string; name: string; key_configured: boole
             :key="session.id"
             @select="sessionId = session.id"
           >
-            <span class="min-w-0 flex-1 truncate">{{ session.title ?? session.id.slice(0, 8) }}</span>
+            <span class="min-w-0 flex-1 truncate">{{ session.title ?? '新会话' }}</span>
             <Check
               v-if="session.id === sessionId"
               class="ml-auto"
@@ -231,7 +231,7 @@ function profileLabel(profile: { id: string; name: string; key_configured: boole
             :title="session.title ?? session.id"
             @click="sessionId = session.id"
           >
-            {{ session.title ?? session.id.slice(0, 8) }}
+            {{ session.title ?? '新会话' }}
           </button>
         </li>
         <li

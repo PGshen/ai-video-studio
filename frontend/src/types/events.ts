@@ -25,6 +25,7 @@ export type WireEventType =
   | 'error'
   | 'workspace_changed'
   | 'turn_status'
+  | 'session_title'
 
 export interface TextDeltaPayload {
   turn_id: string
@@ -122,6 +123,11 @@ export interface TurnStatusPayload {
   seq: null
 }
 
+/** 会话自动命名完成（瞬时事件）：会话列表要重取。 */
+export interface SessionTitlePayload {
+  title: string
+}
+
 export interface WireEventMap {
   text_delta: TextDeltaPayload
   text: TextPayload
@@ -135,6 +141,7 @@ export interface WireEventMap {
   error: ErrorEventPayload
   workspace_changed: WorkspaceChangedPayload
   turn_status: TurnStatusPayload
+  session_title: SessionTitlePayload
 }
 
 /** `sse.ts` 解析出的一条事件：线上事件名 + 原始 JSON payload。 */
