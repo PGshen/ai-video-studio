@@ -28,7 +28,7 @@ from studio.db.repo.snapshots import latest_snapshot
 from studio.db.repo.stages import list_stages
 from studio.db.repo.turns import get_turn, list_events
 from studio.engines.render.html.pool import BrowserPool, set_browser_pool
-from studio.stages.music import tool as music_tool
+from studio.stages.common.score import tool as music_tool
 from studio.worker import run_once
 
 from .conftest import ApiEnv

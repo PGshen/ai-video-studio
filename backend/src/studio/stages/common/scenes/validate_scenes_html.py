@@ -37,7 +37,7 @@ from studio.engines.render.html.static_check import (
     static_check,
     strip_comments,
 )
-from studio.stages.animation_html.common import (
+from studio.stages.common.scenes.helpers import (
     browser_error_text,
     load_timeline,
     scene_exists,

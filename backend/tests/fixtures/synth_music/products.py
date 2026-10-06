@@ -9,8 +9,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from studio.stages.music.render import RenderOutcome, render_music_core
-from studio.stages.music.sources import infer_sources
+from studio.stages.common.score.render import RenderOutcome, render_music_core
+from studio.stages.common.score.sources import infer_sources
 from studio.timeline.load import load_timeline
 
 REF = Path(__file__).with_name("compose_ref.py")

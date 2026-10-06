@@ -9,8 +9,9 @@ from typing import Any
 from studio.agent.tools import ToolContext, ToolResult
 from studio.engines.render.html.browser import ChromiumUnavailable, PageNotReady
 from studio.engines.render.html.pool import PoolBusy
-from studio.stages.animation_html.prepare import ERROR_PATH, TIMELINE_PATH
 
+TIMELINE_PATH = "upstream/timeline.json"
+ERROR_PATH = "upstream/timeline.error.txt"
 _DEFAULT_REASON = "upstream/timeline.json 不存在（叙事阶段需要先定稿并完成配音）"
 
 

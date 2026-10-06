@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 
 from studio.agent.tools import ToolContext, invoke_tool
-from studio.stages.music import analyze as analyze_module
-from studio.stages.music import tool as music_tool
-from studio.stages.music.analyze import ANALYZE_MUSIC_TOOL, NO_SOURCE_PRODUCE_MESSAGE
-from studio.stages.music.tool import RENDER_MUSIC_TOOL
+from studio.stages.common.score import analyze as analyze_module
+from studio.stages.common.score import tool as music_tool
+from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL, NO_SOURCE_PRODUCE_MESSAGE
+from studio.stages.common.score.tool import RENDER_MUSIC_TOOL
 
 FREE = Path(__file__).resolve().parents[1] / "fixtures" / "synth_music" / "compose_free.py"
 

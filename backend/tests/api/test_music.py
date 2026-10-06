@@ -12,7 +12,7 @@ import pytest
 
 from fixtures.synth_music import seed
 from fixtures.synth_music.products import REF, render_products
-from studio.stages.music import tool as music_tool
+from studio.stages.common.score import tool as music_tool
 
 from .conftest import ApiEnv
 

@@ -25,9 +25,9 @@ from studio.engines.render.html.probe import is_reel
 from studio.stages.animation_html import STAGE as ANIMATION_HTML
 from studio.stages.beatsheet import STAGE as BEATSHEET
 from studio.stages.beatsheet.validate_beatsheet import check_workspace as check_beatsheet
+from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL
 from studio.stages.concept import STAGE as CONCEPT
 from studio.stages.music import STAGE as MUSIC
-from studio.stages.music.analyze import ANALYZE_MUSIC_TOOL
 from studio.stages.music.validate_sections import check_workspace as check_sections
 from studio.stages.pipeline import ProjectKind, build_pipeline
 from studio.workspace import BlobStore, create_snapshot, project_dir

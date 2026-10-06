@@ -14,7 +14,7 @@ import json
 import shutil
 from pathlib import Path
 
-from studio.stages.music.sources import import_source, infer_sources
+from studio.stages.common.score.sources import import_source, infer_sources
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 

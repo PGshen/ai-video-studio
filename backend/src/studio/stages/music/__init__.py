@@ -17,10 +17,10 @@ from pathlib import Path
 from studio.agent.tools import ToolSpec
 from studio.engines.audio.song import file_hash
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
-from studio.stages.music.analyze import ANALYZE_MUSIC_TOOL
+from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL
+from studio.stages.common.score.sources import SOURCE_EXTENSIONS, import_source, infer_sources
+from studio.stages.common.score.tool import RENDER_MUSIC_TOOL
 from studio.stages.music.prepare import prepare_turn
-from studio.stages.music.sources import SOURCE_EXTENSIONS, import_source, infer_sources
-from studio.stages.music.tool import RENDER_MUSIC_TOOL
 from studio.stages.music.validate_sections import (
     ANALYSIS_PATH,
     SECTIONS_PATH,

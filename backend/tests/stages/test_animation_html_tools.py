@@ -31,8 +31,8 @@ from studio.engines.render.html.browser import (
 )
 from studio.engines.render.html.pool import BrowserPool, PoolBusy, set_browser_pool
 from studio.stages.animation_html import STAGE
-from studio.stages.animation_html.render_preview_html import RENDER_PREVIEW_HTML_TOOL
-from studio.stages.animation_html.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
+from studio.stages.common.scenes.render_preview_html import RENDER_PREVIEW_HTML_TOOL
+from studio.stages.common.scenes.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 
 
 @pytest.fixture

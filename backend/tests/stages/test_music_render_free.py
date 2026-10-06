@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from studio.engines.audio.runner import WrapCommand
-from studio.stages.music.render import RenderOutcome, render_music_core
+from studio.stages.common.score.render import RenderOutcome, render_music_core
 
 FREE = Path(__file__).resolve().parents[1] / "fixtures" / "synth_music" / "compose_free.py"
 PRODUCTS = ("music.wav", "events.json", "analysis.json", "analysis.png", "render.json")

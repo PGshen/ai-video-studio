@@ -21,7 +21,7 @@ from studio.engines.render.html.probe import (
     smoke_run,
 )
 from studio.engines.render.html.static_check import static_check
-from studio.stages.animation_html.common import (
+from studio.stages.common.scenes.helpers import (
     browser_error_text,
     load_timeline,
     scene_exists,

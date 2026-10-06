@@ -21,8 +21,8 @@ from studio.agent.events import ImageData
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.engines.audio.song import CONFIDENCE_WARN
 from studio.engines.audio.song_job import DEFAULT_TIMEOUT, SongJobError, run_song_analysis
-from studio.stages.music.sources import import_source
-from studio.stages.music.tool import LISTEN_NOTE, compress_picture
+from studio.stages.common.score.sources import import_source
+from studio.stages.common.score.tool import LISTEN_NOTE, compress_picture
 
 NO_SOURCE_MESSAGE = "还没有上传音乐，请让用户在音乐画布上传"
 NO_SOURCE_PRODUCE_MESSAGE = "还没有上传歌曲：这个项目没有可分析的音乐，请让用户先上传歌曲"

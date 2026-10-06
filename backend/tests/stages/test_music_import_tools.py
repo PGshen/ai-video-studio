@@ -14,9 +14,9 @@ import pytest
 from fixtures.import_music import BPM, OFFSET, write_click_song, write_silence
 from studio.agent.tools import ToolContext, ToolResult, invoke_tool
 from studio.engines.audio.song_job import SongJobError
-from studio.stages.music import analyze as analyze_module
-from studio.stages.music.analyze import ANALYZE_MUSIC_TOOL
-from studio.stages.music.sources import SOURCE_EXTENSIONS, import_source
+from studio.stages.common.score import analyze as analyze_module
+from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL
+from studio.stages.common.score.sources import SOURCE_EXTENSIONS, import_source
 
 
 def doc_bpm(workdir: Path) -> float:

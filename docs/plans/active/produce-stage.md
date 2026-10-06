@@ -209,6 +209,7 @@
 
 ## 进度
 
+- 2026-10-06 — T4 前置 — 完成：共用工具搬到 `stages/common/score`、`common/scenes`（D7），`make check` 全绿。
 - 2026-10-06 — T3 — 完成：`render_music_core(timeline=None)` 自由模式（脚本无时间轴输入、不重定时、`render.json` 无 `base_hash`、`bpm` 可选；`run_compose` 的 `timeline_path` 可空；`validate_events(bpm_required=…)`）；`render_music` 按 `ctx.stage == "produce"` 分流，`analyze_music` 在 `concept`/`produce` 给出 `range.json` 的提示；`compose_free.py` 夹具。
 - 2026-10-06 — T2 — 完成：`timeline/shots.py`（`parse_shots`、`parse_range`）、`TimelineSources.produce`、短片与 MV 的读取（MV 事件由 `beats`/`downbeats` 生成 `beat`/`downbeat`）；`runtime.js` 的 `bt/bar/moment` 报错加了替代写法；`make check` 全绿。
 - 2026-10-06 — T1 — 完成：图片预算按两份折算（总 base64 ≤ 400 kB）、`invoke_tool` 兜底（文本 ≤ 60 000 字节、超预算图片整组丢弃）、`max_buffer_size` 8 MiB、references 补记；`make check` 全绿。
@@ -219,6 +220,7 @@
 
 ## 决策记录
 
+- D7（2026-10-06）：T4 发现 import-linter 契约「各阶段之间互不 import（规则 3）」禁止 `produce` 直接复用 `music`、`animation_html` 里的工具。处理：把共用的工具实现纯搬迁（行为不变）到 `stages/common/`——`music/{render,tool,analyze,sources}.py` → `common/score/`，`animation_html/{common,validate_scenes_html,render_preview_html}.py` → `common/scenes/`（`common.py` 改名 `helpers.py`，并带走 `TIMELINE_PATH`/`ERROR_PATH`）；两个旧阶段改为从 `common` 导入。没有改任何公共接口，也没有放宽契约。
 - D6（2026-10-06）：自由模式下没有时间轴，长度以音频本身为准，`events.json` 声明的 `duration` 只做与实际音频一致的校验（沿用 0.05 秒容差）；不再对总长设上下限（WAV 读取已有大小与时长上限）。
 - D4（2026-10-06）：T2 只**新增** `produce` 读取路径，不删 `imported.py`、`layers_from_beatsheet` 等旧路径——旧阶段在 T7 之前仍在用，删除放在 T7，保证每个任务结束时 `make check` 为绿。
 - D5（2026-10-06）：相邻镜头的缝隙 ≤ 1 ms 时由 `parse_shots` 自动贴合（设计 §5.3 的 1 ms 容差落在解析处），其余首尾相接判断仍用 `build_timeline` 的 1e-6 精度；末端与音频时长的差值用 0.05 秒（D1）。

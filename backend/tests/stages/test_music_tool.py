@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from studio.agent.tools import ToolContext, invoke_tool
-from studio.stages.music import tool as music_tool
-from studio.stages.music.tool import LISTEN_NOTE, RENDER_MUSIC_TOOL
+from studio.stages.common.score import tool as music_tool
+from studio.stages.common.score.tool import LISTEN_NOTE, RENDER_MUSIC_TOOL
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 REF = FIXTURES / "synth_music" / "compose_ref.py"

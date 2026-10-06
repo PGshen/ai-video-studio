@@ -18,7 +18,7 @@ from typing import Any, TypeGuard
 from pydantic import BaseModel
 
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
-from studio.stages.music.sources import import_source
+from studio.stages.common.score.sources import import_source
 from studio.timeline import TimelineError
 from studio.timeline.build import BPM_RANGE
 from studio.timeline.imported import ALIGN_TOLERANCE, downbeat_times, effective_grid

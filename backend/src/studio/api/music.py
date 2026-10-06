@@ -29,9 +29,9 @@ from studio.api.schemas import MusicEventOut, MusicMetaOut, MusicRenderOut, Musi
 from studio.config import Settings
 from studio.db.repo.projects import get_project
 from studio.stages.common.music_source import find_source
-from studio.stages.music import tool as music_tool
-from studio.stages.music.render import metrics_of, render_music_core
-from studio.stages.music.sources import section_energy
+from studio.stages.common.score import tool as music_tool
+from studio.stages.common.score.render import metrics_of, render_music_core
+from studio.stages.common.score.sources import section_energy
 from studio.timeline import TimelineError
 from studio.timeline.load import LoadedTimeline, TimelineSources, load_timeline
 from studio.workspace import ScopeError, file_sha256, project_dir, safe_path

@@ -15,8 +15,8 @@ from typing import Any
 import pytest
 
 from studio.engines.audio.runner import WrapCommand
-from studio.stages.music.render import RenderOutcome, render_music_core
-from studio.stages.music.sources import infer_sources
+from studio.stages.common.score.render import RenderOutcome, render_music_core
+from studio.stages.common.score.sources import infer_sources
 from studio.timeline.load import load_timeline
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -309,7 +309,7 @@ async def test_analysis_does_not_block_the_event_loop(
     import asyncio
     import time
 
-    from studio.stages.music import render as render_module
+    from studio.stages.common.score import render as render_module
 
     real = render_module.analyze
 

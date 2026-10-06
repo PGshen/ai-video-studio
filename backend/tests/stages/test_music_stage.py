@@ -12,11 +12,11 @@ import pytest
 
 from studio.agent.stage import StageDefinition, StageRegistry, upstream_of
 from studio.stages.beatsheet import STAGE as BEATSHEET
+from studio.stages.common.score import tool as music_tool
+from studio.stages.common.score.render import render_music_core
+from studio.stages.common.score.sources import infer_sources
 from studio.stages.concept import STAGE as CONCEPT
 from studio.stages.music import STAGE
-from studio.stages.music import tool as music_tool
-from studio.stages.music.render import render_music_core
-from studio.stages.music.sources import infer_sources
 from studio.stages.pipeline import ProjectKind, build_pipeline
 from studio.timeline.load import load_timeline
 from studio.workspace.scope import is_writable

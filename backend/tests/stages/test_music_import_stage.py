@@ -14,9 +14,9 @@ from typing import Any
 import pytest
 
 from studio.agent.tools import ToolContext, invoke_tool
+from studio.stages.common.score.sources import SOURCE_EXTENSIONS
+from studio.stages.common.score.tool import RENDER_MUSIC_TOOL
 from studio.stages.music import STAGE
-from studio.stages.music.sources import SOURCE_EXTENSIONS
-from studio.stages.music.tool import RENDER_MUSIC_TOOL
 from studio.stages.music.validate_sections import VALIDATE_SECTIONS_TOOL
 from studio.workspace.scope import is_writable
 

@@ -17,8 +17,8 @@ from studio.config import get_settings, repo_root
 from studio.engines.audio.analysis import MusicReport
 from studio.engines.audio.runner import WrapCommand
 from studio.stages.common.picture import compress_png
-from studio.stages.music.render import RenderOutcome, render_music_core
-from studio.stages.music.sources import import_source, infer_sources, section_energy
+from studio.stages.common.score.render import RenderOutcome, render_music_core
+from studio.stages.common.score.sources import import_source, infer_sources, section_energy
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 
