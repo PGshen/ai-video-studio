@@ -501,6 +501,19 @@ export interface MusicSourceOut {
   duration: number
 }
 
+/** 一句歌词（整曲秒；`music/lyrics.lrc` 解析后的结果，不随截取区间平移）。 */
+export interface LyricLineOut {
+  text: string
+  start: number
+  end: number
+}
+
+/** `POST .../music/lyrics`：上传成功后的歌词信息。 */
+export interface MusicLyricsOut {
+  lines: number
+  sha256: string
+}
+
 /**
  * `GET .../music/meta`：没有产物时 `rendered=false`；`stale` 表示产物对应的是另一版时间轴。
  * 导入形态（`form === 'import'`）：`rendered` 表示"已上传源文件"，`stale` 表示分析不是对着当前
@@ -515,6 +528,8 @@ export interface MusicMetaOut {
   bpm: number | null
   events: MusicEventOut[]
   sections: MusicSectionOut[]
+  /** 歌曲形态：`music/lyrics.lrc` 的歌词行（整曲秒）；没有或不可用为空。 */
+  lyrics: LyricLineOut[]
   /** 1000 个点的波形包络，取值 0–1。 */
   waveform: number[]
   metrics: Record<string, unknown> | null

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { MusicMetaOut } from '@/types/api'
 import {
+  MAX_LYRICS_BYTES,
   MAX_UPLOAD_BYTES,
   analysisRows,
+  checkLyricsFile,
   checkSourceFile,
+  lyricAt,
   energyBars,
   gridLines,
   isImportMusic,
@@ -121,6 +124,7 @@ function meta(over: Partial<MusicMetaOut>): MusicMetaOut {
     bpm: null,
     events: [],
     sections: [],
+    lyrics: [],
     waveform: [],
     metrics: null,
     source: null,
@@ -192,5 +196,42 @@ describe('isImportMusic', () => {
     expect(isImportMusic({})).toBe(false)
     expect(isImportMusic(null)).toBe(false)
     expect(isImportMusic(undefined)).toBe(false)
+  })
+})
+
+
+describe('checkLyricsFile', () => {
+  const file = (name: string, size = 10) => ({ name, size }) as File
+
+  it('只收 .lrc（不分大小写），拒绝其他扩展名、空文件与过大的文件', () => {
+    expect(checkLyricsFile(file('歌.lrc'))).toBeNull()
+    expect(checkLyricsFile(file('a.LRC'))).toBeNull()
+    expect(checkLyricsFile(file('a.txt'))).toContain('.lrc')
+    expect(checkLyricsFile(file('noext'))).toContain('.lrc')
+    expect(checkLyricsFile(file('a.lrc', 0))).toContain('空')
+    expect(checkLyricsFile(file('a.lrc', MAX_LYRICS_BYTES + 1))).toContain('200 KB')
+    expect(checkLyricsFile(file('a.lrc', MAX_LYRICS_BYTES))).toBeNull()
+  })
+})
+
+describe('lyricAt', () => {
+  const lines = [
+    { text: 'a', start: 1, end: 3 },
+    { text: 'b', start: 3, end: 5 },
+    { text: 'c', start: 8, end: 9 },
+  ]
+
+  it('正在唱的那一句；句间空隙里返回上一句，第一句之前返回 -1', () => {
+    expect(lyricAt(lines, 0.5)).toBe(-1)
+    expect(lyricAt(lines, 1)).toBe(0)
+    expect(lyricAt(lines, 2.9)).toBe(0)
+    expect(lyricAt(lines, 3)).toBe(1)
+    expect(lyricAt(lines, 6)).toBe(1)
+    expect(lyricAt(lines, 8.5)).toBe(2)
+    expect(lyricAt(lines, 100)).toBe(2)
+  })
+
+  it('没有歌词时是 -1', () => {
+    expect(lyricAt([], 3)).toBe(-1)
   })
 })

@@ -12,6 +12,7 @@ const META: MusicMetaOut = {
   bpm: 128,
   events: [{ name: 'kick', kind: 'onset', start: 1, end: 1.2 }],
   sections: [{ id: 's1', label: 'BUILD', start: 0, end: 10 }],
+  lyrics: [],
   waveform: [0.1, 0.9],
   metrics: { peak_dbfs: -1, onsets: 5 },
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * 音乐 MV（歌曲）的音乐画布（子项目 4B 设计 §4，produce 设计 §9）：未上传时是上传区（只在「创意与要求」
- * 阶段）；已上传后左侧是播放器与能量曲线（叠加分析的参考拍线、镜头划分、截取区间，点击跳转），右侧是
- * 分析摘要。只展示——镜头划分、截取区间都由 agent 写。定稿按钮等放在 `actions` 槽里。
+ * 阶段）；已上传后左侧是播放器与能量曲线（叠加分析的参考拍线、镜头划分、截取区间，点击跳转）与歌词上传，
+ * 右侧是分析摘要与歌词列表（点击跳转）。只展示——镜头划分、截取区间都由 agent 写。定稿按钮等放在 `actions` 槽里。
  */
 import { computed, ref } from 'vue'
 import { musicAudioUrl } from '@/api/endpoints'
@@ -10,6 +10,8 @@ import { errorMessage } from '@/api/http'
 import { useMusicMetaQuery } from '@/composables/queries'
 import AnalysisSummary from './AnalysisSummary.vue'
 import EnergyView from './EnergyView.vue'
+import LyricsList from './LyricsList.vue'
+import LyricsUploader from './LyricsUploader.vue'
 import SourceUploader from './SourceUploader.vue'
 import { formatClock } from './musicView'
 
@@ -145,8 +147,21 @@ defineExpose({ seek })
           :has-source="true"
           @uploaded="uploadedNote = true"
         />
+        <LyricsUploader
+          v-if="allowUpload"
+          :project-id="projectId"
+          :busy="busy"
+          :lines="meta.lyrics.length"
+        />
       </div>
-      <AnalysisSummary :meta="meta" />
+      <div class="grid min-w-0 content-start gap-4">
+        <AnalysisSummary :meta="meta" />
+        <LyricsList
+          :lines="meta.lyrics"
+          :current-time="currentTime"
+          @seek="seek"
+        />
+      </div>
     </div>
 
     <p

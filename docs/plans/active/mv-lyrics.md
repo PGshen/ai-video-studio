@@ -124,7 +124,7 @@
 - **完成标准**：无歌词的 `produce`、讲解类全部既有测试不变且通过。
 - **验证命令**：`make check`。
 
-### T6：前端（待开始）
+### T6：前端（完成）
 
 - **目标**：上传区能传歌词，「配乐」标签能看到歌词并跳转。
 - **涉及文件**：`frontend/src/features/canvas/music/SourceUploader.vue`（或新增 `LyricsUploader.vue`，歌词上传/更换/删除，只在 `allowUpload` 为真时显示）、`ImportMusicCanvas.vue`、`AnalysisSummary.vue`（或新增 `LyricsList.vue`，每行「时间 + 文字」，点击 `seek`）、`importView.ts`（`.lrc` 白名单与 200 KB 上限，注释注明与后端一致，见 TD-78）、`frontend/src/api/endpoints.ts`、`types/api.ts`（`MusicMetaOut.lyrics`）、`composables/queries.ts`（上传后让 meta 失效）；对应 spec。
@@ -154,10 +154,11 @@
 - T3 完成（`POST/DELETE /music/lyrics`、`MusicMetaOut.lyrics`、`analyze_music` 的 `lyrics_note`、`music/lyrics.lrc` 进 `concept`/`produce` 的托管文件；11 个接口测试 + 3 个概况测试 + 范围与 stale 测试；`make check` 绿）。
 - T4 完成（`sections_for`、`check_concept_text(text, lyrics)`、`workspace_lyrics`、提示词、`status_summary`；12 个新测试，`make check` 绿）。
 - T5 完成（歌词采样 `_lyric_times`、没引用 `env.lyric` 的警告、`lyrics-techniques.js` 与 `prepare_turn` 条件拷贝、提示词歌词章节、`final.json.lyrics_hash`；新增 12 个测试含真实 Chromium 跑范例；`make check` 绿）。
+- T6 完成（`LyricsUploader`、`LyricsList`、`importView` 的 `checkLyricsFile`/`lyricAt`、两个 mutation 与接口、`ImportMusicCanvas` 接入；23 个新前端测试；`make check` 绿）。
 
 ## 下一步
 
-- T6：前端。
+- T7：文档、真实模型冒烟与 L4。
 
 ## 决策记录
 
@@ -172,6 +173,7 @@
 - 2026-10-07：解析时落在 `[歌曲时长, 时长+1 秒]` 内的句子（如歌曲末尾稍晚的时间戳）不报错，但自身不成为歌词行（`start >= duration` 丢弃），仍作为上一句的结束边界；晚于 `时长+1` 才报错。`[offset:]` 造成的负时间钳到 0，不报错。
 - 2026-10-07：`env.lyric()` 同一时刻多句时取开始最晚的，并列取文件里靠前的（双语歌词的第二句要从 `env.lyrics` 里取）；`LYRICS_PATH` 常量放在 `timeline/lyrics.py`（`stages` 可以 import `timeline`），T3 直接复用，不再放 `stages/common/music_source.py`。
 - 2026-10-07：歌词上传端点用 `request.form()`（歌词 ≤ 200 KB，不需要像歌曲那样流式解析）；`Content-Length` 超过 400 KB 直接拒绝。meta 里的歌词按整曲秒给（不随 `range` 平移，与 `sections` 一致）；歌曲未分析时没有时长，最后一句取开始后 5 秒。
+- 2026-10-07：能量曲线上叠加歌词刻度（T6 的可选小项）没做：列表加点击跳转已够用，刻度要改 `EnergyView` 的坐标层，价值有限，记入 TODO P2。
 
 ## 阻塞
 

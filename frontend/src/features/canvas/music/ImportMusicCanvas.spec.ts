@@ -10,6 +10,8 @@ vi.mock('@/composables/queries', async () => {
   return {
     useMusicMetaQuery: () => ({ data: ref(state.meta), error: ref(state.metaError) }),
     useUploadMusicSourceMutation: () => ({ mutateAsync: () => Promise.resolve({}) }),
+    useUploadMusicLyricsMutation: () => ({ mutateAsync: () => Promise.resolve({}) }),
+    useDeleteMusicLyricsMutation: () => ({ mutateAsync: () => Promise.resolve() }),
   }
 })
 
@@ -24,6 +26,7 @@ const UPLOADED: MusicMetaOut = {
   bpm: null,
   events: [],
   sections: [],
+  lyrics: [],
   waveform: [],
   metrics: null,
   source: { filename: 'source.mp3', size: 100, sha256: 'abc', duration: null },
@@ -155,5 +158,42 @@ describe('ImportMusicCanvas', () => {
       slots: { actions: '<button data-testid="slot-action">定稿</button>' },
     })
     expect(has(wrapper, 'slot-action')).toBe(true)
+  })
+
+  describe('歌词', () => {
+    const LYRICS = [
+      { text: '第一句', start: 2, end: 6 },
+      { text: '第二句', start: 6, end: 10 },
+    ]
+
+    it('在「创意与要求」里（可上传）：已上传歌曲就显示歌词上传区，带上歌词句数', () => {
+      state.meta = { ...ANALYSED, lyrics: LYRICS }
+      const wrapper = mountCanvas()
+      expect(has(wrapper, 'lyrics-uploader')).toBe(true)
+      expect(wrapper.find('[data-testid="lyrics-state"]').text()).toContain('2 句')
+    })
+
+    it('没上传歌曲时没有歌词上传区（先传歌）', () => {
+      state.meta = { ...UPLOADED, rendered: false, hash: null, source: null }
+      expect(has(mountCanvas(), 'lyrics-uploader')).toBe(false)
+    })
+
+    it('嵌在「配乐与动画」里：只读列表，没有上传区', () => {
+      state.meta = { ...ANALYSED, lyrics: LYRICS }
+      const wrapper = mount(ImportMusicCanvas, {
+        props: { projectId: 'p1', busy: false, allowUpload: false, compact: true },
+      })
+      expect(has(wrapper, 'lyrics-uploader')).toBe(false)
+      expect(wrapper.findAll('[data-testid="lyric-row"]')).toHaveLength(2)
+    })
+
+    it('没有歌词时不显示列表；点击一行跳到这句的开始', async () => {
+      state.meta = ANALYSED
+      expect(has(mountCanvas(), 'lyrics-list')).toBe(false)
+      state.meta = { ...ANALYSED, lyrics: LYRICS }
+      const wrapper = mountCanvas()
+      await wrapper.findAll('[data-testid="lyric-row"]')[1]!.trigger('click')
+      expect((wrapper.find('[data-testid="music-audio"]').element as HTMLAudioElement).currentTime).toBe(6)
+    })
   })
 })

@@ -743,6 +743,31 @@ export function useUploadMusicSourceMutation(projectId: MaybeRefOrGetter<string>
   })
 }
 
+/** 上传（或替换）歌词；无论成败都刷新工作区相关的查询。 */
+export function useUploadMusicLyricsMutation(projectId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { file: File; onProgress?: UploadOptions['onProgress']; signal?: AbortSignal }) =>
+      api.uploadMusicLyrics(toValue(projectId), input.file, {
+        onProgress: input.onProgress,
+        signal: input.signal,
+      }),
+    onSettled: () => {
+      void invalidateWorkspace(queryClient, toValue(projectId))
+    },
+  })
+}
+
+export function useDeleteMusicLyricsMutation(projectId: MaybeRefOrGetter<string>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.deleteMusicLyrics(toValue(projectId)),
+    onSettled: () => {
+      void invalidateWorkspace(queryClient, toValue(projectId))
+    },
+  })
+}
+
 // ---- ideas / 选题池 ----------------------------------------------------
 
 export function useIdeasQuery(view: MaybeRefOrGetter<IdeasView>) {
