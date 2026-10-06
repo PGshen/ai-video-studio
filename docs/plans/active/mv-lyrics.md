@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 多形态视频后续（produce 阶段之后） |
 | 设计依据 | [mv-lyrics 设计](../../design/2026-10-07-mv-lyrics.md)（负责人 2026-10-07 批准） |
 | 分支 | `feat/mv-lyrics`，从 main 切出（produce 阶段已合入 main） |
@@ -137,7 +137,7 @@
 - **完成标准**：既有音乐画布 spec 不变且通过。
 - **验证命令**：`make check`。
 
-### T7：文档、真实模型冒烟与 L4（待开始）
+### T7：文档、真实模型冒烟与 L4（完成）
 
 - **目标**：同步文档，用真实模型与浏览器验证。
 - **涉及文件**：`docs/ARCHITECTURE.md`、`docs/glossary.md`（歌词、`LyricLine`、「歌词意象」）、`docs/quality/QUALITY.md`、`docs/references/produce-stage.md`（补实测）、`docs/references/import-music-mv.md`、`docs/plans/TODO.md`；`backend/tests/smoke/test_music_video_smoke.py`（加 `STUDIO_SMOKE_LRC`，缺失则只跑无歌词部分并记录「歌词部分未验证」）。
@@ -155,10 +155,11 @@
 - T4 完成（`sections_for`、`check_concept_text(text, lyrics)`、`workspace_lyrics`、提示词、`status_summary`；12 个新测试，`make check` 绿）。
 - T5 完成（歌词采样 `_lyric_times`、没引用 `env.lyric` 的警告、`lyrics-techniques.js` 与 `prepare_turn` 条件拷贝、提示词歌词章节、`final.json.lyrics_hash`；新增 12 个测试含真实 Chromium 跑范例；`make check` 绿）。
 - T6 完成（`LyricsUploader`、`LyricsList`、`importView` 的 `checkLyricsFile`/`lyricAt`、两个 mutation 与接口、`ImportMusicCanvas` 接入；23 个新前端测试；`make check` 绿）。
+- T7 完成（文档同步；MV 带歌词冒烟通过；浏览器 L4 走通，见「验证记录」）。
 
 ## 下一步
 
-- T7：文档、真实模型冒烟与 L4。
+- 整分支独立评审，修完后交负责人验收（含用真实 LRC 试听）。
 
 ## 决策记录
 
@@ -181,4 +182,5 @@
 
 ## 验证记录
 
-- （执行中补充）
+- 真实模型冒烟（2026-10-07，Claude 本地登录；详见 `docs/references/produce-stage.md`）：MV 带 11 句**自编占位歌词**通过，20 分 36 秒；简报含「歌词意象」，场景脚本引用 `env.lyric`；抽 8 句歌词句首的成片帧核对，字幕、关键字、对应画面都在。真实歌词的意象质量、节拍是否卡准、好不好看**未验证**，等负责人用真实 LRC 试听。
+- L4（2026-10-07，内置浏览器，隔离实例）：创意阶段上传 `.lrc` → 「已上传 4 句」与歌词列表，空文本结束标记不显示成歌词；点击行跳到 12 秒并高亮；无时间戳文件显示服务端中文原因，`.txt` 被客户端挡住；删除后列表消失；配乐与动画阶段只有只读列表、没有上传区。创意阶段的上传面板偏窄（靠滚动），已知不处理。
