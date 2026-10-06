@@ -188,6 +188,29 @@ def test_quotes_ignore_whitespace_differences(quote: str) -> None:
     assert check_concept_text(_lyric_brief(f"{quote} → 机架"), LYRICS).errors == []
 
 
+@pytest.mark.parametrize(
+    "quote",
+    ["凌晨三点，机房亮着光", "凌晨三点,机房亮着光！", "「凌晨三点」「机房亮着光」"],
+)
+def test_quotes_ignore_punctuation_and_full_width_differences(quote: str) -> None:
+    assert check_concept_text(_lyric_brief(f"{quote} → 机架"), LYRICS).errors == []
+
+
+def test_quotes_ignore_case_and_width_for_latin_lyrics() -> None:
+    lyrics = [LyricLine(text="Hello, World again", start=1.0, end=3.0)]
+    brief = _lyric_brief("ＨＥＬＬＯ world AGAIN → 一个点")
+    assert check_concept_text(brief, lyrics).errors == []
+
+
+def test_a_short_phrase_inside_the_imagery_is_not_a_quote_when_longer_lines_exist() -> None:
+    lyrics = [
+        LyricLine(text="爱你", start=1.0, end=2.0),
+        LyricLine(text="凌晨三点 机房亮着光", start=2.0, end=6.0),
+    ]
+    result = check_concept_text(_lyric_brief("表达爱你的心情，一个红点"), lyrics)
+    assert any("没有逐字引用" in e for e in result.errors)
+
+
 def test_a_single_character_line_does_not_count_as_a_quote_when_longer_lines_exist() -> None:
     result = check_concept_text(_lyric_brief("啊 → 一个点"), LYRICS)
     assert any("没有逐字引用" in e for e in result.errors)

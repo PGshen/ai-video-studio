@@ -152,6 +152,7 @@ defineExpose({ seek })
           :project-id="projectId"
           :busy="busy"
           :lines="meta.lyrics.length"
+          :broken="meta.lyrics_error"
         />
       </div>
       <div class="grid min-w-0 content-start gap-4">

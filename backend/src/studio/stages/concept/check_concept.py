@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,9 +36,9 @@ LYRICS_SECTION = "歌词意象"
 BRIEF_PATH = "concept/brief.md"
 DURATION_SECTION = "目标时长"
 
-_WHITESPACE = re.compile(r"[\s\u3000]+")
+_NOT_WORD = re.compile(r"[\W_]+")
 _QUOTE_EXAMPLES = 3
-_MIN_QUOTE_CHARS = 2
+_MIN_QUOTE_CHARS = 4
 
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _H2 = re.compile(r"^##\s+(.*?)\s*#*\s*$")
@@ -78,13 +79,16 @@ def sections_for(*, has_lyrics: bool) -> tuple[str, ...]:
 
 
 def _squeeze(text: str) -> str:
-    return _WHITESPACE.sub("", text)
+    """NFKC (full/half width), lower case, then drop whitespace and punctuation."""
+    return _NOT_WORD.sub("", unicodedata.normalize("NFKC", text).casefold())
 
 
 def _quotes_a_lyric(body: str, lyrics: Sequence[LyricLine]) -> bool:
-    """Whether `body` repeats at least one real lyric line verbatim (whitespace ignored).
+    """Whether `body` repeats at least one real lyric line (ignoring case, width, spaces and
+    punctuation).
 
-    One-character lines ("啊") match too easily, so they only count when no longer line exists."""
+    Lines shorter than 4 characters ("啊", "爱你") match too easily, so they only count when no
+    longer line exists."""
     squeezed = _squeeze(body)
     texts = [_squeeze(line.text) for line in lyrics]
     long = [t for t in texts if len(t) >= _MIN_QUOTE_CHARS]

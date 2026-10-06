@@ -87,12 +87,19 @@ def parse_lrc(data: bytes | str, duration: float) -> list[LyricLine]:
         raise LyricsError(problems)
     adjusted.sort(key=lambda item: item[0])  # stable: same moment keeps file order
 
+    # `following[i]`: the next strictly later moment after entry i (one backward pass, linear).
+    following: list[float | None] = [None] * len(adjusted)
+    for index in range(len(adjusted) - 2, -1, -1):
+        nxt = adjusted[index + 1][0]
+        following[index] = nxt if nxt > adjusted[index][0] else following[index + 1]
+
     result: list[LyricLine] = []
     for index, (start, body) in enumerate(adjusted):
         if not body or start >= duration:
             continue
-        later = [t for t, _ in adjusted[index + 1 :] if t > start]
-        end = later[0] if later else min(start + LAST_LINE_SECONDS, duration)
+        end = following[index]
+        if end is None:
+            end = min(start + LAST_LINE_SECONDS, duration)
         result.append(LyricLine(text=body, start=round(start, 6), end=round(min(end, duration), 6)))
     if not result:
         raise LyricsError(["至少要有一句歌词（只有结束标记或元信息）"])

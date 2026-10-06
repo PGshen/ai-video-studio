@@ -125,6 +125,7 @@ function meta(over: Partial<MusicMetaOut>): MusicMetaOut {
     events: [],
     sections: [],
     lyrics: [],
+    lyrics_error: null,
     waveform: [],
     metrics: null,
     source: null,
@@ -229,6 +230,16 @@ describe('lyricAt', () => {
     expect(lyricAt(lines, 6)).toBe(1)
     expect(lyricAt(lines, 8.5)).toBe(2)
     expect(lyricAt(lines, 100)).toBe(2)
+  })
+
+  it('同一时刻有两句（双语）时取文件里靠前的，与运行时 env.lyric() 一致', () => {
+    const pair = [
+      { text: '中文', start: 2, end: 6 },
+      { text: 'English', start: 2, end: 6 },
+      { text: '下一句', start: 6, end: 9 },
+    ]
+    expect(lyricAt(pair, 3)).toBe(0)
+    expect(lyricAt(pair, 7)).toBe(2)
   })
 
   it('没有歌词时是 -1', () => {

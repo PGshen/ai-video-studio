@@ -125,3 +125,15 @@ def test_oversized_input_is_rejected() -> None:
 
 def test_a_line_starting_within_a_second_past_the_end_is_dropped() -> None:
     assert lines("[01:30.00]正文\n[01:40.50]尾声", 100.0) == [("正文", 90.0, 100.0)]
+
+
+def test_parsing_is_linear_even_with_tens_of_thousands_of_lines() -> None:
+    import time
+
+    text = "[0:00]a\n" * 24000  # ~190 KB, all at the same moment
+    started = time.perf_counter()
+    result = parse_lrc(text, DURATION)
+    assert len(result) == 24000
+    assert time.perf_counter() - started < 1.0
+    spread = "\n".join(f"[{i // 60}:{i % 60:02d}.00]x" for i in range(0, 90)) * 1
+    assert len(parse_lrc(spread, DURATION)) == 90

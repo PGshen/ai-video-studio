@@ -27,6 +27,7 @@ const UPLOADED: MusicMetaOut = {
   events: [],
   sections: [],
   lyrics: [],
+  lyrics_error: null,
   waveform: [],
   metrics: null,
   source: { filename: 'source.mp3', size: 100, sha256: 'abc', duration: null },
@@ -171,6 +172,13 @@ describe('ImportMusicCanvas', () => {
       const wrapper = mountCanvas()
       expect(has(wrapper, 'lyrics-uploader')).toBe(true)
       expect(wrapper.find('[data-testid="lyrics-state"]').text()).toContain('2 句')
+    })
+
+    it('歌词文件不可用时把原因传给上传区，仍能删除', () => {
+      state.meta = { ...ANALYSED, lyrics_error: '歌词不可用：晚于歌曲时长' }
+      const wrapper = mountCanvas()
+      expect(wrapper.find('[data-testid="lyrics-broken"]').text()).toContain('晚于歌曲时长')
+      expect(has(wrapper, 'lyrics-delete')).toBe(true)
     })
 
     it('没上传歌曲时没有歌词上传区（先传歌）', () => {

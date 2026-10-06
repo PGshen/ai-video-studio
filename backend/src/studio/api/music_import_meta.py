@@ -56,14 +56,18 @@ def shot_sections(workdir: Path, offset: float = 0.0) -> list[MusicSectionOut]:
     ]
 
 
-def lyric_lines(workdir: Path, duration: float | None) -> list[LyricLineOut]:
-    """`music/lyrics.lrc` in song seconds; missing or unusable files give no lines."""
+def lyric_lines(workdir: Path, duration: float | None) -> tuple[list[LyricLineOut], str | None]:
+    """`music/lyrics.lrc` in song seconds, plus why it is unusable (`None` when fine or absent)."""
+    path = workdir / LYRICS_PATH
+    if not path.is_file():
+        return [], None
     try:
-        data = (workdir / LYRICS_PATH).read_bytes()
-        parsed = parse_lrc(data, duration if duration is not None else math.inf)
-    except (OSError, LyricsError):
-        return []
-    return [LyricLineOut(text=x.text, start=x.start, end=x.end) for x in parsed]
+        parsed = parse_lrc(path.read_bytes(), duration if duration is not None else math.inf)
+    except OSError as exc:
+        return [], f"无法读取歌词文件：{exc}"
+    except LyricsError as exc:
+        return [], str(exc)
+    return [LyricLineOut(text=x.text, start=x.start, end=x.end) for x in parsed], None
 
 
 def _analysis_out(doc: dict[str, Any]) -> MusicAnalysisOut | None:
@@ -115,6 +119,7 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
         window = parse_range(_read_json(workdir / RANGE_PATH), analysis.duration, [])
         if window is not None:
             range_ = MusicRangeOut(start=window[0], end=window[1])
+    lyrics, lyrics_error = lyric_lines(workdir, analysis.duration if analysis is not None else None)
     return MusicMetaOut(
         form="import",
         rendered=True,
@@ -122,7 +127,8 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
         hash=digest,
         duration=analysis.duration if analysis is not None else None,
         sections=shot_sections(workdir, range_.start if range_ is not None else 0.0),
-        lyrics=lyric_lines(workdir, analysis.duration if analysis is not None else None),
+        lyrics=lyrics,
+        lyrics_error=lyrics_error,
         source=source,
         analysis=analysis,
         grid=grid,

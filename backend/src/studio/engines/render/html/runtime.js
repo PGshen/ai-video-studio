@@ -101,7 +101,7 @@
         var f = Math.max(0, Math.min(1, x - i));
         return en.values[i] + (en.values[j] - en.values[i]) * f;
       },
-      // 歌词（MV）：`lyrics` 是与本镜头有交集的行（镜头局部秒，`i` 为整首歌内的序号）；
+      // 歌词（MV）：`lyrics` 是与本镜头有交集的行（镜头局部秒，`i` 为本片歌词列表（按截取区间裁剪后）里的序号）；
       // `lyric()` 是正在唱或 1 秒内刚唱完的一句（同一时刻取开始最晚的，并列取文件里靠前的）。
       lyrics: lyricsOf(sec),
       lyric: function () {

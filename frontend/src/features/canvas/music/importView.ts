@@ -149,12 +149,16 @@ export function checkLyricsFile(file: Pick<File, 'name' | 'size'>): string | nul
   return null
 }
 
-/** 播放位置 `time` 对应的歌词行下标：正在唱的那一句，句间空隙里是上一句，第一句之前为 -1。 */
+/**
+ * 播放位置 `time` 对应的歌词行下标：开始时间最晚且不晚于 `time` 的那一句（句间空隙里就是上一句），
+ * 并列取文件里靠前的（与运行时 `env.lyric()` 一致）；第一句之前为 -1。
+ */
 export function lyricAt(lines: readonly LyricLineOut[], time: number): number {
   let found = -1
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i]!.start <= time) found = i
-    else break
+    const line = lines[i]!
+    if (line.start > time) break
+    if (found < 0 || line.start > lines[found]!.start) found = i // ties keep the earlier line
   }
   return found
 }

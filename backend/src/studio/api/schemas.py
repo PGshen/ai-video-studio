@@ -554,6 +554,8 @@ class MusicMetaOut(BaseModel):
     sections: list[MusicSectionOut] = []
     lyrics: list[LyricLineOut] = []
     """歌曲形态：`music/lyrics.lrc` 的歌词行（整曲秒）；没有或不可用为空。"""
+    lyrics_error: str | None = None
+    """歌词文件存在但不可用（手改坏了，或换了更短的歌）时的原因；界面据此显示并保留删除入口。"""
     waveform: list[float] = []
     metrics: dict[str, Any] | None = None
     source: MusicSourceInfo | None = None

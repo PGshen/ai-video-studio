@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from fixtures.import_music import write_click_song
@@ -150,8 +151,34 @@ async def test_meta_lists_the_lyrics_in_song_seconds(api_env: ApiEnv) -> None:
     ]
 
 
-async def test_a_hand_broken_lyrics_file_gives_empty_lyrics_in_meta(api_env: ApiEnv) -> None:
+async def test_a_hand_broken_lyrics_file_gives_empty_lyrics_and_an_error_in_meta(
+    api_env: ApiEnv,
+) -> None:
     pid, workdir = _mv(api_env)
     (workdir / LYRICS_PATH).write_text("没有时间戳", encoding="utf-8")
     meta = (await api_env.client.get(f"/api/projects/{pid}/music/meta")).json()
     assert meta["lyrics"] == []
+    assert "时间戳" in meta["lyrics_error"]
+    assert (await api_env.client.delete(_url(pid))).status_code == 204  # and it can be deleted
+    meta = (await api_env.client.get(f"/api/projects/{pid}/music/meta")).json()
+    assert meta["lyrics_error"] is None
+
+
+async def test_lyrics_that_no_longer_fit_a_shorter_song_are_reported(api_env: ApiEnv) -> None:
+    pid, workdir = _mv(api_env)
+    (workdir / LYRICS_PATH).write_text("[09:00.00]太晚\n", encoding="utf-8")
+    digest = hashlib.sha256((workdir / "music" / "source.wav").read_bytes()).hexdigest()
+    analysis = {
+        "source_hash": digest,
+        "duration": 20.0,
+        "bpm": 120,
+        "offset": 0.5,
+        "residual_ms": 4,
+        "confidence": 0.9,
+        "hop": 0.1,
+        "energy": [0.1],
+        "warnings": [],
+    }
+    (workdir / "music" / "analysis.json").write_text(json.dumps(analysis))
+    meta = (await api_env.client.get(f"/api/projects/{pid}/music/meta")).json()
+    assert meta["lyrics"] == [] and "晚于歌曲" in meta["lyrics_error"]

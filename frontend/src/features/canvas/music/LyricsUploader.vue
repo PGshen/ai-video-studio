@@ -11,7 +11,13 @@ import type { MusicLyricsOut } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { checkLyricsFile } from './importView'
 
-const props = defineProps<{ projectId: string; busy: boolean; lines: number }>()
+const props = defineProps<{
+  projectId: string
+  busy: boolean
+  lines: number
+  /** 歌词文件存在但不可用（`meta.lyrics_error`）：显示原因并保留删除入口。 */
+  broken?: string | null
+}>()
 const emit = defineEmits<{ uploaded: [lyrics: MusicLyricsOut] }>()
 
 const input = ref<HTMLInputElement | null>(null)
@@ -72,7 +78,7 @@ async function onDelete(): Promise<void> {
       class="text-muted-foreground text-xs"
       data-testid="lyrics-state"
     >
-      {{ lines > 0 ? `已上传 ${lines} 句` : '可选：上传带时间戳的 .lrc，画面会跟着歌词走' }}
+      {{ broken ? '歌词文件不可用' : lines > 0 ? `已上传 ${lines} 句` : '可选：上传带时间戳的 .lrc，画面会跟着歌词走' }}
     </span>
     <div class="ml-auto flex items-center gap-2">
       <input
@@ -92,10 +98,10 @@ async function onDelete(): Promise<void> {
         data-testid="lyrics-button"
         @click="input?.click()"
       >
-        {{ lines > 0 ? '更换歌词' : '上传歌词（可选）' }}
+        {{ lines > 0 || broken ? '更换歌词' : '上传歌词（可选）' }}
       </Button>
       <Button
-        v-if="lines > 0"
+        v-if="lines > 0 || broken"
         size="sm"
         variant="ghost"
         :disabled="disabled"
@@ -105,6 +111,14 @@ async function onDelete(): Promise<void> {
         删除歌词
       </Button>
     </div>
+    <p
+      v-if="broken && !problem"
+      class="text-destructive basis-full text-xs"
+      role="alert"
+      data-testid="lyrics-broken"
+    >
+      {{ broken }}。可以重新上传，或删除歌词。
+    </p>
     <p
       v-if="problem"
       class="text-destructive basis-full text-xs"

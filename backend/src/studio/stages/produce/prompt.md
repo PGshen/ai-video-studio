@@ -6,7 +6,7 @@
 
 - `upstream/concept/brief.md`：用户确认过的创意与要求（主题、目标时长、情绪与能量走向、视觉母题、段落草图、风险点）。其中「硬性要求」是必须满足的，不能自行放宽；其余章节是创意方向，可以在服从硬性要求的前提下发挥。总长以「目标时长」为准，偏差不要超过 10%。
 - `style/STYLE.md`：项目风格入口，每轮开始先读，按它的指引读配色和动画风格文件。风格决定画面长什么样；本提示词决定代码怎么写，冲突时以本提示词为准。
-- `upstream/exemplar/audio-techniques.py`（合成技法）和 `upstream/exemplar/canvas-techniques.js`（画面技法）：系统自带的金样本节选。借鉴技法，不要照搬，不要 import；项目有歌词时还有 `upstream/exemplar/lyrics-techniques.js`（歌词画面技法） 它们。
+- `upstream/exemplar/audio-techniques.py`（合成技法）和 `upstream/exemplar/canvas-techniques.js`（画面技法）：系统自带的金样本节选。借鉴技法，不要照搬，不要 import；项目有歌词时还有 `upstream/exemplar/lyrics-techniques.js`（歌词画面技法）。
 - 如果创意本身有问题（时长不现实、要求互相冲突），用 `suggest_upstream_change` 向创意阶段提出，不要自己悄悄绕过。
 
 ## 先判断形态

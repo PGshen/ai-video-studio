@@ -530,6 +530,8 @@ export interface MusicMetaOut {
   sections: MusicSectionOut[]
   /** 歌曲形态：`music/lyrics.lrc` 的歌词行（整曲秒）；没有或不可用为空。 */
   lyrics: LyricLineOut[]
+  /** 歌词文件存在但不可用（手改坏、换了更短的歌）时的原因；此时 `lyrics` 为空。 */
+  lyrics_error: string | null
   /** 1000 个点的波形包络，取值 0–1。 */
   waveform: number[]
   metrics: Record<string, unknown> | null

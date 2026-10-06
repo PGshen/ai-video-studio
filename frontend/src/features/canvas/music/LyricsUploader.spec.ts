@@ -28,7 +28,9 @@ vi.mock('@/composables/queries', () => ({
 
 import LyricsUploader from './LyricsUploader.vue'
 
-const mountUploader = (props: Partial<{ busy: boolean; lines: number }> = {}) =>
+const mountUploader = (
+  props: Partial<{ busy: boolean; lines: number; broken: string | null }> = {},
+) =>
   mount(LyricsUploader, { props: { projectId: 'p1', busy: false, lines: 0, ...props } })
 
 async function pick(wrapper: ReturnType<typeof mountUploader>, name: string, size = 100) {
@@ -95,5 +97,12 @@ describe('LyricsUploader', () => {
     const wrapper = mountUploader({ busy: true, lines: 3 })
     expect(wrapper.find('[data-testid="lyrics-button"]').attributes('disabled')).toBeDefined()
     expect(wrapper.find('[data-testid="lyrics-delete"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('歌词文件不可用：显示原因，保留“更换歌词”和“删除歌词”', () => {
+    const wrapper = mountUploader({ broken: '歌词不可用：没有找到时间戳' })
+    expect(wrapper.find('[data-testid="lyrics-broken"]').text()).toContain('没有找到时间戳')
+    expect(wrapper.find('[data-testid="lyrics-button"]').text()).toBe('更换歌词')
+    expect(wrapper.find('[data-testid="lyrics-delete"]').exists()).toBe(true)
   })
 })
