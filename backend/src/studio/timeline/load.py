@@ -17,6 +17,7 @@ from typing import Any
 from studio.timeline.build import (
     GridInput,
     MusicInput,
+    TimedSectionInput,
     TimelineError,
     TimelineLayers,
     build_timeline,
@@ -26,6 +27,7 @@ from studio.timeline.build import (
 )
 from studio.timeline.imported import import_hash, layers_from_import
 from studio.timeline.schema import Timeline
+from studio.timeline.shots import RANGE_PATH, SHOTS_PATH, parse_range, parse_shots
 
 _NARRATIVE = "narrative/narrative.json"
 _TIMING = "narrative/timing.json"
@@ -45,6 +47,10 @@ class TimelineSources:
     prefix: str = ""
     with_music: bool = True
     """`False` 给配乐阶段自己用：不含 `music` 层的时间轴，是合成脚本的输入。"""
+    produce: bool = False
+    """`True` 读 `produce` 阶段的产物（短片、MV）：镜头来自 `animation/shots.json`，
+    没有网格和节拍脚本点。`music_source` 仍区分 `synth`（`music/events.json`）与
+    `import`（`music/analysis.json` + 源文件）。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +141,121 @@ def _load_import(sources: TimelineSources) -> LoadedTimeline:
     )
 
 
+_SHOTS_HINT = "在 animation/shots.json 里写镜头划分"
+_BEAT_EVENT_DURATION = 0.0
+
+
+def _shot_inputs(root: Path, prefix: str) -> list[TimedSectionInput]:
+    errors: list[str] = []
+    document = _read_document_any(root, f"{prefix}{SHOTS_PATH}", _SHOTS_HINT)
+    shots = parse_shots(document, errors)
+    if shots is None:
+        raise TimelineError(errors)
+    return shots
+
+
+def _read_document_any(root: Path, relpath: str, hint: str) -> Any:
+    """与 `_read_document` 相同，但不要求顶层是对象（由调用方的解析函数报告）。"""
+    path = root / relpath
+    if not path.is_file():
+        raise TimelineError([f"{relpath} 不存在（{hint}）"])
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise TimelineError([f"{relpath} 指向工作区之外，不能读取"])
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TimelineError([f"{relpath} 无法解析：{exc}"]) from exc
+
+
+def _beat_events(analysis: dict[str, Any], start: float, length: float) -> list[dict[str, Any]]:
+    """分析出的拍点与强拍 → `beat`/`downbeat` 起音事件（相对区间起点，丢弃区间外的）。"""
+    events: list[dict[str, Any]] = []
+    for name, key in (("beat", "beats"), ("downbeat", "downbeats")):
+        times = analysis.get(key)
+        if not isinstance(times, list):
+            continue
+        for time in times:
+            if isinstance(time, bool) or not isinstance(time, int | float):
+                continue
+            local = round(float(time) - start, 6)
+            if 0.0 <= local < length:
+                events.append(
+                    {
+                        "name": name,
+                        "kind": "onset",
+                        "start": local,
+                        "end": local + _BEAT_EVENT_DURATION,
+                    }
+                )
+    events.sort(key=lambda event: (event["start"], event["name"]))
+    return events
+
+
+def _load_produce_synth(sources: TimelineSources) -> LoadedTimeline:
+    root, prefix = sources.root, sources.prefix
+    shots = _shot_inputs(root, prefix)
+    hint = "先写 music/compose.py 并调用 render_music 渲染配乐"
+    events_doc = _read_document(root, f"{prefix}{_EVENTS}", hint)
+    analysis_doc = _read_document(root, f"{prefix}{_ANALYSIS}", hint)
+    music = _music_input(events_doc, analysis_doc)
+    timeline = build_timeline(TimelineLayers([], music=music, timed_sections=shots))
+    digest = timeline_hash(timeline)
+    return LoadedTimeline(timeline, digest, digest, {}, {}, None)
+
+
+def _load_produce_import(sources: TimelineSources) -> LoadedTimeline:
+    root, prefix = sources.root, sources.prefix
+    shots = _shot_inputs(root, prefix)
+    analysis = _read_document(root, f"{prefix}{_ANALYSIS}", "先上传歌曲并调用 analyze_music")
+    source_file = _source_file(root, prefix)
+    errors: list[str] = []
+    duration, hop = analysis.get("duration"), analysis.get("hop")
+    energy, source_hash = analysis.get("energy"), analysis.get("source_hash")
+    if (
+        isinstance(duration, bool)
+        or not isinstance(duration, int | float)
+        or isinstance(hop, bool)
+        or not isinstance(hop, int | float)
+        or hop <= 0
+        or not isinstance(energy, list)
+        or not isinstance(source_hash, str)
+        or not source_hash
+    ):
+        raise TimelineError(
+            ["music/analysis.json：需要 source_hash、duration、hop 和 energy，请重新 analyze_music"]
+        )
+    range_path = root / f"{prefix}{RANGE_PATH}"
+    range_doc = (
+        _read_document_any(root, f"{prefix}{RANGE_PATH}", "") if range_path.exists() else None
+    )
+    window = parse_range(range_doc, float(duration), errors)
+    if window is None:
+        raise TimelineError(errors)
+    start, end = window
+    length = round(end - start, 6)
+    first = max(0, int(round(start / float(hop))))
+    count = max(1, int(round(length / float(hop))))
+    music = MusicInput(
+        events=_beat_events(analysis, start, length),
+        energy_hop=float(hop),
+        energy_values=[float(v) for v in energy[first : first + count]],
+        declared_duration=length,
+        file=source_file,
+    )
+    timeline = build_timeline(TimelineLayers([], music=music, timed_sections=shots))
+    digest = import_hash(timeline_hash(timeline), source_hash, (round(start, 6), round(end, 6)))
+    return LoadedTimeline(
+        timeline, digest, digest, {}, {}, None, (round(start, 6), round(end, 6)), source_hash
+    )
+
+
 def load_timeline(sources: TimelineSources) -> LoadedTimeline:
+    if sources.produce:
+        if sources.narration:
+            raise TimelineError(["produce 阶段只用于无旁白的项目"])
+        if sources.music_source == "import":
+            return _load_produce_import(sources)
+        return _load_produce_synth(sources)
     if sources.music_source == "import":
         return _load_import(sources)
     root, prefix = sources.root, sources.prefix

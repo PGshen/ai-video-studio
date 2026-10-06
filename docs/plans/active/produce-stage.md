@@ -85,7 +85,7 @@
 - **验证命令**：`make check`；L4 在 T10 一并做。
 - **可单独合入**：这个任务不依赖其他任务，可先合入 `main`。
 
-### T2：时间轴的 `produce` 读取与 `shots.json` 校验（待开始）
+### T2：时间轴的 `produce` 读取与 `shots.json` 校验（完成）
 
 - **目标**：短片与 MV 在不依赖 `beatsheet.json`、`sections.json` 的情况下读出时间轴；`shots.json` 与 `range.json` 有独立校验。
 - **涉及文件**：`backend/src/studio/timeline/load.py`、`timeline/build.py`、`timeline/imported.py`（删除节拍脚本、强拍对齐、`moments`、段落边界校验）、`timeline/shots.py`（新）、`timeline/__init__.py`、`backend/tests/timeline/test_shots.py`（新）、`test_load.py`、`test_import_timeline.py`、`test_sources.py`。
@@ -209,14 +209,17 @@
 
 ## 进度
 
+- 2026-10-06 — T2 — 完成：`timeline/shots.py`（`parse_shots`、`parse_range`）、`TimelineSources.produce`、短片与 MV 的读取（MV 事件由 `beats`/`downbeats` 生成 `beat`/`downbeat`）；`runtime.js` 的 `bt/bar/moment` 报错加了替代写法；`make check` 全绿。
 - 2026-10-06 — T1 — 完成：图片预算按两份折算（总 base64 ≤ 400 kB）、`invoke_tool` 兜底（文本 ≤ 60 000 字节、超预算图片整组丢弃）、`max_buffer_size` 8 MiB、references 补记；`make check` 全绿。
 
 ## 下一步
 
-- 从 T2 开始：先写 `backend/tests/timeline/test_shots.py`（`shots.json` / `range.json` 校验与 `produce` 读取），再实现 `timeline/shots.py` 与 `TimelineSources` 的 `produce` 形态。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
+- 从 T3 开始：先改 `backend/tests/stages/test_music_render.py`、`test_music_tool.py`、`test_music_import_tools.py`，加无时间轴渲染（`timeline=None`）的用例，再改 `stages/music/render.py`、`tool.py`、`analyze.py`。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
 
 ## 决策记录
 
+- D4（2026-10-06）：T2 只**新增** `produce` 读取路径，不删 `imported.py`、`layers_from_beatsheet` 等旧路径——旧阶段在 T7 之前仍在用，删除放在 T7，保证每个任务结束时 `make check` 为绿。
+- D5（2026-10-06）：相邻镜头的缝隙 ≤ 1 ms 时由 `parse_shots` 自动贴合（设计 §5.3 的 1 ms 容差落在解析处），其余首尾相接判断仍用 `build_timeline` 的 1e-6 精度；末端与音频时长的差值用 0.05 秒（D1）。
 - D1（草稿，2026-10-06）：`shots.json` 的末端与音频时长的容差沿用 `timeline.build` 现有的 `_DURATION_TOLERANCE`（0.05 秒），而不是设计 §5.3 写的 1 ms——避免模型为一个毫秒级差值反复改镜头；相邻镜头首尾相接仍按 1 ms。若负责人要严格按设计，T2 里改一个常量即可。
 - D2（草稿，2026-10-06）：`max_buffer_size` 取 8 MiB、文本工具结果上限 60 kB；两个数字来自 1 MiB 现场数据与现有预算，实测后可调。
 - D3（草稿，2026-10-06）：MV 的 `music.events` 由分析的 `beats`/`downbeats` 生成 `beat`/`downbeat` 两类 `onset` 事件，让模型有 `hit('beat')` 可用；设计 §6 只写"来自分析结果"，这里落到具体。
