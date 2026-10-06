@@ -221,7 +221,7 @@
 
 ## 下一步
 
-- 从 T10 开始（文档、冒烟与 L4）：先同步文档（`docs/ARCHITECTURE.md` 阶段与 `stages/common/{score,scenes}` 的共用关系、`docs/glossary.md`、`docs/quality/QUALITY.md`、`docs/references/import-music-mv.md` 与新建 produce 参考、`docs/plans/TODO.md`）；再用 `make smoke` 的短片与 MV 用例各跑一次真实模型（本机 Claude 登录，MV 需要 `STUDIO_SMOKE_SONG`，没有歌就跳过并如实记录）；最后控制者在内置浏览器里做 L4：创建两种项目、MV 在 `concept` 上传并分析、`produce` 的配乐标签与实时预览、出片与定稿，并用现场的毒化会话（项目 `f67bd800…`，会话 `eed19681…`）再发一轮确认 1 MiB 问题已解。
+- T10 进行中：文档已同步并提交；浏览器 L4 已在隔离实例上走完（见「验证记录」）；**短片的真实模型冒烟正在后台运行**（`make smoke SMOKE_ARGS="-k motion_reel_claude_login"`，日志 `/tmp/smoke_reel.log`）。结果出来后：1）把冒烟读数（用量、轮数、对齐/平移警告、出片时长）写进「验证记录」与 `docs/references/`（新建 `produce-stage.md`，只记实测事实）；2）有歌（`docs/temp/海阔天空.mp3` 存在）就再跑 MV 冒烟 `-k music_video_claude_login`；3）检查冒烟的 CLI 会话记录里最长一行是否 < 1 MiB（验证 T1）；4）收尾：TODO 里把本条移到「已完成」并追加「讲解类是否也取消阶段拆分」P2；5）按 SOP 做整分支独立评审（`code-review`），修完后让负责人验收。
 
 ## 决策记录
 
@@ -250,4 +250,10 @@
 
 ## 验证记录
 
-- 无
+- L4（2026-10-06，内置浏览器，隔离实例：api 8010 / 前端 5174 / 临时数据目录 / 假运行时 / 独立 worker，`scratchpad/seed_l4.py` 种子）：
+  - 短片（`produce` active）：阶段导航「创意与要求✓ / 配乐与动画」；标签 镜头（2）/ 实时预览 / 配乐 / 成片；「配乐」标签有播放器、波形上的镜头标记（BUILD/DROP）、指标与分析图，「脚本」标签点「渲染」在真实 Seatbelt 沙箱里渲染成功（无重定时提示）；实时预览能播（0:00 / 0:16，镜头按钮）；「成片」渲染完成（0:16）并「成片定稿」，阶段导航变为「配乐与动画✓」、出现「重新打开」。
+  - MV（有歌，`produce` active）：「配乐」标签是播放器 + 能量曲线（叠加 intro/verse/chorus 镜头与拍线）+ 分析摘要，没有上传区。
+  - MV（`concept` active，无歌）：文件画布上方是「上传一首歌」上传区；用 API 上传后刷新，显示播放器、「还没有能量曲线：让 agent 调用 analyze_music」、「更换歌曲」，文件树出现 `music/source.wav`。
+  - 控制台无报错。
+  - 发现并记下的环境事项：隔离实例要单独起 `studio.worker`，否则成片任务一直「排队中」（不是缺陷）。
+- 1 MiB 问题的现场复测（项目 `f67bd800…` 的毒化会话）**未做**：那是负责人的真实数据，且旧流水线项目已作废；用 SDK 的单行解析测试（`TestMessageBuffer`）与冒烟记录的最长行代替，见上。
