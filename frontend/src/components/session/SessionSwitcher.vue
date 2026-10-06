@@ -19,13 +19,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   useCreateSessionMutation,
-  useDeleteSessionMutation,
   useModelProfilesQuery,
   useSessionsQuery,
   useSettingsQuery,
 } from '@/composables/queries'
 import { scopeStageKey, type SessionScope } from '@/composables/sessionScope'
 import { preselectProfileId } from './modelChoice'
+import { useSessionDelete } from './useSessionDelete'
 
 const props = defineProps<{
   scope: SessionScope
@@ -37,7 +37,14 @@ const { data: profiles } = useModelProfilesQuery()
 const { data: settings } = useSettingsQuery()
 const { data: sessions } = useSessionsQuery(() => props.scope)
 const createSessionMutation = useCreateSessionMutation(() => props.scope)
-const deleteSessionMutation = useDeleteSessionMutation(() => props.scope)
+const {
+  confirmingId,
+  error: deleteError,
+  remove: deleteSession,
+} = useSessionDelete(
+  computed(() => props.scope),
+  sessionId,
+)
 
 const defaultProfileId = computed(() =>
   profiles.value && settings.value
@@ -70,8 +77,6 @@ function titleOf(session: { id: string; title: string | null }): string {
 }
 
 const open = ref(false)
-/** 正在等二次确认的会话；菜单开关时清掉。 */
-const confirmingId = ref<string | null>(null)
 watch(open, () => {
   confirmingId.value = null
 })
@@ -91,21 +96,6 @@ async function createSession(profileId: string): Promise<void> {
   } catch (e) {
     error.value = `创建会话失败：${describeError(e)}`
   }
-}
-
-async function deleteSession(id: string): Promise<void> {
-  error.value = null
-  confirmingId.value = null
-  try {
-    await deleteSessionMutation.mutateAsync(id)
-  } catch (e) {
-    error.value = `删除会话失败：${describeError(e)}`
-    return
-  }
-  if (sessionId.value !== id) return
-  // 删掉的是当前会话：切到剩下的活动会话（其次第一个），都没有则清空。
-  const rest = (sessions.value ?? []).filter((s) => s.id !== id)
-  sessionId.value = (rest.find((s) => s.is_active) ?? rest[0])?.id ?? null
 }
 
 function profileLabel(profile: { id: string; name: string; key_configured: boolean }): string {
@@ -238,10 +228,10 @@ const creating = computed(() => createSessionMutation.isPending.value)
       </ButtonGroup>
     </div>
     <p
-      v-if="error"
+      v-if="error || deleteError"
       class="text-destructive text-xs"
     >
-      {{ error }}
+      {{ error ?? deleteError }}
     </p>
   </div>
 </template>

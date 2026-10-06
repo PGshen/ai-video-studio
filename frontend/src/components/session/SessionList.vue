@@ -6,8 +6,8 @@
  * `collapsed`（竖栏折叠）时只剩两个图标：会话气泡菜单（列表 + 新建）和快捷新建。
  * 头脑风暴抽屉和风格编辑用 `SessionSwitcher`（一行气泡菜单，可删除会话）。
  */
-import { Check, ChevronDown, MessagesSquare, Plus } from '@lucide/vue'
-import { computed, watch } from 'vue'
+import { Check, ChevronDown, MessagesSquare, Plus, Trash2 } from '@lucide/vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import RailGroup from '@/components/RailGroup.vue'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ import {
 } from '@/composables/queries'
 import type { SessionScope } from '@/composables/sessionScope'
 import { preselectProfileId } from './modelChoice'
+import { useSessionDelete } from './useSessionDelete'
 
 const props = defineProps<{
   scope: SessionScope
@@ -43,6 +44,15 @@ const { data: profiles } = useModelProfilesQuery()
 const { data: settings } = useSettingsQuery()
 const { data: sessions } = useSessionsQuery(() => props.scope)
 const createSessionMutation = useCreateSessionMutation(() => props.scope)
+
+const {
+  confirmingId,
+  error: deleteError,
+  remove: deleteSession,
+} = useSessionDelete(
+  computed(() => props.scope),
+  sessionId,
+)
 
 const stageKey = computed(() => (props.scope.kind === 'brainstorm' ? 'brainstorm' : props.scope.stage))
 
@@ -77,6 +87,12 @@ const createError = computed(() => {
   return error instanceof Error ? error.message : '未知错误'
 })
 
+/** 折叠态气泡菜单开关时清掉行内确认。 */
+const menuOpen = ref(false)
+watch(menuOpen, () => {
+  confirmingId.value = null
+})
+
 const creating = computed(() => createSessionMutation.isPending.value)
 
 function profileLabel(profile: { id: string; name: string; key_configured: boolean }): string {
@@ -95,7 +111,7 @@ function profileLabel(profile: { id: string; name: string; key_configured: boole
       class="flex flex-col items-center gap-1"
       data-testid="session-list-collapsed"
     >
-      <DropdownMenu>
+      <DropdownMenu v-model:open="menuOpen">
         <DropdownMenuTrigger as-child>
           <Button
             variant="ghost"
@@ -111,17 +127,56 @@ function profileLabel(profile: { id: string; name: string; key_configured: boole
           class="w-56"
         >
           <DropdownMenuLabel>会话</DropdownMenuLabel>
-          <DropdownMenuItem
-            v-for="session in sessions"
-            :key="session.id"
-            @select="sessionId = session.id"
-          >
-            <span class="min-w-0 flex-1 truncate">{{ session.title ?? '新会话' }}</span>
-            <Check
-              v-if="session.id === sessionId"
-              class="ml-auto"
-            />
-          </DropdownMenuItem>
+          <div class="max-h-64 overflow-y-auto">
+            <template
+              v-for="session in sessions"
+              :key="session.id"
+            >
+              <div
+                v-if="confirmingId === session.id"
+                class="flex items-center gap-2 px-2 py-1.5 text-sm"
+                data-testid="session-delete-confirm"
+              >
+                <span class="min-w-0 flex-1 truncate">删除「{{ session.title ?? '新会话' }}」？</span>
+                <Button
+                  size="xs"
+                  variant="destructive"
+                  data-testid="session-delete-yes"
+                  @click="deleteSession(session.id)"
+                >
+                  删除
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  @click="confirmingId = null"
+                >
+                  取消
+                </Button>
+              </div>
+              <DropdownMenuItem
+                v-else
+                @select="sessionId = session.id"
+              >
+                <Check
+                  class="shrink-0"
+                  :class="session.id === sessionId ? 'opacity-100' : 'opacity-0'"
+                />
+                <span class="min-w-0 flex-1 truncate">{{ session.title ?? '新会话' }}</span>
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-destructive hover:bg-destructive/10 -my-1 -mr-1 shrink-0 rounded p-1.5"
+                  title="删除会话"
+                  data-testid="session-delete"
+                  @click.stop.prevent="confirmingId = session.id"
+                  @pointerdown.stop
+                  @pointerup.stop
+                >
+                  <Trash2 class="size-4" />
+                </button>
+              </DropdownMenuItem>
+            </template>
+          </div>
           <DropdownMenuItem
             v-if="sessions && sessions.length === 0"
             disabled
@@ -162,9 +217,9 @@ function profileLabel(profile: { id: string; name: string; key_configured: boole
         <Plus />
       </Button>
       <MessagesSquare
-        v-if="createError"
+        v-if="createError || deleteError"
         class="text-destructive size-4"
-        :title="`创建会话失败：${createError}`"
+        :title="createError ? `创建会话失败：${createError}` : deleteError ?? ''"
       />
     </div>
 
@@ -214,25 +269,70 @@ function profileLabel(profile: { id: string; name: string; key_configured: boole
       >
         创建会话失败：{{ createError }}
       </p>
+      <p
+        v-if="deleteError"
+        class="text-destructive text-xs"
+      >
+        {{ deleteError }}
+      </p>
 
       <ul class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         <li
           v-for="session in sessions"
           :key="session.id"
         >
-          <button
-            type="button"
-            class="w-full truncate rounded-md px-2 py-1.5 text-left text-sm"
+          <div
+            v-if="confirmingId === session.id"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-sm"
+            data-testid="session-delete-confirm"
+          >
+            <span
+              class="min-w-0 flex-1 truncate"
+              :title="session.title ?? '新会话'"
+            >确认删除？</span>
+            <Button
+              size="xs"
+              variant="destructive"
+              data-testid="session-delete-yes"
+              @click="deleteSession(session.id)"
+            >
+              删除
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              @click="confirmingId = null"
+            >
+              取消
+            </Button>
+          </div>
+          <div
+            v-else
+            class="flex items-center rounded-md"
             :class="
               session.id === sessionId
                 ? 'bg-primary/10 text-primary font-medium'
                 : 'text-muted-foreground hover:bg-muted'
             "
-            :title="session.title ?? session.id"
-            @click="sessionId = session.id"
           >
-            {{ session.title ?? '新会话' }}
-          </button>
+            <button
+              type="button"
+              class="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm"
+              :title="session.title ?? session.id"
+              @click="sessionId = session.id"
+            >
+              {{ session.title ?? '新会话' }}
+            </button>
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-destructive mr-1 shrink-0 rounded p-1"
+              title="删除会话"
+              data-testid="session-delete"
+              @click="confirmingId = session.id"
+            >
+              <Trash2 class="size-4" />
+            </button>
+          </div>
         </li>
         <li
           v-if="sessions && sessions.length === 0"
