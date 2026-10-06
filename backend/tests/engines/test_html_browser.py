@@ -456,3 +456,80 @@ async def test_an_mv_timeline_without_named_events_keeps_hit_and_span_neutral(
     assert probe["energy"] == pytest.approx(5.0 / 15, abs=1e-3)
     assert probe["bt1"] == pytest.approx(timeline["grid"]["beats"][0] + _BEAT - 3.75)
     await page.close()
+
+
+# ---- 歌词契约：env.lyrics / env.lyric()（mv-lyrics 设计 §3.3） ---------------------------
+
+LYRIC_SCENE = """
+window.__lyric = window.__lyric || {};
+module.exports = { draw(ctx, lt, env) {
+  window.__lyric[env.section.id + '@' + env.t.toFixed(3)] = { now: env.lyric(), lines: env.lyrics };
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, env.W, env.H);
+} };
+"""
+
+_LYRICS = [
+    {"text": "甲", "start": 1.0, "end": 3.0},
+    {"text": "乙", "start": 3.0, "end": 3.5},
+    {"text": "丙", "start": 6.0, "end": 7.0},
+    {"text": "English", "start": 6.0, "end": 7.0},
+]
+
+
+async def _lyric_page(browser: HtmlBrowser, tmp_path: Path, lyrics: list[dict]) -> HtmlPage:
+    timeline = _reel_timeline()  # s1 0–3.75 s, s2 3.75–7.5 s
+    timeline["lyrics"] = lyrics
+    fx.write_project(tmp_path, scenes={"s1": LYRIC_SCENE, "s2": LYRIC_SCENE})
+    page = await browser.open_page(assemble(tmp_path, timeline))
+    assert isinstance(page, HtmlPage)
+    return page
+
+
+async def test_lyric_is_the_current_line_with_progress_and_lingers_for_a_second(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    page = await _lyric_page(browser, tmp_path, _LYRICS)
+    for t in (0.5, 1.0, 2.0, 3.2, 3.7, 5.0, 6.5, 7.2):
+        await page.render_hash(t)
+    seen = await page.evaluate("window.__lyric")
+    assert seen["s1@0.500"]["now"] is None  # before the first line
+    assert seen["s1@1.000"]["now"] == {
+        "i": 0,
+        "text": "甲",
+        "start": 1.0,
+        "end": 3.0,
+        "progress": 0,
+    }
+    assert seen["s1@2.000"]["now"]["progress"] == pytest.approx(0.5)
+    assert seen["s1@3.200"]["now"]["text"] == "乙"  # the latest start wins at a hand-over
+    assert (seen["s1@3.700"]["now"]["text"], seen["s1@3.700"]["now"]["progress"]) == ("乙", 1)
+    assert seen["s2@5.000"]["now"] is None  # more than 1 s after the last line
+    assert seen["s2@6.500"]["now"]["text"] == "丙"  # same moment: the first in file order
+    assert (seen["s2@7.200"]["now"]["text"], seen["s2@7.200"]["now"]["progress"]) == ("丙", 1)
+    await page.close()
+
+
+async def test_lyrics_lists_the_lines_touching_this_shot_in_shot_local_seconds(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    page = await _lyric_page(browser, tmp_path, _LYRICS)
+    await page.render_hash(1.0)
+    await page.render_hash(6.5)
+    seen = await page.evaluate("window.__lyric")
+    first = seen["s1@1.000"]["lines"]
+    assert [(x["i"], x["text"], x["start"], x["end"]) for x in first] == [
+        (0, "甲", 1.0, 3.0),
+        (1, "乙", 3.0, 3.5),
+    ]
+    second = seen["s2@6.500"]["lines"]
+    assert [(x["i"], x["text"]) for x in second] == [(2, "丙"), (3, "English")]
+    assert second[0]["start"] == pytest.approx(6.0 - 3.75)
+    await page.close()
+
+
+async def test_without_lyrics_the_helpers_are_neutral(browser: HtmlBrowser, tmp_path: Path) -> None:
+    page = await _lyric_page(browser, tmp_path, [])
+    await page.render_hash(2.0)
+    seen = (await page.evaluate("window.__lyric"))["s1@2.000"]
+    assert seen == {"now": None, "lines": []}
+    await page.close()

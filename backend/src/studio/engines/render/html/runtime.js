@@ -17,6 +17,18 @@
     return entry ? entry.beats : [];
   }
 
+  var LYRIC_LINGER = 1;  // 一句唱完后 lyric() 还继续返回它的秒数
+
+  function lyricsOf(sec) {
+    var out = [];
+    (tl().lyrics || []).forEach(function (l, i) {
+      if (l.start < sec.end && l.end > sec.start) {
+        out.push({ i: i, text: l.text, start: l.start - sec.start, end: l.end - sec.start });
+      }
+    });
+    return out;
+  }
+
   var assetProxy = new Proxy(assets, {
     get: function (target, key) {
       if (typeof key !== 'string' || key === 'then' || key === 'toJSON') return target[key];
@@ -88,6 +100,23 @@
         var j = Math.min(en.values.length - 1, i + 1);
         var f = Math.max(0, Math.min(1, x - i));
         return en.values[i] + (en.values[j] - en.values[i]) * f;
+      },
+      // 歌词（MV）：`lyrics` 是与本镜头有交集的行（镜头局部秒，`i` 为整首歌内的序号）；
+      // `lyric()` 是正在唱或 1 秒内刚唱完的一句（同一时刻取开始最晚的，并列取文件里靠前的）。
+      lyrics: lyricsOf(sec),
+      lyric: function () {
+        var all = timeline.lyrics || [];
+        var best = -1;
+        for (var k = 0; k < all.length; k++) {
+          var l = all[k];
+          if (!(l.start <= t && t < l.end + LYRIC_LINGER)) continue;
+          if (best < 0 || l.start > all[best].start) best = k;
+        }
+        if (best < 0) return null;
+        var line = all[best];
+        var span = line.end - line.start;
+        var progress = span > 0 ? Math.min(1, Math.max(0, (t - line.start) / span)) : 1;
+        return { i: best, text: line.text, start: line.start - sec.start, end: line.end - sec.start, progress: progress };
       },
       moment: function (i) {
         var list = timeline.moments.filter(function (m) { return m.section_id === sec.id; });

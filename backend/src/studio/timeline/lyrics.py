@@ -10,6 +10,8 @@ import re
 
 from studio.timeline.schema import LyricLine
 
+LYRICS_PATH = "music/lyrics.lrc"
+"""Where the upload endpoint stores the lyrics (tool-managed, relative to the workspace)."""
 MAX_LRC_BYTES = 200_000
 LAST_LINE_SECONDS = 5.0
 _PAST_END_TOLERANCE = 1.0
@@ -94,4 +96,16 @@ def parse_lrc(data: bytes | str, duration: float) -> list[LyricLine]:
         result.append(LyricLine(text=body, start=round(start, 6), end=round(min(end, duration), 6)))
     if not result:
         raise LyricsError(["至少要有一句歌词（只有结束标记或元信息）"])
+    return result
+
+
+def clip_to_range(lines: list[LyricLine], start: float, end: float) -> list[LyricLine]:
+    """Lines inside `[start, end]`, relative to `start`; straddlers are cut, others dropped."""
+    result: list[LyricLine] = []
+    for line in lines:
+        first, last = max(line.start, start), min(line.end, end)
+        if last > first:
+            result.append(
+                LyricLine(text=line.text, start=round(first - start, 6), end=round(last - start, 6))
+            )
     return result

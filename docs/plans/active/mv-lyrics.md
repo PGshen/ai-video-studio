@@ -10,7 +10,8 @@
 | 里程碑 | 多形态视频后续（produce 阶段之后） |
 | 设计依据 | [mv-lyrics 设计](../../design/2026-10-07-mv-lyrics.md)（负责人 2026-10-07 批准） |
 | 分支 | `feat/mv-lyrics`，从 main 切出（produce 阶段已合入 main） |
-| 执行方式 | 待负责人选择（内联 / 子代理逐任务评审）；整分支完成后由一个独立评审检查 |
+| 批准记录 | 2026-10-07：负责人批准计划，选择本会话内联执行；`feat/produce-stage` 已先合入 main（`560f131`），本分支从 main 切出 |
+| 执行方式 | 本会话内联（不派子代理），完成后由一个独立评审检查整个分支 |
 
 ## 目标
 
@@ -68,7 +69,7 @@
 - **完成标准**：`timeline` 的其余测试不变且通过；import-linter 契约保持。
 - **验证命令**：`make check`。
 
-### T2：时间轴与运行时（待开始）
+### T2：时间轴与运行时（完成）
 
 - **目标**：歌词进入时间轴并按区间截取；场景脚本能用 `env.lyrics`/`env.lyric()`。
 - **涉及文件**：`backend/src/studio/timeline/schema.py`（`lyrics: list[LyricLine]`）、`timeline/load.py`（`_load_produce_import` 读 `music/lyrics.lrc`，按 `range` 截取并平移，传给 `build_timeline`）、`timeline/build.py`（`MusicInput`/`TimelineLayers` 带上歌词）、`backend/src/studio/engines/render/html/runtime.js`（`env.lyrics`、`env.lyric()`）、`engines/render/html/probe.py`（错误提示里列出新接口）；测试 `tests/timeline/test_load*.py`、`tests/engines/…` 里 `runtime` 相关用例与一个真实 Chromium 的 `slow` 用例。
@@ -149,10 +150,11 @@
 ## 进度
 
 - T1 完成（`timeline/lyrics.py`、`LyricLine`、27 个解析测试，`make check` 绿）。
+- T2 完成（`Timeline.lyrics` 有类型，`_load_produce_import` 读 `music/lyrics.lrc` 并按 `range` 截取，`runtime.js` 的 `env.lyrics`/`env.lyric()`；7 个时间轴测试 + 3 个真实 Chromium 用例；`make check` 绿，相关 `slow` 用例 31 个通过）。
 
 ## 下一步
 
-- T2：时间轴与运行时。
+- T3：上传接口、概况与托管文件。
 
 ## 决策记录
 
@@ -163,6 +165,8 @@
 ## 意外与发现
 
 - 2026-10-07：解析时落在 `[歌曲时长, 时长+1 秒]` 内的句子（如歌曲末尾稍晚的时间戳）不报错，但自身不成为歌词行（`start >= duration` 丢弃），仍作为上一句的结束边界；晚于 `时长+1` 才报错。`[offset:]` 造成的负时间钳到 0，不报错。
+
+- 2026-10-07：`env.lyric()` 同一时刻多句时取开始最晚的，并列取文件里靠前的（双语歌词的第二句要从 `env.lyrics` 里取）；`LYRICS_PATH` 常量放在 `timeline/lyrics.py`（`stages` 可以 import `timeline`），T3 直接复用，不再放 `stages/common/music_source.py`。
 
 ## 阻塞
 
