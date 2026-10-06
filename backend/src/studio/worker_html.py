@@ -38,6 +38,7 @@ from studio.engines.render.mix import (
 from studio.jobs import heartbeat, update_progress
 from studio.timeline import TimelineError
 from studio.timeline.load import TimelineSources, load_timeline
+from studio.timeline.schema import Timeline
 from studio.workspace import BlobStore, ScopeError, create_snapshot, safe_path
 
 ENGINE_VERSION = "html-v1"
@@ -110,6 +111,17 @@ def _scene_sources(workdir: Path, scene_ids: Sequence[str], errors: list[str]) -
         else:
             sources[scene_id] = text
     return sources
+
+
+def _lyrics_hash(timeline: Timeline) -> str:
+    """Hash of the lyric lines this film was rendered with (after range clipping)."""
+    canonical = json.dumps(
+        [line.model_dump(mode="json") for line in timeline.lyrics],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _audio_sources(
@@ -390,6 +402,7 @@ async def _run_html_job(
             ),
         },
         **({"music_hash": score.hash} if score is not None and music_source == "synth" else {}),
+        **({"lyrics_hash": _lyrics_hash(loaded.timeline)} if loaded.timeline.lyrics else {}),
         "rendered_at": datetime.now(UTC).isoformat(),
     }
     (output_dir / "final.json").write_text(

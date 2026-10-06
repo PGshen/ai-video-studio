@@ -109,7 +109,7 @@
 - **完成标准**：无歌词的 `concept` 全部既有测试不变且通过。
 - **验证命令**：`make check`。
 
-### T5：`produce` 的歌词支持（待开始）
+### T5：`produce` 的歌词支持（完成）
 
 - **目标**：模型在有歌词时拿到范例与规则，预览与校验围着歌词转，成片记录歌词版本。
 - **涉及文件**：`backend/src/studio/stages/produce/prepare.py`、`produce/prompt.md`；新增范例 `backend/src/studio/stages/common/scenes/exemplar/lyrics-techniques.js`（常量 `LYRICS_EXEMPLAR` 放在 `common/scenes/__init__.py`）；`engines/render/html/probe.py: reel_sample_times`（加歌词起始采样）；`stages/common/scenes/render_preview_html.py` 与 `validate_scenes_html.py`（带入歌词、警告）；`backend/src/studio/worker_html.py`（`final.json.lyrics_hash`）；测试 `tests/stages/test_produce_*.py`、`tests/engines/…` 的采样用例、`tests/test_worker_html*.py`。
@@ -152,23 +152,24 @@
 - T1 完成（`timeline/lyrics.py`、`LyricLine`、27 个解析测试，`make check` 绿）。
 - T2 完成（`Timeline.lyrics` 有类型，`_load_produce_import` 读 `music/lyrics.lrc` 并按 `range` 截取，`runtime.js` 的 `env.lyrics`/`env.lyric()`；7 个时间轴测试 + 3 个真实 Chromium 用例；`make check` 绿，相关 `slow` 用例 31 个通过）。
 - T3 完成（`POST/DELETE /music/lyrics`、`MusicMetaOut.lyrics`、`analyze_music` 的 `lyrics_note`、`music/lyrics.lrc` 进 `concept`/`produce` 的托管文件；11 个接口测试 + 3 个概况测试 + 范围与 stale 测试；`make check` 绿）。
-
 - T4 完成（`sections_for`、`check_concept_text(text, lyrics)`、`workspace_lyrics`、提示词、`status_summary`；12 个新测试，`make check` 绿）。
+- T5 完成（歌词采样 `_lyric_times`、没引用 `env.lyric` 的警告、`lyrics-techniques.js` 与 `prepare_turn` 条件拷贝、提示词歌词章节、`final.json.lyrics_hash`；新增 12 个测试含真实 Chromium 跑范例；`make check` 绿）。
 
 ## 下一步
 
-- T5：`produce` 的歌词支持。
+- T6：前端。
 
 ## 决策记录
 
 - D1（2026-10-07）：LRC 解析放在 `timeline`（纯能力层）而不是 `stages`，因为时间轴加载器、上传接口、`concept` 检查都要用，放 `stages` 会被阶段互不 import 的契约卡住。
 - D2（2026-10-07）：删除歌词接口做成幂等（不存在也返回成功），前端不需要先判断。
-- D3（2026-10-07）：`concept` 的「引用至少一句真实歌词」只做逐字包含（忽略首尾与全半角空白），不做模糊匹配；模型引用时改了几个字会被拒绝，错误信息给出 LRC 里最接近的几句帮它改正。
+- D3（2026-10-07）：`concept` 的「引用至少一句真实歌词」只做逐字包含（忽略所有空白，含全角），不做模糊匹配；模型引用时改了几个字会被拒绝，错误信息列出歌词开头三句作为例子（没有做「最接近」的模糊搜索）；单字行（如「啊」）在有更长的行时不算引用。
+- D4（2026-10-07）：`final.json.lyrics_hash` 取时间轴里（已按截取区间裁剪的）歌词行的规范 JSON 哈希，而不是 `lyrics.lrc` 文件字节的哈希：它描述的是这次渲染真正用到的歌词，不受「读文件之后又被换」影响。
+- D5（2026-10-07）：预览歌词采样点取句首后 0.3 秒（短句取中点），每个镜头最多 8 个歌词采样，其余仍由 16 张的总上限收口。
 
 ## 意外与发现
 
 - 2026-10-07：解析时落在 `[歌曲时长, 时长+1 秒]` 内的句子（如歌曲末尾稍晚的时间戳）不报错，但自身不成为歌词行（`start >= duration` 丢弃），仍作为上一句的结束边界；晚于 `时长+1` 才报错。`[offset:]` 造成的负时间钳到 0，不报错。
-
 - 2026-10-07：`env.lyric()` 同一时刻多句时取开始最晚的，并列取文件里靠前的（双语歌词的第二句要从 `env.lyrics` 里取）；`LYRICS_PATH` 常量放在 `timeline/lyrics.py`（`stages` 可以 import `timeline`），T3 直接复用，不再放 `stages/common/music_source.py`。
 - 2026-10-07：歌词上传端点用 `request.form()`（歌词 ≤ 200 KB，不需要像歌曲那样流式解析）；`Content-Length` 超过 400 KB 直接拒绝。meta 里的歌词按整曲秒给（不随 `range` 平移，与 `sections` 一致）；歌曲未分析时没有时长，最后一句取开始后 5 秒。
 

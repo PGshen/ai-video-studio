@@ -455,3 +455,56 @@ def test_frequent_event_names_do_not_flood_the_samples() -> None:
         if any(abs(t - (k["start"] + 0.04)) < 1e-6 for k in kicks if section["start"] <= k["start"])
     ]
     assert len(near_kicks) < len(times)
+
+
+def _with_lyrics(timeline: dict, lines: list[tuple[str, float, float]]) -> dict:
+    return {
+        **timeline,
+        "lyrics": [{"text": text, "start": start, "end": end} for text, start, end in lines],
+    }
+
+
+def test_reel_samples_include_the_start_of_each_lyric_line_in_the_shot() -> None:
+    from studio.engines.render.html.probe import reel_sample_times
+
+    timeline = _gridless()
+    section = timeline["sections"][1]
+    mid = (section["start"] + section["end"]) / 2
+    inside = (mid, mid + 2.0)
+    outside = (section["end"] + 1.0, section["end"] + 3.0)
+    timeline = _with_lyrics(timeline, [("在", *inside), ("外", *outside)])
+    times = reel_sample_times(timeline, "s2")
+    assert any(abs(t - (inside[0] + 0.3)) < 1e-6 for t in times)
+    assert not any(abs(t - (outside[0] + 0.3)) < 1e-6 for t in times)
+
+
+def test_a_short_lyric_line_is_sampled_inside_the_line() -> None:
+    from studio.engines.render.html.probe import reel_sample_times
+
+    timeline = _gridless()
+    section = timeline["sections"][1]
+    start = section["start"] + 1.0
+    timeline = _with_lyrics(timeline, [("短", start, start + 0.2)])
+    times = reel_sample_times(timeline, "s2")
+    assert any(abs(t - (start + 0.1)) < 1e-6 for t in times)
+
+
+def test_many_lyric_lines_are_thinned_and_the_cap_still_holds() -> None:
+    from studio.engines.render.html.probe import reel_sample_times
+
+    timeline = _gridless()
+    section = timeline["sections"][1]
+    span = section["end"] - section["start"]
+    lines = [
+        (f"句{i}", section["start"] + span * i / 40, section["start"] + span * (i + 1) / 40)
+        for i in range(40)
+    ]
+    times = reel_sample_times(_with_lyrics(timeline, lines), "s2")
+    assert len(times) <= 16 and times == sorted(set(times))
+
+
+def test_without_lyrics_the_samples_are_unchanged() -> None:
+    from studio.engines.render.html.probe import reel_sample_times
+
+    timeline = _gridless()
+    assert reel_sample_times({**timeline, "lyrics": []}, "s2") == reel_sample_times(timeline, "s2")

@@ -85,6 +85,21 @@ def _lib_text(workdir: Path) -> str:
     return "\n".join(texts)
 
 
+_LYRIC_REFERENCE = re.compile(r"\benv\s*\.\s*lyrics?\b")
+
+
+def _mentions_lyrics(workdir: Path) -> bool:
+    sources = [
+        path.read_text(encoding="utf-8")
+        for path in sorted((workdir / "animation" / "scenes").glob("*.js"))
+    ]
+    sources.append(_lib_text(workdir))
+    global_js = workdir / "animation" / "global.js"
+    if global_js.is_file():
+        sources.append(global_js.read_text(encoding="utf-8"))
+    return any(_LYRIC_REFERENCE.search(strip_comments(text)) for text in sources)
+
+
 def _pre_browser_checks(
     workdir: Path, timeline: dict[str, Any], targets: list[str], single: bool, report: _Report
 ) -> None:
@@ -103,6 +118,12 @@ def _pre_browser_checks(
                 report.warn(f"{issue.path}:{issue.line} {issue.message}", _issue_scene(issue))
     for message in check_assets(workdir):
         report.error(message)
+    if not single and timeline.get("lyrics") and not _mentions_lyrics(workdir):
+        report.warn(
+            f"歌曲有 {len(timeline['lyrics'])} 句歌词（music/lyrics.lrc），但没有任何镜头脚本、"
+            "animation/lib/ 或 global.js 引用 env.lyric / env.lyrics：成片里不会出现歌词。"
+            "如果简报「歌词意象」要求画面跟着歌词走，请在脚本里用 env.lyric() 取当前这一句"
+        )
     if not single:
         known = set(scene_ids(timeline))
         for path in sorted((workdir / "animation" / "scenes").glob("*.js")):

@@ -533,3 +533,27 @@ async def test_without_lyrics_the_helpers_are_neutral(browser: HtmlBrowser, tmp_
     seen = (await page.evaluate("window.__lyric"))["s1@2.000"]
     assert seen == {"now": None, "lines": []}
     await page.close()
+
+
+async def test_the_lyrics_exemplar_runs_and_reacts_to_the_lyrics(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    from studio.engines.render.html.static_check import static_check
+    from studio.stages.common.scenes import LYRICS_EXEMPLAR
+
+    source = LYRICS_EXEMPLAR.read_text(encoding="utf-8")
+    timeline = _reel_timeline()
+    timeline["lyrics"] = _LYRICS
+    # A song timeline carries `beat`/`downbeat` onsets (see `_beat_events` in timeline.load).
+    timeline["music"]["events"] = [
+        {"name": name, "kind": "onset", "start": 0.5 * i, "end": 0.5 * i}
+        for i in range(15)
+        for name in (("beat", "downbeat") if i % 4 == 0 else ("beat",))
+    ]
+    fx.write_project(tmp_path, scenes={"s1": source, "s2": source})
+    assert static_check(tmp_path) == []
+    page = await browser.open_page(assemble(tmp_path, timeline))
+    assert isinstance(page, HtmlPage)
+    hashes = {t: await page.render_hash(t) for t in (0.5, 1.6, 2.4, 3.2, 6.5)}
+    assert len(set(hashes.values())) == len(hashes)  # the frame follows the lyric, never frozen
+    await page.close()

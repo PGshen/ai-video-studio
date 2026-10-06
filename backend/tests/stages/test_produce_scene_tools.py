@@ -340,3 +340,88 @@ async def test_real_browser_global_post_cannot_vouch_for_a_scene(
     assert "镜头 intro：" not in result.text
     preview = await _preview(project, scene_id="intro")
     assert not preview.is_error, preview.text
+
+
+# ---- lyrics (mv-lyrics design §5) -------------------------------------------------------------
+
+_LRC = "[00:05.00]第一句\n[00:15.00]第二句\n[00:25.00]第三句\n[00:35.00]第四句\n"
+_USES_LYRICS = (
+    "module.exports = { draw(ctx, lt, env) { const l = env.lyric(); "
+    "if (l) ctx.fillRect(0, 0, 10 + 90 * l.progress, 10); } };\n"
+)
+
+
+def _song_project(root: Path, *, lrc: str | None, scene: str = _SCENE) -> Path:
+    beats = [round(0.5 * i, 3) for i in range(80)]
+    _write(
+        root,
+        "music/analysis.json",
+        {
+            "source_hash": "abc",
+            "duration": 40.0,
+            "bpm": 120.0,
+            "offset": 0.0,
+            "hop": 0.5,
+            "energy": [0.2] * 80,
+            "beats": beats,
+            "downbeats": beats[::4],
+        },
+    )
+    (root / "music" / "source.mp3").write_bytes(b"x")
+    if lrc is not None:
+        (root / "music" / "lyrics.lrc").write_text(lrc, encoding="utf-8")
+    _write(
+        root,
+        "animation/shots.json",
+        {"shots": [{"id": "a", "start": 0, "end": 20}, {"id": "b", "start": 20, "end": 40}]},
+    )
+    fx.write_project(root, scenes={"a": scene, "b": scene})
+    return root
+
+
+async def test_lyrics_without_any_reference_in_the_scenes_is_a_warning(
+    tmp_path: Path, behaviour: Behaviour
+) -> None:
+    behaviour.hash_fn = _follows_the_music
+    root = _song_project(tmp_path, lrc=_LRC)
+    result = await _validate(root)
+    assert not result.is_error, result.text
+    assert "警告" in result.text and "env.lyric" in result.text and "4 句" in result.text
+
+
+async def test_a_scene_that_reads_the_lyrics_silences_the_warning(
+    tmp_path: Path, behaviour: Behaviour
+) -> None:
+    behaviour.hash_fn = _follows_the_music
+    root = _song_project(tmp_path, lrc=_LRC)
+    (root / "animation" / "scenes" / "b.js").write_text(_USES_LYRICS)
+    assert "env.lyric" not in (await _validate(root)).text
+
+
+async def test_validating_one_scene_never_asks_for_lyrics(
+    tmp_path: Path, behaviour: Behaviour
+) -> None:
+    behaviour.hash_fn = _follows_the_music
+    root = _song_project(tmp_path, lrc=_LRC)
+    assert "env.lyric" not in (await _validate(root, scene_id="a")).text
+
+
+async def test_without_lyrics_there_is_no_lyrics_warning(
+    tmp_path: Path, behaviour: Behaviour
+) -> None:
+    behaviour.hash_fn = _follows_the_music
+    root = _song_project(tmp_path, lrc=None)
+    assert "env.lyric" not in (await _validate(root)).text
+
+
+async def test_preview_samples_the_start_of_each_lyric_in_the_shot(
+    tmp_path: Path, behaviour: Behaviour
+) -> None:
+    root = _song_project(tmp_path, lrc=_LRC)
+    result = await _preview(root, scene_id="b")
+    assert not result.is_error, result.text
+    seen = [
+        float(line.split()[0][2:]) for line in result.text.splitlines() if line.startswith("t=")
+    ]
+    assert any(abs(t - 25.3) < 0.01 for t in seen) and any(abs(t - 35.3) < 0.01 for t in seen)
+    assert not any(abs(t - 15.3) < 0.01 for t in seen)  # that line belongs to the other shot
