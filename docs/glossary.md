@@ -53,3 +53,5 @@
 | produce 阶段 | produce stage | 短片与 MV 的第二个阶段「配乐与动画」：模型自己决定节拍、镜头划分与对齐，配乐和画面放在一起做；上游只有 `concept/brief.md` |
 | 镜头划分 | shots / `shots.json` | `animation/shots.json`：模型写的 `[{id, label, start, end}]`（秒，首尾相接、覆盖整段音频），系统只检查这三条 |
 | 硬性要求 | hard requirements | `concept/brief.md` 里用户确认的必须项与禁忌；`produce` 不能放宽 |
+| 歌词意象 | lyric imagery | 有歌词时 `concept/brief.md` 多出的一章：逐句或逐段写「歌词原句 → 画面隐喻 → 关键字 → 卡点」，用户确认简报即确认意象；`produce` 照着做 |
+| 歌词（`lyrics.lrc`） | lyrics | MV 可选上传的带时间戳 LRC，存为 `music/lyrics.lrc`（工具托管）；解析成 `LyricLine {text, start, end}`，场景脚本用 `env.lyric()`/`env.lyrics` 取 |
