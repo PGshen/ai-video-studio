@@ -139,6 +139,7 @@ modules = [
     "studio.stages.concept",
     "studio.stages.beatsheet",
     "studio.stages.music",
+    "studio.stages.produce",
 ]
 
 [[tool.importlinter.contracts]]
@@ -190,6 +191,7 @@ forbidden_modules = [
     "studio.stages.concept",
     "studio.stages.beatsheet",
     "studio.stages.music",
+    "studio.stages.produce",
     "studio.stages.style",
     "studio.stages.common",
 ]

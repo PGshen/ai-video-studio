@@ -14,11 +14,12 @@ import json
 import shutil
 from pathlib import Path
 
+from studio.stages.common.score import AUDIO_EXEMPLAR
 from studio.stages.common.score.sources import import_source, infer_sources
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 
-_EXEMPLAR = Path(__file__).parent / "exemplar" / "audio-techniques.py"
+_EXEMPLAR = AUDIO_EXEMPLAR
 TIMELINE_PATH = "upstream/timeline.json"
 ERROR_PATH = "upstream/timeline.error.txt"
 _NO_UPSTREAM = (

@@ -113,7 +113,7 @@
 - **完成标准**：讲解类的音乐测试全部通过；新路径覆盖上述情形。
 - **验证命令**：`make check`。
 
-### T4：`produce` 阶段本体（待开始）
+### T4：`produce` 阶段本体（完成）
 
 - **目标**：注册 `produce` 阶段，含写入范围、工具集合、`prepare_turn`、定稿条件、状态摘要与提示词。
 - **涉及文件**：`backend/src/studio/stages/produce/__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`、`exemplar/`（复用 `music/exemplar/audio-techniques.py` 与 `animation_html/exemplar/canvas-techniques.js`，由 `prepare_turn` 复制，不复制文件本体）、`backend/tests/stages/test_produce_stage.py`（新）、`test_produce_prompt.py`（新）、`backend/src/studio/main.py`（注册）。
@@ -209,6 +209,7 @@
 
 ## 进度
 
+- 2026-10-06 — T4 — 完成：`stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`）、金样本移到 `common/{score,scenes}/exemplar`、`main.py` 注册、import-linter 契约加入 `produce`；`make check` 全绿。`validate_scenes_html`/`render_preview_html` 在 `produce` 下的行为留给 T5（其 `stages` 集合在 T5 补）。
 - 2026-10-06 — T4 前置 — 完成：共用工具搬到 `stages/common/score`、`common/scenes`（D7），`make check` 全绿。
 - 2026-10-06 — T3 — 完成：`render_music_core(timeline=None)` 自由模式（脚本无时间轴输入、不重定时、`render.json` 无 `base_hash`、`bpm` 可选；`run_compose` 的 `timeline_path` 可空；`validate_events(bpm_required=…)`）；`render_music` 按 `ctx.stage == "produce"` 分流，`analyze_music` 在 `concept`/`produce` 给出 `range.json` 的提示；`compose_free.py` 夹具。
 - 2026-10-06 — T2 — 完成：`timeline/shots.py`（`parse_shots`、`parse_range`）、`TimelineSources.produce`、短片与 MV 的读取（MV 事件由 `beats`/`downbeats` 生成 `beat`/`downbeat`）；`runtime.js` 的 `bt/bar/moment` 报错加了替代写法；`make check` 全绿。
@@ -216,7 +217,7 @@
 
 ## 下一步
 
-- 从 T4 开始：先写 `backend/tests/stages/test_produce_stage.py`（写入范围、`finalize_blockers`、`status_summary`、形态判断、错误形态的工具提示）和 `test_produce_prompt.py`，再建 `backend/src/studio/stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`），在 `main.py` 注册。`render_music` / `analyze_music` 的 `stages` 已含 `produce`，其余工具（`validate_scenes_html`、`render_preview_html`、`suggest_upstream_change`）的 `stages` 在 T4/T5 补。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
+- 从 T5 开始：先改 `backend/tests/stages/test_animation_html_tools.py` / `test_animation_preview.py`（`produce` 形态的用例：镜头来自 `shots.json`、无 `upstream/timeline.json`、音乐平移警告降级、预览采样、图片预算），再改 `stages/common/scenes/helpers.py`（时间轴读取入口：`ctx.stage == "produce"` 时用 `load_timeline(TimelineSources(..., produce=True))`）、`validate_scenes_html.py`、`render_preview_html.py`，并把两个工具的 `stages` 集合加上 `"produce"`。（以下是已完成的 T4 记录，保留作参考：）先写 `backend/tests/stages/test_produce_stage.py`（写入范围、`finalize_blockers`、`status_summary`、形态判断、错误形态的工具提示）和 `test_produce_prompt.py`，再建 `backend/src/studio/stages/produce/`（`__init__.py`、`prepare.py`、`blockers.py`、`prompt.md`），在 `main.py` 注册。`render_music` / `analyze_music` 的 `stages` 已含 `produce`，其余工具（`validate_scenes_html`、`render_preview_html`、`suggest_upstream_change`）的 `stages` 在 T4/T5 补。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
 
 ## 决策记录
 

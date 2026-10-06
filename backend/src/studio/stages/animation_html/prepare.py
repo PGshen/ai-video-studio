@@ -12,11 +12,12 @@ import shutil
 from pathlib import Path
 
 from studio.stages.common.music_source import find_source
+from studio.stages.common.scenes import CANVAS_EXEMPLAR
 from studio.stages.common.scenes.helpers import ERROR_PATH, TIMELINE_PATH
 from studio.timeline import TimelineError, TimelineLayers, build_timeline, narration_from_documents
 from studio.timeline.load import TimelineSources, load_timeline
 
-_EXEMPLAR = Path(__file__).parent / "exemplar" / "canvas-techniques.js"
+_EXEMPLAR = CANVAS_EXEMPLAR
 
 
 def _read_json(path: Path) -> dict:

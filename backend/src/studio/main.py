@@ -54,6 +54,7 @@ from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.concept import STAGE as CONCEPT_STAGE
 from studio.stages.music import STAGE as MUSIC_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
+from studio.stages.produce import STAGE as PRODUCE_STAGE
 from studio.stages.style import STAGE as STYLE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
 from studio.workspace import BlobStore
@@ -77,6 +78,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         CONCEPT_STAGE,
         BEATSHEET_STAGE,
         MUSIC_STAGE,
+        PRODUCE_STAGE,
         STYLE_STAGE,
     ):
         registry.register(stage)
