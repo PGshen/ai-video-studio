@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 导入音乐的右栏：源文件、分析摘要（BPM、置信度、拟合残差、时长、警告）、`sections.json` 的校验结果，
- * 以及"源文件已更换"的醒目提示。只展示：修改段落交给 agent。
+ * 歌曲（MV）的右栏：源文件、分析摘要（BPM、置信度、拟合残差、时长、警告），以及"源文件已更换"的
+ * 醒目提示。分析的 BPM 与网格只是参考：怎么用交给 agent。只展示。
  */
 import { computed } from 'vue'
 import type { MusicMetaOut } from '@/types/api'
@@ -10,7 +10,6 @@ import { analysisRows } from './importView'
 const props = defineProps<{ meta: MusicMetaOut }>()
 
 const rows = computed(() => analysisRows(props.meta))
-const check = computed(() => props.meta.sections_check)
 
 function megabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -28,7 +27,7 @@ function megabytes(bytes: number): string {
       role="status"
       data-testid="music-stale"
     >
-      源文件已更换，现有分析与段落对应的是另一首歌。请让 agent 重新分析（analyze_music）。
+      源文件已更换，现有分析对应的是另一首歌。请让 agent 重新分析（analyze_music）。
     </p>
 
     <p
@@ -68,45 +67,5 @@ function megabytes(bytes: number): string {
     >
       还没有分析。让 agent 调用 analyze_music 分析这首歌。
     </p>
-
-    <div
-      v-if="check && !meta.stale"
-      data-testid="music-check"
-    >
-      <p
-        v-if="check.ok"
-        class="text-xs"
-        data-testid="music-check-ok"
-      >
-        段落校验通过
-      </p>
-      <template v-else>
-        <p class="text-xs font-medium">
-          段落校验没有通过
-        </p>
-        <ul class="list-disc pl-5 text-xs">
-          <li
-            v-for="(error, index) in check.errors"
-            :key="index"
-            class="text-destructive"
-            data-testid="music-check-error"
-          >
-            {{ error }}
-          </li>
-        </ul>
-      </template>
-      <ul
-        v-if="check.warnings.length > 0"
-        class="list-disc pl-5 text-xs"
-      >
-        <li
-          v-for="(warning, index) in check.warnings"
-          :key="index"
-          data-testid="music-check-warning"
-        >
-          {{ warning }}
-        </li>
-      </ul>
-    </div>
   </div>
 </template>

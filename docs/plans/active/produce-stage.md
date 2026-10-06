@@ -182,7 +182,7 @@
 - **完成标准**：fake 运行时的短片与 MV 整条流程（创建 → `concept` 定稿 → `produce` 渲染 → 成片 → 定稿）通过。
 - **验证命令**：`make check`。
 
-### T9：前端画布与导航（待开始）
+### T9：前端画布与导航（完成）
 
 - **目标**：`produce` 的画布与 MV 的上传区迁移；阶段标题、设置页、类型契约同步。
 - **涉及文件**：`frontend/src/pages/ProjectWorkbenchPage.vue`（阶段分发）、`features/canvas/animation/HtmlAnimationCanvas.vue`（增加配乐标签）、`features/canvas/music/`（复用 `MusicPlayer`、`WaveformView`、`EventTable`、`EnergyView`、`RenderReport`、`SourceUploader`、`AnalysisSummary`；拆出可共用的子组件，不复制）、`features/canvas/generic/`（`concept` 画布加 MV 上传区）、`features/canvas/stageActions.ts`、`composables/stageTitles.ts`、`features/settings/settingsView.ts`、`types/api.ts`、`test/videoKindsFixture.ts`、`features/ideas/CreateProjectDialog.vue` 与对应 spec。
@@ -209,6 +209,7 @@
 
 ## 进度
 
+- 2026-10-06 — T9 — 完成：`produce` 画布复用 `HtmlAnimationCanvas`（新增 `stage` 属性与 `music` 槽，多一个「配乐」标签；页面按歌曲/合成形态填入 `ImportMusicCanvas`（不上传、compact）或 `MusicCanvas`（`stage="produce"`））；MV 的 `concept` 阶段在文件画布上方显示上传区与分析摘要；阶段标题（创意与要求、配乐与动画）、设置页阶段表、`stageActions`、类型（去掉 `sections_check`）、分析摘要与预览文案同步；新增/改写 vitest。`make check` 全绿。页面级分发没有单元测试（`ProjectWorkbenchPage` 本来就没有 spec），留给 T10 的 L4。
 - 2026-10-06 — T7 + T8 — 完成（合并实施）：流水线 `concept → produce`；删除 `beatsheet` 阶段、`validate_sections`、`notation.py`、`layers_from_beatsheet`/`layers_from_import`、`SectionInput`/`MomentInput`；`music`、`animation_html` 只服务讲解；`api/music*`、`html_preview`、`worker_html`、`animation_stage`（出片阶段解析为 `produce`）、`scene_checks`、`reopen` 适配；`music/meta` 去掉 `sections_check`；短片 `render.json` 无 `base_hash`；测试与夹具全部迁到 `produce` 形态（新增 `test_produce_pipeline.py` 等），冒烟用例改为 `concept → produce`。`make check` 全绿，`-m slow` 77 个全过（真实 Chromium、ffmpeg、沙箱）。
 - 2026-10-06 — T6 — 完成：`SECTIONS` 加「硬性要求」（八章）；`concept` 增加 `analyze_music` 工具、`music/source.*`/`analysis.*` 托管、`artifact_dirs = [concept, music]`；`concept` 提示词改写（两种项目、硬性要求、MV 先上传再分析）；`produce` 提示词补「简报写明基于歌曲但没有 source 时请用户先上传」。上传端点本来就不绑定阶段（按项目形态放行），无需改动，`test_music_upload.py` 在 `concept` 阶段上传的用例已覆盖。`make check` 全绿（夹具 `fixtures/synth_music/seed.py` 的简报补了「硬性要求」；教训：提交前必须看 `make check` 的结果，上一个提交 `e857a2f` 当时有 4 个测试失败，由紧随其后的提交修好）。
 - 2026-10-06 — T5 — 完成：`validate_scenes_html`/`render_preview_html` 的 `stages` 加 `produce`；`helpers.load_timeline` 在 `produce` 阶段按 `shots.json` 与 `music/` 即时构建时间轴；音乐平移检查在 `produce` 下降为警告；镜头数 > 40 警告；`probe.is_reel` 不再要求网格、关键时刻加入能量峰值并只取罕见事件名（≤ 12 次）。`make check` 全绿。
@@ -220,10 +221,11 @@
 
 ## 下一步
 
-- 从 T9 开始（前端画布与导航）：后端已全部切到 `concept → produce`，前端还停在旧结构。先写 vitest：`stageTitles`（加 `produce`、去 `beatsheet`）、`settingsView`、`videoKindsFixture`（两种形态的流水线为 `['concept','produce']`）、`stageActions`（`produce` 属出片阶段，没有定稿按钮，靠成片后定稿）、`ProjectWorkbenchPage` 的阶段分发（`produce` → 画布；MV 的 `concept` 阶段显示上传区）、`CreateProjectDialog`；再做 `produce` 画布（以 `HtmlAnimationCanvas` 为主体，加配乐标签页）和 `concept` 的上传区迁移；类型 `types/api.ts` 去掉 `sections_check`。后端接口：`GET /music/meta`（MV：`range`、`grid`（参考）、`sections`=镜头平移到整曲秒、无 `sections_check`；短片：`bpm` 可空）、`POST /music/render`（短片，`retime_note` 为空）、`POST /music/source`、`GET /animation/html-preview/meta`、`POST /animation/finalize-render`（返回 `stage: "produce"`）。
+- 从 T10 开始（文档、冒烟与 L4）：先同步文档（`docs/ARCHITECTURE.md` 阶段与 `stages/common/{score,scenes}` 的共用关系、`docs/glossary.md`、`docs/quality/QUALITY.md`、`docs/references/import-music-mv.md` 与新建 produce 参考、`docs/plans/TODO.md`）；再用 `make smoke` 的短片与 MV 用例各跑一次真实模型（本机 Claude 登录，MV 需要 `STUDIO_SMOKE_SONG`，没有歌就跳过并如实记录）；最后控制者在内置浏览器里做 L4：创建两种项目、MV 在 `concept` 上传并分析、`produce` 的配乐标签与实时预览、出片与定稿，并用现场的毒化会话（项目 `f67bd800…`，会话 `eed19681…`）再发一轮确认 1 MiB 问题已解。
 
 ## 决策记录
 
+- D14（2026-10-06）：features 之间不能互相 import（ESLint 规则），所以 `HtmlAnimationCanvas` 不直接引用 `music/` 下的组件，而是开一个 `music` 槽，由 `ProjectWorkbenchPage` 按歌曲/合成形态填进去。阶段显示名「创意」改为「创意与要求」（前后端各一份 `STAGE_TITLES`）。
 - D11（2026-10-06）：T7 与 T8 合并实施——旧路径（`beatsheet`、`sections.json`）还被 api/worker/预览读着，必须先让它们走 `produce` 再删，分开提交会有一段红灯。`music` 阶段瘦身为只服务「讲解 + 背景乐」，`render_music_core` 去掉 `section_energy`；`engines.audio.analyze` 的 `section_energy` 形参保留（引擎层纯能力，其测试覆盖了趋势警告）。
 - D12（2026-10-06）：`api/projects.py` 的 `reopen` 原来只对 `animation` 撤销「已完成」标记；改为对项目的出片阶段（`animation`/`animation_html`/`produce`）都撤销——顺带修了 `animation_html` 的同类遗漏。
 - D13（2026-10-06）：`validate_scenes_html` 的音乐平移检查彻底降为警告（不再保留 `strict` 分支）——旧的错误级别只服务过去的短片/MV，现在它们都是 `produce`。

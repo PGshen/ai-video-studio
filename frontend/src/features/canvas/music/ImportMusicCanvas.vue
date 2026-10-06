@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * 音乐 MV（导入音乐）的音乐画布（子项目 4B 设计 §4）：未上传时是上传区；已上传后左侧是播放器与能量
- * 曲线（叠加拍线、段落、截取区间，点击跳转），右侧是分析摘要与段落校验结果。只展示，不编辑
- * `sections.json`——修改交给 agent。定稿按钮等放在 `actions` 槽里。
+ * 音乐 MV（歌曲）的音乐画布（子项目 4B 设计 §4，produce 设计 §9）：未上传时是上传区（只在「创意与要求」
+ * 阶段）；已上传后左侧是播放器与能量曲线（叠加分析的参考拍线、镜头划分、截取区间，点击跳转），右侧是
+ * 分析摘要。只展示——镜头划分、截取区间都由 agent 写。定稿按钮等放在 `actions` 槽里。
  */
 import { computed, ref } from 'vue'
 import { musicAudioUrl } from '@/api/endpoints'
@@ -13,7 +13,17 @@ import EnergyView from './EnergyView.vue'
 import SourceUploader from './SourceUploader.vue'
 import { formatClock } from './musicView'
 
-const props = defineProps<{ projectId: string; busy: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    projectId: string
+    busy: boolean
+    /** 显示上传区。歌曲在「创意与要求」阶段上传；「配乐与动画」里只看分析，不换歌。 */
+    allowUpload?: boolean
+    /** 嵌在别的画布里时不显示自己的标题行。 */
+    compact?: boolean
+  }>(),
+  { allowUpload: true, compact: false },
+)
 
 const { data: meta, error: metaError } = useMusicMetaQuery(() => props.projectId)
 const problem = computed(() =>
@@ -40,7 +50,10 @@ defineExpose({ seek })
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <div class="flex flex-wrap items-center gap-1 text-sm">
+    <div
+      v-if="!compact"
+      class="flex flex-wrap items-center gap-1 text-sm"
+    >
       <span class="font-medium">音乐</span>
       <div class="ml-auto flex items-center gap-2">
         <slot name="actions" />
@@ -71,11 +84,19 @@ defineExpose({ seek })
       data-testid="music-not-uploaded"
     >
       <SourceUploader
+        v-if="allowUpload"
         :project-id="projectId"
         :busy="busy"
         :has-source="false"
         @uploaded="uploadedNote = true"
       />
+      <p
+        v-else
+        class="text-muted-foreground text-sm"
+        data-testid="music-upload-elsewhere"
+      >
+        还没有上传歌曲。回到「创意与要求」阶段上传，上传后让 agent 分析。
+      </p>
     </div>
 
     <div
@@ -118,6 +139,7 @@ defineExpose({ seek })
           {{ formatClock(currentTime) }} / {{ formatClock(duration) }}
         </p>
         <SourceUploader
+          v-if="allowUpload"
           :project-id="projectId"
           :busy="busy"
           :has-source="true"

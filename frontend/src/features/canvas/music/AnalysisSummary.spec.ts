@@ -19,7 +19,6 @@ const BASE: MusicMetaOut = {
   grid: null,
   range: null,
   energy: null,
-  sections_check: null,
 }
 const ANALYSIS = { bpm: 76.9, confidence: 0.84, residual_ms: 14, duration: 200.5, warnings: [] }
 const mountSummary = (over: Partial<MusicMetaOut>) =>
@@ -31,11 +30,10 @@ describe('AnalysisSummary', () => {
     expect(wrapper.find('[data-testid="music-source-info"]').text()).toContain('source.mp3 · 3.0 MB')
     expect(wrapper.find('[data-testid="music-analysis-empty"]').text()).toContain('analyze_music')
     expect(wrapper.findAll('[data-testid="music-analysis-row"]')).toHaveLength(0)
-    expect(wrapper.find('[data-testid="music-check"]').exists()).toBe(false)
   })
 
-  it('已分析且校验通过：摘要行齐全，没有注意标记，显示校验通过', () => {
-    const wrapper = mountSummary({ analysis: ANALYSIS, sections_check: { ok: true, errors: [], warnings: [] } })
+  it('已分析：摘要行齐全，没有注意标记', () => {
+    const wrapper = mountSummary({ analysis: ANALYSIS })
     expect(wrapper.findAll('[data-testid="music-analysis-row"]').map((r) => r.text())).toEqual([
       '76.9',
       '0.84',
@@ -43,7 +41,7 @@ describe('AnalysisSummary', () => {
       '3:20.5',
     ])
     expect(wrapper.findAll('[data-attention="true"]')).toHaveLength(0)
-    expect(wrapper.find('[data-testid="music-check-ok"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="music-check"]').exists()).toBe(false)
   })
 
   it('低置信度与警告被标出来', () => {
@@ -53,27 +51,12 @@ describe('AnalysisSummary', () => {
     expect(wrapper.findAll('[data-attention="true"]').map((r) => r.text())).toEqual(['0.30', '拍点不稳'])
   })
 
-  it('校验有错：逐条列出错误与警告，不显示“通过”', () => {
-    const wrapper = mountSummary({
-      analysis: ANALYSIS,
-      sections_check: { ok: false, errors: ['段落 a 起点没落在强拍上', '段落重叠'], warnings: ['末段偏短'] },
-    })
-    expect(wrapper.findAll('[data-testid="music-check-error"]').map((e) => e.text())).toEqual([
-      '段落 a 起点没落在强拍上',
-      '段落重叠',
-    ])
-    expect(wrapper.findAll('[data-testid="music-check-warning"]').map((e) => e.text())).toEqual(['末段偏短'])
-    expect(wrapper.find('[data-testid="music-check-ok"]').exists()).toBe(false)
-  })
-
-  it('换歌后 stale：醒目提示，并且不再展示旧歌的分析摘要与校验', () => {
+  it('换歌后 stale：醒目提示，并且不再展示旧歌的分析摘要', () => {
     const wrapper = mountSummary({
       stale: true,
       analysis: ANALYSIS,
-      sections_check: { ok: true, errors: [], warnings: [] },
     })
     expect(wrapper.find('[data-testid="music-stale"]').text()).toContain('重新分析')
     expect(wrapper.findAll('[data-testid="music-analysis-row"]')).toHaveLength(0)
-    expect(wrapper.find('[data-testid="music-check"]').exists()).toBe(false)
   })
 })

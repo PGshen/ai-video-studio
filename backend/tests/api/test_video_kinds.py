@@ -59,7 +59,7 @@ def test_unavailable_reason_lists_missing_stages_in_pipeline_order() -> None:
     registry.register(ANIMATION_HTML)
     reel = ["concept", "produce"]
 
-    assert unavailable_reason(reel, registry) == "「创意」「配乐与动画」阶段尚未实现"
+    assert unavailable_reason(reel, registry) == "「创意与要求」「配乐与动画」阶段尚未实现"
     assert unavailable_reason(["animation_html"], registry) is None
     assert unavailable_reason(["animation_html"], registry, "import") is None
     assert unavailable_reason(["animation_html"], registry, "import", "html", False) is None
@@ -68,7 +68,7 @@ def test_unavailable_reason_lists_missing_stages_in_pipeline_order() -> None:
     assert unavailable_reason(["animation_html"], registry, "import", "manim", True) == only_mv
     # a missing stage is reported first
     assert unavailable_reason(reel, registry, "import", "html", False) == (
-        "「创意」「配乐与动画」阶段尚未实现"
+        "「创意与要求」「配乐与动画」阶段尚未实现"
     )
 
 

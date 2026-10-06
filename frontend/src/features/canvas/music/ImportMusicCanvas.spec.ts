@@ -31,7 +31,6 @@ const UPLOADED: MusicMetaOut = {
   grid: null,
   range: null,
   energy: null,
-  sections_check: null,
 }
 const ANALYSED: MusicMetaOut = {
   ...UPLOADED,
@@ -39,10 +38,9 @@ const ANALYSED: MusicMetaOut = {
   source: { ...UPLOADED.source!, duration: 20 },
   analysis: { bpm: 120, confidence: 0.9, residual_ms: 4, duration: 20, warnings: [] },
   grid: { bpm: 120, offset: 0.5, downbeats: [0.5, 2.5] },
-  range: { start: 0.5, end: 18.5 },
+  range: { start: 0, end: 20 },
   energy: { hop: 0.1, values: [0.1, 0.9, 0.5] },
   sections: [{ id: 'a', label: 'intro', start: 0.5, end: 18.5 }],
-  sections_check: { ok: true, errors: [], warnings: [] },
 }
 
 const mountCanvas = (busy = false) => mount(ImportMusicCanvas, { props: { projectId: 'p1', busy } })
@@ -52,6 +50,34 @@ describe('ImportMusicCanvas', () => {
   beforeEach(() => {
     state.meta = undefined
     state.metaError = undefined
+  })
+
+  describe('嵌在「配乐与动画」里（不允许上传、没有自己的标题行）', () => {
+    const embedded = () =>
+      mount(ImportMusicCanvas, {
+        props: { projectId: 'p1', busy: false, allowUpload: false, compact: true },
+      })
+
+    it('没上传歌曲：不显示上传区，提示回到「创意与要求」上传', () => {
+      state.meta = { ...UPLOADED, rendered: false, hash: null, source: null }
+      const wrapper = embedded()
+      expect(has(wrapper, 'music-uploader')).toBe(false)
+      expect(wrapper.find('[data-testid="music-upload-elsewhere"]').text()).toContain('创意与要求')
+    })
+
+    it('已分析：有播放器与摘要，没有「更换歌曲」入口', () => {
+      state.meta = ANALYSED
+      const wrapper = embedded()
+      expect(has(wrapper, 'music-audio')).toBe(true)
+      expect(has(wrapper, 'music-analysis')).toBe(true)
+      expect(has(wrapper, 'music-upload-button')).toBe(false)
+    })
+
+    it('compact：不渲染自己的标题行', () => {
+      state.meta = ANALYSED
+      expect(embedded().text()).not.toContain('音乐\n')
+      expect(embedded().find('.font-medium').exists()).toBe(false)
+    })
   })
 
   it('未上传：只有上传区，没有播放器与摘要', () => {
@@ -75,18 +101,16 @@ describe('ImportMusicCanvas', () => {
     expect(has(wrapper, 'music-analysis-empty')).toBe(true)
   })
 
-  it('已分析：能量曲线带叠加层，摘要与校验通过', () => {
+  it('已分析：能量曲线带叠加层与分析摘要', () => {
     state.meta = ANALYSED
     const wrapper = mountCanvas()
     expect(has(wrapper, 'energy-view')).toBe(true)
     expect(has(wrapper, 'energy-mask-left')).toBe(true)
     expect(wrapper.findAll('[data-testid="energy-section"]')).toHaveLength(1)
-    expect(has(wrapper, 'music-check-ok')).toBe(true)
+    expect(has(wrapper, 'music-analysis')).toBe(true)
   })
 
-  it('校验有错与 stale 各自可见', () => {
-    state.meta = { ...ANALYSED, sections_check: { ok: false, errors: ['x'], warnings: [] } }
-    expect(has(mountCanvas(), 'music-check-error')).toBe(true)
+  it('换歌后 stale 提示可见', () => {
     state.meta = { ...ANALYSED, stale: true }
     expect(has(mountCanvas(), 'music-stale')).toBe(true)
   })

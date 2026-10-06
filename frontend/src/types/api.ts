@@ -493,12 +493,6 @@ export interface MusicEnergyOut {
   values: number[]
 }
 
-export interface SectionsCheckOut {
-  ok: boolean
-  errors: string[]
-  warnings: string[]
-}
-
 /** `POST .../music/source` 的响应。 */
 export interface MusicSourceOut {
   filename: string
@@ -529,7 +523,6 @@ export interface MusicMetaOut {
   grid: MusicGridOut | null
   range: MusicRangeOut | null
   energy: MusicEnergyOut | null
-  sections_check: SectionsCheckOut | null
 }
 
 /** `POST .../music/render`：脚本的问题是 `ok=false`（HTTP 仍是 200）。 */

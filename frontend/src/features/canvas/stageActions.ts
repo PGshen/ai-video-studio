@@ -6,6 +6,7 @@ export const STAGES_WITH_OWN_ACTIONS: readonly string[] = [
   'topic',
   'narrative',
   'music',
+  'produce',
   'animation',
   'animation_html',
 ]

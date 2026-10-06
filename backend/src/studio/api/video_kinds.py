@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api", tags=["video-kinds"])
 # Keep in sync with the frontend `STAGE_TITLES`.
 STAGE_TITLES: dict[str, str] = {
     "topic": "选题",
-    "concept": "创意",
+    "concept": "创意与要求",
     "narrative": "叙事",
     "music": "配乐",
     "produce": "配乐与动画",
