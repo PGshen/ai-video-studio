@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -18,6 +19,17 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import Engine
 
 from studio.agent.events import ImageData
+
+MAX_TEXT_BYTES = 60_000
+"""一条工具结果里文本的 UTF-8 字节上限；超出部分在 `invoke_tool` 截断。"""
+MAX_IMAGE_BASE64_BYTES = 400_000
+"""一条工具结果里所有图片 base64 总长的上限；超出则整组丢弃（图片压缩见 `stages.common.picture`）。
+
+两个上限都按"同样内容在 CLI 的一条 JSON 消息里写两份"来定（`message` 与 `toolUseResult`，
+2026-10-06 实测）：2×(60 000 + 400 000) 加封装，仍在 SDK 缓冲区默认的 1 MiB 之内。
+"""
+_TEXT_TRUNCATED = "\n…（结果过长，已截断；需要完整内容请按文件分段读取）"
+_IMAGES_DROPPED = "\n（附图总量超过预算，已省略；请缩小范围或减少张数后重试）"
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,4 +116,19 @@ async def invoke_tool(spec: ToolSpec, ctx: ToolContext, raw_args: dict[str, Any]
     except Exception as exc:
         return ToolResult(text=f"工具执行出错：{exc}", is_error=True)
 
-    return result
+    return _within_budget(result)
+
+
+def _within_budget(result: ToolResult) -> ToolResult:
+    """所有工具结果的最后一道闸：文本截断、图片超预算整组丢弃（来源处应当已经压缩过）。"""
+    text, images = result.text, result.images
+    raw = text.encode("utf-8")
+    if len(raw) > MAX_TEXT_BYTES:
+        # `errors="ignore"` drops a multi-byte character cut in half at the boundary.
+        text = raw[:MAX_TEXT_BYTES].decode("utf-8", errors="ignore") + _TEXT_TRUNCATED
+    if sum(len(image.data_base64) for image in images) > MAX_IMAGE_BASE64_BYTES:
+        images = []
+        text += _IMAGES_DROPPED
+    if text is result.text and images is result.images:
+        return result
+    return dataclasses.replace(result, text=text, images=images)

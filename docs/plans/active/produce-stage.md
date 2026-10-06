@@ -65,7 +65,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：修复 1 MiB 消息缓冲区问题（进行中）
+### T1：修复 1 MiB 消息缓冲区问题（完成）
 
 - **根因（2026-10-06 实测）**：CLI 把工具结果里的图片在同一条消息里写两份（`message.content[].content[].source.data` 和顶层 `toolUseResult[].source.data`）。`render_music` 的 JPEG 394 KB → base64 525 324 字节，两份加上封装为 1 054 050 字节，超过 SDK 默认的 1 048 576。`common.picture` 现有预算（单张 400 KB、总 600 KB）只按一份算，所以 3A 的修复没有覆盖这个场景。第二个现象：追加轮会带上这条历史消息，所以重试同样失败。
 - **目标**：带图工具结果的序列化消息不再逼近上限；SDK 缓冲区留足余量；已毒化的会话能继续。
@@ -209,11 +209,11 @@
 
 ## 进度
 
-- 无
+- 2026-10-06 — T1 — 完成：图片预算按两份折算（总 base64 ≤ 400 kB）、`invoke_tool` 兜底（文本 ≤ 60 000 字节、超预算图片整组丢弃）、`max_buffer_size` 8 MiB、references 补记；`make check` 全绿。
 
 ## 下一步
 
-- 从 T1 开始。
+- 从 T2 开始：先写 `backend/tests/timeline/test_shots.py`（`shots.json` / `range.json` 校验与 `produce` 读取），再实现 `timeline/shots.py` 与 `TimelineSources` 的 `produce` 形态。T1 已可单独合入 `main`（现场会话的 L4 复测放在 T10）。
 
 ## 决策记录
 

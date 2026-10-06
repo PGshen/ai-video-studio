@@ -126,7 +126,7 @@ async def test_the_attached_picture_stays_well_under_the_sdk_message_limit(
     image = result.images[0]
     assert image.media_type == "image/jpeg"
     raw = base64.b64decode(image.data_base64)
-    assert raw[:3] == b"\xff\xd8\xff" and len(raw) <= 400_000
+    assert raw[:3] == b"\xff\xd8\xff" and len(raw) <= 300_000
     assert (reel / "music" / "analysis.png").read_bytes()[:4] == b"\x89PNG"
 
 
@@ -142,5 +142,5 @@ def test_a_noisy_picture_is_lowered_in_quality_then_shrunk_until_it_fits() -> No
     buffer = io.BytesIO()
     Image.fromarray(pixels).save(buffer, format="PNG")
     out = music_tool.compress_picture(buffer.getvalue())
-    assert len(out) <= 400_000
+    assert len(out) <= 300_000
     assert Image.open(io.BytesIO(out)).width < 1800  # had to shrink

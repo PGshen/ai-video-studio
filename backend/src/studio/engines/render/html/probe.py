@@ -138,7 +138,9 @@ def is_flat(metrics: FrameMetrics) -> bool:
     return metrics.std < FLAT_STD
 
 
-_MAX_SHEET_BYTES = 400_000
+_MAX_SHEET_BYTES = (
+    300_000  # raw bytes; ×4/3 base64, written twice by the CLI (see stages.common.picture)
+)
 
 
 def contact_sheet(

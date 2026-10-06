@@ -89,6 +89,11 @@ from studio.config import repo_root as default_repo_root
 
 logger = logging.getLogger(__name__)
 
+MAX_BUFFER_BYTES = 8 * 1024 * 1024
+"""SDK 读 CLI 单行 JSON 的缓冲区上限（默认 1 MiB）。CLI 把工具结果里的图片写两份，真实会话里一行
+就到了 1 054 050 字节；提高上限是兜底，第一道防线仍是 `agent.tools` 与 `stages.common.picture`
+的预算。已经带着超限消息的历史会话也靠它继续（追加轮会重放这条历史）。"""
+
 BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 WEB_TOOLS = ["WebSearch", "WebFetch"]
 
@@ -280,6 +285,7 @@ class ClaudeRuntime:
             effort=ctx.effort,
             # The prompt embeds workspace-derived text (preamble); never expand @paths in it.
             verbatim_prompts=True,
+            max_buffer_size=MAX_BUFFER_BYTES,
             max_budget_usd=ctx.budget.max_cost_usd if auth == "api_key" else None,
         )
 
