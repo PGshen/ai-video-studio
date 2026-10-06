@@ -57,6 +57,14 @@ class Energy(BaseModel):
     values: list[float]
 
 
+class LyricLine(BaseModel):
+    """One lyric line (mv-lyrics design §3.1); `start`/`end` are seconds."""
+
+    text: str
+    start: float
+    end: float
+
+
 class Music(BaseModel):
     file: str
     events: list[MusicEvent] = Field(default_factory=list)

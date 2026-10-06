@@ -6,10 +6,10 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待批准 |
+| 状态 | 执行中 |
 | 里程碑 | 多形态视频后续（produce 阶段之后） |
 | 设计依据 | [mv-lyrics 设计](../../design/2026-10-07-mv-lyrics.md)（负责人 2026-10-07 批准） |
-| 分支 | `feat/mv-lyrics`，从 `feat/produce-stage` 末端切出（produce 阶段尚未合入 main，本计划建立在它之上） |
+| 分支 | `feat/mv-lyrics`，从 main 切出（produce 阶段已合入 main） |
 | 执行方式 | 待负责人选择（内联 / 子代理逐任务评审）；整分支完成后由一个独立评审检查 |
 
 ## 目标
@@ -56,7 +56,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：LRC 解析与 `LyricLine`（待开始）
+### T1：LRC 解析与 `LyricLine`（完成）
 
 - **目标**：纯函数把 LRC 文本变成 `list[LyricLine]`，校验失败给明确原因。
 - **涉及文件**：新增 `backend/src/studio/timeline/lyrics.py`；新增 `backend/tests/timeline/test_lyrics.py`。
@@ -148,12 +148,11 @@
 
 ## 进度
 
-- 计划已写，待负责人批准与选择执行方式；尚未开工。
+- T1 完成（`timeline/lyrics.py`、`LyricLine`、27 个解析测试，`make check` 绿）。
 
 ## 下一步
 
-1. 负责人批准计划并选择执行方式。
-2. 从 `feat/produce-stage` 末端切 `feat/mv-lyrics`，从 T1 开始。
+- T2：时间轴与运行时。
 
 ## 决策记录
 
@@ -163,7 +162,7 @@
 
 ## 意外与发现
 
-- （执行中补充）
+- 2026-10-07：解析时落在 `[歌曲时长, 时长+1 秒]` 内的句子（如歌曲末尾稍晚的时间戳）不报错，但自身不成为歌词行（`start >= duration` 丢弃），仍作为上一句的结束边界；晚于 `时长+1` 才报错。`[offset:]` 造成的负时间钳到 0，不报错。
 
 ## 阻塞
 
