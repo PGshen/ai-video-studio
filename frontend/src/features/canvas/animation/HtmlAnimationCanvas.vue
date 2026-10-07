@@ -75,6 +75,31 @@ const metaProblem = computed<string | null>(() => {
   return error instanceof Error ? error.message : String(error)
 })
 
+/** 时间轴的问题逐条（服务端格式：首行总述，后面每条以「- 」开头）；没有条目时整段当一条。 */
+const metaProblemItems = computed<string[]>(() => {
+  const text = metaProblem.value
+  if (text === null) return []
+  const items = text
+    .split('\n')
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2).trim())
+  return items.length > 0 ? items : [text]
+})
+
+/** 配乐与动画刚开始：镜头划分、配乐产物还没写出来，只是「还没做」，不是出错。 */
+const produceNotStarted = computed(
+  () =>
+    props.stage === 'produce' &&
+    metaProblemItems.value.length > 0 &&
+    metaProblemItems.value.every((item) => item.includes('不存在')),
+)
+
+/** 服务端的说明已带「时间轴不可用」前缀时不再重复加。 */
+const metaProblemText = computed(() => {
+  const text = metaProblem.value ?? ''
+  return text.startsWith('时间轴不可用') ? text : `时间轴不可用：${text}`
+})
+
 const { data: fileTree } = useFileTreeQuery(() => props.projectId)
 const filePaths = computed(() => fileTree.value?.files.map((f) => f.path) ?? [])
 const { data: sceneChecks } = useSceneChecksQuery(() => props.projectId, () => sceneIds.value)
@@ -226,12 +251,19 @@ function onLoadLatest(): void {
     </div>
 
     <p
-      v-if="metaProblem"
+      v-if="produceNotStarted"
+      class="text-muted-foreground bg-muted/40 rounded border px-3 py-2 text-sm"
+      data-testid="produce-not-started"
+    >
+      还没有开始：{{ metaProblemItems.join('；') }}。让 agent 先写配乐和镜头划分，写出来后这里就能预览。
+    </p>
+    <p
+      v-else-if="metaProblem"
       class="border-destructive bg-destructive/10 rounded border px-3 py-2 text-sm"
       role="alert"
       data-testid="meta-problem"
     >
-      时间轴不可用：{{ metaProblem }}
+      {{ metaProblemText }}
     </p>
 
     <div

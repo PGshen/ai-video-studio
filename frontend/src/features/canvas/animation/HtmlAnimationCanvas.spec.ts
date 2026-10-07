@@ -175,6 +175,33 @@ describe('HtmlAnimationCanvas', () => {
         global: { stubs },
       })
 
+    it('开工前（还没有镜头划分、配乐）是中性提示，不是红色错误，也没有重复的「时间轴不可用」前缀', () => {
+      state.meta = undefined
+      state.metaError = new ApiError(
+        409,
+        '时间轴不可用，共 1 个问题：\n- animation/shots.json 不存在（在 animation/shots.json 里写镜头划分）',
+      )
+      const wrapper = mountProduce()
+      expect(wrapper.find('[data-testid="meta-problem"]').exists()).toBe(false)
+      const hint = wrapper.find('[data-testid="produce-not-started"]')
+      expect(hint.text()).toContain('还没有开始')
+      expect(hint.text()).toContain('animation/shots.json')
+      expect(hint.attributes('role')).toBeUndefined() // not an alert
+    })
+
+    it('真正的错误（文件存在但不合法）仍是红色，且前缀不重复', () => {
+      state.meta = undefined
+      state.metaError = new ApiError(
+        409,
+        '时间轴不可用，共 1 个问题：\n- animation/shots.json：镜头 a 与 b 之间有缝隙',
+      )
+      const wrapper = mountProduce()
+      expect(wrapper.find('[data-testid="produce-not-started"]').exists()).toBe(false)
+      const text = wrapper.find('[data-testid="meta-problem"]').text()
+      expect(text).toContain('有缝隙')
+      expect(text.match(/时间轴不可用/g)).toHaveLength(1)
+    })
+
     it('adds a 配乐 tab that shows the music slot, next to 镜头 / 实时预览 / 成片', async () => {
       const wrapper = mountProduce()
       const tabs = wrapper.find('[data-testid="animation-tabbar"]').text()
