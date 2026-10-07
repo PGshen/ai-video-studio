@@ -9,13 +9,14 @@ import hashlib
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TypeGuard
 
 from studio.timeline.schema import (
     Beat,
     Energy,
     Grid,
+    LyricLine,
     Music,
     MusicEvent,
     NarrationScene,
@@ -102,6 +103,8 @@ class TimelineLayers:
     music: MusicInput | None = None
     timed_sections: list[TimedSectionInput] | None = None
     """`produce`（短片、MV）的镜头划分；与 `narration` 二选一。"""
+    lyrics: list[LyricLine] = field(default_factory=list)
+    """歌词行（相对时间轴起点的秒）；只有 MV 会给。"""
 
 
 def _bpm_error(bpm: float) -> str | None:
@@ -244,6 +247,7 @@ def build_timeline(layers: TimelineLayers) -> Timeline:
         sections=sections,
         narration=narration,
         music=music,
+        lyrics=list(layers.lyrics),
     )
 
 

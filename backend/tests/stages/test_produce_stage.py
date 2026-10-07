@@ -119,6 +119,7 @@ class TestDefinition:
             ("music/analysis.png", False),
             ("music/render.json", False),
             ("music/source.mp3", False),
+            ("music/lyrics.lrc", False),
             ("music/sections.json", False),
             ("animation/other.js", False),
             ("concept/brief.md", False),
@@ -271,3 +272,24 @@ class TestStatusSummary:
         (tmp_path / "animation").mkdir()
         (tmp_path / "animation" / "shots.json").write_text("{not json", encoding="utf-8")
         assert "shots.json" in STAGE.status_summary(tmp_path)
+
+
+class TestPrepareTurnLyrics:
+    def test_the_lyrics_exemplar_is_copied_only_when_there_are_lyrics(self, tmp_path: Path) -> None:
+        STAGE.prepare_turn(tmp_path)
+        exemplars = tmp_path / "upstream" / "exemplar"
+        assert not (exemplars / "lyrics-techniques.js").exists()
+        (tmp_path / "music").mkdir()
+        (tmp_path / "music" / "lyrics.lrc").write_text("[00:01.00]词\n", encoding="utf-8")
+        STAGE.prepare_turn(tmp_path)
+        assert (exemplars / "lyrics-techniques.js").is_file()
+        assert (exemplars / "canvas-techniques.js").is_file()
+
+    def test_a_deleted_lyrics_file_takes_the_exemplar_with_it(self, tmp_path: Path) -> None:
+        (tmp_path / "music").mkdir()
+        lrc = tmp_path / "music" / "lyrics.lrc"
+        lrc.write_text("[00:01.00]词\n", encoding="utf-8")
+        STAGE.prepare_turn(tmp_path)
+        lrc.unlink()
+        STAGE.prepare_turn(tmp_path)
+        assert not (tmp_path / "upstream" / "exemplar" / "lyrics-techniques.js").exists()

@@ -3,6 +3,7 @@
  * 截取区间与段落是叠加层。时长或宽度不是正数、BPM 不是正数时返回空，坏数据不会让画布崩。
  */
 import type {
+  LyricLineOut,
   MusicEnergyOut,
   MusicGridOut,
   MusicMetaOut,
@@ -15,6 +16,8 @@ import { sectionBands, timeToX, waveformPeaks, type PeakBar, type SectionBand } 
 /** 与后端 `api.music_import.MAX_UPLOAD_BYTES`、`stages.common.music_source.SOURCE_EXTENSIONS` 一致。 */
 export const MAX_UPLOAD_BYTES = 150 * 1024 * 1024
 export const SOURCE_EXTENSIONS = ['mp3', 'wav', 'm4a', 'flac', 'ogg'] as const
+/** 与后端 `timeline.lyrics.MAX_LRC_BYTES` 一致。 */
+export const MAX_LYRICS_BYTES = 200_000
 
 const BEATS_PER_BAR = 4
 const MIN_LINE_GAP_PX = 4
@@ -136,4 +139,26 @@ export function checkSourceFile(file: Pick<File, 'name' | 'size'>): string | nul
 /** 项目设置里 `music_source === 'import'`：音乐阶段用导入形态的画布。 */
 export function isImportMusic(settings: Record<string, unknown> | null | undefined): boolean {
   return settings?.music_source === 'import'
+}
+
+/** 歌词文件的客户端检查（服务端为准）：返回中文提示，通过时为 `null`。 */
+export function checkLyricsFile(file: Pick<File, 'name' | 'size'>): string | null {
+  if (!file.name.toLowerCase().endsWith('.lrc')) return '歌词文件需要是 .lrc（带时间戳的 LRC）'
+  if (file.size === 0) return '文件是空的'
+  if (file.size > MAX_LYRICS_BYTES) return `文件超过上限 ${MAX_LYRICS_BYTES / 1000} KB`
+  return null
+}
+
+/**
+ * 播放位置 `time` 对应的歌词行下标：开始时间最晚且不晚于 `time` 的那一句（句间空隙里就是上一句），
+ * 并列取文件里靠前的（与运行时 `env.lyric()` 一致）；第一句之前为 -1。
+ */
+export function lyricAt(lines: readonly LyricLineOut[], time: number): number {
+  let found = -1
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    if (line.start > time) break
+    if (found < 0 || line.start > lines[found]!.start) found = i // ties keep the earlier line
+  }
+  return found
 }

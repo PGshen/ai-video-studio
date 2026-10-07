@@ -205,6 +205,14 @@ def test_changing_the_song_in_concept_marks_produce_stale(project: _Project) -> 
     assert project.stage("produce").status == "stale"
 
 
+def test_changing_the_lyrics_in_concept_marks_produce_stale(project: _Project) -> None:
+    _finalize_all(project)
+    project.reopen("concept")
+    (project.workdir / "music" / "lyrics.lrc").write_text("[00:01.00]新歌词\n", encoding="utf-8")
+    project.finalize("concept")
+    assert project.stage("produce").status == "stale"
+
+
 def test_a_new_brief_marks_produce_stale(project: _Project) -> None:
     _finalize_all(project)
     project.reopen("concept")

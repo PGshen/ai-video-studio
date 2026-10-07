@@ -12,6 +12,8 @@ const BASE: MusicMetaOut = {
   bpm: null,
   events: [],
   sections: [],
+  lyrics: [],
+  lyrics_error: null,
   waveform: [],
   metrics: null,
   source: { filename: 'source.mp3', size: 3 * 1024 * 1024, sha256: 'h', duration: null },

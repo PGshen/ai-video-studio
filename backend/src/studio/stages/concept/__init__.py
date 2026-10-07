@@ -16,9 +16,11 @@ from studio.stages.common.music_source import SOURCE_EXTENSIONS
 from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL
 from studio.stages.concept.check_concept import (
     CHECK_CONCEPT_TOOL,
-    SECTIONS,
     check_workspace,
+    sections_for,
+    workspace_lyrics,
 )
+from studio.timeline.lyrics import LyricsError
 from studio.workspace.scope import WriteScope
 
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
@@ -28,6 +30,7 @@ _WRITE_SCOPE = WriteScope(
         "music/analysis.json",
         "music/analysis.png",
         *(f"music/source.{ext}" for ext in SOURCE_EXTENSIONS),  # written by the upload endpoint
+        "music/lyrics.lrc",  # written by the upload endpoint
     ],
 )
 _TOOLS: list[ToolSpec] = [WEB_SEARCH_TOOL, FETCH_URL_TOOL, CHECK_CONCEPT_TOOL, ANALYZE_MUSIC_TOOL]
@@ -63,7 +66,13 @@ class ConceptStage:
 
     def status_summary(self, workdir: Path) -> str:
         result = check_workspace(workdir)
-        return f"brief.md 已有 {result.found_sections}/{len(SECTIONS)} 个章节"
+        try:
+            lyrics = workspace_lyrics(workdir)
+        except LyricsError:
+            lyrics = []
+        total = len(sections_for(has_lyrics=bool(lyrics)))
+        note = f"；歌词 {len(lyrics)} 句" if lyrics else ""
+        return f"brief.md 已有 {result.found_sections}/{total} 个章节{note}"
 
 
 STAGE = ConceptStage()

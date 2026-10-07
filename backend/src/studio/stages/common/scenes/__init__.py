@@ -7,3 +7,6 @@ from pathlib import Path
 
 CANVAS_EXEMPLAR = Path(__file__).parent / "exemplar" / "canvas-techniques.js"
 """系统自带的画面技法金样本；阶段的 `prepare_turn` 把它复制到 `upstream/exemplar/`。"""
+
+LYRICS_EXEMPLAR = Path(__file__).parent / "exemplar" / "lyrics-techniques.js"
+"""歌词驱动的画面金样本（字幕条、关键字、数字滚轮、曲线、打字、整屏大字）；只在项目有歌词时复制。"""

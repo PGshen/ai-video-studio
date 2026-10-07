@@ -25,6 +25,7 @@ import pytest
 
 from studio.agent.stage_flow import finalize
 from studio.engines.audio.probe import probe_audio
+from studio.timeline.lyrics import parse_lrc
 
 from .support import (
     IMPORT_MUSIC_EVIDENCE_DIR,
@@ -41,17 +42,46 @@ DEFAULT_SONG = REPO_ROOT / "docs" / "temp" / "海阔天空.mp3"
 
 _CONCEPT_PROMPT = (
     "我们要给工作区里的这首歌（music/source.mp3，已上传）做一支没有旁白的音乐 MV。"
-    "先调用 analyze_music 看歌的 BPM、总长和能量曲线，再按提示词写出 concept/brief.md："
-    "情绪走向、视觉母题、段落草图；目标时长按整首歌，硬性要求写“只用黑白灰加一种强调色”。"
-    "写完用 check_concept 检查并修好。不需要联网查资料。"
+    "先调用 analyze_music 看歌的 BPM、总长和能量曲线；工作区里还有用户上传的歌词 "
+    "music/lyrics.lrc，先读它，再按提示词写出 concept/brief.md：情绪走向、视觉母题、"
+    "歌词意象（逐句写歌词原句 → 画面）、段落草图；目标时长按整首歌，"
+    "硬性要求写“只用黑白灰加一种强调色”。写完用 check_concept 检查并修好。不需要联网查资料。"
 )
 _PRODUCE_PROMPT = (
     "按创意简报为这首歌做画面：先看分析图（需要时调用 analyze_music），不截取（用整首歌），"
-    "按歌的结构写 animation/shots.json 和每个镜头的场景脚本，画面对齐 beat/downbeat 事件与"
-    "env.energy。按镜头顺序逐个做：写完先用 validate_scenes_html 校验该镜头，再用 "
-    "render_preview_html 看图；全部做完后做一次全量校验。最后说明你靠什么判断、哪些东西无法验证。"
+    "按歌的结构和歌词乐句写 animation/shots.json 和每个镜头的场景脚本，画面按简报的歌词意象"
+    "用 env.lyric() 跟着歌词走，并对齐 beat/downbeat 事件与 env.energy。"
+    "按镜头顺序逐个做：写完先用 validate_scenes_html 校验该镜头，再用 render_preview_html 看图；"
+    "全部做完后做一次全量校验。最后说明你靠什么判断、哪些东西无法验证。"
 )
+# Self-written placeholder lines (not the song's lyrics), used when `STUDIO_SMOKE_LRC` is unset:
+# they exercise the mechanism (brief chapter, `env.lyric`, preview samples), not the owner's taste.
+_PLACEHOLDER_LINES = [
+    (12.0, "凌晨三点 机房亮着光"),
+    (30.0, "一个小点 开始发烫"),
+    (55.0, "曲线向上 撞穿屋顶"),
+    (80.0, "数字滚动 没有尽头"),
+    (110.0, "它问我 你还在吗"),
+    (140.0, "小数点 又挪了一位"),
+    (170.0, "世界折成 回形针"),
+    (200.0, "我伸手 去够电源"),
+    (230.0, "注意力 一层一层"),
+    (260.0, "光 越来越亮"),
+    (290.0, "天亮之前 它还醒着"),
+]
 _FOLLOW_UP = "上一轮的最终结果还有错误。根据工具返回的错误继续修复，直到全部通过。"
+
+
+def _lyrics(duration: float) -> str:
+    """The owner's LRC (`STUDIO_SMOKE_LRC`) or the placeholder lines that fit the song."""
+    path = os.environ.get("STUDIO_SMOKE_LRC")
+    if path:
+        return Path(path).read_text(encoding="utf-8")
+    return "\n".join(
+        f"[{int(t) // 60:02d}:{t % 60:05.2f}]{text}"
+        for t, text in _PLACEHOLDER_LINES
+        if t < duration - 5
+    )
 
 
 def _song() -> Path:
@@ -80,6 +110,12 @@ async def test_music_video_claude_login(tmp_path: Path) -> None:
         evidence["probe"] = {"duration": probe.duration, "codec": probe.codec}
         (work / "music").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(song, work / "music" / f"source{song.suffix.lower()}")
+        lrc = _lyrics(probe.duration)
+        (work / "music" / "lyrics.lrc").write_text(lrc, encoding="utf-8")
+        evidence["lyrics"] = {
+            "source": "STUDIO_SMOKE_LRC" if os.environ.get("STUDIO_SMOKE_LRC") else "placeholder",
+            "lines": len(parse_lrc(lrc, probe.duration)),
+        }
 
         for stage, prompt, tools, steps in stage_plan:
             profile = harness.profile("claude-login", max_steps_per_turn=steps, suffix=f"-{stage}")
@@ -110,6 +146,14 @@ async def test_music_video_claude_login(tmp_path: Path) -> None:
         evidence["shots"] = shots
         for shot in shots["shots"]:
             assert (work / "animation" / "scenes" / f"{shot['id']}.js").is_file(), shot
+        scenes = "".join(
+            (work / "animation" / "scenes" / f"{shot['id']}.js").read_text("utf-8")
+            for shot in shots["shots"]
+        )
+        assert "env.lyric" in scenes, "没有任何场景脚本引用 env.lyric / env.lyrics"
+        evidence["brief_has_imagery"] = "歌词意象" in (work / "concept" / "brief.md").read_text(
+            "utf-8"
+        )
         calls = evidence["stages"]["produce"]["tool_calls"]
         assert "render_preview_html" in calls, "没有调用 render_preview_html"
         evidence["final"] = await _render_final(harness)

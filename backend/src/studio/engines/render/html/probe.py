@@ -105,6 +105,26 @@ _RARE_MAX_COUNT = 12
 _KEY_OFFSET = 0.04
 _ENERGY_PEAKS = 3
 _MIN_PEAK_GAP = 1.0
+_LYRIC_OFFSET = 0.3
+_MAX_LYRIC_SAMPLES = 8
+
+
+def _lyric_times(timeline: Mapping[str, Any], start: float, end: float) -> list[float]:
+    """每句歌词刚出现时的一个时刻（句首后 0.3 秒，短句取中点），只含与镜头有交集的行；
+    太多时均匀抽稀，别让歌词占满预览。"""
+    times = []
+    for line in timeline.get("lyrics") or []:
+        first, last = max(line["start"], start), min(line["end"], end)
+        if last <= first:
+            continue
+        t = line["start"] + min(_LYRIC_OFFSET, (line["end"] - line["start"]) / 2)
+        if start <= t < end:
+            times.append(t)
+    times.sort()
+    if len(times) > _MAX_LYRIC_SAMPLES:
+        step = (len(times) - 1) / (_MAX_LYRIC_SAMPLES - 1)
+        times = [times[round(i * step)] for i in range(_MAX_LYRIC_SAMPLES)]
+    return times
 
 
 def _energy_peak_times(timeline: Mapping[str, Any], start: float, end: float) -> list[float]:
@@ -128,12 +148,13 @@ def _energy_peak_times(timeline: Mapping[str, Any], start: float, end: float) ->
 def reel_sample_times(
     timeline: Mapping[str, Any], scene_id: str, *, uniform: int = 12, cap: int = 16
 ) -> list[float]:
-    """短片、MV 镜头的关键时刻：镜头首尾、每个节拍脚本点、每个强拍、能量峰值、出现次数最少的
-    几类事件的起点（通常是冲击），事件起点各加 40 ms（让起音之后的包络有可见的值），再用均匀
-    采样补足。"""
+    """短片、MV 镜头的关键时刻：镜头首尾、每个节拍脚本点、每个强拍、能量峰值、每句歌词刚出现时、
+    出现次数最少的几类事件的起点（通常是冲击），事件起点各加 40 ms（让起音之后的包络有可见的值），
+    再用均匀采样补足。"""
     start, end, _ = section_info(timeline, scene_id)
     required = {start + 0.05, end - 0.05}
     required.update(_energy_peak_times(timeline, start, end))
+    required.update(_lyric_times(timeline, start, end))
     for moment in timeline.get("moments", []):
         if moment["section_id"] == scene_id:
             required.add(moment["t"] + _KEY_OFFSET)

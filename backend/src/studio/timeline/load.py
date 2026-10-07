@@ -25,7 +25,8 @@ from studio.timeline.build import (
     timeline_hash,
 )
 from studio.timeline.imported import import_hash
-from studio.timeline.schema import Timeline
+from studio.timeline.lyrics import LYRICS_PATH, LyricsError, clip_to_range, parse_lrc
+from studio.timeline.schema import LyricLine, Timeline
 from studio.timeline.shots import RANGE_PATH, SHOTS_PATH, parse_range, parse_shots
 
 _NARRATIVE = "narrative/narrative.json"
@@ -177,6 +178,23 @@ def _load_produce_synth(sources: TimelineSources) -> LoadedTimeline:
     return LoadedTimeline(timeline, digest, digest, {}, {})
 
 
+def _lyrics_for(
+    root: Path, prefix: str, duration: float, window: tuple[float, float]
+) -> list[LyricLine]:
+    """`music/lyrics.lrc` clipped to the range window; no file means no lyrics."""
+    relpath = f"{prefix}{LYRICS_PATH}"
+    path = root / relpath
+    if not path.is_file():
+        return []
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise TimelineError([f"{relpath} 指向工作区之外，不能读取"])
+    try:
+        parsed = parse_lrc(path.read_bytes(), duration)
+    except (OSError, LyricsError) as exc:
+        raise TimelineError([f"{relpath}：{exc}"]) from exc
+    return clip_to_range(parsed, *window)
+
+
 def _load_produce_import(sources: TimelineSources) -> LoadedTimeline:
     root, prefix = sources.root, sources.prefix
     shots = _shot_inputs(root, prefix)
@@ -216,7 +234,8 @@ def _load_produce_import(sources: TimelineSources) -> LoadedTimeline:
         declared_duration=length,
         file=source_file,
     )
-    timeline = build_timeline(TimelineLayers([], music=music, timed_sections=shots))
+    lyrics = _lyrics_for(root, prefix, float(duration), (start, end))
+    timeline = build_timeline(TimelineLayers([], music=music, timed_sections=shots, lyrics=lyrics))
     digest = import_hash(timeline_hash(timeline), source_hash, (round(start, 6), round(end, 6)))
     return LoadedTimeline(
         timeline, digest, digest, {}, {}, (round(start, 6), round(end, 6)), source_hash

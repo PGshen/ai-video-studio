@@ -9,10 +9,12 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 from studio.api.schemas import (
+    LyricLineOut,
     MusicAnalysisOut,
     MusicEnergyOut,
     MusicGridOut,
@@ -24,6 +26,7 @@ from studio.api.schemas import (
 from studio.stages.common.music_source import find_source
 from studio.timeline import TimelineError
 from studio.timeline.imported import downbeat_times, effective_grid
+from studio.timeline.lyrics import LYRICS_PATH, LyricsError, parse_lrc
 from studio.timeline.shots import RANGE_PATH, SHOTS_PATH, parse_range, parse_shots
 from studio.workspace import file_sha256
 
@@ -51,6 +54,20 @@ def shot_sections(workdir: Path, offset: float = 0.0) -> list[MusicSectionOut]:
         MusicSectionOut(id=s.id, label=s.label, start=s.start + offset, end=s.end + offset)
         for s in shots or []
     ]
+
+
+def lyric_lines(workdir: Path, duration: float | None) -> tuple[list[LyricLineOut], str | None]:
+    """`music/lyrics.lrc` in song seconds, plus why it is unusable (`None` when fine or absent)."""
+    path = workdir / LYRICS_PATH
+    if not path.is_file():
+        return [], None
+    try:
+        parsed = parse_lrc(path.read_bytes(), duration if duration is not None else math.inf)
+    except OSError as exc:
+        return [], f"无法读取歌词文件：{exc}"
+    except LyricsError as exc:
+        return [], str(exc)
+    return [LyricLineOut(text=x.text, start=x.start, end=x.end) for x in parsed], None
 
 
 def _analysis_out(doc: dict[str, Any]) -> MusicAnalysisOut | None:
@@ -102,6 +119,7 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
         window = parse_range(_read_json(workdir / RANGE_PATH), analysis.duration, [])
         if window is not None:
             range_ = MusicRangeOut(start=window[0], end=window[1])
+    lyrics, lyrics_error = lyric_lines(workdir, analysis.duration if analysis is not None else None)
     return MusicMetaOut(
         form="import",
         rendered=True,
@@ -109,6 +127,8 @@ def build_import_meta(workdir: Path) -> MusicMetaOut:
         hash=digest,
         duration=analysis.duration if analysis is not None else None,
         sections=shot_sections(workdir, range_.start if range_ is not None else 0.0),
+        lyrics=lyrics,
+        lyrics_error=lyrics_error,
         source=source,
         analysis=analysis,
         grid=grid,

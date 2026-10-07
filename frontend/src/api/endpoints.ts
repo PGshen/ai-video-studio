@@ -35,6 +35,7 @@ import type {
   HtmlPreviewMeta,
   MusicMetaOut,
   MusicRenderOut,
+  MusicLyricsOut,
   MusicSourceOut,
   SceneChecksResponse,
   SessionCreate,
@@ -487,6 +488,22 @@ export function musicAudioUrl(projectId: string, version?: string | null): strin
 /** 不经 agent 渲染配乐（运行 `music/compose.py`）；脚本出错返回 `ok=false`，不抛。 */
 export function renderMusic(projectId: string): Promise<MusicRenderOut> {
   return request(`/projects/${encodePathSegment(projectId)}/music/render`, { method: 'POST' })
+}
+
+/** 上传歌词（`.lrc`，multipart，字段 `file`）；整份替换 `music/lyrics.lrc`。 */
+export function uploadMusicLyrics(
+  projectId: string,
+  file: File,
+  options?: UploadOptions,
+): Promise<MusicLyricsOut> {
+  const form = new FormData()
+  form.append('file', file)
+  return uploadForm(`/projects/${encodePathSegment(projectId)}/music/lyrics`, form, options)
+}
+
+/** 删除歌词；没有歌词时也成功（幂等）。 */
+export function deleteMusicLyrics(projectId: string): Promise<void> {
+  return request(`/projects/${encodePathSegment(projectId)}/music/lyrics`, { method: 'DELETE' })
 }
 
 /** 上传导入音乐的源文件（multipart，字段 `file`）；不触发分析。 */

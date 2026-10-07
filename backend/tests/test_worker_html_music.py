@@ -351,6 +351,23 @@ async def test_an_explicit_range_sets_the_start_and_the_duration(mv: Env) -> Non
     assert _final(mv)["audio_sources"]["music"]["range"] == [4.5, 18.5]
 
 
+async def test_final_json_records_the_lyrics_only_when_there_are_lyrics(mv: Env) -> None:
+    job = _job(mv, await _run(mv, FakeBackend()))
+    assert job.status == "done", job.error
+    assert "lyrics_hash" not in _final(mv)
+
+    (mv.workdir / "music" / "lyrics.lrc").write_text("[00:02.00]一\n[00:08.00]二\n", "utf-8")
+    first = _job(mv, await _run(mv, FakeBackend()))
+    assert first.status == "done", first.error
+    recorded = _final(mv)["lyrics_hash"]
+    assert len(recorded) == 64
+
+    (mv.workdir / "music" / "lyrics.lrc").write_text("[00:02.00]一\n[00:08.00]贰\n", "utf-8")
+    second = _job(mv, await _run(mv, FakeBackend()))
+    assert second.status == "done", second.error
+    assert _final(mv)["lyrics_hash"] != recorded
+
+
 @pytest.mark.parametrize(
     ("victim", "needle"),
     [

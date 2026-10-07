@@ -1,12 +1,10 @@
 """时间轴数据结构（设计 §4.1、总设计 §4.3）。所有时间是全局秒。
 
 子项目 2 只产出 `duration`、`sections`、`narration`；`grid`、`moments`、`music`、
-`lyrics` 是为配乐与歌词预留的层，字段在这里一次定全。
+`lyrics` 是 MV 的歌词行（`LyricLine`，mv-lyrics 设计 §3.2）。
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -57,6 +55,14 @@ class Energy(BaseModel):
     values: list[float]
 
 
+class LyricLine(BaseModel):
+    """One lyric line (mv-lyrics design §3.1); `start`/`end` are seconds."""
+
+    text: str
+    start: float
+    end: float
+
+
 class Music(BaseModel):
     file: str
     events: list[MusicEvent] = Field(default_factory=list)
@@ -70,4 +76,4 @@ class Timeline(BaseModel):
     narration: list[NarrationScene] = Field(default_factory=list)
     moments: list[Moment] = Field(default_factory=list)
     music: Music | None = None
-    lyrics: list[Any] = Field(default_factory=list)
+    lyrics: list[LyricLine] = Field(default_factory=list)
