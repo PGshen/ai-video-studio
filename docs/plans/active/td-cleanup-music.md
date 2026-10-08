@@ -76,7 +76,7 @@
 - **完成标准**：以上测试通过；前端不用改（它在非进行中时已隐藏上传区）。
 - **验证命令**：`make check`
 
-### T4：TD-83 歌词上传端点的请求头与资源清理（待开始）
+### T4：TD-83 歌词上传端点的请求头与资源清理（完成）
 
 - **目标**：与 `api/styles.py::upload_screenshot_endpoint`（TD-86 已修）同一套处理。
 - **涉及文件**：`backend/src/studio/api/music_import.py: upload_music_lyrics_endpoint`、`backend/tests/api/` 对应测试。
@@ -106,10 +106,11 @@
 - 2026-10-08 — T1 完成：`artifact_dirs()` 条目支持文件级精确匹配（共用 `stage.in_artifacts`，stage_flow 与前言两处使用），`concept` 只声明用户输入文件；新测试 `tests/agent/test_stage_flow_file_scope.py`。
 - 2026-10-08 — T2 完成：`GridFit.raw_period` 记录折叠前周期，覆盖率抽成纯函数 `_coverage(fit, duration)`，分子分母同口径；慢歌（<60 BPM）不再误报“拍点不稳”，真稀疏仍告警。
 - 2026-10-08 — T3 完成：`find_sources` 成为找歌曲源文件的唯一规则（时间轴读取、`find_source`、`concept` 定稿拦截多个源文件共用）；`concept` 定稿后上传歌曲、上传/删除歌词三个端点回 409；成片前核对 `music/compose.py` 与 `render.json` 的 `script_hash`。
+- 2026-10-08 — T4 完成：歌词上传端点要求数字型 `Content-Length`（缺失或非数字回 422，不再 500），超限文案不变，`request.form()` 之后 `try/finally` 关闭表单；测试见 `tests/api/test_music_lyrics.py`。
 
 ## 下一步
 
-- 从 T4 开始，按计划任务顺序继续。
+- 从 T5 开始，按计划任务顺序继续。
 
 ## 决策记录
 

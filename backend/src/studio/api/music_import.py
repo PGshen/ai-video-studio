@@ -247,16 +247,23 @@ async def upload_music_lyrics_endpoint(
     workdir = project_dir(settings.data_dir, project_id)
     scratch = workdir / ".cache" / "tmp" / f"lyrics-{uuid4().hex[:8]}"
     try:
-        if int(request.headers.get("content-length") or 0) > MAX_LRC_BYTES * 2:
+        # Without a usable Content-Length the body size cannot be bounded before parsing.
+        length = request.headers.get("content-length", "")
+        if not length.isdigit():
+            raise _unprocessable("请求缺少有效的 Content-Length")
+        if int(length) > MAX_LRC_BYTES * 2:
             raise _unprocessable(f"歌词文件超过 {MAX_LRC_BYTES // 1000} KB")
         try:
             form = await request.form()
         except Exception as exc:  # malformed multipart bodies surface as several error types
             raise _unprocessable("请求体不是合法的 multipart/form-data") from exc
-        upload = form.get("file")
-        if not isinstance(upload, UploadFile):
-            raise _unprocessable("没有收到文件，字段名应为 file")
-        data = await upload.read(MAX_LRC_BYTES + 1)
+        try:
+            upload = form.get("file")
+            if not isinstance(upload, UploadFile):
+                raise _unprocessable("没有收到文件，字段名应为 file")
+            data = await upload.read(MAX_LRC_BYTES + 1)
+        finally:
+            await form.close()
         if not data:
             raise _unprocessable("没有收到文件，或者文件是空的")
         song = find_source(workdir / "music")

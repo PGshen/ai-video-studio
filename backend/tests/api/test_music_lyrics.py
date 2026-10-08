@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import AsyncIterator
 from pathlib import Path
+
+import pytest
+from starlette.datastructures import FormData
 
 from fixtures.import_music import write_click_song
 from fixtures.import_music.seed import seed_mv_project
@@ -182,3 +186,55 @@ async def test_lyrics_that_no_longer_fit_a_shorter_song_are_reported(api_env: Ap
     (workdir / "music" / "analysis.json").write_text(json.dumps(analysis))
     meta = (await api_env.client.get(f"/api/projects/{pid}/music/meta")).json()
     assert meta["lyrics"] == [] and "晚于歌曲" in meta["lyrics_error"]
+
+
+async def test_chunked_lyrics_upload_without_content_length_is_422(api_env: ApiEnv) -> None:
+    pid, workdir = _mv(api_env)
+
+    async def body() -> AsyncIterator[bytes]:
+        yield b"--x\r\n"
+
+    response = await api_env.client.post(
+        _url(pid),
+        content=body(),
+        headers={"content-type": "multipart/form-data; boundary=x"},
+    )
+    assert response.status_code == 422
+    assert "Content-Length" in assert_detail(response)
+    assert _residue(workdir) == []
+
+
+async def test_a_malformed_content_length_is_422_not_500(api_env: ApiEnv) -> None:
+    pid, _ = _mv(api_env)
+    response = await api_env.client.post(
+        _url(pid),
+        content=b"x",
+        headers={"content-type": "multipart/form-data; boundary=x", "content-length": "abc"},
+    )
+    assert response.status_code == 422
+    assert "Content-Length" in assert_detail(response)
+
+
+async def test_an_oversize_body_is_rejected_before_parsing(api_env: ApiEnv) -> None:
+    pid, _ = _mv(api_env)
+    response = await _upload(api_env, pid, b"x" * (MAX_LRC_BYTES * 2 + 1))
+    assert response.status_code == 422
+    assert "200 KB" in assert_detail(response)
+
+
+@pytest.mark.parametrize("data", [LRC, ""], ids=["success", "error"])
+async def test_the_parsed_form_is_always_closed(
+    api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch, data: str
+) -> None:
+    pid, _ = _mv(api_env)
+    closed: list[int] = []
+    original = FormData.close
+
+    async def counting_close(self: FormData) -> None:
+        closed.append(1)
+        await original(self)
+
+    monkeypatch.setattr(FormData, "close", counting_close)
+    response = await _upload(api_env, pid, data)
+    assert response.status_code == (200 if data else 422)
+    assert closed == [1]
