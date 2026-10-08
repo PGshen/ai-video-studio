@@ -83,7 +83,7 @@
 - **完成标准**：模块测试通过；import-linter 的 `styles` 契约仍然通过（Pillow 是第三方库，不违反契约）。
 - **验证命令**：`make check`
 
-### T2：store 接入截图（进行中）
+### T2：store 接入截图（完成）
 
 - **目标**：草稿和正式版本的全部流程都带上截图。
 - **涉及文件**：`backend/src/studio/styles/store.py`、`backend/tests/styles/test_store.py`。
@@ -101,7 +101,7 @@
 - **完成标准**：新测试和既有的 store 测试全绿。
 - **验证命令**：`make check`
 
-### T3：API 端点（待开始）
+### T3：API 端点（进行中）
 
 - **目标**：5 个端点和 3 个响应字段。
 - **涉及文件**：`backend/src/studio/api/styles.py`、`backend/src/studio/api/schemas.py`、`backend/tests/api/test_styles.py`、`backend/tests/api/test_projects.py`（只加一条断言：项目 `style/` 里没有截图）。
@@ -151,10 +151,11 @@
 ## 进度
 
 - 2026-10-08 — T1 完成：`styles/screenshots.py`、25 个单测、ADR 0022，`make check` 绿
+- 2026-10-08 — T2 完成：`store.py` 接入截图（草稿/保存/复制/清理/dirty/封面），新增 `tests/styles/test_store_screenshots.py`
 
 ## 下一步
 
-- 在 worktree `.claude/worktrees/style-screenshots` 中做 T2：先在 `backend/tests/styles/test_store.py` 写截图相关用例，再改 `store.py`。
+- 做 T3：先在 `backend/tests/api/test_styles.py` 写截图端点用例，再改 `api/styles.py`、`api/schemas.py`。store 的新函数：`add_draft_screenshot`、`delete_draft_screenshot`、`reorder_draft_screenshots`、`screenshot_path(..., draft=)`；`StyleSummary.cover`、`StyleDetail.screenshots`、`DraftStatus.screenshots`。
 
 ## 决策记录
 
