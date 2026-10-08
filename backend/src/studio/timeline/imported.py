@@ -8,17 +8,12 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import Any, TypeGuard
+from typing import Any
 
 from studio.timeline.build import BPM_RANGE, TimelineError
+from studio.timeline.numeric import BEATS_PER_BAR, EPSILON, is_finite_number
 
-_BEATS_PER_BAR = 4
-_EPSILON = 1e-6
 _MAX_DOWNBEATS = 100_000
-
-
-def _is_number(value: Any) -> TypeGuard[float]:
-    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def effective_grid(analysis: dict[str, Any]) -> tuple[float, float]:
@@ -29,7 +24,7 @@ def effective_grid(analysis: dict[str, Any]) -> tuple[float, float]:
     values: dict[str, float] = {}
     for key in ("bpm", "offset"):
         value = analysis.get(key)
-        if not _is_number(value):
+        if not is_finite_number(value):
             errors.append(f"music/analysis.json：{key} 必须是有限的数字（当前 {value!r}）")
             continue
         values[key] = float(value)
@@ -44,18 +39,18 @@ def effective_grid(analysis: dict[str, Any]) -> tuple[float, float]:
 
 def downbeat_times(bpm: float, offset: float, duration: float) -> list[float]:
     """`[0, duration]` 内的全部强拍时刻（全局秒）：`offset + k·小节`，`k` 可为负。"""
-    if not _is_number(bpm) or bpm <= 0:
+    if not is_finite_number(bpm) or bpm <= 0:
         raise TimelineError([f"BPM 必须是正的有限数字（当前 {bpm!r}）"])
-    if not _is_number(offset):
+    if not is_finite_number(offset):
         raise TimelineError([f"offset 必须是有限的数字（当前 {offset!r}）"])
-    if not _is_number(duration) or duration < 0:
+    if not is_finite_number(duration) or duration < 0:
         raise TimelineError([f"duration 必须是非负的有限数字（当前 {duration!r}）"])
-    bar = _BEATS_PER_BAR * 60.0 / bpm
+    bar = BEATS_PER_BAR * 60.0 / bpm
     if duration / bar > _MAX_DOWNBEATS:
         raise TimelineError([f"强拍数量过多（BPM {bpm}，时长 {duration}）"])
-    k = math.ceil(-offset / bar - _EPSILON)
+    k = math.ceil(-offset / bar - EPSILON)
     times: list[float] = []
-    while (t := offset + k * bar) <= duration + _EPSILON:
+    while (t := offset + k * bar) <= duration + EPSILON:
         times.append(round(t, 6))
         k += 1
     return times

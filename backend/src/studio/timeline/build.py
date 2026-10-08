@@ -10,8 +10,9 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, TypeGuard
+from typing import Any
 
+from studio.timeline.numeric import BEATS_PER_BAR, EPSILON, is_finite_number
 from studio.timeline.schema import (
     Beat,
     Energy,
@@ -50,15 +51,7 @@ class TimelineError(ValueError):
 MUSIC_FILE = "music/music.wav"
 BPM_RANGE = (40.0, 240.0)
 EVENT_KINDS = ("onset", "sweep")
-_BEATS_PER_BAR = 4
 _DURATION_TOLERANCE = 0.05
-
-
-def _finite(value: Any) -> TypeGuard[float]:
-    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
-
-
-_EPSILON = 1e-6
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,10 +146,10 @@ def _timed_sections(
             continue
         seen.add(item.id)
         start, end = item.start, item.end
-        if not _finite(start) or not _finite(end) or not start < end:
+        if not is_finite_number(start) or not is_finite_number(end) or not start < end:
             errors.append(f"镜头 {item.id}：起止必须是数字且 start < end（{start!r}→{end!r}）")
             continue
-        if abs(start - cursor) > _EPSILON:
+        if abs(start - cursor) > EPSILON:
             if not sections:
                 errors.append(f"镜头 {item.id}：第一段必须从 0 开始（当前 {start}）")
             else:
@@ -170,13 +163,13 @@ def _timed_sections(
 
 def _grid(grid: GridInput, duration: float) -> Grid:
     beat = 60.0 / grid.bpm
-    count = max(0, math.ceil((duration - grid.offset) / beat - _EPSILON)) + 1
+    count = max(0, math.ceil((duration - grid.offset) / beat - EPSILON)) + 1
     beats = [round(grid.offset + i * beat, 6) for i in range(count)]
     return Grid(
         bpm=grid.bpm,
         offset=grid.offset,
         beats=beats,
-        downbeats=beats[::_BEATS_PER_BAR],
+        downbeats=beats[::BEATS_PER_BAR],
     )
 
 
@@ -192,7 +185,7 @@ def _music(music: MusicInput, duration: float, errors: list[str]) -> Music | Non
         if kind not in EVENT_KINDS:
             errors.append(f"{label}：kind 必须是 onset 或 sweep（当前 {kind!r}）")
             continue
-        if not _finite(start) or not _finite(end) or end < start:
+        if not is_finite_number(start) or not is_finite_number(end) or end < start:
             errors.append(f"{label}：起止必须是数字且 start ≤ end（{start!r}→{end!r}）")
             continue
         if start < -_DURATION_TOLERANCE or end > duration + _DURATION_TOLERANCE:

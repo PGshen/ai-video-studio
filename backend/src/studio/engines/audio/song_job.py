@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from studio.engines.audio.runner import _drain, _kill_group, _tail_lines, limited_argv
+from studio.engines.audio.runner import drain, kill_group, limited_argv, tail_lines
 from studio.engines.audio.wav import AudioError
 
 DEFAULT_TIMEOUT = 120.0
@@ -66,25 +66,25 @@ async def run_song_analysis(
 
     try:
         stderr, _ = await asyncio.wait_for(
-            asyncio.gather(_drain(process.stderr, 16000), process.wait()), timeout
+            asyncio.gather(drain(process.stderr, 16000), process.wait()), timeout
         )
     except TimeoutError:
-        _kill_group(process)
+        kill_group(process)
         await process.wait()
         clean()
         raise SongJobError(
             f"歌曲分析超过 {timeout:g} 秒被终止（超时）；歌曲过长或机器过忙，可稍后重试"
         ) from None
     except BaseException:
-        _kill_group(process)
+        kill_group(process)
         with contextlib.suppress(Exception):
             await process.wait()
         clean()
         raise
-    _kill_group(process)  # leftover children of a job that exited normally
+    kill_group(process)  # leftover children of a job that exited normally
     if process.returncode != 0:
         clean()
-        raise SongJobError(f"歌曲分析失败（退出码 {process.returncode}）：\n{_tail_lines(stderr)}")
+        raise SongJobError(f"歌曲分析失败（退出码 {process.returncode}）：\n{tail_lines(stderr)}")
     for name in _ARTIFACTS:
         if not (out_dir / name).is_file():
             clean()

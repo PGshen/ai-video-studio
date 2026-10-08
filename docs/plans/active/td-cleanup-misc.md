@@ -64,7 +64,7 @@
 - **完成标准**：以上测试通过。
 - **验证命令**：`make check`
 
-### T3：两处重复代码整理（待开始）
+### T3：两处重复代码整理（完成）
 
 - **目标**：TD-72、TD-74，纯重构，不改行为。
 - **涉及文件**：`backend/src/studio/engines/audio/runner.py`、`song_job.py`；`backend/src/studio/timeline/imported.py`、`build.py`；`docs/ARCHITECTURE.md`（若新增模块）。
@@ -125,10 +125,11 @@
 
 - 2026-10-08 — T1 完成：恢复流程补做风格草稿清理（TD-54），启动时还原被打断的 `_swap`（TD-58），`make check` 全绿
 - 2026-10-08 — T2 完成：时间戳小数位放宽到 1–6 位，晚于时长的条目只丢那一行（TD-84 ①②）；`make check` 全绿
+- 2026-10-08 — T3 完成：runner 的 `drain`/`kill_group`/`tail_lines` 改为公开，`timeline/numeric.py` 收拢 `build`/`imported` 共用的常量与 `is_finite_number`；`make check` 全绿
 
 ## 下一步
 
-- 从 T3 开始：读登记表 TD-72、TD-74 原文，对照 `engines/audio/runner.py`/`song_job.py` 与 `timeline/imported.py`/`build.py`，纯重构，既有测试不改即通过。
+- 从 T4 开始：读登记表 TD-69、TD-70 原文；先 grep `prepare_turn` 的所在处与 `worker_html.py: _cache_key`、`FONTS_DIR`，确认前提再写失败测试。
 
 ## 决策记录
 
@@ -138,7 +139,7 @@
 
 ## 意外与发现
 
-- 无
+- T3：`build.py` 与 `imported.py` 里重复的只有 `BEATS_PER_BAR`、`EPSILON`、有限数判断三项，实现逐字相同；`_TOLERANCE` 等其余常量并没有被复制。`agent/shell.py` 另有一个同名 `_kill_group`，`engines` 不能 import `agent`，保持不动。
 
 ## 阻塞
 
