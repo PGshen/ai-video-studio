@@ -1,0 +1,118 @@
+{
+  "scenes": [
+    {
+      "scene_index": 0,
+      "narration": "两个试吃台，一个摆 24 种果酱，一个只摆 6 种。你猜哪个卖得多？摆得多的那个，当然不是。",
+      "description": "冷白画布上建立情境舞台：左右两个中性主墨紫细框摊位，左框内 24 个小方块密排，右框内 6 个小方块疏排，中间一个灰紫问号。两个选项保持中性直到静止结束，随后左侧转红并出现一次短促否定词。上方双语标题「选项越多越好卖？/ more options, fewer buyers」，画面无章节条、无进度提示。",
+      "estimated_duration_seconds": 8.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "两个试吃台，一个摆 24 种果酱，一个只摆 6 种。",
+          "visual_action": "中央先画出一条极细的灰紫地面线，两个等大的主墨紫细框摊位从两端生长出来；左框内 24 个小方块错落密排填入，右框内 6 个小方块疏排填入，两侧下方写出灰紫小号数字 24 与 6，全部保持主墨紫不上语义色。",
+          "emphasis": "24 种 / 6 种",
+          "transition": "reveal",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "你猜哪个卖得多？",
+          "visual_action": "中央生长出一个灰紫问号，两条指向摊位的短箭头同时出现，随后画面完全静止 0.8 秒，不做任何高亮、放大或颜色变化。",
+          "emphasis": "哪个",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 2,
+          "cue_text": "摆得多的那个，当然不是。",
+          "visual_action": "静止结束后 0.4 秒内完成抢答反转：左侧 24 种摊位的框线与方块整体转为 #E85353，问号收缩消失，画面下方短促写出「当然不是」四字，不加震动、不做二次强调。",
+          "emphasis": "当然不是",
+          "transition": "transform",
+          "fallback_weight": 1.0
+        }
+      ]
+    },
+    {
+      "scene_index": 1,
+      "narration": "每加一种，它都要和架上已有的每一种比一遍。6 种是 15 次比较，24 种是 276 次——同样买一瓶果酱，你多付出的是二百六十一次判断。",
+      "description": "把左侧 24 个方块原地展开为连线网络，再让整张网络收拢成右侧一个超大号认知紫数字 276，数字上方淡入标签「一次选择要做的比较」，左下角保留 C(24,2)=276 与 C(6,2)=15 的推导式供核对。数字落定后画面完全静止。双语标题「代价是二百多次判断 / the price is 276 comparisons」。",
+      "estimated_duration_seconds": 12.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "每加一种，它都要和架上已有的每一种比一遍。",
+          "visual_action": "左框边界淡出，24 个方块保持形态移动到画面左侧排成弧形；先在 3 个方块之间画出 3 条认知紫连线，再扩展到 6 个方块的 15 条连线，连线逐条生长可数；随后单独高亮新加入的一个方块，它与所有已有方块之间同时长出一束新连线。",
+          "emphasis": "比一遍",
+          "transition": "transform",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "6 种是 15 次比较，24 种是 276 次——",
+          "visual_action": "左侧 6 方块网络收拢为一行小字 15，右侧整张连线网络沿路径汇聚成一团并变形为数字 276；276 从小号平滑放大到正文字号的四倍并停住，这是全片唯一一次大幅缩放。",
+          "emphasis": "276 次",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 2,
+          "cue_text": "同样买一瓶果酱，你多付出的是二百六十一次判断。",
+          "visual_action": "数字上方淡入小字标签「一次选择要做的比较」，左下角写出推导式 C(24,2)=276 与 C(6,2)=15；随后画面完全静止 1.8 秒，期间没有任何元素运动。",
+          "emphasis": "二百六十一次",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        }
+      ]
+    },
+    {
+      "scene_index": 2,
+      "narration": "所以真正该减的不是货架，是你每次要比的那几条线。出门前先定一条淘汰规则，你要选的，就只剩下三种。",
+      "description": "结语清场镜：所有图表、标注与辅助标签淡出，只保留贯穿全片的连线网络锚点，平移到画面中央偏下并整体褪灰，只有三条线被点亮。上方两行居中大字，第二行更大：「要减的不是选项 / 是你每次要比的那几条线」，最下方一行极小号英文大写间隔字。不出现任何新图形、新公式、新颜色。",
+      "estimated_duration_seconds": 10.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "所以真正该减的不是货架，是你每次要比的那几条线。",
+          "visual_action": "全部标注与数字在 0.8 秒内依次淡出，连线网络平移到画面中央偏下并整体褪为灰紫；两行金句以慢于全片其他文字的速度写出，第二行字号更大。",
+          "emphasis": "那几条线",
+          "transition": "fade",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "出门前先定一条淘汰规则，你要选的，就只剩下三种。",
+          "visual_action": "网络中只有三条连线依次被点亮为认知紫，间隔 0.14 秒，其余保持灰；最下方淡入一行极小号英文大写间隔字 DECIDE THE RULE BEFORE THE SHELF，旁白结束后画面静止 1.2 秒，不做淡出黑场。",
+          "emphasis": "只剩下三种",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        }
+      ]
+    }
+  ],
+  "fact_checks": [
+    {
+      "claim_text": "在同一超市的果酱试吃现场对照实验中，选项较少的展台购买转化率显著高于选项较多的展台。",
+      "scene_index": 0,
+      "source_url": null,
+      "source_description": "核查 Iyengar & Lepper 关于选择过载的果酱实验原始论文与后续重复研究的效应量结论。",
+      "confidence": "medium",
+      "is_hypothesis": false,
+      "assumptions": "画面只表达相对差异，不代表按原始数据等比绘制。",
+      "controversy": "选择过载效应在后续元分析中并非在所有场景稳定复现，效应强度依赖商品类型、决策难度与消费者偏好清晰度。",
+      "reviewer_verdict": null,
+      "reviewer_note": null
+    },
+    {
+      "claim_text": "n 个选项两两比较的次数为 n(n-1)/2，24 个选项为 276 次，6 个选项为 15 次。",
+      "scene_index": 1,
+      "source_url": null,
+      "source_description": "组合数学基本结论，可直接验算。",
+      "confidence": "high",
+      "is_hypothesis": false,
+      "assumptions": "该数字表示穷尽两两比较的上界，真实购买决策通常使用启发式而不会完成全部比较，画面用它表达比较负担的增长量级。",
+      "controversy": null,
+      "reviewer_verdict": null,
+      "reviewer_note": null
+    }
+  ]
+}

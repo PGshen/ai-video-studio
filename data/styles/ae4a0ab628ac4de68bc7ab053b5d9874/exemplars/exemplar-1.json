@@ -1,0 +1,74 @@
+{
+  "scenes": [
+    {
+      "scene_index": 0,
+      "narration": "看到新证据以后，我们为什么要改变原来的判断？",
+      "description": "暖象牙白画布中央建立一组证据更新关系：左侧蓝色圆代表原判断，中间青绿色小方块代表新证据，右侧琥珀色问号代表尚未完成的更新。上方只有一行衬线标题，四周保留大片空白。",
+      "estimated_duration_seconds": 8.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "看到新证据以后，",
+          "visual_action": "先绘出左侧蓝色原判断圆和通向中央的极细灰线，随后青绿色证据方块从圆内分离，沿灰线移动到画面中央并停住。",
+          "emphasis": "新证据",
+          "transition": "transform",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "我们为什么要改变原来的判断？",
+          "visual_action": "中央证据方块右侧生长出一段琥珀色弧线，弧线闭合为问号；标题中的“改变”同步转为琥珀色，其余元素保持安静。",
+          "emphasis": "改变判断",
+          "transition": "reveal",
+          "fallback_weight": 1.0
+        }
+      ]
+    },
+    {
+      "scene_index": 1,
+      "narration": "证据不是替换旧结论，而是沿着关系链，重新分配两种可能性的权重。",
+      "description": "继承上一镜的蓝色圆、青绿证据方块和细线，把它们连续变形成左右两条概率刻度。证据沿共同通道推进后，蓝色短条缩短，青绿色长条增长，最终形成清楚的权重对照。",
+      "estimated_duration_seconds": 10.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "证据不是替换旧结论，",
+          "visual_action": "蓝色原判断圆不消失，轮廓展开为上方概率刻度；青绿证据方块仍停在刻度中央，旁边短暂出现一个赭橙色否定叉，明确表示不是直接删除。",
+          "emphasis": "不是替换",
+          "transition": "transform",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "而是沿着关系链，",
+          "visual_action": "证据方块沿两条分叉细线移动，分叉末端分别长出蓝色和青绿色权重条；细线画完后才出现两侧的可能性标签。",
+          "emphasis": "关系链",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 2,
+          "cue_text": "重新分配两种可能性的权重。",
+          "visual_action": "蓝色权重条从一半平滑缩短到约三成，青绿色权重条同步增长到约七成；最终数值和“更新后”短标题淡入并停留，画面不再添加装饰。",
+          "emphasis": "重新分配权重",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        }
+      ]
+    }
+  ],
+  "fact_checks": [
+    {
+      "claim_text": "新证据会通过条件概率更新不同假设的相对权重，而不是简单删除先验判断。",
+      "scene_index": 1,
+      "source_url": null,
+      "source_description": "核查贝叶斯更新或条件概率的权威教材来源。",
+      "confidence": "high",
+      "is_hypothesis": false,
+      "assumptions": "示意图只表达相对权重变化，不代表未经题目数据计算的精确概率。",
+      "controversy": null,
+      "reviewer_verdict": null,
+      "reviewer_note": null
+    }
+  ]
+}

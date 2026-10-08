@@ -1,0 +1,82 @@
+{
+  "scenes": [
+    {
+      "scene_index": 0,
+      "narration": "连续十次抛硬币都是正面，第十一次，你猜正面还是反面？大多数人此刻心里冒出了同一个答案——反面，该轮到反面了。",
+      "description": "画布中央十枚硬币正面朝上依次点出排成一列，莓红描边二选一选项条（正面/反面）滑入下方悬停待选。退场：无（首章）。保留：十枚硬币序列（下一章反差的锚点）。",
+      "estimated_duration_seconds": 10.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "连续十次抛硬币都是正面，",
+          "visual_action": "十枚硬币正面朝上按0.15秒间隔依次点出排成一列。",
+          "emphasis": "十次都是正面",
+          "transition": "reveal",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "第十一次，你猜正面还是反面？",
+          "visual_action": "莓红描边二选一选项条（正面/反面）从下方滑入并轻微悬停。",
+          "emphasis": "你猜",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 2,
+          "cue_text": "大多数人此刻心里冒出了同一个答案——反面，该轮到反面了。",
+          "visual_action": "反面选项条描边加粗并轻微放大一次，作为观众默认选择的视觉确认。",
+          "emphasis": "该轮到反面了",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        }
+      ]
+    },
+    {
+      "scene_index": 1,
+      "narration": "但硬币没有记忆。前十次的结果，对第十一次没有任何影响——第十一次依然是百分之五十对百分之五十。",
+      "description": "双栏对照面板首次出现（细竖线分隔左右两栏）：左栏莓红「该轮到反面了」承接上一章选项条，右栏鼠尾草绿「50% vs 50%」概率条同步生长；左栏被深莓红✗划叉。（本轮结论，下一章机制解释的锚点）。",
+      "estimated_duration_seconds": 11.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "但硬币没有记忆。",
+          "visual_action": "双栏面板顶部标题「我以为」「实际上」同步淡入生长，左栏继承上一章选项条。",
+          "emphasis": "没有记忆",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "前十次的结果，对第十一次没有任何影响——",
+          "visual_action": "深莓红✗从左上到右下划过左栏选项条",
+          "emphasis": "没有任何影响",
+          "transition": "transform",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 2,
+          "cue_text": "第十一次依然是百分之五十对百分之五十。",
+          "visual_action": "右栏鼠尾草绿50%/50%概率条从中线向两侧生长，到达终点各轻微过冲一次定格。",
+          "emphasis": "50%对50%",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        }
+      ]
+    }
+  ],
+  "fact_checks": [
+    {
+      "claim_text": "独立随机事件（如公平硬币投掷）的每次结果概率不受历史结果影响，这是概率论的独立性原理，常见的相反直觉被称为赌徒谬误",
+      "scene_index": 1,
+      "source_url": null,
+      "source_description": "概率论独立事件定义；赌徒谬误为行为经济学经典偏差案例",
+      "confidence": "high",
+      "is_hypothesis": false,
+      "assumptions": null,
+      "controversy": null,
+      "reviewer_verdict": null,
+      "reviewer_note": null
+    }
+  ]
+}
