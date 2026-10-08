@@ -4,7 +4,7 @@
  * 下半部分 `SnapshotDetail` 显示所选快照的详情与「回滚到此」。
  * 选择规则见 `snapshotSelection.ts`；回滚按钮的禁用规则见 `canRollback`。
  */
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useSnapshotsQuery } from '@/composables/queries'
 import { snapshotReasonLabel } from '@/components/session/snapshotReason'
 import SnapshotDetail from './SnapshotDetail.vue'
@@ -24,7 +24,8 @@ const { data: snapshots } = useSnapshotsQuery(() => props.projectId)
 // 后端按创建时间升序返回；这里统一转成"最新在前"用于展示和 diff 参数计算。
 const displaySnapshots = computed(() => [...(snapshots.value ?? [])].reverse())
 
-const selected = ref<string[]>([])
+/** 选中的快照 id（最多两个）；由 `SnapshotRail` 持有以便折叠、展开后还在，单独使用时是本地状态。 */
+const selected = defineModel<string[]>('selected', { default: () => [] })
 function toggle(id: string): void {
   selected.value = toggleSnapshotSelection(selected.value, id)
 }

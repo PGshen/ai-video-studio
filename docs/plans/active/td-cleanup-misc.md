@@ -32,12 +32,12 @@
 
 ## 验收标准
 
-- [ ] AC1：进程崩溃时风格轮次正在运行，重启恢复会清理草稿里的多余文件和符号链接；`_swap` 在两次 rename 之间被杀留下的 `.<id>.old-*` 会在启动时还原（验证方式：恢复流程与 store 的新测试）
-- [ ] AC2：4 位小数时间戳的歌词行不再被静默忽略；晚于「时长 + 1 秒」的条目只丢弃那一行，不再拒绝整个文件（验证方式：`timeline/lyrics.py` 的新测试，含上传端点一条）
-- [ ] AC3：`song_job` 不再导入 runner 的私有函数；`imported.py` 与 `build.py` 共用同一份常量与辅助函数；两处行为不变（验证方式：既有测试不改即通过）
-- [ ] AC4：成片缓存键包含随包字体与编码参数；脚本与镜头的符号链接被拒绝；派生文件只读且重新准备仍能覆盖（验证方式：新测试）
-- [ ] AC5：登记表 TD-68 的三处后端测试缺口补上，`prepare_turn` 异常不再丢失原异常类型（验证方式：新测试）
-- [ ] AC6：前端 TD-62、TD-67、TD-70②、TD-49 的七处各有对应测试或明确的验证方式，浏览器里实测的结论写进验证记录（验证方式：`vitest` + 在浏览器里实际点一遍）
+- [x] AC1：进程崩溃时风格轮次正在运行，重启恢复会清理草稿里的多余文件和符号链接；`_swap` 在两次 rename 之间被杀留下的 `.<id>.old-*` 会在启动时还原（验证方式：恢复流程与 store 的新测试）
+- [x] AC2：4 位小数时间戳的歌词行不再被静默忽略；晚于「时长 + 1 秒」的条目只丢弃那一行，不再拒绝整个文件（验证方式：`timeline/lyrics.py` 的新测试，含上传端点一条）
+- [x] AC3：`song_job` 不再导入 runner 的私有函数；`imported.py` 与 `build.py` 共用同一份常量与辅助函数；两处行为不变（验证方式：既有测试不改即通过）
+- [x] AC4：成片缓存键包含随包字体与编码参数；脚本与镜头的符号链接被拒绝；派生文件只读且重新准备仍能覆盖（验证方式：新测试）
+- [x] AC5：登记表 TD-68 的三处后端测试缺口补上，`prepare_turn` 异常不再丢失原异常类型（验证方式：新测试）
+- [x] AC6：前端 TD-62、TD-67、TD-70②、TD-49 的七处各有对应测试或明确的验证方式，浏览器里实测的结论写进验证记录（验证方式：`vitest` + 在浏览器里实际点一遍）
 - [ ] AC7：`tech-debt.md` 更新（处理完的移到已处理、过时的按过时关闭），`make check` 为绿
 
 ## 任务
@@ -96,7 +96,7 @@
 - **完成标准**：三处缺口都有测试。
 - **验证命令**：`make check`
 
-### T6：风格编辑的两处小事与前端测试缺口（完成，TD-70 ② 的浏览器实测待 T7 之后统一做）
+### T6：风格编辑的两处小事与前端测试缺口（完成）
 
 - **目标**：TD-62、TD-67、TD-70②。
 - **涉及文件**：`frontend/src/features/styles/useStyleDraft.ts`、`StyleEditView.vue`、`frontend/src/components/VideoKindPicker.vue`、`features/ideas/CreateProjectDialog.vue` 及 spec、HTML 预览组件 `HtmlPreviewPane.vue`。
@@ -105,7 +105,7 @@
 - **完成标准**：以上测试通过；TD-70 ② 在浏览器里实测切换标签的网络请求。
 - **验证命令**：`make check`
 
-### T7：快照栏与画布的七处小瑕疵（完成，浏览器走查见验证记录）
+### T7：快照栏与画布的七处小瑕疵（完成）
 
 - **目标**：TD-49 ①–⑦。
 - **涉及文件**：`frontend/src/features/workbench/SnapshotRail.vue`、`SnapshotDetail.vue`、`SnapshotTimeline.vue` 及 spec、`features/canvas/topic/TopicCanvas.vue`、`EditModeToggle.vue`、`briefStatus.ts`。
@@ -129,20 +129,23 @@
 - 2026-10-08 — T4 完成：缓存键纳入编码参数（`encode_signature`）；镜头／`lib`／`global.js` 链接到工作区外时被静态检查报告、装配与哈希跳过、`_scene_sources` 拒绝；`prepare_turn` 的派生文件设只读（`seal_derived_upstream`）；`make check` 全绿
 - 2026-10-08 — T5 完成：补迁移往返后的定稿／前言端到端测试与未注册上游的回退测试；`prepare_turn` 失败消息带原异常类型名（TD-68）；`make check` 全绿
 - 2026-10-08 — T6 完成（单测层面）：放弃失败的提示在编辑／保存／AI 轮次结束后清掉（TD-62）；提交按钮在类型数据重取失败时也禁用、补不可用组合的测试、整理选择器夹具类型（TD-67）；预览组件首次打开后用 `v-show` 保持挂载，切走时暂停播放（TD-70 ②）；`make check` 全绿
-- 2026-10-08 — T7 完成（单测层面）：窄屏隐藏收起按钮、双选无差异的文案、旧 diff 的测试补实、检查失败显示失败图标、简报不存在时禁用编辑、编辑按钮包装元素有 role/aria、折叠快照栏改 `v-show` 保留选中（TD-49 ①–⑦）；`make check` 全绿
+- 2026-10-08 — T7 完成：窄屏隐藏收起按钮、双选无差异的文案、旧 diff 的测试补实、检查失败显示失败图标、简报不存在时禁用编辑、编辑按钮包装元素有 role/aria、选中状态上移到 `SnapshotRail` 使折叠再展开后保留（TD-49 ①–⑦）；浏览器走查通过（见验证记录）；`make check` 全绿
 
 ## 下一步
 
-- 在隔离实例上做浏览器走查（见 `docs/runbooks/verification.md` 的「HTML 动画画布的 L4 走查」与 worktree 一节）：TD-70 ② 切换标签的网络请求，TD-49 的窄屏收起按钮／折叠再展开保留选中／检查失败图标；结论写进「验证记录」，然后做 T8。
+- 做 T8：按「验证记录」更新 `docs/quality/tech-debt.md`（处理完的移到已处理；TD-84、TD-69、TD-70 只处理了一部分，保留未处理行并改写成剩余部分；TD-49、TD-62、TD-67、TD-68、TD-72、TD-74、TD-54、TD-58 整条处理），`make check` 为绿后等待负责人验收。
 
 ## 决策记录
 
+- 2026-10-08 — TD-49 ⑦ 选择"状态上移到 `SnapshotRail`"而不是 `v-show`：后者在浏览器里让分隔条面板展不开（见「意外与发现」）。`SnapshotTimeline` 用 `defineModel('selected')`，单独使用时仍是本地状态。
+- 2026-10-08 — TD-49 ④ 只在"没有旧结果且请求失败"时显示失败图标；已有上一次结果时继续显示那份结果。TanStack 默认重试 3 次，所以真实使用中失败图标要等重试用完才出现。
 - 2026-10-08 — T2：既有测试 `test_invalid_input_is_rejected_with_a_reason` 与 `test_bad_files_are_422...` 里"一行晚于时长就整份拒绝"的用例按 TD-84 ② 的要求改为"只有晚于时长的条目才报错（文案含"晚于歌曲时长"）"。
 - 2026-10-08 — 计划范围按负责人选择的「后端小项加前端小瑕疵」，并剔除了需要设计取舍或改公共接口的子项（见「不包含」），理由是这批的价值在于机械、可验证、风险低。
 - 2026-10-08 — 分支叠在未合并的 td-cleanup-music 上；`active/` 里暂时有两份计划，文档检查只给出警告。
 
 ## 意外与发现
 
+- T7（浏览器走查发现）：折叠快照栏最初按登记表第二种建议改成 `v-show`，单测全绿，但在浏览器里分隔条面板再也展不开（面板宽度恒为 0；换回 main 的 `v-if` 版本能展到 232px）。原因没有深究（保持挂载的卡片带 `min-w-60`，疑似影响分隔条面板的折叠判断）；改成把选中状态上移到一直挂载的 `SnapshotRail`，卡片保持 `v-if`。jsdom 看不出面板尺寸问题，这类改动必须在浏览器里看一遍。
 - T6：Vue 把缺省的布尔属性当成 `false`，`HtmlPreviewPane` 新加的 `active?: boolean` 必须 `withDefaults` 给 `true`，否则不传时一开始就被当成"不在显示"（测试发现）。TD-70 ② 没有无条件 `v-show`，而是"第一次打开才挂载、之后保持"，避免从不打开预览的人也白白下载约 3 MB 的整页。TD-67 ① 补的测试一开始就通过（补缺口，预期）。
 - T5：TD-68 ①② 是给已有行为补测试，写出来就通过（预期）；②已用临时改动回退分支验证测试确实会失败。③ 里异常本来就用了 `raise ... from exc` 链上了原异常，缺的是消息里的类型名，已补。
 - T4：TD-70 ① 的"字体不在缓存键里"已过时：随包字体经 `page.routes` 的文件字节早就进了 `_cache_key`（页面模板在 `page.html` 里也在）；真正缺的只有编码参数，已补。同时新增的字体用例作为现状的钉子（它一开始就通过，属预期）。
@@ -155,4 +158,14 @@
 
 ## 验证记录
 
-- 无
+| 验收标准 | 命令／操作 | 结果 |
+|---|---|---|
+| AC1 | `tests/styles/test_store.py::TestRecoverInterruptedSwaps`（5 条）、`tests/agent/test_runner_style.py::TestRecovery`（2 条）；RED 为 6 failed / 1 passed | 通过 |
+| AC2 | `tests/timeline/test_lyrics.py`（4 位／6 位小数、晚于时长只丢一行）、`tests/api/test_music_lyrics.py::test_a_stray_late_entry_only_costs_that_line` | 通过 |
+| AC3 | `tests/timeline/test_numeric.py`；既有 `tests/timeline`、`tests/engines` 480 条不改即通过；`grep` 不再有跨模块导入下划线名字 | 通过 |
+| AC4 | `tests/test_worker_html_cache_key.py`、`tests/engines/test_html_static_check.py::TestScriptsOutsideTheWorkspace`、`test_html_assemble.py::test_scripts_linking_outside_the_workspace_are_left_out`、`tests/test_worker_html.py::test_a_scene_script_linking_outside_the_workspace_is_refused`、`tests/workspace/test_upstream.py::TestSealDerivedUpstream`、`tests/agent/test_runner.py::TestPrepareTurn::test_files_derived_by_prepare_turn_are_read_only_during_the_turn` | 通过（TD-70 ① 的"字体不在键里"已过时，只补了编码参数） |
+| AC5 | `tests/agent/test_stage_flow.py::TestAfterMigrationRoundTrip`、`tests/agent/test_preamble.py::test_an_unregistered_upstream_falls_back_...`（临时改动回退分支验证会失败）、`tests/agent/test_runner.py::TestPrepareTurn::test_failure_message_keeps_the_original_exception_type` | 通过 |
+| AC6 | `pnpm vitest run`（`useStyleDraft`、`CreateProjectDialog`、`VideoKindPicker`、`HtmlPreviewPane`、`HtmlAnimationCanvas`、`SnapshotRail`、`SnapshotRail.selection`、`SnapshotDetail`、`SnapshotTimeline`、`TopicCanvas`、`EditModeToggle`、`BriefStatusIcon`、`briefStatus`）；浏览器走查见 `data/evidence/td-cleanup-misc/l4.md`：TD-70 ② 三次切换只请求一次 `/inline`；TD-49 ⑦ 折叠再展开保留选中、① 375px 无收起按钮、⑤⑥ 编辑禁用且有 role/aria、④ 失败图标 | 通过 |
+| AC7 | `make check` | 见下一行 |
+
+- `make check`（T7 最终提交后）：全部通过。

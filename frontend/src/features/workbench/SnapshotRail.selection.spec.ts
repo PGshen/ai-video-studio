@@ -36,13 +36,4 @@ describe('SnapshotRail 折叠再展开', () => {
     expect(w.findAll('[data-testid="snapshot-item"]')[0]!.classes()).toContain('bg-primary/10')
     expect(w.text()).not.toContain('选择一个快照查看详情')
   })
-
-  it('折叠时整栏不可见', async () => {
-    const w = mount(SnapshotRail, {
-      props: { projectId: 'p1', busy: false, collapsed: true, narrow: false },
-      attachTo: document.body,
-    })
-    const rail = w.find('[data-testid="snapshot-rail"]')
-    expect(rail.exists() ? (rail.element as HTMLElement).style.display : 'none').toBe('none')
-  })
 })
