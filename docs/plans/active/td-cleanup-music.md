@@ -54,7 +54,7 @@
 - **完成标准**：以上测试通过，既有 stage_flow 测试不改动即通过。
 - **验证命令**：`make check`
 
-### T2：TD-75 慢歌的覆盖率按折叠前的拍点周期算（待开始）
+### T2：TD-75 慢歌的覆盖率按折叠前的拍点周期算（完成）
 
 - **目标**：覆盖率的分子分母同一口径。
 - **涉及文件**：`backend/src/studio/engines/audio/song.py`（`GridFit`、`fit_grid`、`analyze_samples`）、`backend/tests/engines/audio/` 对应测试。
@@ -104,10 +104,11 @@
 ## 进度
 
 - 2026-10-08 — T1 完成：`artifact_dirs()` 条目支持文件级精确匹配（共用 `stage.in_artifacts`，stage_flow 与前言两处使用），`concept` 只声明用户输入文件；新测试 `tests/agent/test_stage_flow_file_scope.py`。
+- 2026-10-08 — T2 完成：`GridFit.raw_period` 记录折叠前周期，覆盖率抽成纯函数 `_coverage(fit, duration)`，分子分母同口径；慢歌（<60 BPM）不再误报“拍点不稳”，真稀疏仍告警。
 
 ## 下一步
 
-- 从 T2 开始：先写慢歌覆盖率的失败测试。
+- 从 T3 开始，按计划任务顺序继续。
 
 ## 决策记录
 
