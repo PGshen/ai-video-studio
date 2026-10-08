@@ -347,3 +347,33 @@ def test_upstream_changes_follow_pipeline_order(
     )
 
     assert [c.stage for c in changes] == ["music", "beatsheet"]
+
+
+def test_an_unregistered_upstream_falls_back_to_its_own_name_as_artifact_dir(
+    narrative_project: NarrativeProjectEnv,
+) -> None:
+    # TD-68: a stage name the registry no longer knows still slices the diff by `<name>/`.
+    env = narrative_project
+    registry = StageRegistry()
+    downstream = _FakeStage("animation_html", [], reads=["ghost"])
+    registry.register(downstream)
+    update_project_settings(env.engine, env.project_id, {"pipeline": ["ghost", "animation_html"]})
+
+    (env.workdir / "ghost").mkdir(exist_ok=True)
+    (env.workdir / "other").mkdir(exist_ok=True)
+    (env.workdir / "ghost" / "a.txt").write_text("old", encoding="utf-8")
+    (env.workdir / "other" / "b.txt").write_text("old", encoding="utf-8")
+    old_snap = create_snapshot(env.engine, env.blobs, env.project_id, "turn")
+    (env.workdir / "ghost" / "a.txt").write_text("new", encoding="utf-8")
+    (env.workdir / "other" / "b.txt").write_text("new", encoding="utf-8")
+    new_snap = create_snapshot(env.engine, env.blobs, env.project_id, "turn")
+
+    create_stage(env.engine, project_id=env.project_id, stage="ghost", status="finalized")
+    update_stage(env.engine, env.project_id, "ghost", finalized_snapshot_id=new_snap.id)
+    create_stage(env.engine, project_id=env.project_id, stage="animation_html", status="active")
+    update_stage(env.engine, env.project_id, "animation_html", based_on={"ghost": old_snap.id})
+
+    changes = upstream_changes(env.engine, env.blobs, env.project_id, downstream, registry)
+
+    assert [c.stage for c in changes] == ["ghost"]
+    assert [m.path for m in changes[0].diff.modified] == ["ghost/a.txt"]

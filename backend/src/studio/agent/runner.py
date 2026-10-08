@@ -357,7 +357,9 @@ class TurnRunner:
         try:
             job.stage.prepare_turn(workdir)
         except Exception as exc:
-            raise RuntimeError(f"阶段 {job.stage.name} 的 prepare_turn 失败：{exc}") from exc
+            raise RuntimeError(
+                f"阶段 {job.stage.name} 的 prepare_turn 失败：{type(exc).__name__}: {exc}"
+            ) from exc
         state.derived_upstream = derived_upstream(workdir, state.sources)
         seal_derived_upstream(workdir, state.derived_upstream)
 

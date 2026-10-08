@@ -87,7 +87,7 @@
 - **完成标准**：以上测试通过。
 - **验证命令**：`make check`
 
-### T5：后端测试缺口（待开始）
+### T5：后端测试缺口（完成）
 
 - **目标**：TD-68 ①②③。
 - **涉及文件**：`backend/tests/db/`（迁移）、`backend/tests/agent/`（前言、runner）、`backend/src/studio/agent/runner.py` 或 `turn_state.py`（`prepare_turn` 异常包装处，先 grep）。
@@ -127,10 +127,11 @@
 - 2026-10-08 — T2 完成：时间戳小数位放宽到 1–6 位，晚于时长的条目只丢那一行（TD-84 ①②）；`make check` 全绿
 - 2026-10-08 — T3 完成：runner 的 `drain`/`kill_group`/`tail_lines` 改为公开，`timeline/numeric.py` 收拢 `build`/`imported` 共用的常量与 `is_finite_number`；`make check` 全绿
 - 2026-10-08 — T4 完成：缓存键纳入编码参数（`encode_signature`）；镜头／`lib`／`global.js` 链接到工作区外时被静态检查报告、装配与哈希跳过、`_scene_sources` 拒绝；`prepare_turn` 的派生文件设只读（`seal_derived_upstream`）；`make check` 全绿
+- 2026-10-08 — T5 完成：补迁移往返后的定稿／前言端到端测试与未注册上游的回退测试；`prepare_turn` 失败消息带原异常类型名（TD-68）；`make check` 全绿
 
 ## 下一步
 
-- 从 T5 开始：读登记表 TD-68 原文；先 grep 迁移测试（`tests/db`）、`agent/preamble.py` 的 `[name]` 回退分支与 `prepare_turn` 异常被包成 `RuntimeError` 的位置（`agent/runner.py` 约第 357 行），先写失败测试。
+- 从 T6 开始（前端，在 `frontend/` 里跑 `pnpm vitest run <文件>`）：读登记表 TD-62、TD-67、TD-70 ② 原文；先读 `features/styles/useStyleDraft.ts`、`StyleEditView.vue`、`components/VideoKindPicker.vue`、`features/ideas/CreateProjectDialog.vue` 与 spec、`HtmlPreviewPane.vue`，先写失败测试。
 
 ## 决策记录
 
@@ -140,6 +141,7 @@
 
 ## 意外与发现
 
+- T5：TD-68 ①② 是给已有行为补测试，写出来就通过（预期）；②已用临时改动回退分支验证测试确实会失败。③ 里异常本来就用了 `raise ... from exc` 链上了原异常，缺的是消息里的类型名，已补。
 - T4：TD-70 ① 的"字体不在缓存键里"已过时：随包字体经 `page.routes` 的文件字节早就进了 `_cache_key`（页面模板在 `page.html` 里也在）；真正缺的只有编码参数，已补。同时新增的字体用例作为现状的钉子（它一开始就通过，属预期）。
 - T4：TD-69 ④ 做成通用的 `seal_derived_upstream`（runner 在 `derived_upstream` 之后调用），而不是改各阶段的 `prepare_turn`；下一轮／轮末的 `materialize_upstream` 本来就先恢复写权限再清空，所以无需改覆盖逻辑。TD-69 ② 采用与资产相同的口径：只拒绝指向工作区外的链接，工作区内的链接仍可用。
 - T3：`build.py` 与 `imported.py` 里重复的只有 `BEATS_PER_BAR`、`EPSILON`、有限数判断三项，实现逐字相同；`_TOLERANCE` 等其余常量并没有被复制。`agent/shell.py` 另有一个同名 `_kill_group`，`engines` 不能 import `agent`，保持不动。

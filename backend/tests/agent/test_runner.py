@@ -1363,6 +1363,20 @@ class TestPrepareTurn:
         assert "素材目录损坏" in error.payload["message"]
         assert h.contexts == []
 
+    async def test_failure_message_keeps_the_original_exception_type(self, h: Harness) -> None:
+        # TD-68: the original exception is chained, and its type survives in the message.
+        stage = _DelegatingStage(h.env.registry.get("topic"))
+        stage.prepare_error = PermissionError("素材不可写")
+        h.env.registry.register(stage)
+        session_id = h.session(stage="topic")
+
+        turn = await h.run(session_id, [fake.say("a")])
+
+        assert turn.status == "failed"
+        [error] = [e for e in list_events(h.env.engine, session_id) if e.type == "error"]
+        assert "PermissionError" in error.payload["message"]
+        assert "素材不可写" in error.payload["message"]
+
     async def test_workspaceless_stage_does_not_call_prepare_turn(self, h: Harness) -> None:
         stage = _DelegatingStage(h.env.registry.get("topic"), name="brainstorm")
         stage.workspaceless = True
