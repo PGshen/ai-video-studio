@@ -30,7 +30,7 @@ from typing import Any
 
 from sqlalchemy import Engine
 
-from studio.agent.stage import StageDefinition, StageRegistry, upstream_of
+from studio.agent.stage import StageDefinition, StageRegistry, in_artifacts, upstream_of
 from studio.agent.stage_flow import project_pipeline
 from studio.db.repo.snapshots import get_snapshot, list_snapshots
 from studio.db.repo.stages import get_stage
@@ -269,9 +269,8 @@ def _upstream_changes(
             continue
         # Same file set the stale check compares: the upstream's artifact dirs.
         dirs = registry.get(name).artifact_dirs() if registry.has(name) else [name]
-        prefixes = tuple(f"{directory.rstrip('/')}/" for directory in dirs)
-        old = {p: h for p, h in based_on.manifest.items() if p.startswith(prefixes)}
-        new = {p: h for p, h in finalized.manifest.items() if p.startswith(prefixes)}
+        old = {p: h for p, h in based_on.manifest.items() if in_artifacts(dirs, p)}
+        new = {p: h for p, h in finalized.manifest.items() if in_artifacts(dirs, p)}
         if old == new:  # re-finalized with changes only outside its artifact dirs
             continue
         scene_summary = _narrative_scene_summary(old, new, blobs) if name == "narrative" else None
@@ -314,8 +313,8 @@ def _user_edits(
 
 
 def _handoff_files(workdir: Path, stage: StageDefinition) -> list[str]:
-    prefixes = tuple(f"{name}/" for name in stage.artifact_dirs())
-    return [path for path in list_tree(workdir) if path.startswith(prefixes)]
+    entries = stage.artifact_dirs()
+    return [path for path in list_tree(workdir) if in_artifacts(entries, path)]
 
 
 def gather_preamble_inputs(

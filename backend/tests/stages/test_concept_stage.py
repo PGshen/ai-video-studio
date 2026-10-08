@@ -18,7 +18,18 @@ def _write_brief(workdir: Path, text: str) -> None:
 def test_stage_protocol_values() -> None:
     assert isinstance(STAGE, StageDefinition)
     assert STAGE.name == "concept" and STAGE.allow_web is True and STAGE.workspaceless is False
-    assert STAGE.reads() == [] and STAGE.artifact_dirs() == ["concept", "music"]
+    assert STAGE.reads() == []
+    assert STAGE.artifact_dirs() == [
+        "concept",
+        "music/source.mp3",
+        "music/source.wav",
+        "music/source.m4a",
+        "music/source.flac",
+        "music/source.ogg",
+        "music/analysis.json",
+        "music/analysis.png",
+        "music/lyrics.lrc",
+    ]
     scope = STAGE.write_scope()
     assert is_writable(scope, "concept/brief.md") is True
     assert is_writable(scope, "beatsheet/beatsheet.json") is False

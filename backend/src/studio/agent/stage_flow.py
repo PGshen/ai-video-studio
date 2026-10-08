@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Engine
 
-from studio.agent.stage import StageDefinition, StageRegistry, upstream_of
+from studio.agent.stage import StageDefinition, StageRegistry, in_artifacts, upstream_of
 from studio.db.repo.projects import get_project, set_current_stage
 from studio.db.repo.snapshots import get_snapshot
 from studio.db.repo.stages import StageValue, get_stage, list_stages, update_stage
@@ -59,9 +59,9 @@ def _downstream_of(
 
 
 def _artifacts_of(manifest: Manifest, definition: StageDefinition) -> Manifest:
-    """清单里属于该阶段产物目录的那部分（快照是整项目的，判断内容变化只看产物目录）。"""
-    prefixes = tuple(f"{directory.rstrip('/')}/" for directory in definition.artifact_dirs())
-    return {path: sha for path, sha in manifest.items() if path.startswith(prefixes)}
+    """清单里属于该阶段产物（目录或文件条目）的那部分（快照是整项目的，判断内容变化只看产物目录）。"""
+    entries = definition.artifact_dirs()
+    return {path: sha for path, sha in manifest.items() if in_artifacts(entries, path)}
 
 
 def _upstream_artifacts_changed(

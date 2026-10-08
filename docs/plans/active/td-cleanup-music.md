@@ -42,7 +42,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：TD-80 `concept` 的产物范围收窄到文件级（待开始）
+### T1：TD-80 `concept` 的产物范围收窄到文件级（完成）
 
 - **目标**：`concept` 只把用户输入类文件算作自己的产物，`produce` 的输出不再引起 stale。
 - **涉及文件**：`backend/src/studio/stages/concept/__init__.py`、`backend/src/studio/agent/stage_flow.py: _artifacts_of`、`backend/tests/agent/` 中 stage_flow 相关测试。
@@ -103,11 +103,11 @@
 
 ## 进度
 
-- 无
+- 2026-10-08 — T1 完成：`artifact_dirs()` 条目支持文件级精确匹配（共用 `stage.in_artifacts`，stage_flow 与前言两处使用），`concept` 只声明用户输入文件；新测试 `tests/agent/test_stage_flow_file_scope.py`。
 
 ## 下一步
 
-- 从 T1 开始：先在 `backend/tests/agent/` 里写 stage_flow 的文件级产物测试，确认失败。
+- 从 T2 开始：先写慢歌覆盖率的失败测试。
 
 ## 决策记录
 
