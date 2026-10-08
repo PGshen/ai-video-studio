@@ -88,6 +88,13 @@ function status(id: string): DraftStatusOut {
   }
 }
 
+const MAX_SHOTS = 12
+
+/** 和后端一致：这套风格有对话轮次在跑时，改动类请求 409。 */
+function ensureIdle(id: string): void {
+  if (server.busy.has(id)) throw new ApiError(409, 'AI 正在修改这套风格，请等这一轮结束（或先停止它）')
+}
+
 const renumber = (names: string[]): string[] =>
   names.map((n, i) => `${String(i + 1).padStart(3, '0')}-${n.slice(4)}`)
 
@@ -222,11 +229,14 @@ export const endpoints = {
   async uploadStyleScreenshot(id: string, file: File): Promise<DraftStatusOut> {
     if (server.uploadError) throw server.uploadError
     if (!server.drafts.has(id)) throw notFound(id)
+    ensureIdle(id)
     const shots = server.draftShots.get(id) ?? []
+    if (shots.length >= MAX_SHOTS) throw new ApiError(422, `截图最多 ${MAX_SHOTS} 张，请先删除一些`)
     server.draftShots.set(id, [...shots, shotName(shots.length + 1, `up${shots.length}${file.size}`)])
     return status(id)
   },
   async deleteStyleScreenshot(id: string, name: string): Promise<DraftStatusOut> {
+    ensureIdle(id)
     const shots = server.draftShots.get(id) ?? []
     if (!server.drafts.has(id) || !shots.includes(name)) throw notFound(name)
     server.draftShots.set(
@@ -236,6 +246,7 @@ export const endpoints = {
     return status(id)
   },
   async reorderStyleScreenshots(id: string, names: string[]): Promise<DraftStatusOut> {
+    ensureIdle(id)
     const shots = server.draftShots.get(id) ?? []
     if (!server.drafts.has(id)) throw notFound(id)
     if (names.length !== shots.length || [...names].sort().join() !== [...shots].sort().join()) {

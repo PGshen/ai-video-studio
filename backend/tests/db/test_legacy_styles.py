@@ -403,6 +403,20 @@ class TestIdempotence:
         assert {f.name: f.text for f in got.references}["color-scheme.md"] == "新配色"
         assert len(list_style_presets(data_dir)) == 1
 
+    def test_overwrite_keeps_the_screenshots_added_after_the_first_import(
+        self, data_dir: Path
+    ) -> None:
+        import_export(data_dir, _full_export())
+        style_id = store.list_saved_styles(data_dir)[0].id
+        store.open_draft(data_dir, style_id)
+        name = store.add_draft_screenshot(data_dir, style_id, b"RIFF\x00\x00\x00\x00WEBPcover")
+        store.save_draft(data_dir, style_id)
+
+        report = import_export(data_dir, _full_export(), overwrite=True)
+
+        assert report.overwritten == ["概念传记·纸上溯源"]
+        assert store.get_style(data_dir, style_id).screenshots == [name]
+
     def test_names_repeated_inside_one_export_import_only_the_first(self, data_dir: Path) -> None:
         export = _full_export()
         export["templates"].append(dict(export["templates"][0], id="t-dup"))

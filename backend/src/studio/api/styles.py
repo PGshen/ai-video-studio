@@ -259,8 +259,12 @@ async def delete_draft_file_endpoint(
     return Response(status_code=204)
 
 
-_IMAGE_HEADERS = {"Cache-Control": "private, max-age=31536000, immutable"}
-"""截图文件名里带内容哈希：同一个名字永远是同一份内容，可以放心长期缓存。"""
+_IMAGE_HEADERS = {
+    "Cache-Control": "private, max-age=31536000, immutable",
+    "X-Content-Type-Options": "nosniff",
+}
+"""截图文件名里带内容哈希：同一个名字永远是同一份内容，可以放心长期缓存；`nosniff` 保证浏览器
+只按 `image/webp` 解释它。"""
 
 
 def _screenshot_response(style_id: str, name: str, settings: Settings, *, draft: bool) -> Response:
@@ -300,16 +304,23 @@ async def upload_screenshot_endpoint(
 ) -> DraftStatusOut:
     """上传一张截图（multipart，字段 `file`），规范化成 WebP 后追加到草稿末尾。"""
     _ensure_idle(runner, style_id)
-    if int(request.headers.get("content-length") or 0) > MAX_UPLOAD_BYTES + 64 * 1024:
+    # 没有（或写坏了）Content-Length 就没法在解析之前挡住超大的请求体：直接拒绝。
+    length = request.headers.get("content-length", "")
+    if not length.isdigit():
+        raise HTTPException(status_code=422, detail="请求缺少有效的 Content-Length")
+    if int(length) > MAX_UPLOAD_BYTES + 64 * 1024:
         raise _too_large()
     try:
         form = await request.form()
     except Exception as exc:  # malformed multipart bodies surface as several error types
         raise HTTPException(status_code=422, detail="请求体不是合法的 multipart/form-data") from exc
-    upload = form.get("file")
-    if not isinstance(upload, UploadFile):
-        raise HTTPException(status_code=422, detail="没有收到文件，字段名应为 file")
-    data = await upload.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        upload = form.get("file")
+        if not isinstance(upload, UploadFile):
+            raise HTTPException(status_code=422, detail="没有收到文件，字段名应为 file")
+        data = await upload.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await form.close()
     if len(data) > MAX_UPLOAD_BYTES:
         raise _too_large()
     try:
