@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileNameProblem, groupFiles } from './styleFiles'
+import { fileNameProblem, groupFiles, screenshotUrl } from './styleFiles'
 
 describe('groupFiles', () => {
   it('按入口、引用文件、金样本分组并保持顺序', () => {
@@ -54,5 +54,22 @@ describe('fileNameProblem', () => {
   it('同目录重名', () => {
     expect(fileNameProblem('references', 'a.md', ['references/a.md'])).toContain('已有')
     expect(fileNameProblem('exemplars', 'a.md', ['references/a.md'])).toBeNull()
+  })
+})
+
+describe('screenshotUrl', () => {
+  it('正式版本和草稿各有各的路径', () => {
+    expect(screenshotUrl('s1', '001-aaaaaaaaaaaa.webp', { draft: false })).toBe(
+      '/api/styles/s1/screenshots/001-aaaaaaaaaaaa.webp',
+    )
+    expect(screenshotUrl('s1', '001-aaaaaaaaaaaa.webp', { draft: true })).toBe(
+      '/api/styles/s1/draft/screenshots/001-aaaaaaaaaaaa.webp',
+    )
+  })
+
+  it('id 和文件名都会编码', () => {
+    expect(screenshotUrl('a#b', 'x/y.webp', { draft: false })).toBe(
+      '/api/styles/a%23b/screenshots/x%2Fy.webp',
+    )
   })
 })

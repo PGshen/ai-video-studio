@@ -2,7 +2,14 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
-import { resetServer, seedDraft, seedStyle, server } from '@/test/fakeStyleApi'
+import {
+  resetServer,
+  seedDraft,
+  seedScreenshots,
+  seedStyle,
+  server,
+  shotName,
+} from '@/test/fakeStyleApi'
 
 vi.mock('@/api/endpoints', async () => (await import('@/test/fakeStyleApi')).endpoints)
 vi.mock('@/components/CodeEditor.vue', () => ({
@@ -102,6 +109,39 @@ describe('StyleDetailView', () => {
     await w.get('[data-testid="file-references/color.md"]').trigger('click')
 
     expect(w.get('[data-testid="markdown-view"]').text()).toBe('主色：暖白')
+  })
+
+  it('没有截图时不显示缩略图行', async () => {
+    const w = await mountDetail()
+    expect(w.find('[data-testid="style-screenshots"]').exists()).toBe(false)
+  })
+
+  it('有截图时按顺序显示缩略图（正式版本地址），封面标「封面」', async () => {
+    seedScreenshots('s1', [shotName(1, 'aaaaaaaaaaaa'), shotName(2, 'bbbbbbbbbbbb')])
+    const w = await mountDetail()
+
+    const thumbs = w.findAll('[data-testid^="shot-thumb-"] img')
+    expect(thumbs.map((t) => t.attributes('src'))).toEqual([
+      '/api/styles/s1/screenshots/001-aaaaaaaaaaaa.webp',
+      '/api/styles/s1/screenshots/002-bbbbbbbbbbbb.webp',
+    ])
+    expect(w.get('[data-testid="shot-thumb-0"]').text()).toContain('封面')
+    expect(w.get('[data-testid="shot-thumb-1"]').text()).not.toContain('封面')
+  })
+
+  it('点缩略图打开大图，可以切到下一张', async () => {
+    seedScreenshots('s1', [shotName(1, 'aaaaaaaaaaaa'), shotName(2, 'bbbbbbbbbbbb')])
+    const w = await mountDetail()
+
+    await w.get('[data-testid="shot-thumb-1"]').trigger('click')
+    await flushPromises()
+    const large = () => document.body.querySelector('[data-testid="shot-large"]')
+    expect(large()?.getAttribute('src')).toBe('/api/styles/s1/screenshots/002-bbbbbbbbbbbb.webp')
+
+    ;(document.body.querySelector('[data-testid="shot-prev"]') as HTMLElement).click()
+    await flushPromises()
+    expect(large()?.getAttribute('src')).toBe('/api/styles/s1/screenshots/001-aaaaaaaaaaaa.webp')
+    w.unmount()
   })
 
   it('风格不存在时显示提示', async () => {

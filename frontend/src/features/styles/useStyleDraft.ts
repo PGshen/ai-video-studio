@@ -5,7 +5,9 @@
  * - `edit` 先写进查询缓存（编辑器立即看到），600ms 防抖后 PUT 到草稿文件；写入按文件串行，
  *   失败的编辑会留着等下一次 `flush`，保存前会先 `flush`，写不进去就不保存；
  * - 写入直接调接口、不走 mutation：组件卸载（关闭抽屉）时 `flush` 仍然要能把编辑写出去；
- * - 名称、简介、分类是 `STYLE.md` 的 frontmatter，`updateMeta` 就是改这个文件。
+ * - 名称、简介、分类是 `STYLE.md` 的 frontmatter，`updateMeta` 就是改这个文件；
+ * - 截图（ADR 0022）不走防抖：上传、删除、调整顺序都是立即调接口，成功后用返回的草稿状态刷新缓存，
+ *   同样只在草稿里生效，保存或放弃时和文本一起处理。
  */
 import { useQueryClient } from '@tanstack/vue-query'
 import { computed, onBeforeUnmount, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
@@ -21,7 +23,7 @@ import {
   useSaveStyleDraftMutation,
   useStyleDraftQuery,
 } from '@/composables/queries'
-import type { StyleOut } from '@/types/api'
+import type { DraftStatusOut, StyleOut } from '@/types/api'
 import { readStyleMeta, updateFrontmatter, type StyleMeta } from './styleFrontmatter'
 
 export const ENTRY_PATH = 'STYLE.md'
@@ -83,6 +85,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
   const isNew = computed(() => statusQuery.data.value?.is_new ?? false)
   /** AI 正在改这份草稿（后端的 `busy`）：编辑区只读，轮次结束后刷新草稿即恢复。 */
   const busy = computed(() => statusQuery.data.value?.busy ?? false)
+  const screenshots = computed(() => statusQuery.data.value?.screenshots ?? [])
   const content = computed(() => activeQuery.data.value ?? '')
   const entryText = computed(() => entryQuery.data.value ?? '')
   const meta = computed(() => readStyleMeta(entryText.value))
@@ -161,6 +164,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
 
   /** 把还没写出的编辑全部写进草稿；写不进去就抛错（发消息给 AI、保存之前都要先过这一关）。 */
   async function ensureWritten(): Promise<void> {
+    await screenshotChain
     await flush()
     if (saveState.value === 'error') {
       throw new Error(`草稿还没有写入成功：${writeError.value ?? '未知错误'}`)
@@ -214,6 +218,111 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     }
   }
 
+  // ---- 截图 ---------------------------------------------------------------
+
+  const screenshotError = ref<string | null>(null)
+  const pendingShots = ref(0)
+  /** 有截图操作（上传、删除、移动）在排队或进行中：界面据此禁用保存、放弃和全部截图按钮。 */
+  const uploading = computed(() => pendingShots.value > 0)
+  let screenshotChain: Promise<void> = Promise.resolve()
+
+  /** 截图操作一律串行：每次改动都会重排全部文件名，并发的请求手里的名字必然过期。 */
+  function enqueueScreenshot(task: () => Promise<void>): Promise<void> {
+    pendingShots.value += 1
+    const run = screenshotChain
+      .then(task)
+      .catch(() => undefined)
+      .finally(() => {
+        pendingShots.value -= 1
+      })
+    screenshotChain = run
+    return run
+  }
+
+  type ShotResult = 'ok' | 'busy' | 'failed'
+  const STALE_MESSAGE = '截图已经变了（可能刚被改动过），已刷新，请再试一次'
+
+  /** 跑一次截图改动：成功后用返回的草稿状态刷新；409（AI 正在改）重新取草稿并返回 `busy`；
+   * 其他失败写进 `screenshotError`。`stale` 为真时 404 表示「那张截图已经不在了」。 */
+  async function runScreenshotAction(
+    id: string,
+    action: () => Promise<DraftStatusOut>,
+    stale = false,
+  ): Promise<ShotResult> {
+    try {
+      const status = await action()
+      queryClient.setQueryData(queryKeys.styleDraft(id), status)
+      return 'ok'
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        invalidateStyleDraft(queryClient, id)
+        return 'busy'
+      }
+      if (stale && error instanceof ApiError && error.status === 404) {
+        invalidateStyleDraft(queryClient, id)
+        screenshotError.value = STALE_MESSAGE
+      } else {
+        screenshotError.value = errorMessage(error)
+      }
+      return 'failed'
+    }
+  }
+
+  /** 排队逐个上传图片（跳过不是图片的文件）；遇到失败就停止并说明还有几张没传，已经成功的保留。 */
+  function uploadScreenshots(selected: readonly File[]): Promise<void> {
+    const id = styleId.value
+    const images = selected.filter((file) => file.type.startsWith('image/'))
+    screenshotError.value = null
+    return enqueueScreenshot(async () => {
+      for (const [index, file] of images.entries()) {
+        const result = await runScreenshotAction(id, () => api.uploadStyleScreenshot(id, file))
+        if (result === 'ok') continue
+        const left = images.length - index
+        if (result === 'busy') {
+          screenshotError.value = `AI 正在修改这套风格，还有 ${left} 张没有上传`
+        } else if (left > 1) {
+          screenshotError.value = `${screenshotError.value ?? ''}（还有 ${left} 张没有上传）`
+        }
+        return
+      }
+    })
+  }
+
+  /** 执行时按最新的列表找到这张图：序号前缀会在每次改动后重排，所以精确匹配不到时按内容哈希找。 */
+  function currentName(name: string): string | undefined {
+    const names = screenshots.value
+    return names.find((n) => n === name) ?? names.find((n) => n.slice(4) === name.slice(4))
+  }
+
+  function removeScreenshot(name: string): Promise<void> {
+    const id = styleId.value
+    screenshotError.value = null
+    return enqueueScreenshot(async () => {
+      const target = currentName(name)
+      if (target === undefined) {
+        invalidateStyleDraft(queryClient, id)
+        screenshotError.value = STALE_MESSAGE
+        return
+      }
+      await runScreenshotAction(id, () => api.deleteStyleScreenshot(id, target), true)
+    })
+  }
+
+  /** 把 `name` 移到第 `to` 个位置（0 = 封面）；位置越界或没有变化时什么都不做。 */
+  function moveScreenshot(name: string, to: number): Promise<void> {
+    const id = styleId.value
+    screenshotError.value = null
+    return enqueueScreenshot(async () => {
+      const target = currentName(name)
+      const names = [...screenshots.value]
+      const from = target === undefined ? -1 : names.indexOf(target)
+      if (from < 0 || to < 0 || to >= names.length || to === from) return
+      names.splice(from, 1)
+      names.splice(to, 0, target as string)
+      await runScreenshotAction(id, () => api.reorderStyleScreenshots(id, names), true)
+    })
+  }
+
   const discardError = ref<string | null>(null)
 
   /** 放弃草稿；`wasNew` 为真表示这是从未保存过的新风格，整个消失。后端拒绝（例如 AI 正在修改）时
@@ -243,6 +352,12 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     files,
     isNew,
     busy,
+    screenshots,
+    screenshotError,
+    uploading,
+    uploadScreenshots,
+    removeScreenshot,
+    moveScreenshot,
     activePath,
     selectFile,
     content,

@@ -18,8 +18,9 @@ import {
   useStylesQuery,
 } from '@/composables/queries'
 import StyleFileTree from './StyleFileTree.vue'
+import StyleScreenshotViewer from './StyleScreenshotViewer.vue'
 import { stripFrontmatter } from './styleFrontmatter'
-import { ENTRY_FILE, languageOf } from './styleFiles'
+import { ENTRY_FILE, languageOf, screenshotUrl } from './styleFiles'
 
 const props = defineProps<{ styleId: string }>()
 const emit = defineEmits<{
@@ -32,6 +33,13 @@ const { data: style, isError, error } = useStyleQuery(() => props.styleId)
 const { data: summaries } = useStylesQuery()
 const hasDraft = computed(
   () => summaries.value?.find((s) => s.id === props.styleId)?.has_draft ?? false,
+)
+
+const screenshots = computed(() => style.value?.screenshots ?? [])
+const viewing = ref<number | null>(null)
+watch(
+  () => props.styleId,
+  () => (viewing.value = null),
 )
 
 const files = computed(() => Object.keys(style.value?.files ?? {}).sort())
@@ -125,6 +133,40 @@ async function remove(): Promise<void> {
         这套风格有未保存的草稿；这里显示的是已保存的版本，点「编辑」继续修改草稿。
       </p>
     </div>
+
+    <div
+      v-if="screenshots.length > 0"
+      class="flex shrink-0 gap-2 overflow-x-auto pb-1"
+      data-testid="style-screenshots"
+    >
+      <button
+        v-for="(name, i) in screenshots"
+        :key="name"
+        type="button"
+        class="hover:border-primary relative aspect-video h-20 shrink-0 overflow-hidden rounded-md border"
+        :aria-label="`查看第 ${i + 1} 张截图`"
+        :data-testid="`shot-thumb-${i}`"
+        @click="viewing = i"
+      >
+        <img
+          :src="screenshotUrl(styleId, name, { draft: false })"
+          alt=""
+          loading="lazy"
+          class="size-full object-cover"
+        >
+        <span
+          v-if="i === 0"
+          class="bg-background/80 absolute top-1 left-1 rounded px-1 text-[10px]"
+        >
+          封面
+        </span>
+      </button>
+    </div>
+    <StyleScreenshotViewer
+      v-model:index="viewing"
+      :style-id="styleId"
+      :names="screenshots"
+    />
 
     <div
       class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 md:grid-cols-[14rem_minmax(0,1fr)] md:grid-rows-1"

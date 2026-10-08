@@ -3,6 +3,8 @@
 - 正式版本在 `data/styles/<id>/`，列表、详情、复制、删除直接读写目录；
 - 编辑走草稿 `data/style-drafts/<id>/`：打开草稿、读写草稿文件、保存（校验通过才覆盖正式版本）、
   放弃。`POST /api/styles` 新建的是只有草稿的风格，保存之前在列表里标记为 `is_new`（找得回来）；
+- 截图（ADR 0022）：草稿里上传、删除、调整顺序（改动类，同样受忙碌检查），正式版本和草稿各有一个
+  只读的取图端点；上传的图片先在线程里规范化成 WebP，422 表示不是可用的图片或超出数量上限；
 - 默认风格是 `settings.default_style_preset_id`，删除默认风格时清掉它。
 
 错误映射：404 风格或文件不存在，400 草稿文件路径不合法，422 内容不合法（detail 逐条列出），
@@ -12,8 +14,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from sqlalchemy import Engine
+from starlette.datastructures import UploadFile
 
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
@@ -22,6 +28,7 @@ from studio.api.schemas import (
     DraftFileOut,
     DraftFileWrite,
     DraftStatusOut,
+    ScreenshotOrder,
     SessionCreate,
     SessionOut,
     StyleOut,
@@ -33,6 +40,7 @@ from studio.db.repo.profiles import get_model_profile_by_id
 from studio.db.repo.sessions import create_session, delete_subject_sessions, list_sessions
 from studio.db.repo.settings import get_all_settings, update_settings
 from studio.styles import store
+from studio.styles.screenshots import MAX_UPLOAD_BYTES, ScreenshotError, normalize_image
 
 STYLE_STAGE = "style"
 
@@ -44,7 +52,7 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=f"风格不存在：{exc}")
     if isinstance(exc, store.StylePathError):
         return HTTPException(status_code=400, detail=str(exc))
-    if isinstance(exc, store.StyleValidationError):
+    if isinstance(exc, (store.StyleValidationError, ScreenshotError)):
         return HTTPException(status_code=422, detail=str(exc))
     return HTTPException(status_code=409, detail=str(exc))
 
@@ -55,6 +63,7 @@ _STORE_ERRORS = (
     store.StyleValidationError,
     store.DuplicateStyleNameError,
     store.StyleExistsError,
+    ScreenshotError,
 )
 
 
@@ -78,6 +87,7 @@ def _out(detail: store.StyleDetail, default_id: str | None) -> StyleOut:
         category=detail.category,
         description=detail.description,
         files=detail.files,
+        screenshots=detail.screenshots,
         is_default=detail.id == default_id,
         modified_at=detail.modified_at,
     )
@@ -86,7 +96,12 @@ def _out(detail: store.StyleDetail, default_id: str | None) -> StyleOut:
 def _draft_out(status: store.DraftStatus, runner: TurnRunner | None = None) -> DraftStatusOut:
     busy = runner.is_subject_busy(status.id) if runner is not None else False
     return DraftStatusOut(
-        id=status.id, is_new=status.is_new, dirty=status.dirty, files=status.files, busy=busy
+        id=status.id,
+        is_new=status.is_new,
+        dirty=status.dirty,
+        files=status.files,
+        screenshots=status.screenshots,
+        busy=busy,
     )
 
 
@@ -106,6 +121,7 @@ async def list_styles_endpoint(
             is_default=s.id == default_id,
             has_draft=s.has_draft,
             is_new=s.is_new,
+            cover=s.cover,
             modified_at=s.modified_at,
         )
         for s in store.list_styles(settings.data_dir)
@@ -241,6 +257,99 @@ async def delete_draft_file_endpoint(
     except _STORE_ERRORS as exc:
         raise _http_error(exc) from exc
     return Response(status_code=204)
+
+
+_IMAGE_HEADERS = {"Cache-Control": "private, max-age=31536000, immutable"}
+"""截图文件名里带内容哈希：同一个名字永远是同一份内容，可以放心长期缓存。"""
+
+
+def _screenshot_response(style_id: str, name: str, settings: Settings, *, draft: bool) -> Response:
+    try:
+        path = store.screenshot_path(settings.data_dir, style_id, name, draft=draft)
+    except _STORE_ERRORS as exc:
+        raise _http_error(exc) from exc
+    return FileResponse(path, media_type="image/webp", headers=_IMAGE_HEADERS)
+
+
+@router.get("/styles/{style_id}/screenshots/{name}")
+async def get_screenshot_endpoint(
+    style_id: str, name: str, settings: Settings = Depends(get_settings)
+) -> Response:
+    return _screenshot_response(style_id, name, settings, draft=False)
+
+
+@router.get("/styles/{style_id}/draft/screenshots/{name}")
+async def get_draft_screenshot_endpoint(
+    style_id: str, name: str, settings: Settings = Depends(get_settings)
+) -> Response:
+    return _screenshot_response(style_id, name, settings, draft=True)
+
+
+def _too_large() -> HTTPException:
+    return HTTPException(
+        status_code=422, detail=f"图片大小超过上限 {MAX_UPLOAD_BYTES // (1024 * 1024)} MB"
+    )
+
+
+@router.post("/styles/{style_id}/draft/screenshots", response_model=DraftStatusOut)
+async def upload_screenshot_endpoint(
+    style_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
+) -> DraftStatusOut:
+    """上传一张截图（multipart，字段 `file`），规范化成 WebP 后追加到草稿末尾。"""
+    _ensure_idle(runner, style_id)
+    if int(request.headers.get("content-length") or 0) > MAX_UPLOAD_BYTES + 64 * 1024:
+        raise _too_large()
+    try:
+        form = await request.form()
+    except Exception as exc:  # malformed multipart bodies surface as several error types
+        raise HTTPException(status_code=422, detail="请求体不是合法的 multipart/form-data") from exc
+    upload = form.get("file")
+    if not isinstance(upload, UploadFile):
+        raise HTTPException(status_code=422, detail="没有收到文件，字段名应为 file")
+    data = await upload.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise _too_large()
+    try:
+        webp = await asyncio.to_thread(normalize_image, data)
+        # 上面的 await 期间可能已经开始了对话轮次：检查和写入之间不能再 await。
+        _ensure_idle(runner, style_id)
+        store.add_draft_screenshot(settings.data_dir, style_id, webp)
+        return _draft_out(store.draft_status(settings.data_dir, style_id), runner)
+    except _STORE_ERRORS as exc:
+        raise _http_error(exc) from exc
+
+
+@router.put("/styles/{style_id}/draft/screenshots/order", response_model=DraftStatusOut)
+async def reorder_screenshots_endpoint(
+    style_id: str,
+    body: ScreenshotOrder,
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
+) -> DraftStatusOut:
+    _ensure_idle(runner, style_id)
+    try:
+        store.reorder_draft_screenshots(settings.data_dir, style_id, body.names)
+        return _draft_out(store.draft_status(settings.data_dir, style_id), runner)
+    except _STORE_ERRORS as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/styles/{style_id}/draft/screenshots/{name}", response_model=DraftStatusOut)
+async def delete_screenshot_endpoint(
+    style_id: str,
+    name: str,
+    settings: Settings = Depends(get_settings),
+    runner: TurnRunner = Depends(get_turn_runner),
+) -> DraftStatusOut:
+    _ensure_idle(runner, style_id)
+    try:
+        store.delete_draft_screenshot(settings.data_dir, style_id, name)
+        return _draft_out(store.draft_status(settings.data_dir, style_id), runner)
+    except _STORE_ERRORS as exc:
+        raise _http_error(exc) from exc
 
 
 @router.post("/styles/{style_id}/draft/save", response_model=StyleOut)

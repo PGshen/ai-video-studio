@@ -13,6 +13,7 @@ const style: StyleSummaryOut = {
   is_default: false,
   has_draft: false,
   is_new: false,
+  cover: null,
   modified_at: '2026-10-01T00:00:00Z',
 }
 
@@ -48,6 +49,33 @@ describe('StyleCard', () => {
     expect(render({ description: null }).find('[data-testid="style-description-s1"]').exists()).toBe(
       false,
     )
+  })
+
+  it('有封面时显示第一张截图（正式版本取正式地址）', () => {
+    const w = render({ cover: '001-3fa2c9e01b7d.webp' })
+    const img = w.get('[data-testid="style-cover-s1"]')
+    expect(img.attributes('src')).toBe('/api/styles/s1/screenshots/001-3fa2c9e01b7d.webp')
+    expect(w.find('[data-testid="style-cover-empty-s1"]').exists()).toBe(false)
+  })
+
+  it('从未保存的新风格的封面取草稿地址', () => {
+    const w = render({ cover: '001-3fa2c9e01b7d.webp', is_new: true, has_draft: true })
+    expect(w.get('[data-testid="style-cover-s1"]').attributes('src')).toBe(
+      '/api/styles/s1/draft/screenshots/001-3fa2c9e01b7d.webp',
+    )
+  })
+
+  it('没有封面时显示占位，不渲染 img', () => {
+    const w = render()
+    expect(w.find('[data-testid="style-cover-s1"]').exists()).toBe(false)
+    expect(w.find('[data-testid="style-cover-empty-s1"]').exists()).toBe(true)
+  })
+
+  it('封面加载失败时回落到占位', async () => {
+    const w = render({ cover: '001-3fa2c9e01b7d.webp' })
+    await w.get('[data-testid="style-cover-s1"]').trigger('error')
+    expect(w.find('[data-testid="style-cover-s1"]').exists()).toBe(false)
+    expect(w.find('[data-testid="style-cover-empty-s1"]').exists()).toBe(true)
   })
 
   it('点卡片本身打开详情', async () => {

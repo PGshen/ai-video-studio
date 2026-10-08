@@ -77,6 +77,10 @@ class TestPrompt:
     def test_tells_the_agent_not_to_touch_anything_outside_the_draft(self, prompt: str) -> None:
         assert "只能" in prompt and "之外" in prompt
 
+    def test_screenshots_belong_to_the_user(self, prompt: str) -> None:
+        assert "screenshots/" in prompt
+        assert "不要读、改、删" in prompt
+
 
 class TestValidateStyleTool:
     async def test_passes_for_a_valid_draft(self, tmp_path: Path) -> None:

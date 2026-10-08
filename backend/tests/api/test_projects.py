@@ -522,6 +522,23 @@ class TestCreateProjectWithStyle:
             "style/exemplars/exemplar-1.json",
         }
 
+    async def test_screenshots_are_not_copied_into_the_project(self, api_env: ApiEnv) -> None:
+        preset = await self._preset(api_env)
+        style_store.open_draft(api_env.data_dir, preset["id"])
+        style_store.add_draft_screenshot(api_env.data_dir, preset["id"], b"image")
+        style_store.save_draft(api_env.data_dir, preset["id"])
+
+        response = await api_env.client.post(
+            "/api/projects", json={"title": "P", "style_preset_id": preset["id"]}
+        )
+
+        assert response.status_code == 201, response.text
+        assert set(self._style_files(api_env, response.json()["id"])) == {
+            "style/STYLE.md",
+            "style/references/color-scheme.md",
+            "style/exemplars/exemplar-1.json",
+        }
+
     async def test_default_preset_is_used_when_none_is_requested(self, api_env: ApiEnv) -> None:
         await self._preset(api_env, name="别的")
         default = await self._preset(api_env)

@@ -9,6 +9,7 @@ from typing import Final
 ENTRY_NAME: Final = "STYLE.md"
 REFERENCES_DIR: Final = "references"
 EXEMPLARS_DIR: Final = "exemplars"
+SCREENSHOTS_DIR: Final = "screenshots"
 
 _STYLE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
 

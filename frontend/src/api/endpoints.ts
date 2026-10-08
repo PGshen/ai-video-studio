@@ -360,6 +360,28 @@ export function discardStyleDraft(styleId: string): Promise<void> {
   return request(`/styles/${encodePathSegment(styleId)}/draft`, { method: 'DELETE' })
 }
 
+/** 上传一张截图到草稿末尾（multipart，字段 `file`）；返回新的草稿状态。 */
+export function uploadStyleScreenshot(styleId: string, file: File): Promise<DraftStatusOut> {
+  const form = new FormData()
+  form.append('file', file)
+  return uploadForm(`/styles/${encodePathSegment(styleId)}/draft/screenshots`, form)
+}
+
+export function deleteStyleScreenshot(styleId: string, name: string): Promise<DraftStatusOut> {
+  return request(
+    `/styles/${encodePathSegment(styleId)}/draft/screenshots/${encodePathSegment(name)}`,
+    { method: 'DELETE' },
+  )
+}
+
+/** 调整截图顺序：`names` 必须正好是草稿里当前全部文件名的一个排列。 */
+export function reorderStyleScreenshots(styleId: string, names: string[]): Promise<DraftStatusOut> {
+  return request(`/styles/${encodePathSegment(styleId)}/draft/screenshots/order`, {
+    method: 'PUT',
+    body: { names },
+  })
+}
+
 // ---- settings（M5，对应 `api/settings.py`）-----------------------------
 
 export function getSettings(): Promise<SettingsOut> {

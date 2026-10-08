@@ -4,6 +4,8 @@
 - 草稿 `<data>/style-drafts/<id>/`：用户编辑和 agent 对话都只改草稿；`save_draft` 校验通过后
   才覆盖正式版本，`discard_draft` 丢弃草稿。从未保存过的新建风格只有草稿：`list_styles` 列出它
   （`is_new`），`list_saved_styles` 不含它。
+- `screenshots/`（ADR 0022）存二进制截图：`StyleFiles` 只装文本，读目录时跳过它，截图由
+  `studio.styles.screenshots` 和本模块的专用函数处理；它和文本走同一套草稿流程。
 - 读取目录一律不跟随符号链接；草稿里出现符号链接、顶层多余文件、非 UTF-8 内容等在保存时
   作为校验错误报告，不会被静默复制。
 
@@ -15,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -25,11 +27,19 @@ from studio.styles.layout import (
     ENTRY_NAME,
     EXEMPLARS_DIR,
     REFERENCES_DIR,
+    SCREENSHOTS_DIR,
     draft_dir,
     drafts_root,
     is_valid_style_id,
     style_dir,
     styles_root,
+)
+from studio.styles.screenshots import (
+    MAX_SCREENSHOTS,
+    is_screenshot_name,
+    list_screenshots,
+    renumbered,
+    screenshot_name,
 )
 from studio.styles.validate import (
     MAX_FILE_CHARS,
@@ -97,6 +107,8 @@ class StyleSummary:
     exemplar_count: int
     modified_at: datetime
     has_draft: bool
+    cover: str | None = None
+    """第一张截图的文件名（没有截图时为 `None`）；`is_new` 的风格取草稿里的。"""
     is_new: bool = False
     """从未保存过：只有草稿，没有正式版本（列表里标记出来，让它不会成为找不回的孤儿）。"""
 
@@ -109,6 +121,8 @@ class StyleDetail:
     description: str | None
     files: StyleFiles
     modified_at: datetime
+    screenshots: list[str] = field(default_factory=list)
+    """截图文件名，按显示顺序，第一张是封面。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +134,8 @@ class DraftStatus:
     """草稿内容与正式版本不同（新建的草稿总是 `True`）。"""
     files: list[str]
     """草稿里的常规文件，相对路径，已排序。"""
+    screenshots: list[str] = field(default_factory=list)
+    """草稿里的截图文件名，按显示顺序。"""
 
 
 # ---- 目录读写 -----------------------------------------------------------
@@ -135,6 +151,8 @@ def _read_tree(root: Path) -> tuple[StyleFiles, list[str]]:
             if (base / name).is_symlink():
                 dirnames.remove(name)
                 problems.append(f"不允许符号链接：{(base / name).relative_to(root).as_posix()}")
+        if base == root and SCREENSHOTS_DIR in dirnames:
+            dirnames.remove(SCREENSHOTS_DIR)  # 二进制截图不进 StyleFiles，下面单独检查
         for name in filenames:
             if name in _IGNORED_FILES:
                 continue
@@ -150,6 +168,7 @@ def _read_tree(root: Path) -> tuple[StyleFiles, list[str]]:
                 files[rel] = full.read_bytes().decode("utf-8")
             except UnicodeDecodeError:
                 problems.append(f"{rel} 不是 UTF-8 文本")
+    problems.extend(list_screenshots(root / SCREENSHOTS_DIR)[1])
     return files, problems
 
 
@@ -177,12 +196,24 @@ def _swap(tmp: Path, final: Path) -> None:
         shutil.rmtree(backup, ignore_errors=True)
 
 
-def _install(tmp_files: StyleFiles, final: Path) -> None:
-    """把一份内容原子地装到 `final`：先写同级的临时目录，再 `_swap`。"""
+def _copy_screenshots(source: Path, target: Path) -> None:
+    names = list_screenshots(source / SCREENSHOTS_DIR)[0]
+    if not names:
+        return
+    (target / SCREENSHOTS_DIR).mkdir(parents=True, exist_ok=True)
+    for name in names:
+        shutil.copyfile(source / SCREENSHOTS_DIR / name, target / SCREENSHOTS_DIR / name)
+
+
+def _install(tmp_files: StyleFiles, final: Path, *, screenshots_from: Path | None = None) -> None:
+    """把一份内容原子地装到 `final`：先写同级的临时目录（文本，加上 `screenshots_from` 目录下的
+    截图），再 `_swap`。"""
     final.parent.mkdir(parents=True, exist_ok=True)
     tmp = final.with_name(f".{final.name}.tmp-{uuid4().hex}")
     try:
         _write_tree(tmp, tmp_files)
+        if screenshots_from is not None:
+            _copy_screenshots(screenshots_from, tmp)
         _swap(tmp, final)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -206,7 +237,13 @@ def _draft_path(data_dir: Path | str, style_id: str) -> Path:
     return draft_dir(data_dir, style_id)
 
 
-def _detail(style_id: str, files: StyleFiles, modified_at: datetime) -> StyleDetail:
+def _screenshots_of(root: Path) -> list[str]:
+    return list_screenshots(root / SCREENSHOTS_DIR)[0]
+
+
+def _detail(
+    style_id: str, files: StyleFiles, modified_at: datetime, screenshots: list[str] | None = None
+) -> StyleDetail:
     meta = parse_frontmatter(files.get(ENTRY_NAME, "")) or {}
     return StyleDetail(
         id=style_id,
@@ -215,6 +252,7 @@ def _detail(style_id: str, files: StyleFiles, modified_at: datetime) -> StyleDet
         description=meta.get("description", "").strip() or None,
         files=files,
         modified_at=modified_at,
+        screenshots=screenshots or [],
     )
 
 
@@ -239,12 +277,24 @@ def _saved_summaries(data_dir: Path | str) -> list[StyleSummary]:
             logger.warning("风格目录无法识别，已跳过：%s", child)
             continue
         summaries.append(
-            _summary(child.name, files, _mtime(child), draft_dir(data_dir, child.name))
+            _summary(
+                child.name,
+                files,
+                _mtime(child),
+                draft_dir(data_dir, child.name),
+                _screenshots_of(child),
+            )
         )
     return summaries
 
 
-def _summary(style_id: str, files: StyleFiles, modified_at: datetime, draft: Path) -> StyleSummary:
+def _summary(
+    style_id: str,
+    files: StyleFiles,
+    modified_at: datetime,
+    draft: Path,
+    screenshots: list[str],
+) -> StyleSummary:
     detail = _detail(style_id, files, modified_at)
     return StyleSummary(
         id=detail.id,
@@ -255,6 +305,7 @@ def _summary(style_id: str, files: StyleFiles, modified_at: datetime, draft: Pat
         exemplar_count=sum(1 for p in files if p.startswith("exemplars/")),
         modified_at=detail.modified_at,
         has_draft=draft.is_dir(),
+        cover=screenshots[0] if screenshots else None,
     )
 
 
@@ -271,7 +322,7 @@ def _new_draft_summaries(data_dir: Path | str) -> list[StyleSummary]:
         if style_dir(data_dir, child.name).exists():
             continue
         files, _problems = _read_tree(child)
-        base = _summary(child.name, files, _mtime(child), child)
+        base = _summary(child.name, files, _mtime(child), child, _screenshots_of(child))
         name = base.name if base.name != child.name else "未命名风格"
         summaries.append(replace(base, name=name, is_new=True))
     return summaries
@@ -296,7 +347,7 @@ def get_style(data_dir: Path | str, style_id: str) -> StyleDetail:
     files, _problems = _read_tree(path)
     if ENTRY_NAME not in files:
         raise StyleNotFoundError(style_id)
-    return _detail(style_id, files, _mtime(path))
+    return _detail(style_id, files, _mtime(path), _screenshots_of(path))
 
 
 def read_style_files(data_dir: Path | str, style_id: str) -> StyleFiles:
@@ -341,10 +392,12 @@ def import_style(
     *,
     style_id: str | None = None,
     overwrite: bool = False,
+    screenshots_from: Path | None = None,
 ) -> StyleDetail:
     """校验后直接写成正式版本（迁移旧表、导入脚本用）。`style_id` 为空时生成新 id；
     目录已存在且没有 `overwrite` 时抛 `StyleExistsError`；名称与别的风格重复抛
-    `DuplicateStyleNameError`；内容不合法抛 `StyleValidationError`，什么都不写。"""
+    `DuplicateStyleNameError`；内容不合法抛 `StyleValidationError`，什么都不写。
+    `screenshots_from` 是另一个风格目录时，把它的截图一起复制过来。"""
     errors = validate_style_files(files)
     if errors:
         raise StyleValidationError(errors)
@@ -354,7 +407,7 @@ def import_style(
     if style_dir(data_dir, new_id).exists() and not overwrite:
         raise StyleExistsError(new_id)
     _ensure_unique_name(data_dir, _name_of(files), except_id=new_id)
-    _install(files, style_dir(data_dir, new_id))
+    _install(files, style_dir(data_dir, new_id), screenshots_from=screenshots_from)
     return get_style(data_dir, new_id)
 
 
@@ -368,7 +421,7 @@ def duplicate_style(data_dir: Path | str, style_id: str) -> StyleDetail:
         candidate = f"{source.name}（副本 {n}）"
     files = dict(source.files)
     files[ENTRY_NAME] = set_frontmatter_fields(files[ENTRY_NAME], {"name": candidate})
-    return import_style(data_dir, files)
+    return import_style(data_dir, files, screenshots_from=style_dir(data_dir, style_id))
 
 
 def delete_style(data_dir: Path | str, style_id: str) -> None:
@@ -398,7 +451,7 @@ def open_draft(data_dir: Path | str, style_id: str) -> DraftStatus:
         if not saved.is_dir():
             raise StyleNotFoundError(style_id)
         files, _problems = _read_tree(saved)
-        _install(files, draft)
+        _install(files, draft, screenshots_from=saved)
     return draft_status(data_dir, style_id)
 
 
@@ -409,8 +462,15 @@ def draft_status(data_dir: Path | str, style_id: str) -> DraftStatus:
     files, problems = _read_tree(draft)
     saved = _saved_path(data_dir, style_id)
     is_new = not saved.is_dir()
-    dirty = True if is_new or problems else _read_tree(saved)[0] != files
-    return DraftStatus(id=style_id, is_new=is_new, dirty=dirty, files=sorted(files))
+    screenshots = _screenshots_of(draft)
+    dirty = (
+        True
+        if is_new or problems
+        else _read_tree(saved)[0] != files or _screenshots_of(saved) != screenshots
+    )
+    return DraftStatus(
+        id=style_id, is_new=is_new, dirty=dirty, files=sorted(files), screenshots=screenshots
+    )
 
 
 def _draft_file(data_dir: Path | str, style_id: str, relpath: str) -> Path:
@@ -452,6 +512,75 @@ def delete_draft_file(data_dir: Path | str, style_id: str, relpath: str) -> None
     if not target.is_file():
         raise StyleNotFoundError(relpath)
     target.unlink()
+
+
+def _draft_screenshots_dir(data_dir: Path | str, style_id: str) -> Path:
+    """草稿的 `screenshots/` 目录路径（不保证存在）；它是符号链接时拒绝，防止写到草稿以外。"""
+    draft = _draft_path(data_dir, style_id)
+    if not draft.is_dir():
+        raise StyleNotFoundError(style_id)
+    target = draft / SCREENSHOTS_DIR
+    if target.is_symlink():
+        raise StylePathError(f"不允许符号链接：{SCREENSHOTS_DIR}")
+    return target
+
+
+def _apply_order(directory: Path, ordered: list[str]) -> None:
+    """按 `ordered` 的顺序给截图重新编号。两阶段改名（先改临时名再改最终名），中途不会撞名。"""
+    pairs = [(old, new) for old, new in renumbered(ordered) if old != new]
+    staged = [(directory / f".mv-{uuid4().hex}", new) for old, new in pairs]
+    for (old, _new), (temp, _) in zip(pairs, staged, strict=True):
+        (directory / old).rename(temp)
+    for temp, new in staged:
+        temp.rename(directory / new)
+
+
+def add_draft_screenshot(data_dir: Path | str, style_id: str, data: bytes) -> str:
+    """把一张（调用方已经规范化成 WebP 的）截图追加到草稿末尾，返回文件名；满了抛
+    `StyleValidationError`。"""
+    directory = _draft_screenshots_dir(data_dir, style_id)
+    names = list_screenshots(directory)[0]
+    if len(names) >= MAX_SCREENSHOTS:
+        raise StyleValidationError([f"截图最多 {MAX_SCREENSHOTS} 张，请先删除一些"])
+    name = screenshot_name(len(names), data)
+    directory.mkdir(exist_ok=True)
+    staged = directory.parent / f".shot-{uuid4().hex}.tmp"
+    staged.write_bytes(data)
+    staged.replace(directory / name)
+    return name
+
+
+def screenshot_path(data_dir: Path | str, style_id: str, name: str, *, draft: bool) -> Path:
+    """一张截图的文件路径（读取接口用）：名字必须符合规则，目录和文件都不能是符号链接。"""
+    if not is_screenshot_name(name):
+        raise StylePathError(f"截图文件名不合法：{name!r}")
+    base = _draft_path(data_dir, style_id) if draft else _saved_path(data_dir, style_id)
+    if not base.is_dir():
+        raise StyleNotFoundError(style_id)
+    directory, target = base / SCREENSHOTS_DIR, base / SCREENSHOTS_DIR / name
+    if directory.is_symlink() or target.is_symlink():
+        raise StylePathError(f"不允许符号链接：{SCREENSHOTS_DIR}/{name}")
+    if not target.is_file():
+        raise StyleNotFoundError(name)
+    return target
+
+
+def delete_draft_screenshot(data_dir: Path | str, style_id: str, name: str) -> None:
+    """删除一张截图，剩下的重新编号。"""
+    directory = _draft_screenshots_dir(data_dir, style_id)
+    if not is_screenshot_name(name) or not (directory / name).is_file():
+        raise StyleNotFoundError(name)
+    (directory / name).unlink()
+    _apply_order(directory, list_screenshots(directory)[0])
+
+
+def reorder_draft_screenshots(data_dir: Path | str, style_id: str, names: list[str]) -> None:
+    """按 `names` 重排截图；它必须正好是当前全部文件名的一个排列，否则抛 `StyleValidationError`。"""
+    directory = _draft_screenshots_dir(data_dir, style_id)
+    current = list_screenshots(directory)[0]
+    if len(names) != len(set(names)) or sorted(names) != current:
+        raise StyleValidationError(["新的顺序必须正好包含当前的全部截图，每张一次"])
+    _apply_order(directory, names)
 
 
 def discard_draft(data_dir: Path | str, style_id: str) -> None:
@@ -499,6 +628,14 @@ def prune_draft(data_dir: Path | str, style_id: str) -> list[str]:
             continue
         if entry.name == ENTRY_NAME and entry.is_file() and not entry.is_symlink():
             continue
+        if entry.name == SCREENSHOTS_DIR and entry.is_dir() and not entry.is_symlink():
+            for child in sorted(entry.iterdir()):
+                if child.name in _IGNORED_FILES:
+                    continue
+                if child.is_symlink() or not child.is_file() or not is_screenshot_name(child.name):
+                    _remove(child)
+                    removed.append(f"{entry.name}/{child.name}")
+            continue
         if (
             entry.name in (REFERENCES_DIR, EXEMPLARS_DIR)
             and entry.is_dir()
@@ -530,7 +667,7 @@ def save_draft(data_dir: Path | str, style_id: str) -> StyleDetail:
     if errors:
         raise StyleValidationError(errors)
     _ensure_unique_name(data_dir, _name_of(files), except_id=style_id)
-    _install(files, style_dir(data_dir, style_id))
+    _install(files, style_dir(data_dir, style_id), screenshots_from=draft)
     shutil.rmtree(draft, ignore_errors=True)
     return get_style(data_dir, style_id)
 
@@ -546,7 +683,9 @@ __all__ = [
     "StylePathError",
     "StyleSummary",
     "StyleValidationError",
+    "add_draft_screenshot",
     "create_new_draft",
+    "delete_draft_screenshot",
     "delete_draft_file",
     "delete_style",
     "discard_draft",
@@ -561,7 +700,9 @@ __all__ = [
     "read_draft_file",
     "prune_draft",
     "read_style_files",
+    "reorder_draft_screenshots",
     "save_draft",
+    "screenshot_path",
     "style_exists",
     "style_is_usable",
     "style_known",
