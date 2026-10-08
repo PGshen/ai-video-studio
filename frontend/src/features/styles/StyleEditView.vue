@@ -12,6 +12,7 @@ import type { StyleOut } from '@/types/api'
 import StyleChatPane from './StyleChatPane.vue'
 import StyleFileTree from './StyleFileTree.vue'
 import StyleMetaForm from './StyleMetaForm.vue'
+import StyleScreenshots from './StyleScreenshots.vue'
 import { languageOf } from './styleFiles'
 import { useStyleDraft } from './useStyleDraft'
 
@@ -44,6 +45,17 @@ const locked = computed(() => (props.readonly ?? false) || aiWorking.value)
 const lockedReason = computed(
   () => props.readonlyReason ?? (aiWorking.value ? 'AI 正在修改，完成后可以继续编辑' : undefined),
 )
+
+/** 粘贴剪贴板里的图片当截图上传；只有文本时不拦截，照常粘贴进输入框。 */
+function onPaste(event: ClipboardEvent): void {
+  if (locked.value) return
+  const images = Array.from(event.clipboardData?.files ?? []).filter((f) =>
+    f.type.startsWith('image/'),
+  )
+  if (images.length === 0) return
+  event.preventDefault()
+  void draft.uploadScreenshots(images)
+}
 
 const stateText = computed(() => {
   if (locked.value && lockedReason.value) return lockedReason.value
@@ -112,6 +124,28 @@ async function discard(): Promise<void> {
         :readonly="locked"
         @update="draft.updateMeta"
       />
+
+      <div
+        data-testid="style-screenshots-section"
+        @paste="onPaste"
+      >
+        <StyleScreenshots
+          :style-id="styleId"
+          :names="draft.screenshots.value"
+          :readonly="locked"
+          :uploading="draft.uploading.value"
+          @upload="draft.uploadScreenshots"
+          @remove="draft.removeScreenshot"
+          @move="draft.moveScreenshot"
+        />
+        <p
+          v-if="draft.screenshotError.value"
+          class="text-destructive mt-1 text-sm"
+          data-testid="shot-error"
+        >
+          {{ draft.screenshotError.value }}
+        </p>
+      </div>
 
       <div
         class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 md:grid-cols-[14rem_minmax(0,1fr)] md:grid-rows-1"

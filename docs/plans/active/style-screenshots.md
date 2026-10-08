@@ -128,7 +128,7 @@
 - **完成标准**：组件测试通过。
 - **验证命令**：`make check`
 
-### T5：编辑态截图区（进行中）
+### T5：编辑态截图区（完成）
 
 - **目标**：AC1、AC3、AC5 的界面部分。
 - **涉及文件**：新建 `frontend/src/features/styles/StyleScreenshots.vue`、`StyleScreenshots.spec.ts`；`useStyleDraft.ts`、`useStyleDraft.spec.ts`、`StyleEditView.vue`、`StyleEditView.spec.ts`、`frontend/src/composables/queries.ts`（如果需要 mutation）。
@@ -140,7 +140,7 @@
 - **完成标准**：单测通过。
 - **验证命令**：`make check`
 
-### T6：自验证与文档（待开始）
+### T6：自验证与文档（进行中）
 
 - **目标**：拿到 AC1–AC7 的证据。
 - **涉及文件**：本计划的「验证记录」、`docs/ARCHITECTURE.md`（`styles` 行、`api` 行、`features/styles/` 行）、`docs/quality/QUALITY.md`。
@@ -154,10 +154,11 @@
 - 2026-10-08 — T2 完成：`store.py` 接入截图（草稿/保存/复制/清理/dirty/封面），新增 `tests/styles/test_store_screenshots.py`
 - 2026-10-08 — T3 完成：5 个端点 + `cover`/`screenshots` 字段，API 测试 `TestScreenshots`，项目不复制截图的断言
 - 2026-10-08 — T4 完成：类型与三个 endpoints、`screenshotUrl`、卡片封面（含占位/加载失败回落）、详情缩略图与 `StyleScreenshotViewer`、`fakeStyleApi` 支持截图；前端 1169 个测试通过
+- 2026-10-08 — T5 完成：`StyleScreenshots.vue`（上传/拖入/删除/左移/右移/设为封面）、`useStyleDraft` 截图方法、`StyleEditView` 接入与粘贴上传；`make check` 全绿（后端 2731、前端 1188）
 
 ## 下一步
 
-- 做 T5：先写测试（`StyleScreenshots.spec.ts`、`useStyleDraft.spec.ts`、`StyleEditView.spec.ts`；`fakeStyleApi` 已支持 `uploadStyleScreenshot`/`deleteStyleScreenshot`/`reorderStyleScreenshots`，`server.uploadError` 可注入失败），再写 `StyleScreenshots.vue`、改 `useStyleDraft.ts`、`StyleEditView.vue`。大图查看组件 `StyleScreenshotViewer.vue` 已有（详情态在用）。卡片封面的上边距要在 T6 的 L4 里肉眼确认（Card 默认有 py）。
+- 做 T6：`make dev` 后用内置浏览器做 L4（上传三种方式、排序、保存/放弃、卡片封面上边距、AI 运行中只读），证据写进「验证记录」；更新 `docs/ARCHITECTURE.md`（`styles`/`api`/`features/styles` 三行）和 `docs/quality/QUALITY.md`；然后整分支评审一次（native 方式）。
 
 ## 决策记录
 

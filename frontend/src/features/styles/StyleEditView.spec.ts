@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
 import { ApiError } from '@/api/http'
 import { invalidateStyleDraft } from '@/composables/queries'
-import { entry, resetServer, seedStyle, server } from '@/test/fakeStyleApi'
+import { entry, resetServer, seedScreenshots, seedStyle, server, shotName } from '@/test/fakeStyleApi'
 
 vi.mock('@/api/endpoints', async () => (await import('@/test/fakeStyleApi')).endpoints)
 vi.mock('./StyleChatPane.vue', () => ({
@@ -348,5 +348,57 @@ describe('StyleEditView AI 正在修改（后端 busy）', () => {
     expect((w.get('[data-testid="style-name"]').element as HTMLInputElement).value).toBe(
       'AI 改过的名字',
     )
+  })
+})
+
+describe('StyleEditView 截图', () => {
+  it('显示草稿里的截图区', async () => {
+    seedScreenshots('s1', [shotName(1)])
+    const w = await mountEdit()
+    expect(w.findAll('[data-testid^="shot-item-"]')).toHaveLength(1)
+  })
+
+  it('选择文件上传后截图出现在草稿里', async () => {
+    const w = await mountEdit()
+    const input = w.get('[data-testid="shot-input"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.png', { type: 'image/png' })] })
+    await input.trigger('change')
+    await settle()
+    expect(w.findAll('[data-testid^="shot-item-"]')).toHaveLength(1)
+    expect(server.draftShots.get('s1')).toHaveLength(1)
+  })
+
+  it('粘贴剪贴板里的图片会上传，粘贴文本不受影响', async () => {
+    const w = await mountEdit()
+    const image = new File(['x'], 'p.png', { type: 'image/png' })
+    await w.get('[data-testid="style-screenshots-section"]').trigger('paste', {
+      clipboardData: { files: [image], items: [] },
+    })
+    await settle()
+    expect(server.draftShots.get('s1')).toHaveLength(1)
+
+    await w.get('[data-testid="style-screenshots-section"]').trigger('paste', {
+      clipboardData: { files: [], items: [] },
+    })
+    await settle()
+    expect(server.draftShots.get('s1')).toHaveLength(1)
+  })
+
+  it('上传失败时显示原因', async () => {
+    server.uploadError = new ApiError(422, '图片大小超过上限 10 MB')
+    const w = await mountEdit()
+    const input = w.get('[data-testid="shot-input"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.png', { type: 'image/png' })] })
+    await input.trigger('change')
+    await settle()
+    expect(w.get('[data-testid="shot-error"]').text()).toContain('超过上限')
+  })
+
+  it('AI 正在修改时截图区只读', async () => {
+    server.busy.add('s1')
+    seedScreenshots('s1', [shotName(1)])
+    const w = await mountEdit()
+    expect(w.get('[data-testid="shot-add"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="shot-remove-0"]').attributes('disabled')).toBeDefined()
   })
 })

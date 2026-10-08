@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, ref } from 'vue'
 import { ApiError } from '@/api/http'
 import { invalidateStyleDraft, queryKeys } from '@/composables/queries'
-import { endpoints, entry, resetServer, seedStyle, server } from '@/test/fakeStyleApi'
+import { endpoints, entry, resetServer, seedScreenshots, seedStyle, server, shotName } from '@/test/fakeStyleApi'
 
 vi.mock('@/api/endpoints', async () => (await import('@/test/fakeStyleApi')).endpoints)
 
@@ -389,5 +389,73 @@ describe('评审修复：AI 的改动不会被旧缓存或事后重放的编辑�
     await draft.flush()
 
     expect(server.drafts.get('s1')!['references/color.md']).toBe('要保住的编辑')
+  })
+})
+
+describe('截图', () => {
+  const png = (label = 'a') => new File([label], `${label}.png`, { type: 'image/png' })
+
+  it('草稿状态里的截图文件名出现在 screenshots 里', async () => {
+    seedScreenshots('s1', [shotName(1), shotName(2, 'bbbbbbbbbbbb')])
+    const { draft } = setup()
+    await settle()
+    expect(draft.screenshots.value).toEqual([shotName(1), shotName(2, 'bbbbbbbbbbbb')])
+  })
+
+  it('uploadScreenshots 串行上传图片，跳过非图片文件', async () => {
+    const { draft } = setup()
+    await settle()
+    await draft.uploadScreenshots([png('a'), new File(['t'], 'n.txt', { type: 'text/plain' }), png('b')])
+    expect(draft.screenshots.value).toHaveLength(2)
+    expect(draft.screenshotError.value).toBeNull()
+    expect(server.draftShots.get('s1')).toHaveLength(2)
+  })
+
+  it('上传出错就停止，原因写进 screenshotError，已成功的保留', async () => {
+    const { draft } = setup()
+    await settle()
+    await draft.uploadScreenshots([png('a')])
+    server.uploadError = new ApiError(422, '不是有效的图片文件')
+    await draft.uploadScreenshots([png('b'), png('c')])
+    expect(draft.screenshotError.value).toContain('不是有效的图片文件')
+    expect(draft.screenshots.value).toHaveLength(1)
+  })
+
+  it('409（AI 正在修改）不留错误，草稿重新获取', async () => {
+    const { draft, queryClient } = setup()
+    await settle()
+    const spy = vi.spyOn(queryClient, 'invalidateQueries')
+    server.uploadError = new ApiError(409, 'AI 正在修改这套风格')
+    await draft.uploadScreenshots([png('a')])
+    expect(draft.screenshotError.value).toBeNull()
+    expect(spy).toHaveBeenCalled()
+  })
+
+  it('removeScreenshot 删除后剩下的重新编号', async () => {
+    seedScreenshots('s1', [shotName(1, 'aaaaaaaaaaaa'), shotName(2, 'bbbbbbbbbbbb')])
+    const { draft } = setup()
+    await settle()
+    await draft.removeScreenshot(shotName(1, 'aaaaaaaaaaaa'))
+    expect(draft.screenshots.value).toEqual([shotName(1, 'bbbbbbbbbbbb')])
+  })
+
+  it('moveScreenshot 算出新顺序：设为封面、右移、越界时不动', async () => {
+    const a = shotName(1, 'aaaaaaaaaaaa')
+    const b = shotName(2, 'bbbbbbbbbbbb')
+    const c = shotName(3, 'cccccccccccc')
+    seedScreenshots('s1', [a, b, c])
+    const { draft } = setup()
+    await settle()
+
+    await draft.moveScreenshot(c, 0)
+    expect(draft.screenshots.value.map((n) => n.slice(4))).toEqual([
+      'cccccccccccc.webp',
+      'aaaaaaaaaaaa.webp',
+      'bbbbbbbbbbbb.webp',
+    ])
+    const before = [...draft.screenshots.value]
+    await draft.moveScreenshot(before[0]!, -1)
+    await draft.moveScreenshot(before[0]!, 3)
+    expect(draft.screenshots.value).toEqual(before)
   })
 })

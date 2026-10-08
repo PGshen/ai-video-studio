@@ -5,7 +5,9 @@
  * - `edit` 先写进查询缓存（编辑器立即看到），600ms 防抖后 PUT 到草稿文件；写入按文件串行，
  *   失败的编辑会留着等下一次 `flush`，保存前会先 `flush`，写不进去就不保存；
  * - 写入直接调接口、不走 mutation：组件卸载（关闭抽屉）时 `flush` 仍然要能把编辑写出去；
- * - 名称、简介、分类是 `STYLE.md` 的 frontmatter，`updateMeta` 就是改这个文件。
+ * - 名称、简介、分类是 `STYLE.md` 的 frontmatter，`updateMeta` 就是改这个文件；
+ * - 截图（ADR 0022）不走防抖：上传、删除、调整顺序都是立即调接口，成功后用返回的草稿状态刷新缓存，
+ *   同样只在草稿里生效，保存或放弃时和文本一起处理。
  */
 import { useQueryClient } from '@tanstack/vue-query'
 import { computed, onBeforeUnmount, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
@@ -21,7 +23,7 @@ import {
   useSaveStyleDraftMutation,
   useStyleDraftQuery,
 } from '@/composables/queries'
-import type { StyleOut } from '@/types/api'
+import type { DraftStatusOut, StyleOut } from '@/types/api'
 import { readStyleMeta, updateFrontmatter, type StyleMeta } from './styleFrontmatter'
 
 export const ENTRY_PATH = 'STYLE.md'
@@ -83,6 +85,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
   const isNew = computed(() => statusQuery.data.value?.is_new ?? false)
   /** AI 正在改这份草稿（后端的 `busy`）：编辑区只读，轮次结束后刷新草稿即恢复。 */
   const busy = computed(() => statusQuery.data.value?.busy ?? false)
+  const screenshots = computed(() => statusQuery.data.value?.screenshots ?? [])
   const content = computed(() => activeQuery.data.value ?? '')
   const entryText = computed(() => entryQuery.data.value ?? '')
   const meta = computed(() => readStyleMeta(entryText.value))
@@ -214,6 +217,64 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     }
   }
 
+  // ---- 截图 ---------------------------------------------------------------
+
+  const screenshotError = ref<string | null>(null)
+  const uploading = ref(false)
+
+  /** 跑一次截图改动：成功后用返回的草稿状态刷新；409（AI 正在改）不报错，重新取草稿；其他失败
+   * 写进 `screenshotError` 并返回 `false`。 */
+  async function runScreenshotAction(
+    id: string,
+    action: () => Promise<DraftStatusOut>,
+  ): Promise<boolean> {
+    try {
+      const status = await action()
+      queryClient.setQueryData(queryKeys.styleDraft(id), status)
+      return true
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        invalidateStyleDraft(queryClient, id)
+      } else {
+        screenshotError.value = errorMessage(error)
+      }
+      return false
+    }
+  }
+
+  /** 逐个上传图片（跳过不是图片的文件）；遇到失败就停止，已经成功的保留。 */
+  async function uploadScreenshots(selected: readonly File[]): Promise<void> {
+    const id = styleId.value
+    screenshotError.value = null
+    uploading.value = true
+    try {
+      for (const file of selected) {
+        if (!file.type.startsWith('image/')) continue
+        if (!(await runScreenshotAction(id, () => api.uploadStyleScreenshot(id, file)))) break
+      }
+    } finally {
+      uploading.value = false
+    }
+  }
+
+  async function removeScreenshot(name: string): Promise<void> {
+    const id = styleId.value
+    screenshotError.value = null
+    await runScreenshotAction(id, () => api.deleteStyleScreenshot(id, name))
+  }
+
+  /** 把 `name` 移到第 `to` 个位置（0 = 封面）；位置越界或没有变化时什么都不做。 */
+  async function moveScreenshot(name: string, to: number): Promise<void> {
+    const id = styleId.value
+    const names = [...screenshots.value]
+    const from = names.indexOf(name)
+    if (from < 0 || to < 0 || to >= names.length || to === from) return
+    names.splice(from, 1)
+    names.splice(to, 0, name)
+    screenshotError.value = null
+    await runScreenshotAction(id, () => api.reorderStyleScreenshots(id, names))
+  }
+
   const discardError = ref<string | null>(null)
 
   /** 放弃草稿；`wasNew` 为真表示这是从未保存过的新风格，整个消失。后端拒绝（例如 AI 正在修改）时
@@ -243,6 +304,12 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
     files,
     isNew,
     busy,
+    screenshots,
+    screenshotError,
+    uploading,
+    uploadScreenshots,
+    removeScreenshot,
+    moveScreenshot,
     activePath,
     selectFile,
     content,

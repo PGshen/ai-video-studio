@@ -27,7 +27,7 @@ watch(
 
 <template>
   <Card
-    class="hover:border-primary flex cursor-pointer flex-col transition-colors"
+    class="hover:border-primary flex cursor-pointer flex-col overflow-hidden pt-0 transition-colors"
     :data-testid="`style-card-${props.item.id}`"
     role="button"
     tabindex="0"
