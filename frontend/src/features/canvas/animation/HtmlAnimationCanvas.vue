@@ -57,6 +57,10 @@ const slots = useSlots()
 const hasMusicTab = computed(() => props.stage === 'produce' && slots.music !== undefined)
 
 const tab = ref<'scenes' | 'preview' | 'music' | 'final'>('scenes')
+const previewVisited = ref(false)
+watch(tab, (now) => {
+  if (now === 'preview') previewVisited.value = true
+})
 
 const { data: meta, error: metaError } = useHtmlPreviewMetaQuery(() => props.projectId)
 const { data: project } = useProjectQuery(() => props.projectId)
@@ -380,15 +384,18 @@ function onLoadLatest(): void {
       </div>
     </div>
 
-    <template v-if="tab === 'preview'">
+    <!-- 第一次打开才挂载，之后用 v-show 保持：切回来不再重取整页（含字体约 3 MB）也不丢播放位置。 -->
+    <template v-if="previewVisited">
       <HtmlPreviewPane
         v-if="meta"
+        v-show="tab === 'preview'"
         :project-id="projectId"
         :meta="meta"
         :score-missing="scoreMissing"
+        :active="tab === 'preview'"
       />
       <p
-        v-else-if="!metaProblem"
+        v-else-if="!metaProblem && tab === 'preview'"
         class="text-muted-foreground text-sm"
       >
         加载中…

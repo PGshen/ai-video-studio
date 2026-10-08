@@ -6,6 +6,7 @@ import type { IdeaOut } from '@/types/api'
 
 const state = vi.hoisted(() => ({
   kindsError: false,
+  kindsErrorKeepsData: false,
   mutateAsync: vi.fn(),
   push: vi.fn(),
 }))
@@ -14,7 +15,7 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push: state.push }) }))
 vi.mock('@/composables/queries', () => ({
   useStylesQuery: () => ({ data: ref([]) }),
   useVideoKindsQuery: () => ({
-    data: ref(state.kindsError ? undefined : VIDEO_KINDS_FIXTURE),
+    data: ref(state.kindsError && !state.kindsErrorKeepsData ? undefined : VIDEO_KINDS_FIXTURE),
     isError: ref(state.kindsError),
     isPending: ref(false),
   }),
@@ -46,6 +47,7 @@ const submitButton = () =>
 
 beforeEach(() => {
   state.kindsError = false
+  state.kindsErrorKeepsData = false
   state.mutateAsync.mockReset()
   state.push.mockReset()
   document.body.innerHTML = ''
@@ -84,6 +86,27 @@ describe('CreateProjectDialog 视频类型', () => {
     state.kindsError = true
     const wrapper = await mountOpen()
     expect(document.body.textContent).toContain('视频类型加载失败')
+    expect(submitButton().disabled).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('所选组合不可用（Manim 讲解 + 合成配乐）时提交按钮禁用', async () => {
+    const wrapper = await mountOpen()
+    expect(submitButton().disabled).toBe(false)
+    const select = document.body.querySelector('[data-testid="music-select"]') as HTMLSelectElement
+    select.value = 'synth'
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+    expect(submitButton().disabled).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('类型数据重取失败但旧数据还在时，选择器隐藏、提交也禁用（不能提交看不见的选择）', async () => {
+    state.kindsError = true
+    state.kindsErrorKeepsData = true
+    const wrapper = await mountOpen()
+    expect(document.body.textContent).toContain('视频类型加载失败')
+    expect(document.body.querySelector('[data-testid="kind-card-explainer_manim"]')).toBeNull()
     expect(submitButton().disabled).toBe(true)
     wrapper.unmount()
   })

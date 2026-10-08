@@ -64,12 +64,13 @@ const selectedKind = computed(() => {
   const preset = data?.presets.find((p) => p.video_kind === videoKind.value)
   return data && preset ? findKind(data.kinds, preset, music.value) : undefined
 })
-const canSubmit = computed(() => selectedKind.value?.available === true)
+// 类型数据重取失败时选择器被隐藏（见模板），此时不能再提交一个用户看不见的选择。
+const canSubmit = computed(() => !kindsError.value && selectedKind.value?.available === true)
 
 async function submit(): Promise<void> {
   const trimmed = title.value.trim()
   const kind = selectedKind.value
-  if (!trimmed || !props.idea || !kind?.available) return
+  if (!trimmed || !props.idea || !kind?.available || kindsError.value) return
   const project = await mutation.mutateAsync({
     title: trimmed,
     idea_id: props.idea.id,

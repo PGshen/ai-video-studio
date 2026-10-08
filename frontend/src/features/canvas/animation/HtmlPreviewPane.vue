@@ -22,12 +22,18 @@ const FRAME_WIDTH = 1920
 const FRAME_HEIGHT = 1080
 const FPS = 30
 
-const props = defineProps<{
-  projectId: string
-  meta: HtmlPreviewMeta
-  /** 项目有配乐，但配乐还没渲染或与当前文件对不上（`meta.music` 为空）：提示重新渲染。 */
-  scoreMissing?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    projectId: string
+    meta: HtmlPreviewMeta
+    /** 项目有配乐，但配乐还没渲染或与当前文件对不上（`meta.music` 为空）：提示重新渲染。 */
+    scoreMissing?: boolean
+    /** 所在标签是否正显示；切走时保持挂载（不再重取整页），但要暂停播放。 */
+    active?: boolean
+  }>(),
+  // Vue 把缺省的布尔属性当成 false：不传时按「正在显示」处理。
+  { active: true },
+)
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const stage = ref<HTMLDivElement | null>(null)
@@ -52,6 +58,13 @@ const playback = useHtmlPlayback({
     if (frameReady.value) post(seekMessage(pageTime(t)))
   },
 })
+
+watch(
+  () => props.active,
+  (active) => {
+    if (active === false && playback.playing.value) playback.toggle()
+  },
+)
 
 let loadToken = 0
 async function loadPage(hash: string): Promise<void> {

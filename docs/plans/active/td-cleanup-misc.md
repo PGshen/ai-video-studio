@@ -96,7 +96,7 @@
 - **完成标准**：三处缺口都有测试。
 - **验证命令**：`make check`
 
-### T6：风格编辑的两处小事与前端测试缺口（待开始）
+### T6：风格编辑的两处小事与前端测试缺口（完成，TD-70 ② 的浏览器实测待 T7 之后统一做）
 
 - **目标**：TD-62、TD-67、TD-70②。
 - **涉及文件**：`frontend/src/features/styles/useStyleDraft.ts`、`StyleEditView.vue`、`frontend/src/components/VideoKindPicker.vue`、`features/ideas/CreateProjectDialog.vue` 及 spec、HTML 预览组件 `HtmlPreviewPane.vue`。
@@ -128,10 +128,11 @@
 - 2026-10-08 — T3 完成：runner 的 `drain`/`kill_group`/`tail_lines` 改为公开，`timeline/numeric.py` 收拢 `build`/`imported` 共用的常量与 `is_finite_number`；`make check` 全绿
 - 2026-10-08 — T4 完成：缓存键纳入编码参数（`encode_signature`）；镜头／`lib`／`global.js` 链接到工作区外时被静态检查报告、装配与哈希跳过、`_scene_sources` 拒绝；`prepare_turn` 的派生文件设只读（`seal_derived_upstream`）；`make check` 全绿
 - 2026-10-08 — T5 完成：补迁移往返后的定稿／前言端到端测试与未注册上游的回退测试；`prepare_turn` 失败消息带原异常类型名（TD-68）；`make check` 全绿
+- 2026-10-08 — T6 完成（单测层面）：放弃失败的提示在编辑／保存／AI 轮次结束后清掉（TD-62）；提交按钮在类型数据重取失败时也禁用、补不可用组合的测试、整理选择器夹具类型（TD-67）；预览组件首次打开后用 `v-show` 保持挂载，切走时暂停播放（TD-70 ②）；`make check` 全绿
 
 ## 下一步
 
-- 从 T6 开始（前端，在 `frontend/` 里跑 `pnpm vitest run <文件>`）：读登记表 TD-62、TD-67、TD-70 ② 原文；先读 `features/styles/useStyleDraft.ts`、`StyleEditView.vue`、`components/VideoKindPicker.vue`、`features/ideas/CreateProjectDialog.vue` 与 spec、`HtmlPreviewPane.vue`，先写失败测试。
+- 从 T7 开始（前端）：读登记表 TD-49 原文，逐条先写失败测试。T7 做完后在隔离实例上做浏览器走查：TD-70 ② 的切换标签网络请求，TD-49 的窄屏收起／折叠保留选中／检查失败状态。
 
 ## 决策记录
 
@@ -141,6 +142,7 @@
 
 ## 意外与发现
 
+- T6：Vue 把缺省的布尔属性当成 `false`，`HtmlPreviewPane` 新加的 `active?: boolean` 必须 `withDefaults` 给 `true`，否则不传时一开始就被当成"不在显示"（测试发现）。TD-70 ② 没有无条件 `v-show`，而是"第一次打开才挂载、之后保持"，避免从不打开预览的人也白白下载约 3 MB 的整页。TD-67 ① 补的测试一开始就通过（补缺口，预期）。
 - T5：TD-68 ①② 是给已有行为补测试，写出来就通过（预期）；②已用临时改动回退分支验证测试确实会失败。③ 里异常本来就用了 `raise ... from exc` 链上了原异常，缺的是消息里的类型名，已补。
 - T4：TD-70 ① 的"字体不在缓存键里"已过时：随包字体经 `page.routes` 的文件字节早就进了 `_cache_key`（页面模板在 `page.html` 里也在）；真正缺的只有编码参数，已补。同时新增的字体用例作为现状的钉子（它一开始就通过，属预期）。
 - T4：TD-69 ④ 做成通用的 `seal_derived_upstream`（runner 在 `derived_upstream` 之后调用），而不是改各阶段的 `prepare_turn`；下一轮／轮末的 `materialize_upstream` 本来就先恢复写权限再清空，所以无需改覆盖逻辑。TD-69 ② 采用与资产相同的口径：只拒绝指向工作区外的链接，工作区内的链接仍可用。

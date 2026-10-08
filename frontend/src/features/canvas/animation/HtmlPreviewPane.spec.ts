@@ -148,6 +148,18 @@ describe('HtmlPreviewPane', () => {
     expect(post).toHaveBeenCalledWith({ type: 'seek', t: 5 }, '*')
   })
 
+  it('pauses playback when it is no longer the active tab, and leaves it paused', async () => {
+    const wrapper = await mountPane()
+    const play = wrapper.find('[data-testid="preview-play"]')
+    await play.trigger('click')
+    expect(play.attributes('aria-label')).toBe('暂停')
+
+    await wrapper.setProps({ active: false })
+    expect(play.attributes('aria-label')).toBe('播放')
+    await wrapper.setProps({ active: true })
+    expect(play.attributes('aria-label')).toBe('播放')
+  })
+
   it('toggles the loop button', async () => {
     const wrapper = await mountPane()
     const loop = wrapper.find('[data-testid="preview-loop"]')
