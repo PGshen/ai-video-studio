@@ -29,14 +29,14 @@
 
 ## 验收标准
 
-- [ ] AC1：`concept` 定稿后，`produce` 产出 `music.wav`、`events.json`、`range.json` 等文件，再重新定稿 `concept`（内容没改）不会把 `produce` 标成 stale；换歌（`music/source.*`）、改分析或改歌词仍会（验证方式：`stage_flow` 的新测试，含短片与 MV 两种夹具）
-- [ ] AC2：折叠前拍速低于 60 BPM 的拍点序列，覆盖率接近 1，不再带"拍点不稳"警告；正常拍速的结果与改动前逐位一致（验证方式：`engines/audio` 的新测试 + 原有测试）
-- [ ] AC3：时间轴读取、`find_source`、`concept` 定稿三处使用同一个函数找源文件；手工放进多个源文件时定稿被拦并点名文件，时间轴报错文案不变（验证方式：新测试）
-- [ ] AC4：`concept` 已定稿时，上传歌曲和歌词的端点都返回 409；未定稿时行为不变（验证方式：`api` 新测试）
-- [ ] AC5：直接发起成片渲染时，`music/compose.py` 与 `render.json` 的 `script_hash` 不一致会给出明确错误（验证方式：`test_worker_html_music.py` 新测试）
-- [ ] AC6：歌词上传端点没有或写坏 `Content-Length` 时 422，不再 500；`form` 一定被关闭（验证方式：`api` 新测试）
-- [ ] AC7：`check_docs.py` 能查出未处理条目与"已处理"表里整号撞号，也能识别 `|TD-60|` 这类少空格的行；带"（部分）"后缀的行不算撞号（验证方式：`scripts` 的测试）
-- [ ] AC8：`tech-debt.md` 更新（TD-80/75/76/81/83/63 移到已处理，TD-50 按过时关闭并写明原因），`make check` 为绿
+- [x] AC1：`concept` 定稿后，`produce` 产出 `music.wav`、`events.json`、`range.json` 等文件，再重新定稿 `concept`（内容没改）不会把 `produce` 标成 stale；换歌（`music/source.*`）、改分析或改歌词仍会（验证方式：`stage_flow` 的新测试，含短片与 MV 两种夹具）
+- [x] AC2：折叠前拍速低于 60 BPM 的拍点序列，覆盖率接近 1，不再带"拍点不稳"警告；正常拍速的结果与改动前逐位一致（验证方式：`engines/audio` 的新测试 + 原有测试）
+- [x] AC3：时间轴读取、`find_source`、`concept` 定稿三处使用同一个函数找源文件；手工放进多个源文件时定稿被拦并点名文件，时间轴报错文案不变（验证方式：新测试）
+- [x] AC4：`concept` 已定稿时，上传歌曲和歌词的端点都返回 409；未定稿时行为不变（验证方式：`api` 新测试）
+- [x] AC5：直接发起成片渲染时，`music/compose.py` 与 `render.json` 的 `script_hash` 不一致会给出明确错误（验证方式：`test_worker_html_music.py` 新测试）
+- [x] AC6：歌词上传端点没有或写坏 `Content-Length` 时 422，不再 500；`form` 一定被关闭（验证方式：`api` 新测试）
+- [x] AC7：`check_docs.py` 能查出未处理条目与"已处理"表里整号撞号，也能识别 `|TD-60|` 这类少空格的行；带"（部分）"后缀的行不算撞号（验证方式：`scripts` 的测试）
+- [x] AC8：`tech-debt.md` 更新（TD-80/75/76/81/83/63 移到已处理，TD-50 按过时关闭并写明原因），`make check` 为绿
 
 ## 任务
 
@@ -94,7 +94,7 @@
 - **完成标准**：`make check` 里的文档检查通过。
 - **验证命令**：`make check`
 
-### T6：收尾——登记表与待办（待开始）
+### T6：收尾——登记表与待办（完成）
 
 - **目标**：文档与实际一致。
 - **涉及文件**：`docs/quality/tech-debt.md`、`docs/plans/TODO.md`（无需条目则不改）、本计划。
@@ -108,10 +108,11 @@
 - 2026-10-08 — T3 完成：`find_sources` 成为找歌曲源文件的唯一规则（时间轴读取、`find_source`、`concept` 定稿拦截多个源文件共用）；`concept` 定稿后上传歌曲、上传/删除歌词三个端点回 409；成片前核对 `music/compose.py` 与 `render.json` 的 `script_hash`。
 - 2026-10-08 — T4 完成：歌词上传端点要求数字型 `Content-Length`（缺失或非数字回 422，不再 500），超限文案不变，`request.form()` 之后 `try/finally` 关闭表单；测试见 `tests/api/test_music_lyrics.py`。
 - 2026-10-08 — T5 完成：`check_tech_debt_ids` 的 `TD_ROW` 放宽空白，未处理区的号再与“已处理”区整号比较，撞号报错点名两表；“（部分）”行不计；测试见 `backend/tests/test_check_docs_tech_debt.py`（脚本无既有测试，放在后端 pytest 内以纳入 `make check`）。
+- 2026-10-08 — T6 完成：`tech-debt.md` 里 TD-80/75/76/81/83/63 从未处理表移到「已处理」，TD-50 按过时关闭（未改代码，Pillow 仍有四处直接使用）；`docs/ARCHITECTURE.md` 已由 T3 同步，核对一致；`TODO.md` 无需改动。
 
 ## 下一步
 
-- 从 T6，按计划任务顺序继续。
+- 等待负责人验收；验收通过后合并到 main、把计划移到 completed、状态改为已完成。
 
 ## 决策记录
 
@@ -131,4 +132,13 @@
 
 ## 验证记录
 
-- 无
+| AC | 证据 | 结果 |
+|---|---|---|
+| AC1 | `tests/agent/test_stage_flow_file_scope.py`（文件级匹配、短片与 MV 两种夹具、换歌/改歌词仍 stale） | 通过 |
+| AC2 | `tests/engines/test_audio_song.py`（`_coverage` 慢歌、120 BPM 不变、真稀疏仍告警） | 通过 |
+| AC3 | `tests/timeline/test_music_source.py`（`_source_file` 与 `find_sources`/`find_source` 一致）；`tests/stages/test_concept_stage.py::test_finalize_is_blocked_by_more_than_one_song_file` | 通过 |
+| AC4 | `tests/api/test_music_finalized_lock.py`（定稿后三端点 409、active 时照常、重新打开解锁） | 通过 |
+| AC5 | `tests/test_worker_html_music.py`（`script-edited`/`script-missing`/`script-hash-missing` 及讲解背景乐两条） | 通过 |
+| AC6 | `tests/api/test_music_lyrics.py`（分块无 Content-Length、`abc`、超限均 422，`form.close` 调用一次） | 通过 |
+| AC7 | `tests/test_check_docs_tech_debt.py`（撞号、无空格行、「（部分）」共存、真实登记表） | 通过 |
+| AC8 | `docs/quality/tech-debt.md` 已更新；`make check`：最后一行“make check 全部通过” | 通过 |
