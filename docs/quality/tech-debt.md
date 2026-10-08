@@ -33,6 +33,7 @@
 | TD-79 | 2026-10-05 | `frontend/.../ImportMusicCanvas.vue` | 导入音乐画布的双栏布局用视口断点（`lg:`），不是容器宽度；工作台右侧画布窄时，分析摘要栏会被挤得很窄 | 窄画布下摘要换行多、不好读 | 改用容器查询，或让摘要栏在窄宽度时落到曲线下方 | import-music-4b L4 |
 | TD-82 | 2026-10-07 | `engines/render/html/probe.py: reel_sample_times`、`_select_times` | 预览采样里强拍（每个强拍 +40 ms）、能量峰值、歌词起始地位相同，超过 16 张时按「删间距最小的相邻对」收口，歌词点可能被相近的强拍点吸收；提示词承诺「每句歌词刚出现时取样」，实际不保证 | 强拍密、歌词多的镜头里，模型看不到某几句歌词出现时的画面 | 给歌词点优先级（先删强拍点），或歌词多时降低强拍采样 | mv-lyrics 评审 |
 | TD-84 | 2026-10-07 | `timeline/lyrics.py`、`stages/common/scenes/validate_scenes_html.py: _LYRIC_REFERENCE`、`api/music_import.py` | （①② 已处理，见「已处理」）③ 同一时刻既有歌词又有结束标记时结束标记不生效（期望行为不明确，要先定语义）；④ 上传用 ffprobe 时长校验、时间轴加载用 `analysis.json` 时长校验，边界附近可能「上传通过、加载失败」；⑤ 「有歌词却没引用 `env.lyric`」的警告用静态正则，`env` 改名或解构会误报、字符串里写 `env.lyric` 会漏报 | 都是歌词文件或脚本写法的边角，用户能看到明确的报错或警告 | ③ 先定结束标记的语义；④⑤ 按实际遇到的情况修，补测试 | mv-lyrics 评审 |
+| TD-87 | 2026-10-08 | `worker_html.py: _scene_sources`、`engines/render/html/static_check.py: StaticIssue`、`api/html_preview.py` | td-cleanup-misc 整分支评审的 Minor：① 指向工作区外的镜头脚本在成片校验里报两次（`_scene_sources` 一次、`static_check` 一次）；② `StaticIssue.line == 0`（越界链接）在 `worker_html`、`validate_scenes_html`、`render_preview_html` 三处被原样拼成 `path:0`，agent 可能去找"第 0 行"；③ 预览端点（`meta`、`inline`）直接 `assemble`，不跑 `static_check`，镜头脚本是外链时预览里该镜头静默消失（`validate_scenes_html` 与成片都会报，所以只是体验缺口） | 只是提示不够干净，没有安全或数据问题 | ① `_scene_sources` 只跳过、让 `static_check` 统一报；② 消费方对 `line == 0` 省略行号（或 `line: int \| None`）；③ meta 端点附带 `static_check` 的越界条目 | td-cleanup-misc 整分支评审 |
 
 ## 已处理
 

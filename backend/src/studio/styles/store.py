@@ -711,7 +711,7 @@ def recover_interrupted_swaps(data_dir: Path | str) -> list[str]:
 
     两次 rename 之间进程被杀时，正式（或草稿）目录已经改名成 `.old-*` 而新目录还没就位：
     目录缺失就把旧版本改回去；目录在就丢掉这份多余的旧备份。`.tmp-*` 是没装上的半成品，直接删。
-    返回被还原的风格 id。"""
+    返回被还原的风格 id；某个目录收拾失败只记日志、继续处理其余的。"""
     restored: list[str] = []
     for root in (styles_root(data_dir), drafts_root(data_dir)):
         if not root.is_dir():
@@ -721,11 +721,15 @@ def recover_interrupted_swaps(data_dir: Path | str) -> list[str]:
             if found is None or entry.is_symlink() or not entry.is_dir():
                 continue
             target = root / found["id"]
-            if found["kind"] == "old" and not target.exists():
-                entry.rename(target)
-                restored.append(found["id"])
-            else:
-                shutil.rmtree(entry, ignore_errors=True)
+            try:
+                if found["kind"] == "old" and not target.exists():
+                    entry.rename(target)
+                    restored.append(found["id"])
+                else:
+                    shutil.rmtree(entry, ignore_errors=True)
+            except OSError:
+                # One bad directory must not keep the app from starting (called from the lifespan).
+                logger.exception("风格目录 %s 的残留收拾失败，跳过", entry)
     return restored
 
 

@@ -101,6 +101,32 @@ describe('HtmlPreviewPane', () => {
     expect(wrapper.find('iframe').attributes('srcdoc')).toBe('<!doctype html><p>page-2</p>')
   })
 
+  it('does not refetch the page while hidden; catches up once when shown again', async () => {
+    // TD-70: a hidden (kept-mounted) preview must not download ~3 MB per workspace change.
+    const wrapper = await mountPane()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(1)
+    await wrapper.setProps({ active: false })
+
+    await wrapper.setProps({ meta: { ...META, hash: 'hash-2' } })
+    await wrapper.setProps({ meta: { ...META, hash: 'hash-3' } })
+    await flushPromises()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(1)
+
+    api.getHtmlPreviewPage.mockResolvedValue('<!doctype html><p>page-3</p>')
+    await wrapper.setProps({ active: true })
+    await flushPromises()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('iframe').attributes('srcdoc')).toBe('<!doctype html><p>page-3</p>')
+  })
+
+  it('shows again without refetching when nothing changed while hidden', async () => {
+    const wrapper = await mountPane()
+    await wrapper.setProps({ active: false })
+    await wrapper.setProps({ active: true })
+    await flushPromises()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps the newest page when an older fetch resolves late', async () => {
     let releaseFirst: (html: string) => void = () => {}
     api.getHtmlPreviewPage.mockReset()

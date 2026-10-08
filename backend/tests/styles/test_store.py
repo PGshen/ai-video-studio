@@ -576,3 +576,26 @@ class TestRecoverInterruptedSwaps:
         final.rename(final.with_name(f".{style_id}.old-abc"))
         assert store.recover_interrupted_swaps(tmp_path) == [style_id]
         assert store.recover_interrupted_swaps(tmp_path) == []
+
+    def test_one_unrestorable_directory_does_not_stop_the_others_or_the_caller(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # A bad directory must never keep the app from starting (the call sits in the lifespan).
+        first, second = _saved(tmp_path, "甲"), _saved(tmp_path, "乙")
+        for style_id in (first, second):
+            final = style_dir(tmp_path, style_id)
+            final.rename(final.with_name(f".{style_id}.old-abc"))
+        real_rename = Path.rename
+
+        def flaky(self: Path, target: Path) -> Path:
+            if self.name.startswith(f".{first}."):
+                raise PermissionError("read-only")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", flaky)
+
+        with caplog.at_level(logging.ERROR):
+            restored = store.recover_interrupted_swaps(tmp_path)
+
+        assert restored == [second]
+        assert any("风格" in record.getMessage() for record in caplog.records)

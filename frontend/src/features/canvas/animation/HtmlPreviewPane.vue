@@ -82,10 +82,11 @@ async function loadPage(hash: string): Promise<void> {
   }
 }
 
+// 隐藏（保持挂载）时不加载：agent 连续写镜头会让 hash 不停变，每次都白白下载整页；重新显示时按需补一次。
 watch(
-  () => props.meta.hash,
-  (hash) => {
-    if (shouldReloadPreview(loadedHash.value, hash)) void loadPage(hash)
+  [() => props.meta.hash, () => props.active],
+  ([hash, active]) => {
+    if (active && shouldReloadPreview(loadedHash.value, hash)) void loadPage(hash)
   },
   { immediate: true },
 )
