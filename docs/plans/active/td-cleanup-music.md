@@ -63,7 +63,7 @@
 - **完成标准**：慢歌不再误报，真稀疏仍告警。
 - **验证命令**：`make check`
 
-### T3：TD-76 + TD-81 源文件规则统一、定稿后不能换歌、成片前核对脚本（待开始）
+### T3：TD-76 + TD-81 源文件规则统一、定稿后不能换歌、成片前核对脚本（完成）
 
 - **目标**：一套"找源文件"规则；后端拒绝在 `concept` 定稿后换歌词和歌曲；成片前核对 `compose.py`。
 - **涉及文件**：`backend/src/studio/stages/common/music_source.py`、`timeline/load.py: _source_file`、`stages/concept/check_concept.py`（或 `ConceptStage.finalize_blockers`）、`api/music_import.py`、`worker_html.py: _music_source`，及各自测试。
@@ -105,10 +105,11 @@
 
 - 2026-10-08 — T1 完成：`artifact_dirs()` 条目支持文件级精确匹配（共用 `stage.in_artifacts`，stage_flow 与前言两处使用），`concept` 只声明用户输入文件；新测试 `tests/agent/test_stage_flow_file_scope.py`。
 - 2026-10-08 — T2 完成：`GridFit.raw_period` 记录折叠前周期，覆盖率抽成纯函数 `_coverage(fit, duration)`，分子分母同口径；慢歌（<60 BPM）不再误报“拍点不稳”，真稀疏仍告警。
+- 2026-10-08 — T3 完成：`find_sources` 成为找歌曲源文件的唯一规则（时间轴读取、`find_source`、`concept` 定稿拦截多个源文件共用）；`concept` 定稿后上传歌曲、上传/删除歌词三个端点回 409；成片前核对 `music/compose.py` 与 `render.json` 的 `script_hash`。
 
 ## 下一步
 
-- 从 T3 开始，按计划任务顺序继续。
+- 从 T4 开始，按计划任务顺序继续。
 
 ## 决策记录
 
@@ -116,6 +117,7 @@
 - 2026-10-08 — TD-81 ② 的脚本核对同时作用于 `music` 阶段（讲解类）和 `produce` 阶段：两者定稿时本来就核对 `script_hash`，成片前补上是同一口径。
 
 - 2026-10-08 — T2：覆盖率按 `raw_period` 计算同样作用于"拍速过快被减半"的情形：此前较长的减半周期把覆盖率封顶在 1，会掩盖拍点缺失；现在稀疏的快歌置信度也会如实下降（干净输入不变）。
+- 2026-10-08 — T3 分层：`timeline` 不能 import `stages`，所以 `SOURCE_EXTENSIONS`/`find_sources`/`find_source` 移到 `studio.timeline.music_source`，`studio.stages.common.music_source` 重新导出（既有 import 路径不变）。`find_sources` 只认普通文件，符号链接一律不算（此前时间轴接受指向工作区内的符号链接，现在不接受；上传端点只写普通文件）；时间轴另外保留“解析后在工作区内”的检查，防 `music/` 目录本身是符号链接。多源文件拦截放在 `check_workspace`，`check_concept` 工具与定稿条件同一口径。
 
 ## 意外与发现
 

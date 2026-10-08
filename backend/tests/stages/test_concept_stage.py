@@ -63,6 +63,18 @@ def test_finalize_is_blocked_by_check_errors_only(tmp_path: Path) -> None:
     assert STAGE.finalize_blockers(tmp_path) == []
 
 
+def test_finalize_is_blocked_by_more_than_one_song_file(tmp_path: Path) -> None:
+    full = "\n".join(f"## {name}\n\n内容。\n" for name in SECTIONS)
+    _write_brief(tmp_path, full.replace("## 目标时长\n\n内容。", "## 目标时长\n\n20 秒"))
+    (tmp_path / "music").mkdir()
+    (tmp_path / "music" / "source.wav").write_bytes(b"x")
+    assert STAGE.finalize_blockers(tmp_path) == []  # one song is fine
+    (tmp_path / "music" / "source.mp3").write_bytes(b"y")
+    [blocker] = STAGE.finalize_blockers(tmp_path)
+    assert "多个音乐源文件" in blocker
+    assert "source.mp3" in blocker and "source.wav" in blocker
+
+
 def test_status_summary_counts_sections(tmp_path: Path) -> None:
     _write_brief(tmp_path, "## 主题\n\n内容\n\n## 视觉母题\n\n内容\n")
     assert "2/8" in STAGE.status_summary(tmp_path)

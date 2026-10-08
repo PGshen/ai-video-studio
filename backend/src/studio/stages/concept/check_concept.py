@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
+from studio.stages.common.music_source import find_sources
 from studio.stages.common.target_duration import parse_target_seconds
 from studio.timeline.lyrics import LYRICS_PATH, LyricsError, parse_lrc
 from studio.timeline.schema import LyricLine
@@ -144,7 +145,23 @@ def workspace_lyrics(workdir: Path) -> list[LyricLine]:
         raise LyricsError([f"无法读取：{exc}"]) from exc
 
 
+def _source_errors(workdir: Path) -> list[str]:
+    """More than one `music/source.<ext>`: which one is the song is ambiguous (the timeline refuses
+    it too), so finalizing would freeze an ambiguity."""
+    sources = find_sources(workdir / "music")
+    if len(sources) <= 1:
+        return []
+    names = ", ".join(path.name for path in sources)
+    return [f"music/ 下有多个音乐源文件：{names}。请在画布上重新上传歌曲（只会保留一个）。"]
+
+
 def check_workspace(workdir: Path) -> ConceptCheck:
+    result = _check_brief(workdir)
+    result.errors += _source_errors(workdir)
+    return result
+
+
+def _check_brief(workdir: Path) -> ConceptCheck:
     path = workdir / BRIEF_PATH
     try:
         lyrics = workspace_lyrics(workdir)

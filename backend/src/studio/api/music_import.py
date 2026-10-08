@@ -7,6 +7,9 @@
 - 换歌不删 `analysis.*` 与 `range.json`：`analysis.json` 的 `source_hash` 与新文件对不上，
   定稿条件与预览已把这种状态当成 stale/阻塞。
 
+- 歌曲和歌词是 `concept` 的输入：`concept` 定稿后三个端点（上传歌曲、上传/删除歌词）都回 409，
+  要先重新打开（TD-81）。检查在碰磁盘之前。
+
 `async def` 端点：忙碌检查与登记"上传中"之间不 `await`（同 `api.music` 的约定）。
 """
 
@@ -16,7 +19,7 @@ import hashlib
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -29,6 +32,7 @@ from studio.api.deps import get_engine, get_settings, get_turn_runner
 from studio.api.music import require_music_project
 from studio.api.schemas import MusicLyricsOut, MusicSourceOut
 from studio.config import Settings
+from studio.db.repo.stages import get_stage
 from studio.engines.audio.probe import AudioProbeError, probe_audio
 from studio.engines.audio.song import MAX_SONG_SECONDS, MIN_SONG_SECONDS
 from studio.stages.common.music_source import SOURCE_EXTENSIONS, find_source
@@ -142,6 +146,39 @@ def _callbacks(receiver: _Receiver) -> MultipartCallbacks:
     }
 
 
+_BUSY_DETAIL = {
+    "song": "项目正在运行中的一轮，请等它结束再上传",
+    "lyrics": "项目正在运行中的一轮，请等它结束再改歌词",
+}
+_FINALIZED_DETAIL = {
+    "song": "创意与要求已定稿，请先重新打开再换歌曲",
+    "lyrics": "创意与要求已定稿，请先重新打开再改歌词",
+}
+
+
+def _guard_song_request(
+    request: Request,
+    engine: Engine,
+    project_id: str,
+    turn_runner: TurnRunner,
+    target: Literal["song", "lyrics"],
+) -> None:
+    """Shared pre-checks of the three song/lyrics endpoints, run before anything touches disk.
+
+    The song and its lyrics are `concept` inputs: once `concept` is finalized they are frozen
+    until the user reopens it (a missing `concept` row counts as not finalized)."""
+    form, _ = require_music_project(engine, project_id)
+    if form != "import":
+        raise HTTPException(status_code=404, detail="这个项目没有导入音乐")
+    if turn_runner.is_project_busy(project_id):
+        raise HTTPException(status_code=409, detail=_BUSY_DETAIL[target])
+    concept = get_stage(engine, project_id, "concept")
+    if concept is not None and concept.status == "finalized":
+        raise HTTPException(status_code=409, detail=_FINALIZED_DETAIL[target])
+    if project_id in request.app.state.music_uploads:
+        raise HTTPException(status_code=409, detail="这个项目正在上传音乐，请稍后再试")
+
+
 @router.post("/projects/{project_id}/music/source", response_model=MusicSourceOut)
 async def upload_music_source_endpoint(
     project_id: str,
@@ -150,14 +187,8 @@ async def upload_music_source_endpoint(
     settings: Settings = Depends(get_settings),
     turn_runner: TurnRunner = Depends(get_turn_runner),
 ) -> MusicSourceOut:
-    form, _ = require_music_project(engine, project_id)
-    if form != "import":
-        raise HTTPException(status_code=404, detail="这个项目没有导入音乐")
-    if turn_runner.is_project_busy(project_id):
-        raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请等它结束再上传")
+    _guard_song_request(request, engine, project_id, turn_runner, "song")
     uploading: set[str] = request.app.state.music_uploads
-    if project_id in uploading:
-        raise HTTPException(status_code=409, detail="这个项目正在上传音乐，请稍后再试")
     uploading.add(project_id)
     workdir = project_dir(settings.data_dir, project_id)
     scratch = workdir / ".cache" / "tmp" / f"upload-{uuid4().hex[:8]}"
@@ -201,18 +232,6 @@ async def upload_music_source_endpoint(
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _guard_lyrics_request(
-    request: Request, engine: Engine, project_id: str, turn_runner: TurnRunner
-) -> None:
-    form, _ = require_music_project(engine, project_id)
-    if form != "import":
-        raise HTTPException(status_code=404, detail="这个项目没有导入音乐")
-    if turn_runner.is_project_busy(project_id):
-        raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请等它结束再改歌词")
-    if project_id in request.app.state.music_uploads:
-        raise HTTPException(status_code=409, detail="这个项目正在上传音乐，请稍后再试")
-
-
 @router.post("/projects/{project_id}/music/lyrics", response_model=MusicLyricsOut)
 async def upload_music_lyrics_endpoint(
     project_id: str,
@@ -222,7 +241,7 @@ async def upload_music_lyrics_endpoint(
     turn_runner: TurnRunner = Depends(get_turn_runner),
 ) -> MusicLyricsOut:
     """Validate an `.lrc` against the uploaded song, then atomically replace `music/lyrics.lrc`."""
-    _guard_lyrics_request(request, engine, project_id, turn_runner)
+    _guard_song_request(request, engine, project_id, turn_runner, "lyrics")
     uploading: set[str] = request.app.state.music_uploads
     uploading.add(project_id)
     workdir = project_dir(settings.data_dir, project_id)
@@ -273,6 +292,6 @@ async def delete_music_lyrics_endpoint(
     turn_runner: TurnRunner = Depends(get_turn_runner),
 ) -> Response:
     """Idempotent: deleting lyrics that are not there succeeds too."""
-    _guard_lyrics_request(request, engine, project_id, turn_runner)
+    _guard_song_request(request, engine, project_id, turn_runner, "lyrics")
     (project_dir(settings.data_dir, project_id) / LYRICS_PATH).unlink(missing_ok=True)
     return Response(status_code=204)

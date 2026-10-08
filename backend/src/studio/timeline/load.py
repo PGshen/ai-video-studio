@@ -26,6 +26,7 @@ from studio.timeline.build import (
 )
 from studio.timeline.imported import import_hash
 from studio.timeline.lyrics import LYRICS_PATH, LyricsError, clip_to_range, parse_lrc
+from studio.timeline.music_source import find_sources
 from studio.timeline.schema import LyricLine, Timeline
 from studio.timeline.shots import RANGE_PATH, SHOTS_PATH, parse_range, parse_shots
 
@@ -103,12 +104,11 @@ def _music_input(events_doc: dict[str, Any], analysis_doc: dict[str, Any]) -> Mu
 
 def _source_file(root: Path, prefix: str) -> str:
     """`music/source.<ext>`（相对工作区，不含 `prefix`）；必须恰好一个。"""
-    music_dir = root / f"{prefix}music"
-    found = sorted(
+    found = [
         path.name
-        for path in (music_dir.glob(f"{_SOURCE_STEM}.*") if music_dir.is_dir() else [])
-        if path.is_file() and path.resolve().is_relative_to(root.resolve())
-    )
+        for path in find_sources(root / f"{prefix}music")
+        if path.resolve().is_relative_to(root.resolve())  # `music/` itself may be a symlink
+    ]
     if not found:
         raise TimelineError([f"{prefix}music/{_SOURCE_STEM}.* 不存在（需要先导入音乐）"])
     if len(found) > 1:
