@@ -22,10 +22,15 @@ from sqlalchemy import Engine
 
 from studio.engines.audio.song import file_hash
 from studio.engines.render.html.assemble import AssembledPage, assemble
-from studio.engines.render.html.assets import check_assets
+from studio.engines.render.html.assets import check_assets, escapes_workspace
 from studio.engines.render.html.browser import ChromiumUnavailable, HtmlBrowser, PageNotReady
 from studio.engines.render.html.static_check import static_check
-from studio.engines.render.html.video import ProgressCallback, VideoRenderError, render_silent_video
+from studio.engines.render.html.video import (
+    ProgressCallback,
+    VideoRenderError,
+    encode_signature,
+    render_silent_video,
+)
 from studio.engines.render.mix import (
     BED_FADE_IN,
     BED_FADE_OUT,
@@ -106,6 +111,9 @@ def _scene_sources(workdir: Path, scene_ids: Sequence[str], errors: list[str]) -
     for scene_id in scene_ids:
         relpath = f"animation/scenes/{scene_id}.js"
         path = workdir / relpath
+        if path.is_file() and escapes_workspace(path, workdir):
+            errors.append(f"镜头 {scene_id}：脚本 {relpath} 是指向工作区外的链接，不允许使用")
+            continue
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
         if not text.strip():
             errors.append(f"镜头 {scene_id}：缺少或为空的脚本 {relpath}")
@@ -263,9 +271,11 @@ def _cache_path(workdir: Path, key: str) -> Path:
 
 def _cache_key(page: AssembledPage, timeline_digest: str, fps: int) -> str:
     """键取自**要交给浏览器渲染的那份组装结果**（页面、脚本、路由文件的字节），不是另读一遍工作区：
-    渲染期间镜头被改了，存进缓存的也是按旧内容渲染出的帧，键与内容始终对得上。"""
+    渲染期间镜头被改了，存进缓存的也是按旧内容渲染出的帧，键与内容始终对得上。
+    随包字体经 `page.routes` 进键（字节在里面），编码参数经 `encode_signature` 进键（TD-70）。"""
     digest = hashlib.sha256()
     digest.update(f"{ENGINE_VERSION}|{timeline_digest}|1920x1080|{fps}|".encode())
+    digest.update("\0".join(encode_signature(fps)).encode("utf-8"))
     digest.update(page.html.encode("utf-8"))
     for name, source in sorted(page.scripts.items()):
         digest.update(f"\0{name}\0".encode() + source.encode("utf-8"))

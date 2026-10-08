@@ -155,3 +155,43 @@ def test_literal_time_warnings_cover_lib_and_global(tmp_path: Path) -> None:
     )
     paths = {w.path for w in literal_time_warnings(tmp_path)}
     assert paths == {"animation/lib/k.js", "animation/global.js"}
+
+
+class TestScriptsOutsideTheWorkspace:
+    """TD-69: a scene/lib/global script linking outside the workspace is neither read nor used."""
+
+    def _outside(self, tmp_path: Path) -> Path:
+        outside = tmp_path / "outside" / "secret.js"
+        outside.parent.mkdir()
+        outside.write_text("const leaked = Math.random();\n", encoding="utf-8")
+        return outside
+
+    @pytest.mark.parametrize(
+        "relpath",
+        ["animation/scenes/s-a.js", "animation/lib/x.js", "animation/global.js"],
+    )
+    def test_a_link_to_the_outside_is_reported_and_not_scanned(
+        self, tmp_path: Path, relpath: str
+    ) -> None:
+        workdir = tmp_path / "work"
+        link = workdir / relpath
+        link.parent.mkdir(parents=True)
+        link.symlink_to(self._outside(tmp_path))
+
+        issues = static_check(workdir)
+
+        assert [(i.path, i.line) for i in issues] == [(relpath, 0)]
+        assert "工作区外" in issues[0].message
+
+    def test_a_link_that_stays_inside_the_workspace_is_scanned_normally(
+        self, tmp_path: Path
+    ) -> None:
+        workdir = tmp_path / "work"
+        _write(workdir, "animation/lib/real.js", "const d = new Date();\n")
+        (workdir / "animation/scenes").mkdir(parents=True)
+        (workdir / "animation/scenes/s-a.js").symlink_to(workdir / "animation/lib/real.js")
+
+        assert {i.path for i in static_check(workdir)} == {
+            "animation/lib/real.js",
+            "animation/scenes/s-a.js",
+        }

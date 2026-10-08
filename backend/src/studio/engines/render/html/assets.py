@@ -12,7 +12,8 @@ def _assets_dir(workdir: Path) -> Path:
     return workdir / "animation" / "assets"
 
 
-def _escapes_workspace(path: Path, workdir: Path) -> bool:
+def escapes_workspace(path: Path, workdir: Path) -> bool:
+    """Whether `path` (after following links) lands outside `workdir`."""
     return not path.resolve().is_relative_to(workdir.resolve())
 
 
@@ -26,7 +27,7 @@ def list_assets(workdir: Path) -> list[Path]:
         for path in directory.iterdir()
         if path.is_file()
         and path.suffix.lower() in ALLOWED_SUFFIXES
-        and not _escapes_workspace(path, workdir)
+        and not escapes_workspace(path, workdir)
     )
 
 
@@ -39,7 +40,7 @@ def check_assets(workdir: Path) -> list[str]:
         if not path.is_file():
             continue
         rel = path.relative_to(workdir).as_posix()
-        if _escapes_workspace(path, workdir):
+        if escapes_workspace(path, workdir):
             errors.append(f"资产 {rel} 是指向工作区外的链接，不允许使用")
         elif path.suffix.lower() not in ALLOWED_SUFFIXES:
             errors.append(f"资产 {rel} 的类型不允许（只支持 {'、'.join(ALLOWED_SUFFIXES)}）")

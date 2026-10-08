@@ -1324,6 +1324,31 @@ class TestPrepareTurn:
         notices = [e for e in list_events(h.env.engine, session_id) if e.type == "notice"]
         assert [n for n in notices if n.payload.get("kind") == GUARD_RESTORED_NOTICE] == []
 
+    async def test_files_derived_by_prepare_turn_are_read_only_during_the_turn(
+        self, h: Harness
+    ) -> None:
+        # TD-69: like the materialized copies, derived files are sealed before the agent runs.
+        modes: list[int] = []
+
+        class _Deriving(_DelegatingStage):
+            def prepare_turn(self, workdir: Path) -> None:
+                derived = workdir / "upstream" / "derived.txt"
+                derived.parent.mkdir(parents=True, exist_ok=True)
+                derived.write_text("derived", encoding="utf-8")
+
+        class _Probe(FakeRuntime):
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                modes.append((ctx.workdir / "upstream" / "derived.txt").stat().st_mode & 0o222)
+                async for event in super().run_turn(ctx):
+                    yield event
+
+        h.env.registry.register(_Deriving(h.env.registry.get("topic")))
+
+        turn = await h.run(h.session(stage="topic"), lambda: _Probe([fake.say("a")]))
+
+        assert turn.status == "done"
+        assert modes == [0]
+
     async def test_failure_fails_the_turn_with_stage_name_and_message(self, h: Harness) -> None:
         stage = _DelegatingStage(h.env.registry.get("topic"))
         stage.prepare_error = ValueError("素材目录损坏")

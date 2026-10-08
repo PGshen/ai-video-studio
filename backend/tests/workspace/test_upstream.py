@@ -5,7 +5,12 @@ from pathlib import Path
 
 from studio.workspace.blobs import BlobStore
 from studio.workspace.snapshot import Manifest
-from studio.workspace.upstream import derived_upstream, materialize_upstream, upstream_drift
+from studio.workspace.upstream import (
+    derived_upstream,
+    materialize_upstream,
+    seal_derived_upstream,
+    upstream_drift,
+)
 
 
 def _write(path: Path, content: str | bytes) -> None:
@@ -225,3 +230,36 @@ class TestDerivedUpstream:
             "upstream/stray.txt",
             "upstream/timeline.json",
         ]
+
+
+class TestSealDerivedUpstream:
+    """TD-69: derived files are read-only like the materialized copies, and still clearable."""
+
+    def test_derived_files_become_read_only_and_the_next_materialize_clears_them(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        sources: dict[str, Manifest | None] = {"topic": {"topic/a.md": blobs.put(b"a")}}
+        materialize_upstream(workdir, blobs, sources)
+        _write(workdir / "upstream" / "exemplar" / "x.js", "x")
+        derived = derived_upstream(workdir, sources)
+
+        seal_derived_upstream(workdir, derived)
+
+        target = workdir / "upstream" / "exemplar" / "x.js"
+        assert target.stat().st_mode & 0o222 == 0
+        assert upstream_drift(workdir, sources, derived) == []  # sealing is not a change
+        materialize_upstream(workdir, blobs, sources)  # a new turn rebuilds from scratch
+        assert not target.exists()
+
+    def test_links_and_missing_paths_are_skipped(self, blobs: BlobStore, workdir: Path) -> None:
+        outside = workdir.parent / "outside.txt"
+        outside.write_text("x", encoding="utf-8")
+        before = outside.stat().st_mode
+        (workdir / "upstream").mkdir(exist_ok=True)
+        (workdir / "upstream" / "link.txt").symlink_to(outside)
+
+        seal_derived_upstream(
+            workdir, {"upstream/link.txt": "symlink", "upstream/gone.txt": "deadbeef"}
+        )
+
+        assert outside.stat().st_mode == before

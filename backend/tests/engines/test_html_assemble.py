@@ -266,3 +266,23 @@ def test_global_script_can_be_left_out_of_the_page(tmp_path: Path) -> None:
     assert "animation/global.js" not in without.scripts
     assert "__GLOBAL__" not in without.html
     assert "animation/scenes/s-hook.js" in without.scripts
+
+
+def test_scripts_linking_outside_the_workspace_are_left_out(tmp_path: Path) -> None:
+    # TD-69: the render process reads files outside the agent's sandbox; it must not follow
+    # a link that leaves the workspace.
+    secret = tmp_path / "secret.js"
+    secret.write_text("const SECRET = 1;\n", encoding="utf-8")
+    work = tmp_path / "work"
+    _project(work)
+    for relpath in ("animation/scenes/s-hook.js", "animation/lib/a.js", "animation/global.js"):
+        (work / relpath).unlink()
+        (work / relpath).symlink_to(secret)
+
+    page = assemble(work, TIMELINE)
+
+    assert "SECRET" not in page.html
+    assert not any("SECRET" in source for source in page.scripts.values())
+    joined = "".join(page.scripts.values())
+    assert "LIB-B" in joined and "EXPLAIN" in joined
+    assert page_hash(work, TIMELINE) == page_hash(work, TIMELINE)

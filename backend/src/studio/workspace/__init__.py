@@ -34,7 +34,12 @@ from studio.workspace.snapshot import (
     rollback,
     scan,
 )
-from studio.workspace.upstream import derived_upstream, materialize_upstream, upstream_drift
+from studio.workspace.upstream import (
+    derived_upstream,
+    materialize_upstream,
+    seal_derived_upstream,
+    upstream_drift,
+)
 
 __all__ = [
     "BlobStore",
@@ -66,6 +71,7 @@ __all__ = [
     "safe_path",
     "scratch_dir",
     "scan",
+    "seal_derived_upstream",
     "upstream_drift",
     "write_text",
     "write_text_unscoped",

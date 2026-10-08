@@ -20,6 +20,7 @@ from sqlalchemy import Engine
 from fixtures.animation_html.seed import seed_animation_html_project
 from fixtures.html_engine import projects as fx
 from fixtures.html_engine.worker_fakes import ExplodingManim, FakeBackend
+from studio import worker_html
 from studio.db.engine import make_engine, migrate, session_scope
 from studio.db.models import Job
 from studio.db.repo.snapshots import latest_snapshot
@@ -305,3 +306,19 @@ async def test_page_edited_during_the_render_is_not_cached_under_the_old_key(
     (html_env.workdir / "animation/scenes/s-hook.js").write_text(fx.PURE_SCENE_PLAIN)
     await _run(html_env, backend)
     assert len(backend.video_calls) == 1  # back to content A: A's frames come from the cache
+
+
+def test_a_scene_script_linking_outside_the_workspace_is_refused(tmp_path: Path) -> None:
+    # TD-69: reported by name, never read.
+    outside = tmp_path / "outside.js"
+    outside.write_text("module.exports = {};\n", encoding="utf-8")
+    work = tmp_path / "work"
+    scene = work / "animation" / "scenes" / "s-a.js"
+    scene.parent.mkdir(parents=True)
+    scene.symlink_to(outside)
+    errors: list[str] = []
+
+    sources = worker_html._scene_sources(work, ["s-a"], errors)
+
+    assert sources == {}
+    assert len(errors) == 1 and "s-a" in errors[0] and "工作区外" in errors[0]
