@@ -525,7 +525,9 @@ class TestCreateProjectWithStyle:
     async def test_screenshots_are_not_copied_into_the_project(self, api_env: ApiEnv) -> None:
         preset = await self._preset(api_env)
         style_store.open_draft(api_env.data_dir, preset["id"])
-        style_store.add_draft_screenshot(api_env.data_dir, preset["id"], b"image")
+        style_store.add_draft_screenshot(
+            api_env.data_dir, preset["id"], b"RIFF\x00\x00\x00\x00WEBPimage"
+        )
         style_store.save_draft(api_env.data_dir, preset["id"])
 
         response = await api_env.client.post(

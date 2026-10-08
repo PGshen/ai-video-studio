@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -740,3 +741,71 @@ class TestScreenshots:
         copy = await api_env.client.post(f"/api/styles/{style_id}/duplicate")
         assert copy.status_code == 201
         assert len(copy.json()["screenshots"]) == 1
+
+
+class TestScreenshotHardening:
+    async def _draft(self, api_env: ApiEnv) -> tuple[str, str]:
+        style_id = _make(api_env)
+        base = f"/api/styles/{style_id}/draft"
+        await api_env.client.post(base)
+        return style_id, base
+
+    async def test_served_images_forbid_content_sniffing(self, api_env: ApiEnv) -> None:
+        style_id, base = await self._draft(api_env)
+        name = (await _upload(api_env, style_id, _image())).json()["screenshots"][0]
+        response = await api_env.client.get(f"{base}/screenshots/{name}")
+        assert response.headers["x-content-type-options"] == "nosniff"
+
+    async def test_chunked_uploads_without_content_length_are_422(self, api_env: ApiEnv) -> None:
+        style_id, _ = await self._draft(api_env)
+
+        async def body() -> AsyncIterator[bytes]:
+            yield b"--x\r\n"
+
+        response = await api_env.client.post(
+            f"/api/styles/{style_id}/draft/screenshots",
+            content=body(),
+            headers={"content-type": "multipart/form-data; boundary=x"},
+        )
+        assert response.status_code == 422
+        assert "Content-Length" in assert_detail(response)
+
+    async def test_a_malformed_content_length_is_422_not_500(self, api_env: ApiEnv) -> None:
+        style_id, _ = await self._draft(api_env)
+        response = await api_env.client.post(
+            f"/api/styles/{style_id}/draft/screenshots",
+            content=b"x",
+            headers={"content-type": "multipart/form-data; boundary=x", "content-length": "abc"},
+        )
+        assert response.status_code == 422
+
+    async def test_a_turn_that_starts_while_the_image_is_processed_wins(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        style_id, base = await self._draft(api_env)
+        runner = api_env.app.state.turn_runner
+        calls = {"n": 0}
+        original = runner.is_subject_busy
+
+        def becomes_busy(subject: str) -> bool:
+            calls["n"] += 1
+            return True if calls["n"] > 1 else original(subject)
+
+        monkeypatch.setattr(runner, "is_subject_busy", becomes_busy)
+        response = await _upload(api_env, style_id, _image())
+        monkeypatch.undo()
+        assert response.status_code == 409
+        assert (await api_env.client.get(f"{base}/files")).json()["screenshots"] == []
+
+    async def test_a_symlinked_screenshots_directory_is_never_served(self, api_env: ApiEnv) -> None:
+        style_id, base = await self._draft(api_env)
+        outside = api_env.data_dir / "outside"
+        outside.mkdir()
+        (outside / "001-aaaaaaaaaaaa.webp").write_bytes(b"secret")
+        (draft_dir(api_env.data_dir, style_id) / "screenshots").symlink_to(outside)
+        draft_url = f"{base}/screenshots/001-aaaaaaaaaaaa.webp"
+        assert (await api_env.client.get(draft_url)).status_code == 400
+        saved = style_dir(api_env.data_dir, style_id)
+        (saved / "screenshots").symlink_to(outside)
+        saved_url = f"/api/styles/{style_id}/screenshots/001-aaaaaaaaaaaa.webp"
+        assert (await api_env.client.get(saved_url)).status_code == 400

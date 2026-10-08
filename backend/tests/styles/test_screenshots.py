@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import warnings
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from studio.styles.screenshots import (
     normalize_image,
     renumbered,
     screenshot_name,
+    verify_screenshot,
 )
 
 
@@ -139,3 +141,84 @@ def test_renumbered_keeps_the_hash_and_follows_the_given_order() -> None:
         ("003-cccccccccccc.webp", "001-cccccccccccc.webp"),
         ("001-aaaaaaaaaaaa.webp", "002-aaaaaaaaaaaa.webp"),
     ]
+
+
+def test_grayscale_with_alpha_keeps_its_transparency() -> None:
+    source = Image.new("LA", (8, 8), (200, 0))  # fully transparent light gray
+    buffer = io.BytesIO()
+    source.save(buffer, format="PNG")
+    image = _opened(normalize_image(buffer.getvalue()))
+    assert image.mode == "RGBA"
+    pixel = image.getpixel((0, 0))
+    assert isinstance(pixel, tuple) and pixel[3] == 0
+
+
+def test_16_bit_grayscale_is_scaled_not_clipped_to_white() -> None:
+    source = Image.new("I;16", (8, 8), 20000)  # mid-dark gray in 16 bits
+    buffer = io.BytesIO()
+    source.save(buffer, format="PNG")
+    image = _opened(normalize_image(buffer.getvalue())).convert("L")
+    pixel = image.getpixel((0, 0))
+    assert isinstance(pixel, int) and 60 <= pixel <= 100
+
+
+def test_a_failure_while_processing_is_a_screenshot_error_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(*_: object, **__: object) -> None:
+        raise ValueError("bad exif")
+
+    monkeypatch.setattr("studio.styles.screenshots.ImageOps.exif_transpose", boom)
+    with pytest.raises(ScreenshotError):
+        normalize_image(_encode("PNG"))
+
+
+def test_a_decompression_bomb_warning_does_not_escape() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", Image.DecompressionBombWarning)
+        with pytest.raises(ScreenshotError, match="像素"):
+            normalize_image(_encode("PNG", (10000, 10000)))
+
+
+def _webp(label: str = "a") -> bytes:
+    return normalize_image(_encode("PNG", (16, 16))) + label.encode()
+
+
+def test_verify_screenshot_accepts_a_matching_webp(tmp_path: Path) -> None:
+    data = _webp()
+    name = screenshot_name(0, data)
+    (tmp_path / name).write_bytes(data)
+    assert verify_screenshot(tmp_path / name) is None
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    [
+        (b"not a webp at all", "WebP"),
+        (b"RIFF\x00\x00\x00\x00WEBPxxxx", "内容与文件名不符"),
+    ],
+)
+def test_verify_screenshot_rejects_bad_content(tmp_path: Path, content: bytes, reason: str) -> None:
+    path = tmp_path / "001-aaaaaaaaaaaa.webp"
+    path.write_bytes(content)
+    assert reason in (verify_screenshot(path) or "")
+
+
+def test_verify_screenshot_rejects_oversized_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = b"RIFF\x00\x00\x00\x00WEBP" + b"x" * 100
+    path = tmp_path / screenshot_name(0, data)
+    path.write_bytes(data)
+    monkeypatch.setattr("studio.styles.screenshots.MAX_UPLOAD_BYTES", 50)
+    assert "过大" in (verify_screenshot(path) or "")
+
+
+def test_list_screenshots_with_verify_reports_bad_content(tmp_path: Path) -> None:
+    good = _webp("g")
+    (tmp_path / screenshot_name(0, good)).write_bytes(good)
+    (tmp_path / "002-aaaaaaaaaaaa.webp").write_bytes(b"junk")
+    names, problems = list_screenshots(tmp_path, verify=True)
+    assert names == sorted([screenshot_name(0, good), "002-aaaaaaaaaaaa.webp"])
+    assert len(problems) == 1 and "002-aaaaaaaaaaaa.webp" in problems[0]
+    assert list_screenshots(tmp_path)[1] == []  # 不校验内容时只看名字

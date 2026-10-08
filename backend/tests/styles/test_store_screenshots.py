@@ -25,7 +25,8 @@ def _saved(data: Path, name: str = "暖纸双色") -> str:
 
 
 def _shot(label: str) -> bytes:
-    return f"image-{label}".encode()
+    """A stand-in for a normalized screenshot: right header, content distinguishes the label."""
+    return b"RIFF\x00\x00\x00\x00WEBP" + f"image-{label}".encode()
 
 
 def _draft_with(data: Path, *labels: str) -> tuple[str, list[str]]:
@@ -231,3 +232,95 @@ class TestPrune:
         target.write_text("not a directory")
         assert store.prune_draft(tmp_path, style_id) == ["screenshots"]
         assert not target.exists()
+
+
+class TestContentChecks:
+    def test_prune_removes_files_whose_content_does_not_match_their_name(
+        self, tmp_path: Path
+    ) -> None:
+        style_id, names = _draft_with(tmp_path, "a")
+        root = draft_dir(tmp_path, style_id) / "screenshots"
+        (root / "002-aaaaaaaaaaaa.webp").write_bytes(b"plain text pretending to be an image")
+        removed = store.prune_draft(tmp_path, style_id)
+        assert removed == ["screenshots/002-aaaaaaaaaaaa.webp"]
+        assert sorted(p.name for p in root.iterdir()) == names
+
+    def test_save_rejects_a_screenshot_with_forged_content(self, tmp_path: Path) -> None:
+        style_id, _ = _draft_with(tmp_path)
+        root = draft_dir(tmp_path, style_id) / "screenshots"
+        root.mkdir()
+        (root / "001-aaaaaaaaaaaa.webp").write_bytes(_shot("x"))  # hash does not match the name
+        with pytest.raises(StyleValidationError, match="001-aaaaaaaaaaaa.webp"):
+            store.save_draft(tmp_path, style_id)
+
+
+class TestAddAndRenumber:
+    def _plant(self, root: Path, *labels_and_numbers: tuple[int, str]) -> list[str]:
+        from studio.styles.screenshots import screenshot_name
+
+        root.mkdir(exist_ok=True)
+        names = []
+        for number, label in labels_and_numbers:
+            data = _shot(label)
+            name = screenshot_name(number - 1, data)
+            (root / name).write_bytes(data)
+            names.append(name)
+        return names
+
+    def test_gaps_in_the_numbering_do_not_misplace_the_new_screenshot(self, tmp_path: Path) -> None:
+        style_id, _ = _draft_with(tmp_path)
+        root = draft_dir(tmp_path, style_id) / "screenshots"
+        planted = self._plant(root, (1, "a"), (5, "b"))
+        new = store.add_draft_screenshot(tmp_path, style_id, _shot("c"))
+        result = store.draft_status(tmp_path, style_id).screenshots
+        assert [n[:3] for n in result] == ["001", "002", "003"]
+        assert result[-1] == new
+        assert [n[4:] for n in result[:2]] == [n[4:] for n in planted]
+
+    def test_adding_the_same_image_twice_keeps_both(self, tmp_path: Path) -> None:
+        style_id, _ = _draft_with(tmp_path, "a")
+        store.add_draft_screenshot(tmp_path, style_id, _shot("a"))
+        assert len(store.draft_status(tmp_path, style_id).screenshots) == 2
+
+    def test_a_failed_rename_rolls_back_to_the_previous_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        style_id, names = _draft_with(tmp_path, "a", "b", "c")
+        original = Path.rename
+        calls = {"n": 0}
+
+        def flaky(self: Path, target: Path) -> Path:
+            calls["n"] += 1
+            if calls["n"] == 5:  # fails during the second phase
+                raise OSError("disk full")
+            return original(self, target)
+
+        monkeypatch.setattr(Path, "rename", flaky)
+        with pytest.raises(OSError, match="disk full"):
+            store.reorder_draft_screenshots(tmp_path, style_id, [names[2], names[0], names[1]])
+        monkeypatch.undo()
+        root = draft_dir(tmp_path, style_id) / "screenshots"
+        assert sorted(p.name for p in root.iterdir()) == names
+        assert (root / names[0]).read_bytes() == _shot("a")
+
+    def test_a_failed_write_leaves_no_temporary_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        style_id, names = _draft_with(tmp_path, "a")
+
+        def boom(self: Path, target: Path) -> Path:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(Path, "replace", boom)
+        with pytest.raises(OSError):
+            store.add_draft_screenshot(tmp_path, style_id, _shot("b"))
+        monkeypatch.undo()
+        draft = draft_dir(tmp_path, style_id)
+        assert [p.name for p in draft.glob(".shot-*")] == []
+        assert sorted(p.name for p in (draft / "screenshots").iterdir()) == names
+
+    def test_a_regular_file_named_screenshots_is_a_path_error(self, tmp_path: Path) -> None:
+        style_id, _ = _draft_with(tmp_path)
+        (draft_dir(tmp_path, style_id) / "screenshots").write_text("not a directory")
+        with pytest.raises(StylePathError):
+            store.add_draft_screenshot(tmp_path, style_id, _shot("a"))

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from studio.styles import store
+from studio.styles.layout import style_dir
 from studio.styles.validate import StyleFiles, set_frontmatter_fields
 
 IMPORT_CATEGORY: Final = "旧项目导入"
@@ -322,6 +323,8 @@ def import_export(
                     _style_files(converted, kept),
                     style_id=existing[name],
                     overwrite=True,
+                    # 重新导入只换文本，不丢用户后来加的截图
+                    screenshots_from=style_dir(data_dir, existing[name]),
                 )
                 report.overwritten.append(name)
             else:

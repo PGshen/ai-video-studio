@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -39,7 +40,7 @@ from studio.styles.screenshots import (
     is_screenshot_name,
     list_screenshots,
     renumbered,
-    screenshot_name,
+    verify_screenshot,
 )
 from studio.styles.validate import (
     MAX_FILE_CHARS,
@@ -168,7 +169,7 @@ def _read_tree(root: Path) -> tuple[StyleFiles, list[str]]:
                 files[rel] = full.read_bytes().decode("utf-8")
             except UnicodeDecodeError:
                 problems.append(f"{rel} 不是 UTF-8 文本")
-    problems.extend(list_screenshots(root / SCREENSHOTS_DIR)[1])
+    problems.extend(list_screenshots(root / SCREENSHOTS_DIR, verify=True)[1])
     return files, problems
 
 
@@ -515,39 +516,63 @@ def delete_draft_file(data_dir: Path | str, style_id: str, relpath: str) -> None
 
 
 def _draft_screenshots_dir(data_dir: Path | str, style_id: str) -> Path:
-    """草稿的 `screenshots/` 目录路径（不保证存在）；它是符号链接时拒绝，防止写到草稿以外。"""
+    """草稿的 `screenshots/` 路径（不保证存在）；是符号链接或普通文件时拒绝，防止写到草稿以外。"""
     draft = _draft_path(data_dir, style_id)
     if not draft.is_dir():
         raise StyleNotFoundError(style_id)
     target = draft / SCREENSHOTS_DIR
     if target.is_symlink():
         raise StylePathError(f"不允许符号链接：{SCREENSHOTS_DIR}")
+    if target.exists() and not target.is_dir():
+        raise StylePathError(f"{SCREENSHOTS_DIR} 不是目录")
     return target
 
 
 def _apply_order(directory: Path, ordered: list[str]) -> None:
-    """按 `ordered` 的顺序给截图重新编号。两阶段改名（先改临时名再改最终名），中途不会撞名。"""
+    """按 `ordered` 的顺序给截图重新编号。两阶段改名（先改临时名再改最终名），中途不会撞名；
+    任何一步失败都把已经改过的逆序改回去，目录回到调用前的样子。"""
     pairs = [(old, new) for old, new in renumbered(ordered) if old != new]
-    staged = [(directory / f".mv-{uuid4().hex}", new) for old, new in pairs]
-    for (old, _new), (temp, _) in zip(pairs, staged, strict=True):
-        (directory / old).rename(temp)
-    for temp, new in staged:
-        temp.rename(directory / new)
+    staged = [
+        (directory / old, directory / f".mv-{uuid4().hex}", directory / new) for old, new in pairs
+    ]
+    moved_out: list[tuple[Path, Path]] = []  # 第一阶段已经完成的（临时名，原名）
+    moved_in: list[tuple[Path, Path]] = []  # 第二阶段已经完成的（最终名，临时名）
+    try:
+        for original, temp, _final in staged:
+            original.rename(temp)
+            moved_out.append((temp, original))
+        for _original, temp, final in staged:
+            temp.rename(final)
+            moved_in.append((final, temp))
+    except BaseException:
+        for current, previous in [*reversed(moved_in), *reversed(moved_out)]:
+            try:
+                current.rename(previous)
+            except OSError:
+                logger.exception("回滚截图改名失败：%s -> %s", current, previous)
+        raise
 
 
 def add_draft_screenshot(data_dir: Path | str, style_id: str, data: bytes) -> str:
     """把一张（调用方已经规范化成 WebP 的）截图追加到草稿末尾，返回文件名；满了抛
-    `StyleValidationError`。"""
+    `StyleValidationError`。序号取现有最大序号 + 1，写完后整体重新编号成 001…N（草稿里的编号
+    可能被手工或 agent 弄得不连续）。写入失败不留临时文件。"""
     directory = _draft_screenshots_dir(data_dir, style_id)
     names = list_screenshots(directory)[0]
     if len(names) >= MAX_SCREENSHOTS:
         raise StyleValidationError([f"截图最多 {MAX_SCREENSHOTS} 张，请先删除一些"])
-    name = screenshot_name(len(names), data)
+    top = max((int(name[:3]) for name in names), default=0)
+    name = f"{top + 1:03d}-{hashlib.sha256(data).hexdigest()[:12]}.webp"
     directory.mkdir(exist_ok=True)
-    staged = directory.parent / f".shot-{uuid4().hex}.tmp"
-    staged.write_bytes(data)
-    staged.replace(directory / name)
-    return name
+    staged = directory / f".shot-{uuid4().hex}.tmp"
+    try:
+        staged.write_bytes(data)
+        staged.replace(directory / name)
+    finally:
+        staged.unlink(missing_ok=True)
+    ordered = list_screenshots(directory)[0]
+    _apply_order(directory, ordered)
+    return renumbered(ordered)[-1][1]
 
 
 def screenshot_path(data_dir: Path | str, style_id: str, name: str, *, draft: bool) -> Path:
@@ -632,7 +657,12 @@ def prune_draft(data_dir: Path | str, style_id: str) -> list[str]:
             for child in sorted(entry.iterdir()):
                 if child.name in _IGNORED_FILES:
                     continue
-                if child.is_symlink() or not child.is_file() or not is_screenshot_name(child.name):
+                if (
+                    child.is_symlink()
+                    or not child.is_file()
+                    or not is_screenshot_name(child.name)
+                    or verify_screenshot(child) is not None
+                ):
                     _remove(child)
                     removed.append(f"{entry.name}/{child.name}")
             continue

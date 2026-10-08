@@ -542,4 +542,29 @@ describe('截图', () => {
     endpoints.uploadStyleScreenshot = original
     expect(draft.screenshots.value).toHaveLength(2)
   })
+
+  it('忙碌时（服务端 409）删除和移动不改动草稿，也不留下错误提示', async () => {
+    const a = shotName(1, 'aaaaaaaaaaaa')
+    const b = shotName(2, 'bbbbbbbbbbbb')
+    seedScreenshots('s1', [a, b])
+    const { draft } = setup()
+    await settle()
+    server.busy.add('s1')
+    await draft.removeScreenshot(a)
+    await draft.moveScreenshot(b, 0)
+    expect(server.draftShots.get('s1')).toEqual([a, b])
+    expect(draft.screenshotError.value).toBeNull()
+  })
+
+  it('已有 12 张时再上传会被服务端拒绝，原因显示出来', async () => {
+    seedScreenshots(
+      's1',
+      Array.from({ length: 12 }, (_, i) => shotName(i + 1, `${String(i).padStart(12, '0')}`)),
+    )
+    const { draft } = setup()
+    await settle()
+    await draft.uploadScreenshots([png('x')])
+    expect(draft.screenshotError.value).toContain('最多 12 张')
+    expect(draft.screenshots.value).toHaveLength(12)
+  })
 })
