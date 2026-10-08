@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
 import { ApiError } from '@/api/http'
 import { invalidateStyleDraft } from '@/composables/queries'
-import { entry, resetServer, seedScreenshots, seedStyle, server, shotName } from '@/test/fakeStyleApi'
+import { endpoints, entry, resetServer, seedScreenshots, seedStyle, server, shotName } from '@/test/fakeStyleApi'
 
 vi.mock('@/api/endpoints', async () => (await import('@/test/fakeStyleApi')).endpoints)
 vi.mock('./StyleChatPane.vue', () => ({
@@ -41,6 +41,8 @@ async function settle() {
 }
 
 let lastClient: QueryClient
+/** 挂载过的视图：编辑视图在 `document` 上监听粘贴，每个测试结束都要卸载，否则会串到下一个测试。 */
+const mounted: { unmount: () => void }[] = []
 
 async function mountEdit(styleId = 's1', props: Record<string, unknown> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -49,6 +51,7 @@ async function mountEdit(styleId = 's1', props: Record<string, unknown> = {}) {
     props: { styleId, ...props },
     global: { plugins: [[VueQueryPlugin, { queryClient }]] },
   })
+  mounted.push(wrapper)
   await settle()
   return wrapper
 }
@@ -62,6 +65,7 @@ beforeEach(() => {
   seedStyle('s1', '暖纸双色', { 'references/color.md': '主色：暖白' })
 })
 afterEach(() => {
+  for (const wrapper of mounted.splice(0)) wrapper.unmount()
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
@@ -368,20 +372,62 @@ describe('StyleEditView 截图', () => {
     expect(server.draftShots.get('s1')).toHaveLength(1)
   })
 
-  it('粘贴剪贴板里的图片会上传，粘贴文本不受影响', async () => {
-    const w = await mountEdit()
+  const paste = (files: File[], types: string[] = [], target: EventTarget = document.body) => {
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', { value: { files, items: [], types } })
+    target.dispatchEvent(event)
+    return event
+  }
+
+  it('粘贴剪贴板里的图片会上传（不需要焦点在截图区内），没有图片时不拦截', async () => {
+    await mountEdit()
     const image = new File(['x'], 'p.png', { type: 'image/png' })
-    await w.get('[data-testid="style-screenshots-section"]').trigger('paste', {
-      clipboardData: { files: [image], items: [] },
-    })
+    const taken = paste([image], ['Files'])
     await settle()
+    expect(taken.defaultPrevented).toBe(true)
     expect(server.draftShots.get('s1')).toHaveLength(1)
 
-    await w.get('[data-testid="style-screenshots-section"]').trigger('paste', {
-      clipboardData: { files: [], items: [] },
-    })
+    const text = paste([], ['text/plain'])
     await settle()
+    expect(text.defaultPrevented).toBe(false)
     expect(server.draftShots.get('s1')).toHaveLength(1)
+  })
+
+  it('焦点在输入框里并且剪贴板同时带文本时，不抢走粘贴', async () => {
+    const w = await mountEdit()
+    const image = new File(['x'], 'p.png', { type: 'image/png' })
+    const input = w.get('[data-testid="style-name"]').element
+    const event = paste([image], ['Files', 'text/plain'], input)
+    await settle()
+    expect(event.defaultPrevented).toBe(false)
+    expect(server.draftShots.get('s1') ?? []).toHaveLength(0)
+  })
+
+  it('组件卸载后不再监听粘贴', async () => {
+    const w = await mountEdit()
+    w.unmount()
+    paste([new File(['x'], 'p.png', { type: 'image/png' })], ['Files'])
+    await settle()
+    expect(server.draftShots.get('s1') ?? []).toHaveLength(0)
+  })
+
+  it('截图上传期间保存和放弃修改都禁用', async () => {
+    const original = endpoints.uploadStyleScreenshot
+    endpoints.uploadStyleScreenshot = async (id, file) => {
+      await new Promise((r) => setTimeout(r, 100))
+      return original(id, file)
+    }
+    const w = await mountEdit()
+    paste([new File(['x'], 'p.png', { type: 'image/png' })], ['Files'])
+    await vi.advanceTimersByTimeAsync(10)
+    await flushPromises()
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="discard-style"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="shot-add"]').attributes('disabled')).toBeDefined()
+    await vi.advanceTimersByTimeAsync(500)
+    await settle()
+    expect(w.get('[data-testid="save-style"]').attributes('disabled')).toBeUndefined()
+    endpoints.uploadStyleScreenshot = original
   })
 
   it('上传失败时显示原因', async () => {

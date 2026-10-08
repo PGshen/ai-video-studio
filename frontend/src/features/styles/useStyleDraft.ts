@@ -164,6 +164,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
 
   /** 把还没写出的编辑全部写进草稿；写不进去就抛错（发消息给 AI、保存之前都要先过这一关）。 */
   async function ensureWritten(): Promise<void> {
+    await screenshotChain
     await flush()
     if (saveState.value === 'error') {
       throw new Error(`草稿还没有写入成功：${writeError.value ?? '未知错误'}`)
@@ -220,59 +221,106 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
   // ---- 截图 ---------------------------------------------------------------
 
   const screenshotError = ref<string | null>(null)
-  const uploading = ref(false)
+  const pendingShots = ref(0)
+  /** 有截图操作（上传、删除、移动）在排队或进行中：界面据此禁用保存、放弃和全部截图按钮。 */
+  const uploading = computed(() => pendingShots.value > 0)
+  let screenshotChain: Promise<void> = Promise.resolve()
 
-  /** 跑一次截图改动：成功后用返回的草稿状态刷新；409（AI 正在改）不报错，重新取草稿；其他失败
-   * 写进 `screenshotError` 并返回 `false`。 */
+  /** 截图操作一律串行：每次改动都会重排全部文件名，并发的请求手里的名字必然过期。 */
+  function enqueueScreenshot(task: () => Promise<void>): Promise<void> {
+    pendingShots.value += 1
+    const run = screenshotChain
+      .then(task)
+      .catch(() => undefined)
+      .finally(() => {
+        pendingShots.value -= 1
+      })
+    screenshotChain = run
+    return run
+  }
+
+  type ShotResult = 'ok' | 'busy' | 'failed'
+  const STALE_MESSAGE = '截图已经变了（可能刚被改动过），已刷新，请再试一次'
+
+  /** 跑一次截图改动：成功后用返回的草稿状态刷新；409（AI 正在改）重新取草稿并返回 `busy`；
+   * 其他失败写进 `screenshotError`。`stale` 为真时 404 表示「那张截图已经不在了」。 */
   async function runScreenshotAction(
     id: string,
     action: () => Promise<DraftStatusOut>,
-  ): Promise<boolean> {
+    stale = false,
+  ): Promise<ShotResult> {
     try {
       const status = await action()
       queryClient.setQueryData(queryKeys.styleDraft(id), status)
-      return true
+      return 'ok'
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         invalidateStyleDraft(queryClient, id)
+        return 'busy'
+      }
+      if (stale && error instanceof ApiError && error.status === 404) {
+        invalidateStyleDraft(queryClient, id)
+        screenshotError.value = STALE_MESSAGE
       } else {
         screenshotError.value = errorMessage(error)
       }
-      return false
+      return 'failed'
     }
   }
 
-  /** 逐个上传图片（跳过不是图片的文件）；遇到失败就停止，已经成功的保留。 */
-  async function uploadScreenshots(selected: readonly File[]): Promise<void> {
+  /** 排队逐个上传图片（跳过不是图片的文件）；遇到失败就停止并说明还有几张没传，已经成功的保留。 */
+  function uploadScreenshots(selected: readonly File[]): Promise<void> {
     const id = styleId.value
+    const images = selected.filter((file) => file.type.startsWith('image/'))
     screenshotError.value = null
-    uploading.value = true
-    try {
-      for (const file of selected) {
-        if (!file.type.startsWith('image/')) continue
-        if (!(await runScreenshotAction(id, () => api.uploadStyleScreenshot(id, file)))) break
+    return enqueueScreenshot(async () => {
+      for (const [index, file] of images.entries()) {
+        const result = await runScreenshotAction(id, () => api.uploadStyleScreenshot(id, file))
+        if (result === 'ok') continue
+        const left = images.length - index
+        if (result === 'busy') {
+          screenshotError.value = `AI 正在修改这套风格，还有 ${left} 张没有上传`
+        } else if (left > 1) {
+          screenshotError.value = `${screenshotError.value ?? ''}（还有 ${left} 张没有上传）`
+        }
+        return
       }
-    } finally {
-      uploading.value = false
-    }
+    })
   }
 
-  async function removeScreenshot(name: string): Promise<void> {
+  /** 执行时按最新的列表找到这张图：序号前缀会在每次改动后重排，所以精确匹配不到时按内容哈希找。 */
+  function currentName(name: string): string | undefined {
+    const names = screenshots.value
+    return names.find((n) => n === name) ?? names.find((n) => n.slice(4) === name.slice(4))
+  }
+
+  function removeScreenshot(name: string): Promise<void> {
     const id = styleId.value
     screenshotError.value = null
-    await runScreenshotAction(id, () => api.deleteStyleScreenshot(id, name))
+    return enqueueScreenshot(async () => {
+      const target = currentName(name)
+      if (target === undefined) {
+        invalidateStyleDraft(queryClient, id)
+        screenshotError.value = STALE_MESSAGE
+        return
+      }
+      await runScreenshotAction(id, () => api.deleteStyleScreenshot(id, target), true)
+    })
   }
 
   /** 把 `name` 移到第 `to` 个位置（0 = 封面）；位置越界或没有变化时什么都不做。 */
-  async function moveScreenshot(name: string, to: number): Promise<void> {
+  function moveScreenshot(name: string, to: number): Promise<void> {
     const id = styleId.value
-    const names = [...screenshots.value]
-    const from = names.indexOf(name)
-    if (from < 0 || to < 0 || to >= names.length || to === from) return
-    names.splice(from, 1)
-    names.splice(to, 0, name)
     screenshotError.value = null
-    await runScreenshotAction(id, () => api.reorderStyleScreenshots(id, names))
+    return enqueueScreenshot(async () => {
+      const target = currentName(name)
+      const names = [...screenshots.value]
+      const from = target === undefined ? -1 : names.indexOf(target)
+      if (from < 0 || to < 0 || to >= names.length || to === from) return
+      names.splice(from, 1)
+      names.splice(to, 0, target as string)
+      await runScreenshotAction(id, () => api.reorderStyleScreenshots(id, names), true)
+    })
   }
 
   const discardError = ref<string | null>(null)

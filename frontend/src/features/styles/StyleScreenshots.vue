@@ -14,6 +14,7 @@ const props = defineProps<{
   styleId: string
   names: readonly string[]
   readonly: boolean
+  /** 有截图操作（上传、删除、移动）进行中：全部按钮禁用。 */
   uploading: boolean
 }>()
 const emit = defineEmits<{
@@ -66,7 +67,7 @@ function onDrop(event: DragEvent): void {
         @click="input?.click()"
       >
         <ImagePlus />
-        {{ uploading ? '上传中…' : '添加截图' }}
+        {{ uploading ? '处理中…' : '添加截图' }}
       </Button>
       <input
         ref="input"

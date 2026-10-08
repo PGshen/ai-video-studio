@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -71,7 +72,9 @@ class TestDraftOperations:
     @pytest.mark.parametrize(
         "pick", [lambda n: n[:2], lambda n: [*n, n[0]], lambda n: [*n[:2], "x"]]
     )
-    def test_reorder_requires_a_permutation(self, tmp_path: Path, pick) -> None:  # type: ignore[no-untyped-def]
+    def test_reorder_requires_a_permutation(
+        self, tmp_path: Path, pick: Callable[[list[str]], list[str]]
+    ) -> None:
         style_id, names = _draft_with(tmp_path, "a", "b", "c")
         with pytest.raises(StyleValidationError):
             store.reorder_draft_screenshots(tmp_path, style_id, pick(names))

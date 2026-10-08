@@ -421,13 +421,13 @@ describe('截图', () => {
     expect(draft.screenshots.value).toHaveLength(1)
   })
 
-  it('409（AI 正在修改）不留错误，草稿重新获取', async () => {
+  it('409（AI 正在修改）时草稿重新获取，并提示还有几张没有上传', async () => {
     const { draft, queryClient } = setup()
     await settle()
     const spy = vi.spyOn(queryClient, 'invalidateQueries')
     server.uploadError = new ApiError(409, 'AI 正在修改这套风格')
     await draft.uploadScreenshots([png('a')])
-    expect(draft.screenshotError.value).toBeNull()
+    expect(draft.screenshotError.value).toContain('AI 正在修改')
     expect(spy).toHaveBeenCalled()
   })
 
@@ -457,5 +457,89 @@ describe('截图', () => {
     await draft.moveScreenshot(before[0]!, -1)
     await draft.moveScreenshot(before[0]!, 3)
     expect(draft.screenshots.value).toEqual(before)
+  })
+
+  it('截图操作串行执行：同时发起的上传不会并发，uploading 在全部结束后才为假', async () => {
+    const { draft } = setup()
+    await settle()
+    let running = 0
+    let peak = 0
+    const original = endpoints.uploadStyleScreenshot
+    endpoints.uploadStyleScreenshot = async (id, file) => {
+      running += 1
+      peak = Math.max(peak, running)
+      await new Promise((r) => setTimeout(r, 50))
+      running -= 1
+      return original(id, file)
+    }
+    const first = draft.uploadScreenshots([png('a'), png('b')])
+    const second = draft.uploadScreenshots([png('c')])
+    await vi.advanceTimersByTimeAsync(10)
+    expect(draft.uploading.value).toBe(true)
+    await vi.advanceTimersByTimeAsync(500)
+    await Promise.all([first, second])
+    endpoints.uploadStyleScreenshot = original
+
+    expect(peak).toBe(1)
+    expect(draft.screenshots.value).toHaveLength(3)
+    expect(draft.uploading.value).toBe(false)
+  })
+
+  it('排在后面的删除和移动按执行时的最新顺序计算，不会拿着过期的文件名', async () => {
+    const a = shotName(1, 'aaaaaaaaaaaa')
+    const b = shotName(2, 'bbbbbbbbbbbb')
+    const c = shotName(3, 'cccccccccccc')
+    seedScreenshots('s1', [a, b, c])
+    const { draft } = setup()
+    await settle()
+
+    const first = draft.moveScreenshot(c, 0) // 重排：全部序号前缀都会变
+    const second = draft.moveScreenshot(b, 0) // 此时 b 的名字已经变了
+    await Promise.all([first, second])
+    await settle()
+
+    expect(draft.screenshotError.value).toBeNull()
+    expect(draft.screenshots.value.map((n) => n.slice(4))).toEqual([
+      'bbbbbbbbbbbb.webp',
+      'cccccccccccc.webp',
+      'aaaaaaaaaaaa.webp',
+    ])
+  })
+
+  it('上传中遇到 409 提示还有几张没传，而不是静默丢掉', async () => {
+    const { draft } = setup()
+    await settle()
+    server.uploadError = new ApiError(409, 'AI 正在修改这套风格')
+    await draft.uploadScreenshots([png('a'), png('b'), png('c')])
+    expect(draft.screenshotError.value).toContain('3')
+    expect(draft.screenshotError.value).toContain('没有上传')
+  })
+
+  it('截图名在队列里被别人删掉（404）时给出截图专用的提示，不显示「风格不存在」', async () => {
+    seedScreenshots('s1', [shotName(1)])
+    const { draft } = setup()
+    await settle()
+    await draft.removeScreenshot('009-zzzzzzzzzzzz.webp')
+    expect(draft.screenshotError.value).toContain('截图已经变了')
+    expect(draft.screenshotError.value).not.toContain('风格不存在')
+  })
+
+  it('ensureWritten 会等进行中的截图上传结束（发消息、保存之前）', async () => {
+    const { draft } = setup()
+    await settle()
+    const original = endpoints.uploadStyleScreenshot
+    endpoints.uploadStyleScreenshot = async (id, file) => {
+      await new Promise((r) => setTimeout(r, 50))
+      return original(id, file)
+    }
+    const upload = draft.uploadScreenshots([png('a'), png('b')])
+    let written = false
+    const ensured = draft.ensureWritten().then(() => (written = true))
+    await vi.advanceTimersByTimeAsync(20)
+    expect(written).toBe(false)
+    await vi.advanceTimersByTimeAsync(500)
+    await Promise.all([upload, ensured])
+    endpoints.uploadStyleScreenshot = original
+    expect(draft.screenshots.value).toHaveLength(2)
   })
 })

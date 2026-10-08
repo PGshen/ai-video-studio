@@ -5,7 +5,7 @@
  * （`StyleChatPane`）：AI 改的是同一份草稿；后端报告 AI 正在修改（`busy`）或 `readonly` 时整个
  * 编辑区只读，轮次结束后恢复。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import type { StyleOut } from '@/types/api'
@@ -46,16 +46,24 @@ const lockedReason = computed(
   () => props.readonlyReason ?? (aiWorking.value ? 'AI 正在修改，完成后可以继续编辑' : undefined),
 )
 
-/** 粘贴剪贴板里的图片当截图上传；只有文本时不拦截，照常粘贴进输入框。 */
+/**
+ * 粘贴剪贴板里的图片当截图上传。粘贴事件只发给有焦点的元素（没有就发给 body），所以监听在 `document`
+ * 上，而不是截图区的容器——用户点一下空白处再 ⌘V 也要生效。剪贴板里没有图片时不拦截；焦点在输入框、
+ * 编辑器里并且剪贴板同时带文本时，也不抢走粘贴（从网页复制的图文）。
+ */
 function onPaste(event: ClipboardEvent): void {
-  if (locked.value) return
-  const images = Array.from(event.clipboardData?.files ?? []).filter((f) =>
-    f.type.startsWith('image/'),
-  )
+  if (locked.value || !draft.ready.value) return
+  const data = event.clipboardData
+  const images = Array.from(data?.files ?? []).filter((f) => f.type.startsWith('image/'))
   if (images.length === 0) return
+  const target = event.target instanceof Element ? event.target : null
+  const typing = target?.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')
+  if (typing && Array.from(data?.types ?? []).includes('text/plain')) return
   event.preventDefault()
   void draft.uploadScreenshots(images)
 }
+onMounted(() => document.addEventListener('paste', onPaste))
+onBeforeUnmount(() => document.removeEventListener('paste', onPaste))
 
 const stateText = computed(() => {
   if (locked.value && lockedReason.value) return lockedReason.value
@@ -125,10 +133,7 @@ async function discard(): Promise<void> {
         @update="draft.updateMeta"
       />
 
-      <div
-        data-testid="style-screenshots-section"
-        @paste="onPaste"
-      >
+      <div data-testid="style-screenshots-section">
         <StyleScreenshots
           :style-id="styleId"
           :names="draft.screenshots.value"
@@ -187,7 +192,7 @@ async function discard(): Promise<void> {
       </p>
       <div class="flex shrink-0 items-center gap-2">
         <Button
-          :disabled="locked || draft.saving.value"
+          :disabled="locked || draft.saving.value || draft.uploading.value"
           data-testid="save-style"
           @click="save"
         >
@@ -195,7 +200,7 @@ async function discard(): Promise<void> {
         </Button>
         <Button
           variant="outline"
-          :disabled="locked || draft.saving.value"
+          :disabled="locked || draft.saving.value || draft.uploading.value"
           data-testid="discard-style"
           @click="discard"
         >
