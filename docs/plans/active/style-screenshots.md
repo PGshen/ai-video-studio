@@ -140,7 +140,7 @@
 - **完成标准**：单测通过。
 - **验证命令**：`make check`
 
-### T6：自验证与文档（进行中）
+### T6：自验证与文档（完成）
 
 - **目标**：拿到 AC1–AC7 的证据。
 - **涉及文件**：本计划的「验证记录」、`docs/ARCHITECTURE.md`（`styles` 行、`api` 行、`features/styles/` 行）、`docs/quality/QUALITY.md`。
@@ -155,10 +155,11 @@
 - 2026-10-08 — T3 完成：5 个端点 + `cover`/`screenshots` 字段，API 测试 `TestScreenshots`，项目不复制截图的断言
 - 2026-10-08 — T4 完成：类型与三个 endpoints、`screenshotUrl`、卡片封面（含占位/加载失败回落）、详情缩略图与 `StyleScreenshotViewer`、`fakeStyleApi` 支持截图；前端 1169 个测试通过
 - 2026-10-08 — T5 完成：`StyleScreenshots.vue`（上传/拖入/删除/左移/右移/设为封面）、`useStyleDraft` 截图方法、`StyleEditView` 接入与粘贴上传；`make check` 全绿（后端 2731、前端 1188）
+- 2026-10-08 — T6 完成：L4 验证与文档更新，发现并修复大图对话框高度为 0 的缺陷；待整分支评审
 
 ## 下一步
 
-- 做 T6：`make dev` 后用内置浏览器做 L4（上传三种方式、排序、保存/放弃、卡片封面上边距、AI 运行中只读），证据写进「验证记录」；更新 `docs/ARCHITECTURE.md`（`styles`/`api`/`features/styles` 三行）和 `docs/quality/QUALITY.md`；然后整分支评审一次（native 方式）。
+- 整分支评审一次（native 方式的最后一步），处理发现后把计划状态改为「待验收」，交负责人验收；验收通过后按 SOP §7 收尾、合并到 main。
 
 ## 决策记录
 
@@ -176,4 +177,14 @@
 
 ## 验证记录
 
-- 无
+2026-10-08，在 worktree 里用独立的数据目录和端口（api 8100、前端 5200；负责人自己的开发服务在 8000/5173，没有动）验证。
+
+- **`make check`**：全绿（后端 2731、前端 1188 个测试；ruff、import-linter、文档检查通过）。
+- **AC1**（上传）：curl 上传 PNG/JPEG/WebP 都得到 WebP 文件名；文本文件 → 422「不是有效的图片文件」；11 MB 随机文件 → 422「图片大小超过上限 10 MB」；6000×3000 的图被缩到长边 ≤ 1920；第 13 张 → 422「截图最多 12 张」。浏览器里用 JS 构造真实图片文件，分别走文件选择框 `change`、`drop`、`paste` 三条路径，截图数 0 → 1 → 2 → 3，都在草稿里变成 WebP；编辑态截图见对话中的截图。
+- **AC2**（封面）：风格库首页截图——有截图的两张卡片顶部显示封面，没有截图的显示占位，三张卡片高度一致，封面顶到卡片边缘（`pt-0 overflow-hidden`）。保存后列表的 `cover` 是第一张。
+- **AC3**（草稿流程）：编辑态里「设为封面」「右移」「删除」都只改草稿（期间正式版本的 `screenshots` 仍是空，草稿 `dirty` 为真）；保存后生效；对已有 2 张截图的风格删掉一张再点「放弃修改」，正式版本仍是原来的 2 张，草稿已不存在。
+- **AC4**：复制风格带截图（`test_duplicate_copies_screenshots`（store：`test_duplicate_copies_screenshots`））；创建项目后项目 `style/` 里没有截图（`test_screenshots_are_not_copied_into_the_project`）。
+- **AC5**：上传/删除/排序在对话轮次运行时返回 409，读取不受限（`test_changes_are_409_while_ai_is_editing_but_reads_are_fine`）；`prune_draft` 清理 `screenshots/` 里的符号链接、子目录、坏名字（`TestPrune`）；编辑态在 AI 修改时截图区只读（`StyleEditView.spec`）。**未在浏览器里复现 409**：fake 运行时的轮次瞬间结束，没法让风格处于忙碌状态，这部分只有单测和 API 测试的证据。
+- **AC6**：取图接口对 `order`、`x.webp` 返回 400，对 `..%2FSTYLE.md` 返回 404，符号链接的截图不会被读出（`test_a_symlinked_screenshot_is_not_served`）；响应带 `Cache-Control: private, max-age=31536000, immutable`，`content-type: image/webp`。
+- **AC7**：ADR 0022、`ARCHITECTURE.md`、`QUALITY.md` 已更新。
+- **L4 发现并修复的缺陷**：详情态点缩略图后，大图对话框里的图片高度为 0（对话框是 grid，`flex-1 min-h-0` 不生效）；改成 `max-h-[70vh] w-full object-contain` 后正常显示。组件测试没有覆盖布局，所以单测发现不了。

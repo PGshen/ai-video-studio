@@ -30,7 +30,7 @@ function step(delta: number): void {
     :open="index !== null"
     @update:open="(open) => !open && (index = null)"
   >
-    <DialogContent class="flex max-h-[90vh] flex-col gap-3 sm:max-w-4xl">
+    <DialogContent class="sm:max-w-4xl">
       <DialogTitle class="sr-only">
         截图预览
       </DialogTitle>
@@ -42,7 +42,7 @@ function step(delta: number): void {
         :key="current"
         :src="screenshotUrl(styleId, current, { draft: draft ?? false })"
         alt="风格截图"
-        class="min-h-0 w-full flex-1 rounded-md object-contain"
+        class="max-h-[70vh] w-full rounded-md object-contain"
         data-testid="shot-large"
       >
       <div
