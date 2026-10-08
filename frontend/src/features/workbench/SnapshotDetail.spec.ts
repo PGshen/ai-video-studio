@@ -61,6 +61,13 @@ describe('SnapshotDetail', () => {
     expect(mountDetail(['s3']).text()).toContain('与上一个快照相比没有变化')
   })
 
+  it('选两个快照且没有差异时，不说"与上一个快照相比"', () => {
+    state.current.diff.value = { added: [], removed: [], modified: [] }
+    const text = mountDetail(['s3', 's1']).text()
+    expect(text).toContain('这两个快照之间没有变化')
+    expect(text).not.toContain('与上一个快照相比')
+  })
+
   it('选两个：标题是对比，且没有「回滚到此」', () => {
     const w = mountDetail(['s3', 's1'])
     expect(w.text()).toContain('对比')

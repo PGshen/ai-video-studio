@@ -16,9 +16,9 @@ MAX_LRC_BYTES = 200_000
 LAST_LINE_SECONDS = 5.0
 _PAST_END_TOLERANCE = 1.0
 
-_STAMP = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
+_STAMP = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,6}))?\]")
 _OFFSET = re.compile(r"^\[offset:\s*([+-]?\d+)\s*\]\s*$", re.IGNORECASE)
-_WORD_TAG = re.compile(r"<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>")
+_WORD_TAG = re.compile(r"<\d{1,3}:\d{1,2}(?:[.:]\d{1,6})?>")
 _MAX_SHOWN = 5
 
 
@@ -75,16 +75,12 @@ def parse_lrc(data: bytes | str, duration: float) -> list[LyricLine]:
     if not saw_stamp:
         raise LyricsError(["没有找到时间戳：只支持带时间戳的 LRC（形如 [00:12.34]歌词）"])
 
-    problems: list[str] = []
     adjusted: list[tuple[float, str]] = []
     for start, body in entries:
         start = max(0.0, start - offset)
         if start > duration + _PAST_END_TOLERANCE:
-            problems.append(f"时间 {start:.2f} 秒晚于歌曲时长 {duration:.2f} 秒")
-            continue
+            continue  # a stray entry past the end costs only itself, not the whole file
         adjusted.append((start, body))
-    if problems:
-        raise LyricsError(problems)
     adjusted.sort(key=lambda item: item[0])  # stable: same moment keeps file order
 
     # `following[i]`: the next strictly later moment after entry i (one backward pass, linear).
@@ -102,7 +98,7 @@ def parse_lrc(data: bytes | str, duration: float) -> list[LyricLine]:
             end = min(start + LAST_LINE_SECONDS, duration)
         result.append(LyricLine(text=body, start=round(start, 6), end=round(min(end, duration), 6)))
     if not result:
-        raise LyricsError(["至少要有一句歌词（只有结束标记或元信息）"])
+        raise LyricsError(["至少要有一句歌词（只有结束标记或元信息，或者时间都晚于歌曲时长）"])
     return result
 
 

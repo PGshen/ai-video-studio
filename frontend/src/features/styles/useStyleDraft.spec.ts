@@ -341,6 +341,61 @@ describe('放弃修改失败', () => {
   })
 })
 
+describe('放弃失败的提示不会一直挂着', () => {
+  async function failedDiscard() {
+    const ctx = setup()
+    await settle()
+    server.discardError = new ApiError(409, 'AI 正在修改这套风格，请等这一轮结束（或先停止它）')
+    expect(await ctx.draft.discard()).toBeNull()
+    server.discardError = null
+    expect(ctx.draft.discardError.value).not.toBeNull()
+    return ctx
+  }
+
+  it('用户继续编辑后清掉', async () => {
+    const { draft } = await failedDiscard()
+
+    draft.edit('references/color.md', '深蓝')
+
+    expect(draft.discardError.value).toBeNull()
+  })
+
+  it('保存时清掉', async () => {
+    const { draft } = await failedDiscard()
+
+    await draft.save()
+
+    expect(draft.discardError.value).toBeNull()
+  })
+
+  it('AI 这一轮结束（busy 由真变假）后清掉', async () => {
+    server.busy.add('s1')
+    const { draft, queryClient } = setup()
+    await settle()
+    server.discardError = new ApiError(409, 'AI 正在修改这套风格，请等这一轮结束（或先停止它）')
+    expect(await draft.discard()).toBeNull()
+    expect(draft.discardError.value).not.toBeNull()
+
+    server.busy.delete('s1')
+    invalidateStyleDraft(queryClient, 's1')
+    await settle()
+
+    expect(draft.busy.value).toBe(false)
+    expect(draft.discardError.value).toBeNull()
+  })
+
+  it('还没结束时提示保留', async () => {
+    server.busy.add('s1')
+    const { draft } = setup()
+    await settle()
+    server.discardError = new ApiError(409, '忙')
+    await draft.discard()
+    await settle()
+
+    expect(draft.discardError.value).toBe('忙')
+  })
+})
+
 describe('评审修复：AI 的改动不会被旧缓存或事后重放的编辑覆盖', () => {
   it('编辑视图卸载期间 AI 改了草稿，重新进入时显示新内容而不是旧缓存', async () => {
     const shared = new QueryClient({ defaultOptions: { queries: { retry: false } } })

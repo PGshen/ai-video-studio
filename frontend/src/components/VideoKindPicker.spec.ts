@@ -1,18 +1,20 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { VIDEO_KINDS_FIXTURE } from '@/test/videoKindsFixture'
+import type { MusicSource, VideoKind } from '@/types/api'
 import VideoKindPicker from './VideoKindPicker.vue'
 
-function mountPicker(videoKind = 'explainer_manim', music = 'none') {
-  return mount(VideoKindPicker, {
+function mountPicker(videoKind: VideoKind = 'explainer_manim', music: MusicSource = 'none') {
+  const wrapper = mount(VideoKindPicker, {
     props: {
       data: VIDEO_KINDS_FIXTURE,
-      videoKind: videoKind as 'explainer_manim',
-      music: music as 'none',
-      'onUpdate:videoKind': (v: string) => w.setProps({ videoKind: v as 'explainer_manim' }),
-      'onUpdate:music': (v: string) => w.setProps({ music: v as 'none' }),
+      videoKind,
+      music,
+      'onUpdate:videoKind': (value: VideoKind) => wrapper.setProps({ videoKind: value }),
+      'onUpdate:music': (value: MusicSource) => wrapper.setProps({ music: value }),
     },
   })
+  return wrapper
 }
 let w: ReturnType<typeof mountPicker>
 

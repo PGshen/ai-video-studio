@@ -15,8 +15,8 @@ vi.mock('./SnapshotTimeline.vue', () => ({
 
 import SnapshotRail from './SnapshotRail.vue'
 
-const mountRail = (collapsed: boolean) =>
-  mount(SnapshotRail, { props: { projectId: 'p1', busy: false, collapsed } })
+const mountRail = (collapsed: boolean, narrow = false) =>
+  mount(SnapshotRail, { props: { projectId: 'p1', busy: false, collapsed, narrow } })
 
 describe('SnapshotRail', () => {
   beforeEach(() => {
@@ -36,6 +36,12 @@ describe('SnapshotRail', () => {
     const w = mountRail(true)
     expect(w.find('[data-testid="snapshot-rail"]').exists()).toBe(false)
     expect(w.find('[data-testid="timeline"]').exists()).toBe(false)
+    expect(w.find('[data-testid="toggle-snapshots"]').exists()).toBe(false)
+  })
+
+  it('窄屏（上下堆叠、始终展开）：不显示收起按钮，因为点了也不会有反应', () => {
+    const w = mountRail(false, true)
+    expect(w.find('[data-testid="snapshot-rail"]').exists()).toBe(true)
     expect(w.find('[data-testid="toggle-snapshots"]').exists()).toBe(false)
   })
 

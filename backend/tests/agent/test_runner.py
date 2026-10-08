@@ -1324,6 +1324,31 @@ class TestPrepareTurn:
         notices = [e for e in list_events(h.env.engine, session_id) if e.type == "notice"]
         assert [n for n in notices if n.payload.get("kind") == GUARD_RESTORED_NOTICE] == []
 
+    async def test_files_derived_by_prepare_turn_are_read_only_during_the_turn(
+        self, h: Harness
+    ) -> None:
+        # TD-69: like the materialized copies, derived files are sealed before the agent runs.
+        modes: list[int] = []
+
+        class _Deriving(_DelegatingStage):
+            def prepare_turn(self, workdir: Path) -> None:
+                derived = workdir / "upstream" / "derived.txt"
+                derived.parent.mkdir(parents=True, exist_ok=True)
+                derived.write_text("derived", encoding="utf-8")
+
+        class _Probe(FakeRuntime):
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                modes.append((ctx.workdir / "upstream" / "derived.txt").stat().st_mode & 0o222)
+                async for event in super().run_turn(ctx):
+                    yield event
+
+        h.env.registry.register(_Deriving(h.env.registry.get("topic")))
+
+        turn = await h.run(h.session(stage="topic"), lambda: _Probe([fake.say("a")]))
+
+        assert turn.status == "done"
+        assert modes == [0]
+
     async def test_failure_fails_the_turn_with_stage_name_and_message(self, h: Harness) -> None:
         stage = _DelegatingStage(h.env.registry.get("topic"))
         stage.prepare_error = ValueError("素材目录损坏")
@@ -1337,6 +1362,20 @@ class TestPrepareTurn:
         assert "topic" in error.payload["message"]
         assert "素材目录损坏" in error.payload["message"]
         assert h.contexts == []
+
+    async def test_failure_message_keeps_the_original_exception_type(self, h: Harness) -> None:
+        # TD-68: the original exception is chained, and its type survives in the message.
+        stage = _DelegatingStage(h.env.registry.get("topic"))
+        stage.prepare_error = PermissionError("素材不可写")
+        h.env.registry.register(stage)
+        session_id = h.session(stage="topic")
+
+        turn = await h.run(session_id, [fake.say("a")])
+
+        assert turn.status == "failed"
+        [error] = [e for e in list_events(h.env.engine, session_id) if e.type == "error"]
+        assert "PermissionError" in error.payload["message"]
+        assert "素材不可写" in error.payload["message"]
 
     async def test_workspaceless_stage_does_not_call_prepare_turn(self, h: Harness) -> None:
         stage = _DelegatingStage(h.env.registry.get("topic"), name="brainstorm")

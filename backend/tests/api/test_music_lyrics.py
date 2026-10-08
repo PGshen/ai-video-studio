@@ -80,7 +80,7 @@ async def test_bad_files_are_422_and_the_old_lyrics_survive(api_env: ApiEnv) -> 
     cases = [
         (b"\xff\xfe\x00bad", "UTF-8"),
         ("只有文字\n没有时间戳", "时间戳"),
-        ("[00:01.00]a\n[09:00.00]b", "晚于歌曲"),
+        ("[09:00.00]b", "晚于歌曲"),
         ("[00:01.00]" + "词" * MAX_LRC_BYTES, "200 KB"),
         ("", "没有收到文件"),
     ]
@@ -90,6 +90,13 @@ async def test_bad_files_are_422_and_the_old_lyrics_survive(api_env: ApiEnv) -> 
         assert needle in assert_detail(response), (needle, response.text)
         assert (workdir / LYRICS_PATH).read_bytes() == LRC.encode()
     assert _residue(workdir) == []
+
+
+async def test_a_stray_late_entry_only_costs_that_line(api_env: ApiEnv) -> None:
+    pid, workdir = _mv(api_env)
+    response = await _upload(api_env, pid, "[00:01.00]a\n[09:00.00]b\n[00:02.5000]c")
+    assert response.status_code == 200 and response.json()["lines"] == 2
+    assert (workdir / LYRICS_PATH).exists()
 
 
 async def test_the_field_must_be_called_file(api_env: ApiEnv) -> None:

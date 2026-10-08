@@ -2,6 +2,9 @@
 
 沙箱包装由调用方通过 `wrap_command` 传入（`engines` 不 import `agent`）。产物留在 `out_dir`，
 由调用方校验通过后再移走；运行器只负责"跑起来、限时、杀干净、报错带 stderr"。
+
+子进程的 `TMPDIR` 指向输出目录下（或输出目录本身，见 `song_job`），沙箱只需放开 `out_dir` 的写权限；
+`drain`、`kill_group`、`tail_lines`、`limited_argv` 是公开的辅助函数，`song_job` 复用它们。
 """
 
 from __future__ import annotations
@@ -39,12 +42,13 @@ class RunResult:
     elapsed: float
 
 
-def _tail_lines(data: bytes) -> str:
+def tail_lines(data: bytes) -> str:
+    """Last lines of a stderr capture, for error messages. Shared with `song_job`."""
     text = "\n".join(data.decode(errors="replace").strip().splitlines()[-_STDERR_TAIL_LINES:])
     return text[-_STDERR_TAIL_CHARS:]
 
 
-async def _drain(stream: asyncio.StreamReader | None, keep: int) -> bytes:
+async def drain(stream: asyncio.StreamReader | None, keep: int) -> bytes:
     """Read to EOF but keep only the last `keep` bytes, so a chatty script cannot grow memory."""
     tail = b""
     while stream is not None:
@@ -63,7 +67,7 @@ def limited_argv(argv: list[str], cpu_seconds: int) -> list[str]:
     return ["/bin/sh", "-c", prelude, "sh", *argv]
 
 
-def _kill_group(process: asyncio.subprocess.Process) -> None:
+def kill_group(process: asyncio.subprocess.Process) -> None:
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(process.pid, signal.SIGKILL)
 
@@ -103,26 +107,26 @@ async def run_compose(
     try:
         stdout, stderr, _ = await asyncio.wait_for(
             asyncio.gather(
-                _drain(process.stdout, _STDOUT_TAIL_CHARS * 4),
-                _drain(process.stderr, _STDERR_TAIL_CHARS * 4),
+                drain(process.stdout, _STDOUT_TAIL_CHARS * 4),
+                drain(process.stderr, _STDERR_TAIL_CHARS * 4),
                 process.wait(),
             ),
             timeout,
         )
     except TimeoutError as exc:
-        _kill_group(process)
+        kill_group(process)
         await process.wait()
         raise ComposeError(
             f"合成脚本运行超过 {timeout:g} 秒被终止（超时）；检查是否有死循环或过重的计算"
         ) from exc
     except BaseException:
-        _kill_group(process)
+        kill_group(process)
         with contextlib.suppress(Exception):
             await process.wait()
         raise
-    _kill_group(process)  # leftover children of a script that exited normally
+    kill_group(process)  # leftover children of a script that exited normally
     if process.returncode != 0:
-        raise ComposeError(f"合成脚本失败（退出码 {process.returncode}）：\n{_tail_lines(stderr)}")
+        raise ComposeError(f"合成脚本失败（退出码 {process.returncode}）：\n{tail_lines(stderr)}")
     if not wav_path.is_file():
         raise ComposeError("脚本没有写出 STUDIO_OUT_WAV 指定的 WAV 文件")
     if not events_path.is_file():

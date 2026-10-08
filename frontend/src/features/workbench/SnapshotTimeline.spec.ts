@@ -69,11 +69,15 @@ describe('SnapshotTimeline', () => {
   })
 
   it('选中的快照从列表里消失后，详情区回到提示，不残留旧 diff', async () => {
+    // 先让详情区真的显示出一份 diff，再让选中的快照消失：这份旧 diff 必须一起消失。
+    state.current.diff.value = { added: ['旧文件.md'], removed: [], modified: [] }
     const w = mountTimeline()
     await items(w)[0]!.get('button').trigger('click')
+    expect(w.text()).toContain('新增：旧文件.md')
     state.current.snapshots.value = [snap('s1', 'init'), snap('s2')]
     await w.vm.$nextTick()
     expect(w.text()).toContain('选择一个快照查看详情')
+    expect(w.text()).not.toContain('旧文件.md')
   })
 
   it('busy 时仍可查看详情，但提示暂不能回滚', () => {

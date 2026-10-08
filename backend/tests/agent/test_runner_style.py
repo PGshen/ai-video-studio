@@ -14,7 +14,13 @@ from studio.agent.runtime import TurnContext, UserInput
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import SessionValue, create_session
 from studio.db.repo.snapshots import list_snapshots
-from studio.db.repo.turns import get_turn, latest_turn, list_events
+from studio.db.repo.turns import (
+    create_turn_if_session_idle,
+    get_turn,
+    latest_turn,
+    list_events,
+    mark_turn_running,
+)
 from studio.stages.style import STAGE as STYLE
 from studio.styles import store
 from studio.styles.layout import draft_dir
@@ -252,3 +258,35 @@ class TestScheduling:
 
 def test_draft_directory_helper_is_what_the_runner_uses(tmp_path: Path) -> None:
     assert draft_dir(tmp_path, "abc") == tmp_path / "style-drafts" / "abc"
+
+
+class TestRecovery:
+    def test_a_crashed_style_turn_has_its_draft_pruned_on_startup(self, h: Harness) -> None:
+        # TD-54: the process died mid-turn, so nothing pruned what the agent left behind.
+        style_id = _style(h)
+        store.open_draft(h.env.data_dir, style_id)
+        draft = draft_dir(h.env.data_dir, style_id)
+        (draft / "stray.txt").write_text("多余", encoding="utf-8")
+        (draft / "link.md").symlink_to(draft / "STYLE.md")
+        session = _session(h, style_id)
+        turn = create_turn_if_session_idle(h.env.engine, session.id, "改一下")
+        assert turn is not None
+        mark_turn_running(h.env.engine, turn.id, start_snapshot_id=None)
+
+        h.runner.recover_on_startup()
+
+        assert not (draft / "stray.txt").exists()
+        assert not (draft / "link.md").is_symlink()
+        assert (draft / "STYLE.md").is_file()
+        assert store.validate_draft(h.env.data_dir, style_id) == []
+
+    def test_a_style_session_whose_draft_is_gone_does_not_break_recovery(self, h: Harness) -> None:
+        session = _session(h, "no-such-style")
+        turn = create_turn_if_session_idle(h.env.engine, session.id, "x")
+        assert turn is not None
+        mark_turn_running(h.env.engine, turn.id, start_snapshot_id=None)
+
+        h.runner.recover_on_startup()
+
+        after = latest_turn(h.env.engine, session.id)
+        assert after is not None and after.status == "interrupted"

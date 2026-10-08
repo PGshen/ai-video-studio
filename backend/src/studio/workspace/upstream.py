@@ -92,6 +92,20 @@ def materialize_upstream(
             dest.chmod(_READONLY_FILE_MODE)
 
 
+def seal_derived_upstream(workdir: Path | str, derived: dict[str, str]) -> None:
+    """把 `derived_upstream` 给出的派生文件设为只读（TD-69）。
+
+    与 `materialize_upstream` 物化的副本一致：agent 误以为能直接改它们时，写入会直接失败而不是
+    等轮末被还原。符号链接和已不存在的路径跳过（`chmod` 会跟随链接）。下一轮（或本轮收尾）
+    的 `materialize_upstream` 会先 `_make_tree_writable` 再整体清掉，所以不影响重建。"""
+    workdir = Path(workdir)
+    for rel_path in derived:
+        entry = workdir / rel_path
+        if entry.is_symlink() or not entry.is_file():
+            continue
+        entry.chmod(_READONLY_FILE_MODE)
+
+
 def _expected_upstream(sources: dict[str, Manifest | None]) -> dict[str, str]:
     expected: dict[str, str] = {}
     for stage, manifest in sources.items():

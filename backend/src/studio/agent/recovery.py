@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.sessions import SessionValue, get_session
 from studio.db.repo.snapshots import get_snapshot
+from studio.styles import store as style_store
 from studio.workspace import create_snapshot, guard, project_dir, remove_scratch, scan
 
 if TYPE_CHECKING:
@@ -53,6 +54,8 @@ def _recover_turn(runner: TurnRunner, turn: turns_repo.TurnValue) -> None:
             end_snapshot_id = snapshot.id
         except Exception:
             logger.exception("turn %s 恢复时快照失败", turn.id)
+    if session is not None and session.subject_id is not None:
+        _prune_style_draft(runner, turn, session.subject_id)
     turns_repo.interrupt_turn(
         runner._engine,
         turn.id,
@@ -60,6 +63,17 @@ def _recover_turn(runner: TurnRunner, turn: turns_repo.TurnValue) -> None:
         # TD-19: a turn that was still queued never ran; let [继续] re-send its message.
         error=turns_repo.NEVER_STARTED_ERROR if turn.status == "queued" else None,
     )
+
+
+def _prune_style_draft(runner: TurnRunner, turn: turns_repo.TurnValue, style_id: str) -> None:
+    """TD-54：风格轮次被打断时没来得及做每轮结束的草稿清理（`turn_finish._tidy_style_draft`），
+    agent 留下的符号链接和多余文件会让保存一直 422 而界面又删不掉，这里补做一次。"""
+    try:
+        style_store.prune_draft(runner._settings.data_dir, style_id)
+    except style_store.StyleNotFoundError:
+        return
+    except Exception:
+        logger.exception("turn %s 恢复时清理风格草稿失败", turn.id)
 
 
 def _guard_recovered_turn(

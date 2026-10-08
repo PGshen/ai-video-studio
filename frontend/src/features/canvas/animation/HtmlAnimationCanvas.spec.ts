@@ -63,14 +63,22 @@ vi.mock('@/components/CodeEditor.vue', () => ({
 
 import HtmlAnimationCanvas from './HtmlAnimationCanvas.vue'
 
+const previewMounts = { count: 0 }
 const stubs = {
   // exposes the prop so the test can read it
 
   FinalRenderPanel: { props: ['sceneCount'], render() { return h('div', { 'data-testid': 'final-panel' }, `final ${this.sceneCount}`) } },
   HtmlPreviewPane: {
-    props: ['scoreMissing'],
+    props: ['scoreMissing', 'active'],
+    created() {
+      previewMounts.count += 1
+    },
     render() {
-      return h('div', { 'data-testid': 'preview-pane', 'data-score-missing': String(this.scoreMissing) })
+      return h('div', {
+        'data-testid': 'preview-pane',
+        'data-score-missing': String(this.scoreMissing),
+        'data-active': String(this.active),
+      })
     },
   },
 }
@@ -84,6 +92,7 @@ describe('HtmlAnimationCanvas', () => {
     state.project = undefined
     state.files = ['animation/scenes/s-hook.js']
     state.written = []
+    previewMounts.count = 0
   })
 
   it('has three tabs and counts scenes from the preview meta', () => {
@@ -105,6 +114,24 @@ describe('HtmlAnimationCanvas', () => {
     expect(wrapper.find('[data-testid="preview-pane"]').exists()).toBe(false)
     await wrapper.findAll('button').find((b) => b.text() === '实时预览')!.trigger('click')
     expect(wrapper.find('[data-testid="preview-pane"]').exists()).toBe(true)
+  })
+
+  it('keeps the preview mounted (hidden, told it is inactive) when switching to another tab', async () => {
+    // TD-70: remounting would refetch the whole self-contained page (fonts included) every time.
+    const wrapper = mountCanvas()
+    const tab = (name: string) => wrapper.findAll('button').find((b) => b.text().startsWith(name))!
+    await tab('实时预览').trigger('click')
+    expect(previewMounts.count).toBe(1)
+    expect(wrapper.get('[data-testid="preview-pane"]').attributes('data-active')).toBe('true')
+
+    await tab('镜头').trigger('click')
+    const hidden = wrapper.get('[data-testid="preview-pane"]')
+    expect(hidden.attributes('data-active')).toBe('false')
+    expect((hidden.element as HTMLElement).style.display).toBe('none')
+
+    await tab('实时预览').trigger('click')
+    expect(previewMounts.count).toBe(1)
+    expect((wrapper.get('[data-testid="preview-pane"]').element as HTMLElement).style.display).not.toBe('none')
   })
 
   it('passes the scene count to the final render panel', () => {

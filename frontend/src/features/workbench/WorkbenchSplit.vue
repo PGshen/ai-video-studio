@@ -98,6 +98,7 @@ const barClass =
         name="rail"
         :collapsed="railSlotCollapsed"
         :toggle="toggleRail"
+        :narrow="narrow"
       />
     </SplitterPanel>
   </SplitterGroup>

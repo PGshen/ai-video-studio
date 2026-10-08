@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from alembic import command
 
 from studio.agent.preamble import _upstream_changes as upstream_changes
 from studio.agent.stage import StageRegistry
@@ -17,6 +18,7 @@ from studio.agent.stage_flow import (
     upstream_sources,
 )
 from studio.agent.tools import ToolSpec
+from studio.db.engine import _alembic_config
 from studio.db.repo.projects import create_project, get_project
 from studio.db.repo.snapshots import get_snapshot
 from studio.db.repo.stages import create_stage, get_stage
@@ -565,3 +567,34 @@ class TestMultiUpstream:
             env.engine, env.blobs, reel.project_id, reel.registry.get("music"), reel.registry
         )
         assert [c.stage for c in changes] == ["concept", "beatsheet"]
+
+
+class TestAfterMigrationRoundTrip:
+    """TD-68: stage rows that went 0010 → 0008 (old `based_on_snapshot_id`) → head keep working."""
+
+    def test_refinalize_and_preamble_still_work_after_a_down_up_migration(
+        self, env: StudioEnv
+    ) -> None:
+        env.write("topic/brief.md", "v1")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+        first = _stage(env, "topic").finalized_snapshot_id
+        assert _stage(env, "narrative").based_on == {"topic": first}
+
+        config = _alembic_config()
+        with env.engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.downgrade(config, "0008")
+            command.upgrade(config, "head")
+        assert _stage(env, "narrative").based_on == {"topic": first}
+
+        reopen(env.engine, env.project_id, "topic")
+        env.write("topic/brief.md", "v2")
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
+
+        narrative = _stage(env, "narrative")
+        assert narrative.status == "stale" and narrative.based_on == {"topic": first}
+        changes = upstream_changes(
+            env.engine, env.blobs, env.project_id, env.registry.get("narrative"), env.registry
+        )
+        assert [c.stage for c in changes] == ["topic"]
+        assert [m.path for m in changes[0].diff.modified] == ["topic/brief.md"]

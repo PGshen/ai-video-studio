@@ -85,6 +85,11 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
   const isNew = computed(() => statusQuery.data.value?.is_new ?? false)
   /** AI 正在改这份草稿（后端的 `busy`）：编辑区只读，轮次结束后刷新草稿即恢复。 */
   const busy = computed(() => statusQuery.data.value?.busy ?? false)
+  /** 上一次放弃失败的原因；用户继续编辑、保存，或 AI 这一轮结束（`busy` 由真变假）后清掉。 */
+  const discardError = ref<string | null>(null)
+  watch(busy, (now, before) => {
+    if (before && !now) discardError.value = null
+  })
   const screenshots = computed(() => statusQuery.data.value?.screenshots ?? [])
   const content = computed(() => activeQuery.data.value ?? '')
   const entryText = computed(() => entryQuery.data.value ?? '')
@@ -143,6 +148,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
   }
 
   function edit(path: string, text: string): void {
+    discardError.value = null
     const id = styleId.value
     const key = keyOf(id, path)
     queryClient.setQueryData(queryKeys.styleDraftFile(id, path), text)
@@ -201,6 +207,7 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
   /** 保存：先写出未写入的编辑，成功返回正式版本；失败返回 `null`，原因在 `saveError`，草稿保留。 */
   async function save(): Promise<StyleOut | null> {
     saveError.value = null
+    discardError.value = null
     saving.value = true
     try {
       try {
@@ -322,8 +329,6 @@ export function useStyleDraft(styleIdSource: MaybeRefOrGetter<string>) {
       await runScreenshotAction(id, () => api.reorderStyleScreenshots(id, names), true)
     })
   }
-
-  const discardError = ref<string | null>(null)
 
   /** 放弃草稿；`wasNew` 为真表示这是从未保存过的新风格，整个消失。后端拒绝（例如 AI 正在修改）时
    * 返回 `null`，原因在 `discardError`，草稿和还没写出的编辑都保留。 */

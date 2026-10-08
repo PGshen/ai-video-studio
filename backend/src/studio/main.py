@@ -56,6 +56,7 @@ from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.produce import STAGE as PRODUCE_STAGE
 from studio.stages.style import STAGE as STYLE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
+from studio.styles import store as style_store
 from studio.workspace import BlobStore
 
 
@@ -98,6 +99,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings,
         title_generator=make_title_generator(settings.data_dir),
     )
+    style_store.recover_interrupted_swaps(settings.data_dir)
     turn_runner.recover_on_startup()
 
     app.state.engine = engine

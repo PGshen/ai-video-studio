@@ -101,6 +101,32 @@ describe('HtmlPreviewPane', () => {
     expect(wrapper.find('iframe').attributes('srcdoc')).toBe('<!doctype html><p>page-2</p>')
   })
 
+  it('does not refetch the page while hidden; catches up once when shown again', async () => {
+    // TD-70: a hidden (kept-mounted) preview must not download ~3 MB per workspace change.
+    const wrapper = await mountPane()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(1)
+    await wrapper.setProps({ active: false })
+
+    await wrapper.setProps({ meta: { ...META, hash: 'hash-2' } })
+    await wrapper.setProps({ meta: { ...META, hash: 'hash-3' } })
+    await flushPromises()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(1)
+
+    api.getHtmlPreviewPage.mockResolvedValue('<!doctype html><p>page-3</p>')
+    await wrapper.setProps({ active: true })
+    await flushPromises()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('iframe').attributes('srcdoc')).toBe('<!doctype html><p>page-3</p>')
+  })
+
+  it('shows again without refetching when nothing changed while hidden', async () => {
+    const wrapper = await mountPane()
+    await wrapper.setProps({ active: false })
+    await wrapper.setProps({ active: true })
+    await flushPromises()
+    expect(api.getHtmlPreviewPage).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps the newest page when an older fetch resolves late', async () => {
     let releaseFirst: (html: string) => void = () => {}
     api.getHtmlPreviewPage.mockReset()
@@ -146,6 +172,18 @@ describe('HtmlPreviewPane', () => {
     const post = vi.spyOn(frameWindow(wrapper), 'postMessage')
     await wrapper.findAll('[data-testid="preview-section"]')[2]!.trigger('click')
     expect(post).toHaveBeenCalledWith({ type: 'seek', t: 5 }, '*')
+  })
+
+  it('pauses playback when it is no longer the active tab, and leaves it paused', async () => {
+    const wrapper = await mountPane()
+    const play = wrapper.find('[data-testid="preview-play"]')
+    await play.trigger('click')
+    expect(play.attributes('aria-label')).toBe('暂停')
+
+    await wrapper.setProps({ active: false })
+    expect(play.attributes('aria-label')).toBe('播放')
+    await wrapper.setProps({ active: true })
+    expect(play.attributes('aria-label')).toBe('播放')
   })
 
   it('toggles the loop button', async () => {

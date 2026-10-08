@@ -518,3 +518,84 @@ class TestPruneDraft:
     def test_unknown_draft(self, tmp_path: Path) -> None:
         with pytest.raises(StyleNotFoundError):
             store.prune_draft(tmp_path, "nope")
+
+
+class TestRecoverInterruptedSwaps:
+    """TD-58: a kill between the two renames of `_swap` leaves the old version in `.<id>.old-*`."""
+
+    def test_a_missing_style_is_restored_from_its_old_copy(self, tmp_path: Path) -> None:
+        style_id = _saved(tmp_path)
+        final = style_dir(tmp_path, style_id)
+        old = final.with_name(f".{style_id}.old-abc")
+        final.rename(old)
+
+        restored = store.recover_interrupted_swaps(tmp_path)
+
+        assert restored == [style_id]
+        assert store.get_style(tmp_path, style_id).files == _files()
+        assert not old.exists()
+
+    def test_a_missing_draft_is_restored_too(self, tmp_path: Path) -> None:
+        style_id = _saved(tmp_path)
+        store.open_draft(tmp_path, style_id)
+        draft = draft_dir(tmp_path, style_id)
+        old = draft.with_name(f".{style_id}.old-abc")
+        draft.rename(old)
+
+        assert store.recover_interrupted_swaps(tmp_path) == [style_id]
+        assert draft.is_dir() and not old.exists()
+
+    def test_an_old_copy_next_to_an_existing_version_is_dropped(self, tmp_path: Path) -> None:
+        style_id = _saved(tmp_path)
+        final = style_dir(tmp_path, style_id)
+        stale = final.with_name(f".{style_id}.old-abc")
+        shutil.copytree(final, stale)
+
+        assert store.recover_interrupted_swaps(tmp_path) == []
+        assert not stale.exists()
+        assert store.get_style(tmp_path, style_id).files == _files()
+
+    def test_leftover_temp_directories_are_removed_and_unrelated_ones_stay(
+        self, tmp_path: Path
+    ) -> None:
+        style_id = _saved(tmp_path)
+        root = styles_root(tmp_path)
+        (root / f".{style_id}.tmp-abc").mkdir()
+        keep = root / ".something-else"
+        keep.mkdir()
+
+        store.recover_interrupted_swaps(tmp_path)
+
+        assert not (root / f".{style_id}.tmp-abc").exists()
+        assert keep.is_dir() and style_dir(tmp_path, style_id).is_dir()
+
+    def test_it_is_safe_without_the_directories_and_when_repeated(self, tmp_path: Path) -> None:
+        assert store.recover_interrupted_swaps(tmp_path) == []
+        style_id = _saved(tmp_path)
+        final = style_dir(tmp_path, style_id)
+        final.rename(final.with_name(f".{style_id}.old-abc"))
+        assert store.recover_interrupted_swaps(tmp_path) == [style_id]
+        assert store.recover_interrupted_swaps(tmp_path) == []
+
+    def test_one_unrestorable_directory_does_not_stop_the_others_or_the_caller(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # A bad directory must never keep the app from starting (the call sits in the lifespan).
+        first, second = _saved(tmp_path, "甲"), _saved(tmp_path, "乙")
+        for style_id in (first, second):
+            final = style_dir(tmp_path, style_id)
+            final.rename(final.with_name(f".{style_id}.old-abc"))
+        real_rename = Path.rename
+
+        def flaky(self: Path, target: Path) -> Path:
+            if self.name.startswith(f".{first}."):
+                raise PermissionError("read-only")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", flaky)
+
+        with caplog.at_level(logging.ERROR):
+            restored = store.recover_interrupted_swaps(tmp_path)
+
+        assert restored == [second]
+        assert any("风格" in record.getMessage() for record in caplog.records)

@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from studio.engines.render.html.assets import escapes_workspace
+
 MIN_FONT_PX = 24
 
 _RULES: list[tuple[re.Pattern[str], str]] = [
@@ -32,13 +34,18 @@ class StaticIssue:
     message: str
 
 
-def _script_files(workdir: Path) -> list[Path]:
+def _all_script_files(workdir: Path) -> list[Path]:
     files = sorted((workdir / "animation" / "scenes").glob("*.js"))
     files += sorted((workdir / "animation" / "lib").glob("*.js"))
     global_js = workdir / "animation" / "global.js"
     if global_js.is_file():
         files.append(global_js)
     return files
+
+
+def _script_files(workdir: Path) -> list[Path]:
+    """The scripts that are actually read: links leaving the workspace are left out (TD-69)."""
+    return [p for p in _all_script_files(workdir) if not escapes_workspace(p, workdir)]
 
 
 def strip_comments(source: str) -> str:
@@ -77,7 +84,11 @@ def strip_comments(source: str) -> str:
 
 
 def static_check(workdir: Path) -> list[StaticIssue]:
-    issues: list[StaticIssue] = []
+    issues = [
+        StaticIssue(path.relative_to(workdir).as_posix(), 0, "脚本是指向工作区外的链接，不允许使用")
+        for path in _all_script_files(workdir)
+        if escapes_workspace(path, workdir)
+    ]
     for path in _script_files(workdir):
         relpath = path.relative_to(workdir).as_posix()
         for number, line in enumerate(

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
-from studio.engines.render.html.assets import list_assets
+from studio.engines.render.html.assets import escapes_workspace, list_assets
 
 _PACKAGE = Path(__file__).parent
 FONTS_DIR = _PACKAGE / "fonts"
@@ -103,6 +103,12 @@ def _inline_script_text(source: str) -> str:
     return re.sub(r"</(script)", r"<\\/\1", source, flags=re.IGNORECASE).replace("<!--", "<\\!--")
 
 
+def _inside(workdir: Path, paths: list[Path]) -> list[Path]:
+    """Scripts whose real location is in the workspace: the render process runs outside the agent's
+    sandbox, so a link to a file elsewhere must not be read (TD-69)."""
+    return [p for p in paths if not escapes_workspace(p, workdir)]
+
+
 def _style_fonts(workdir: Path) -> list[Path]:
     directory = workdir / "style" / "fonts"
     if not directory.is_dir():
@@ -159,11 +165,11 @@ def assemble(
     if inline:
         asset_sources = {p.name: _data_uri(p, _content_type(p)) for p in assets}
         parts.append(f"<script>window.__ASSET_SRC__={_json_for_script(asset_sources)};</script>")
-    for lib in sorted((animation / "lib").glob("*.js")):
+    for lib in _inside(workdir, sorted((animation / "lib").glob("*.js"))):
         parts.append(add_script(f"animation/lib/{lib.name}", _read(lib)))
     for section in timeline.get("sections", []):
         scene = animation / "scenes" / f"{section['id']}.js"
-        if scene.is_file():
+        if scene.is_file() and not escapes_workspace(scene, workdir):
             wrapped = (
                 "window.__SCENES__[" + json.dumps(section["id"]) + "]=(function(){"
                 "const module={exports:{}};const exports=module.exports;"
@@ -172,7 +178,7 @@ def assemble(
             )
             parts.append(add_script(f"animation/scenes/{scene.name}", wrapped))
     global_js = animation / "global.js"
-    if include_global and global_js.is_file():
+    if include_global and global_js.is_file() and not escapes_workspace(global_js, workdir):
         wrapped = (
             "window.__GLOBAL__=(function(){const module={exports:{}};"
             "const exports=module.exports;"
@@ -191,9 +197,9 @@ def page_hash(workdir: Path, timeline: Mapping[str, Any]) -> str:
     digest.update(json.dumps(dict(timeline), sort_keys=True, ensure_ascii=False).encode())
     animation = workdir / "animation"
     groups = [
-        sorted((animation / "scenes").glob("*.js")),
-        sorted((animation / "lib").glob("*.js")),
-        [p for p in [animation / "global.js"] if p.is_file()],
+        _inside(workdir, sorted((animation / "scenes").glob("*.js"))),
+        _inside(workdir, sorted((animation / "lib").glob("*.js"))),
+        _inside(workdir, [p for p in [animation / "global.js"] if p.is_file()]),
         list_assets(workdir),
         _style_fonts(workdir),
         [_RUNTIME],

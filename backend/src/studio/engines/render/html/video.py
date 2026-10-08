@@ -49,7 +49,9 @@ def frame_time(index: int, fps: int) -> float:
     return index / fps
 
 
-def build_encode_command(output: Path, fps: int) -> list[str]:
+def encode_signature(fps: int) -> list[str]:
+    """Every ffmpeg argument except the output path: what decides the encoded bytes. The cache key
+    of the silent video includes it, so changing a codec setting here invalidates old caches."""
     return [
         FFMPEG,
         "-y",
@@ -72,8 +74,11 @@ def build_encode_command(output: Path, fps: int) -> list[str]:
         "scale=in_range=pc:out_range=tv,format=yuv420p",
         "-r",
         str(fps),
-        str(output),
     ]
+
+
+def build_encode_command(output: Path, fps: int) -> list[str]:
+    return [*encode_signature(fps), str(output)]
 
 
 async def _notify(callback: ProgressCallback | None, done: int, total: int) -> None:

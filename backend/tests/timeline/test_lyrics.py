@@ -35,6 +35,8 @@ def test_returns_lyric_line_models() -> None:
         ("[00:01.5]", 1.5),
         ("[00:01.50]", 1.5),
         ("[00:01.123]", 1.123),
+        ("[00:01.1234]", 1.1234),
+        ("[00:01.123456]", 1.123456),
         ("[01:02.00]", 62.0),
     ],
 )
@@ -103,7 +105,7 @@ def test_surrounding_whitespace_is_trimmed_including_full_width_spaces() -> None
         ("", "时间戳"),
         ("[ti:只有元信息]\n[ar:x]", "时间戳"),
         ("[00:01.00]\n[00:05.00]", "至少"),
-        ("[00:01.00]a\n[05:00.00]b", "晚于歌曲"),
+        ("[05:00.00]b", "至少"),
     ],
 )
 def test_invalid_input_is_rejected_with_a_reason(text: str, needle: str) -> None:
@@ -125,6 +127,14 @@ def test_oversized_input_is_rejected() -> None:
 
 def test_a_line_starting_within_a_second_past_the_end_is_dropped() -> None:
     assert lines("[01:30.00]正文\n[01:40.50]尾声", 100.0) == [("正文", 90.0, 100.0)]
+
+
+def test_a_line_far_past_the_end_is_dropped_without_rejecting_the_file() -> None:
+    # TD-84: one stray late entry (even an empty end marker) must not cost the whole upload.
+    assert lines("[00:01.00]a\n[05:00.00]b\n[06:00.00]\n[00:10.00]c") == [
+        ("a", 1.0, 10.0),
+        ("c", 10.0, 15.0),
+    ]
 
 
 def test_parsing_is_linear_even_with_tens_of_thousands_of_lines() -> None:
