@@ -115,7 +115,7 @@
 - **完成标准**：API 测试全绿。
 - **验证命令**：`make check`
 
-### T4：前端接口、卡片封面、详情缩略图（进行中）
+### T4：前端接口、卡片封面、详情缩略图（完成）
 
 - **目标**：AC2 的显示部分。
 - **涉及文件**：`frontend/src/types/api.ts`（手写类型，照抄后端新增的三个字段）、`frontend/src/api/endpoints.ts`、`endpoints.spec.ts`、`frontend/src/features/styles/styleFiles.ts`、`styleFiles.spec.ts`、`StyleCard.vue`、`StyleCard.spec.ts`、`StyleDetailView.vue`、`StyleDetailView.spec.ts`。
@@ -128,7 +128,7 @@
 - **完成标准**：组件测试通过。
 - **验证命令**：`make check`
 
-### T5：编辑态截图区（待开始）
+### T5：编辑态截图区（进行中）
 
 - **目标**：AC1、AC3、AC5 的界面部分。
 - **涉及文件**：新建 `frontend/src/features/styles/StyleScreenshots.vue`、`StyleScreenshots.spec.ts`；`useStyleDraft.ts`、`useStyleDraft.spec.ts`、`StyleEditView.vue`、`StyleEditView.spec.ts`、`frontend/src/composables/queries.ts`（如果需要 mutation）。
@@ -153,10 +153,11 @@
 - 2026-10-08 — T1 完成：`styles/screenshots.py`、25 个单测、ADR 0022，`make check` 绿
 - 2026-10-08 — T2 完成：`store.py` 接入截图（草稿/保存/复制/清理/dirty/封面），新增 `tests/styles/test_store_screenshots.py`
 - 2026-10-08 — T3 完成：5 个端点 + `cover`/`screenshots` 字段，API 测试 `TestScreenshots`，项目不复制截图的断言
+- 2026-10-08 — T4 完成：类型与三个 endpoints、`screenshotUrl`、卡片封面（含占位/加载失败回落）、详情缩略图与 `StyleScreenshotViewer`、`fakeStyleApi` 支持截图；前端 1169 个测试通过
 
 ## 下一步
 
-- 做 T4：先写前端测试（`endpoints.spec.ts`、`styleFiles.spec.ts`、`StyleCard.spec.ts`、`StyleDetailView.spec.ts`），再改 `types/api.ts`、`endpoints.ts`、`styleFiles.ts`、`StyleCard.vue`、`StyleDetailView.vue`。后端接口已就绪：`GET /api/styles/{id}/screenshots/{name}`、`GET .../draft/screenshots/{name}`、`POST .../draft/screenshots`（字段 `file`）、`DELETE .../draft/screenshots/{name}`、`PUT .../draft/screenshots/order`（`{names}`）；列表项有 `cover`，详情和草稿状态有 `screenshots`。
+- 做 T5：先写测试（`StyleScreenshots.spec.ts`、`useStyleDraft.spec.ts`、`StyleEditView.spec.ts`；`fakeStyleApi` 已支持 `uploadStyleScreenshot`/`deleteStyleScreenshot`/`reorderStyleScreenshots`，`server.uploadError` 可注入失败），再写 `StyleScreenshots.vue`、改 `useStyleDraft.ts`、`StyleEditView.vue`。大图查看组件 `StyleScreenshotViewer.vue` 已有（详情态在用）。卡片封面的上边距要在 T6 的 L4 里肉眼确认（Card 默认有 py）。
 
 ## 决策记录
 

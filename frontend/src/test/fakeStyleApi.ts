@@ -13,6 +13,11 @@ type Files = Record<string, string>
 export const server = {
   saved: new Map<string, Files>(),
   drafts: new Map<string, Files>(),
+  /** 截图文件名（按显示顺序），正式版本和草稿各一份；内容不重要，不模拟。 */
+  savedShots: new Map<string, string[]>(),
+  draftShots: new Map<string, string[]>(),
+  /** 设置后 `uploadStyleScreenshot` 抛出它。 */
+  uploadError: null as ApiError | null,
   defaultId: null as string | null,
   /** 设置后 `saveStyleDraft` 抛出它。 */
   saveError: null as ApiError | null,
@@ -29,6 +34,9 @@ export const server = {
 export function resetServer(): void {
   server.saved.clear()
   server.drafts.clear()
+  server.savedShots.clear()
+  server.draftShots.clear()
+  server.uploadError = null
   server.defaultId = null
   server.saveError = null
   server.discardError = null
@@ -47,6 +55,14 @@ export function seedStyle(id: string, name: string, extra: Files = {}, category 
   server.saved.set(id, { 'STYLE.md': entry(name, category), ...extra })
 }
 
+export function seedScreenshots(id: string, names: string[], target: 'saved' | 'draft' = 'saved'): void {
+  ;(target === 'saved' ? server.savedShots : server.draftShots).set(id, [...names])
+}
+
+/** 假的截图文件名：`001-<标签>.webp`（序号从 1 开始）。 */
+export const shotName = (index: number, label = 'aaaaaaaaaaaa'): string =>
+  `${String(index).padStart(3, '0')}-${label}.webp`
+
 export function seedDraft(id: string, files: Files): void {
   server.drafts.set(id, { ...files })
 }
@@ -57,15 +73,23 @@ function status(id: string): DraftStatusOut {
   const draft = server.drafts.get(id)
   if (!draft) throw notFound(id)
   const saved = server.saved.get(id)
-  const dirty = !saved || JSON.stringify(sorted(saved)) !== JSON.stringify(sorted(draft))
+  const shots = server.draftShots.get(id) ?? []
+  const dirty =
+    !saved ||
+    JSON.stringify(sorted(saved)) !== JSON.stringify(sorted(draft)) ||
+    JSON.stringify(server.savedShots.get(id) ?? []) !== JSON.stringify(shots)
   return {
     id,
     is_new: !saved,
     dirty,
     files: Object.keys(draft).sort(),
+    screenshots: [...shots],
     busy: server.busy.has(id),
   }
 }
+
+const renumber = (names: string[]): string[] =>
+  names.map((n, i) => `${String(i + 1).padStart(3, '0')}-${n.slice(4)}`)
 
 const sorted = (files: Files) => Object.entries(files).sort(([a], [b]) => a.localeCompare(b))
 
@@ -79,6 +103,7 @@ function detail(id: string): StyleOut {
     category: meta.category || '未分类',
     description: meta.description || null,
     files: { ...files },
+    screenshots: [...(server.savedShots.get(id) ?? [])],
     is_default: server.defaultId === id,
     modified_at: '2026-10-01T00:00:00Z',
   }
@@ -101,6 +126,7 @@ export const endpoints = {
           is_default: false,
           has_draft: true,
           is_new: true,
+          cover: server.draftShots.get(id)?.[0] ?? null,
           modified_at: '2026-10-01T00:00:00Z',
         }
       })
@@ -117,6 +143,7 @@ export const endpoints = {
         is_default: d.is_default,
         has_draft: server.drafts.has(id),
         is_new: false,
+        cover: d.screenshots[0] ?? null,
         modified_at: d.modified_at,
       }
     })
@@ -137,11 +164,14 @@ export const endpoints = {
       ...source.files,
       'STYLE.md': entry(`${source.name}（副本）`, source.category),
     })
+    server.savedShots.set(copyId, [...source.screenshots])
     return detail(copyId)
   },
   async deleteStyle(id: string): Promise<void> {
     if (!server.saved.delete(id) && !server.drafts.delete(id)) throw notFound(id)
     server.drafts.delete(id)
+    server.savedShots.delete(id)
+    server.draftShots.delete(id)
     if (server.defaultId === id) server.defaultId = null
   },
   async openStyleDraft(id: string): Promise<DraftStatusOut> {
@@ -149,6 +179,7 @@ export const endpoints = {
       const saved = server.saved.get(id)
       if (!saved) throw notFound(id)
       server.drafts.set(id, { ...saved })
+      server.draftShots.set(id, [...(server.savedShots.get(id) ?? [])])
     }
     return status(id)
   },
@@ -178,12 +209,40 @@ export const endpoints = {
     const draft = server.drafts.get(id)
     if (!draft) throw notFound(id)
     server.saved.set(id, { ...draft })
+    server.savedShots.set(id, [...(server.draftShots.get(id) ?? [])])
     server.drafts.delete(id)
+    server.draftShots.delete(id)
     return detail(id)
   },
   async discardStyleDraft(id: string): Promise<void> {
     if (server.discardError) throw server.discardError
     if (!server.drafts.delete(id) && !server.saved.has(id)) throw notFound(id)
+    server.draftShots.delete(id)
+  },
+  async uploadStyleScreenshot(id: string, file: File): Promise<DraftStatusOut> {
+    if (server.uploadError) throw server.uploadError
+    if (!server.drafts.has(id)) throw notFound(id)
+    const shots = server.draftShots.get(id) ?? []
+    server.draftShots.set(id, [...shots, shotName(shots.length + 1, `up${shots.length}${file.size}`)])
+    return status(id)
+  },
+  async deleteStyleScreenshot(id: string, name: string): Promise<DraftStatusOut> {
+    const shots = server.draftShots.get(id) ?? []
+    if (!server.drafts.has(id) || !shots.includes(name)) throw notFound(name)
+    server.draftShots.set(
+      id,
+      renumber(shots.filter((n) => n !== name)),
+    )
+    return status(id)
+  },
+  async reorderStyleScreenshots(id: string, names: string[]): Promise<DraftStatusOut> {
+    const shots = server.draftShots.get(id) ?? []
+    if (!server.drafts.has(id)) throw notFound(id)
+    if (names.length !== shots.length || [...names].sort().join() !== [...shots].sort().join()) {
+      throw new ApiError(422, '新的顺序必须正好包含当前的全部截图，每张一次')
+    }
+    server.draftShots.set(id, renumber(names))
+    return status(id)
   },
   async patchSettings(patch: { default_style_preset_id?: string | null }) {
     if ('default_style_preset_id' in patch) server.defaultId = patch.default_style_preset_id ?? null

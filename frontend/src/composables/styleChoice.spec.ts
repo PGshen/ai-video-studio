@@ -19,6 +19,7 @@ function preset(overrides: Partial<StyleSummaryOut>): StyleSummaryOut {
     is_default: false,
     has_draft: false,
     is_new: false,
+    cover: null,
     modified_at: '2026-10-01T00:00:00Z',
     ...overrides,
   }

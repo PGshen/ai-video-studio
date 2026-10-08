@@ -1,4 +1,5 @@
 /** 风格目录里文件的分组和文件名检查（纯逻辑；规则与后端 `studio.styles.validate` 一致）。 */
+import { BASE_URL, encodePathSegment } from '@/api/http'
 
 export type StyleDirectory = 'references' | 'exemplars'
 
@@ -47,4 +48,10 @@ export function fileNameProblem(
 /** 代码编辑器的语言：`.json` 用 json，其余（`STYLE.md`、引用文件、`.md` 金样本）用 markdown。 */
 export function languageOf(path: string): 'json' | 'markdown' {
   return path.endsWith('.json') ? 'json' : 'markdown'
+}
+
+/** 一张截图的图片地址；`draft` 为真时取草稿里的（编辑态、从未保存的新风格），否则取正式版本。 */
+export function screenshotUrl(styleId: string, name: string, options: { draft: boolean }): string {
+  const base = `${BASE_URL}/styles/${encodePathSegment(styleId)}`
+  return `${base}${options.draft ? '/draft' : ''}/screenshots/${encodePathSegment(name)}`
 }

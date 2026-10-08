@@ -17,6 +17,9 @@ import {
   getMusicMeta,
   musicAudioUrl,
   renderMusic,
+  deleteStyleScreenshot,
+  reorderStyleScreenshots,
+  uploadStyleScreenshot,
   uploadMusicSource,
   getProject,
   getSession,
@@ -318,5 +321,45 @@ describe('endpoints：上传导入音乐', () => {
     xhr.respond(200, { filename: 'source.mp3', size: 3, sha256: 'x', duration: 10 })
     await expect(promise).resolves.toMatchObject({ filename: 'source.mp3', duration: 10 })
     expect(seen).toEqual([3])
+  })
+})
+
+describe('endpoints：风格截图', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    FakeXhr.reset()
+  })
+
+  it('uploadStyleScreenshot 把文件放在 file 字段，POST 到草稿截图路径', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const file = new File(['png'], '封面.png', { type: 'image/png' })
+    const promise = uploadStyleScreenshot('s#1', file)
+    const xhr = FakeXhr.last
+    expect(xhr.method).toBe('POST')
+    expect(xhr.url).toBe('/api/styles/s%231/draft/screenshots')
+    expect((xhr.body as FormData).get('file')).toBe(file)
+    xhr.respond(200, { id: 's#1', screenshots: ['001-aaaaaaaaaaaa.webp'] })
+    await expect(promise).resolves.toMatchObject({ screenshots: ['001-aaaaaaaaaaaa.webp'] })
+  })
+
+  it('deleteStyleScreenshot 对 id 和文件名编码', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await deleteStyleScreenshot('s#1', '001-aaaaaaaaaaaa.webp')
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
+    expect(String(url)).toBe('/api/styles/s%231/draft/screenshots/001-aaaaaaaaaaaa.webp')
+    expect(init.method).toBe('DELETE')
+  })
+
+  it('reorderStyleScreenshots PUT 新顺序到 .../order', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await reorderStyleScreenshots('s1', ['002-bbbbbbbbbbbb.webp', '001-aaaaaaaaaaaa.webp'])
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
+    expect(String(url)).toBe('/api/styles/s1/draft/screenshots/order')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(String(init.body))).toEqual({
+      names: ['002-bbbbbbbbbbbb.webp', '001-aaaaaaaaaaaa.webp'],
+    })
   })
 })

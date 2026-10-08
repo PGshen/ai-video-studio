@@ -68,6 +68,8 @@ export interface StyleSummaryOut {
   has_draft: boolean
   /** 从未保存过（只有草稿）：点开直接进编辑，没有正式版本可看。 */
   is_new: boolean
+  /** 封面（第一张截图）的文件名；没有截图时为 null。`is_new` 的风格取草稿里的。 */
+  cover: string | null
   modified_at: string
 }
 
@@ -78,6 +80,8 @@ export interface StyleOut {
   category: string
   description: string | null
   files: Record<string, string>
+  /** 截图文件名，按显示顺序，第一张是封面。 */
+  screenshots: string[]
   is_default: boolean
   modified_at: string
 }
@@ -88,6 +92,8 @@ export interface DraftStatusOut {
   is_new: boolean
   dirty: boolean
   files: string[]
+  /** 草稿里的截图文件名，按显示顺序。 */
+  screenshots: string[]
   /** 这套风格有对话轮次在排队或运行（AI 正在改草稿）：改动类操作会被拒绝。 */
   busy: boolean
 }
