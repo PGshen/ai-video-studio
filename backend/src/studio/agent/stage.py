@@ -51,6 +51,19 @@ class StageDefinition(Protocol):
         ...
 
 
+def artifact_entry_matches(entry: str, path: str) -> bool:
+    """Whether workspace `path` belongs to an `artifact_dirs()` entry.
+
+    An entry is either a directory (matches everything under it) or an exact file path.
+    """
+    return path == entry or path.startswith(f"{entry.rstrip('/')}/")
+
+
+def in_artifacts(entries: Sequence[str], path: str) -> bool:
+    """Whether `path` belongs to any of the `artifact_dirs()` entries."""
+    return any(artifact_entry_matches(entry, path) for entry in entries)
+
+
 class StageRegistry:
     """`name -> StageDefinition` 的注册表；由 `main` 装配（M1 不含 brainstorm）。"""
 

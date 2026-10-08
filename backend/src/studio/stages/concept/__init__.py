@@ -57,9 +57,16 @@ class ConceptStage:
         return None
 
     def artifact_dirs(self) -> list[str]:
-        # `music` holds the uploaded song and its analysis (song projects): changing the song and
-        # re-finalizing marks `produce` stale.
-        return ["concept", "music"]
+        # File-level entries for the user-input files under `music/` (the uploaded song, its
+        # lyrics and analysis): changing them and re-finalizing marks `produce` stale, while
+        # `produce`'s own outputs in `music/` (music.wav, events.json, ...) do not.
+        return [
+            "concept",
+            *(f"music/source.{ext}" for ext in SOURCE_EXTENSIONS),
+            "music/analysis.json",
+            "music/analysis.png",
+            "music/lyrics.lrc",
+        ]
 
     def finalize_blockers(self, workdir: Path) -> list[str]:
         return check_workspace(workdir).errors

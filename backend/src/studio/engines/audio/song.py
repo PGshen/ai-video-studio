@@ -62,6 +62,8 @@ class GridFit:
     residual_ms: float
     """剔除离群拍点后，拟合残差的 RMS（毫秒）。"""
     beats_used: int
+    raw_period: float
+    """折叠前的拟合周期（秒）；`beats_used` 按这个口径计数，算覆盖率时分母也要用它。"""
 
 
 def decode_song(path: Path, *, ffmpeg: str = "ffmpeg") -> Samples:
@@ -177,6 +179,7 @@ def fit_grid(beat_times: Sequence[float]) -> GridFit:
         offset=float(intercept),
         residual_ms=float(np.sqrt(np.mean(residual**2)) * 1000.0),
         beats_used=int(keep.sum()),
+        raw_period=float(slope),
     )
 
 
@@ -272,6 +275,12 @@ def analyze_song(path: Path, *, ffmpeg: str = "ffmpeg") -> SongAnalysis:
     return analyze_samples(decode_song(path, ffmpeg=ffmpeg), source_hash=file_hash(path))
 
 
+def _coverage(fit: GridFit, duration: float) -> float:
+    """Fraction of expected beats actually used; numerator and denominator share the raw period."""
+    expected = max(1.0, duration / fit.raw_period)
+    return min(1.0, fit.beats_used / expected)
+
+
 def analyze_samples(samples: Samples, *, source_hash: str) -> SongAnalysis:
     """分析已解码的歌曲（`decode_song` 的结果）；调用方还要画图时只需解码一次。"""
     import librosa
@@ -285,8 +294,7 @@ def analyze_samples(samples: Samples, *, source_hash: str) -> SongAnalysis:
     beats = beats[beats < duration]
     phase = _downbeat_phase(y, sr, beats)
     downbeats = beats[phase::BEATS_PER_BAR]
-    expected = max(1.0, duration / period)
-    coverage = min(1.0, fit.beats_used / expected)
+    coverage = _coverage(fit, duration)
     fitness = max(0.0, 1.0 - fit.residual_ms / (CONFIDENCE_RESIDUAL_FRACTION * period * 1000.0))
     confidence = fitness * coverage
     warnings = [UNSTABLE_WARNING] if confidence < CONFIDENCE_WARN else []

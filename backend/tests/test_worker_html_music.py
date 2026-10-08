@@ -163,6 +163,15 @@ def _break(env: Env, how: str) -> None:
         (env.workdir / "animation" / "shots.json").unlink()
     elif how == "scene-missing":
         (env.workdir / "animation" / "scenes" / "s2.js").unlink()
+    elif how == "script-edited":  # compose.py changed after the last render
+        with (music / "compose.py").open("a", encoding="utf-8") as handle:
+            handle.write("\n# edited after the render\n")
+    elif how == "script-missing":
+        (music / "compose.py").unlink()
+    elif how == "script-hash-missing":
+        record = json.loads((music / "render.json").read_text(encoding="utf-8"))
+        del record["script_hash"]
+        (music / "render.json").write_text(json.dumps(record), encoding="utf-8")
     elif how == "wav-replaced":
         shutil.copyfile(music / "music.wav", music / "other.wav")
         data = bytearray((music / "music.wav").read_bytes())
@@ -183,6 +192,9 @@ def _break(env: Env, how: str) -> None:
         ("shots-missing", "animation/shots.json"),
         ("scene-missing", "s2"),
         ("wav-replaced", "music.wav 与 render.json 记录的不一致"),
+        ("script-edited", "music/compose.py 在上次渲染之后改过，需要在配乐与动画阶段重新渲染"),
+        ("script-missing", "music/compose.py 在上次渲染之后改过，需要在配乐与动画阶段重新渲染"),
+        ("script-hash-missing", "music/render.json 损坏或缺字段"),
     ],
 )
 async def test_a_missing_or_stale_score_stops_the_render_and_says_why(
@@ -195,6 +207,20 @@ async def test_a_missing_or_stale_score_stops_the_render_and_says_why(
     assert job.error is not None and needle in job.error, job.error
     assert backend.video_calls == [] and backend.mix_calls == []
     assert not (reel.workdir / "output" / "final.mp4").exists()
+
+
+@pytest.mark.parametrize("how", ["script-edited", "script-missing"])
+async def test_an_explainer_bed_with_a_changed_script_asks_for_a_new_render(
+    bed: Env, how: str
+) -> None:
+    _break(bed, how)
+    backend = FakeBackend()
+    job = _job(bed, await _run(bed, backend))
+    assert job.status == "failed"
+    assert "music/compose.py 在上次渲染之后改过，需要在配乐阶段重新渲染" in (job.error or ""), (
+        job.error
+    )
+    assert backend.video_calls == [] and backend.mix_calls == []
 
 
 async def test_a_stale_score_keeps_the_previous_final_video(reel: Env) -> None:

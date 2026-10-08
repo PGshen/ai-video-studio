@@ -11,7 +11,12 @@ import pytest
 from engines.audio_fixtures import SAMPLE_RATE, click_times, click_track
 from fixtures.audio_engine import write_wav
 from studio.engines.audio import song
-from studio.engines.audio.song import MAX_SONG_SECONDS, analyze_song, decode_song, fit_grid
+from studio.engines.audio.song import (
+    MAX_SONG_SECONDS,
+    analyze_song,
+    decode_song,
+    fit_grid,
+)
 from studio.engines.audio.wav import AudioError
 from studio.timeline import build
 
@@ -73,6 +78,43 @@ def test_fit_grid_ignores_a_half_period_extra_beat() -> None:
 def test_fit_grid_folds_double_and_half_tempo() -> None:
     assert fit_grid(_beats(280.0, 0.1, 100)).bpm == pytest.approx(140.0, rel=0.002)
     assert fit_grid(_beats(40.0, 0.1, 30)).bpm == pytest.approx(80.0, rel=0.002)
+
+
+def _confidence(fit: song.GridFit, duration: float) -> float:
+    period = 60.0 / fit.bpm
+    fitness = max(
+        0.0, 1.0 - fit.residual_ms / (song.CONFIDENCE_RESIDUAL_FRACTION * period * 1000.0)
+    )
+    return fitness * song._coverage(fit, duration)
+
+
+def test_coverage_of_slow_regular_beats_is_not_halved_by_folding() -> None:
+    duration = 120.0
+    fit = fit_grid(_beats(50.0, 0.1, 100))  # period 1.2 s, folded to 100 BPM
+    assert fit.bpm == pytest.approx(100.0, rel=0.002)
+    assert fit.raw_period == pytest.approx(1.2, rel=0.002)
+    assert song._coverage(fit, duration) == pytest.approx(1.0, abs=0.02)
+    assert _confidence(fit, duration) >= song.CONFIDENCE_WARN
+
+
+def test_coverage_of_regular_120_bpm_beats_is_full() -> None:
+    fit = fit_grid(_beats(120.0, 0.08, 200))
+    assert fit.raw_period == pytest.approx(0.5, rel=0.002)
+    assert song._coverage(fit, 100.0) == pytest.approx(1.0, abs=0.02)
+
+
+def test_coverage_of_fast_halved_beats_stays_full() -> None:
+    fit = fit_grid(_beats(280.0, 0.1, 400))
+    assert fit.bpm == pytest.approx(140.0, rel=0.002)
+    assert song._coverage(fit, 400 * 60.0 / 280.0) == pytest.approx(1.0, abs=0.02)
+
+
+def test_coverage_of_sparse_detection_stays_low_and_warns() -> None:
+    sparse = _beats(120.0, 0.08, 100)  # beats found in only the first half of a 100 s song
+    fit = fit_grid(sparse)
+    duration = 100.0
+    assert song._coverage(fit, duration) < 0.6
+    assert _confidence(fit, duration) < song.CONFIDENCE_WARN
 
 
 def test_fit_grid_rejects_unusable_input() -> None:

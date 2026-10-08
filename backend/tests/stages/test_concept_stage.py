@@ -18,7 +18,18 @@ def _write_brief(workdir: Path, text: str) -> None:
 def test_stage_protocol_values() -> None:
     assert isinstance(STAGE, StageDefinition)
     assert STAGE.name == "concept" and STAGE.allow_web is True and STAGE.workspaceless is False
-    assert STAGE.reads() == [] and STAGE.artifact_dirs() == ["concept", "music"]
+    assert STAGE.reads() == []
+    assert STAGE.artifact_dirs() == [
+        "concept",
+        "music/source.mp3",
+        "music/source.wav",
+        "music/source.m4a",
+        "music/source.flac",
+        "music/source.ogg",
+        "music/analysis.json",
+        "music/analysis.png",
+        "music/lyrics.lrc",
+    ]
     scope = STAGE.write_scope()
     assert is_writable(scope, "concept/brief.md") is True
     assert is_writable(scope, "beatsheet/beatsheet.json") is False
@@ -50,6 +61,18 @@ def test_finalize_is_blocked_by_check_errors_only(tmp_path: Path) -> None:
     full = full.replace("## 目标时长\n\n内容。", "## 目标时长\n\n20 秒")
     _write_brief(tmp_path, full)
     assert STAGE.finalize_blockers(tmp_path) == []
+
+
+def test_finalize_is_blocked_by_more_than_one_song_file(tmp_path: Path) -> None:
+    full = "\n".join(f"## {name}\n\n内容。\n" for name in SECTIONS)
+    _write_brief(tmp_path, full.replace("## 目标时长\n\n内容。", "## 目标时长\n\n20 秒"))
+    (tmp_path / "music").mkdir()
+    (tmp_path / "music" / "source.wav").write_bytes(b"x")
+    assert STAGE.finalize_blockers(tmp_path) == []  # one song is fine
+    (tmp_path / "music" / "source.mp3").write_bytes(b"y")
+    [blocker] = STAGE.finalize_blockers(tmp_path)
+    assert "多个音乐源文件" in blocker
+    assert "source.mp3" in blocker and "source.wav" in blocker
 
 
 def test_status_summary_counts_sections(tmp_path: Path) -> None:

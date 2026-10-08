@@ -20,6 +20,7 @@ from typing import Any
 
 from sqlalchemy import Engine
 
+from studio.engines.audio.song import file_hash
 from studio.engines.render.html.assemble import AssembledPage, assemble
 from studio.engines.render.html.assets import check_assets
 from studio.engines.render.html.browser import ChromiumUnavailable, HtmlBrowser, PageNotReady
@@ -179,6 +180,8 @@ def _music_source(
 ) -> _Score | None:
     """配乐文件齐全，且（讲解）是对着当前时间轴渲染的那一份（`render.json` 的哈希对得上）。
     `base_hash=None`（`produce`）：配乐和镜头都是模型自己写的，没有上游时间轴可对照，只核对 wav。
+    两种形态都核对 `music/compose.py` 与 `render.json` 的 `script_hash`（与定稿条件同一口径，
+    TD-76）：脚本改过或删了，成片里的配乐就不是现在的脚本渲染的。
 
     `music.wav` 先复制到 `.cache/tmp` 下的私有目录（目录登记进 `scratch`，任务结束时清理），哈希与
     混音都用这份拷贝：手动渲染是另一个进程，可能在检查之后换掉原文件，`final.json` 记的哈希必须
@@ -193,6 +196,7 @@ def _music_source(
         render = json.loads((music / "render.json").read_text(encoding="utf-8"))
         recorded_base = render["base_hash"] if base_hash is not None else None
         recorded_wav = render["wav_hash"]
+        recorded_script = render["script_hash"]
     except (ValueError, KeyError, TypeError):
         errors.append(f"music/render.json 损坏或缺字段，需要在{where}重新渲染")
         return None
@@ -203,6 +207,9 @@ def _music_source(
         errors.append("配乐与当前时间轴不一致，需要在配乐阶段重新渲染（旁白变了）")
     if wav_hash != recorded_wav:
         errors.append(f"music.wav 与 render.json 记录的不一致，需要在{where}重新渲染")
+    script = music / "compose.py"
+    if not script.is_file() or file_hash(script) != recorded_script:
+        errors.append(f"music/compose.py 在上次渲染之后改过，需要在{where}重新渲染")
     return _Score(private / "music.wav", wav_hash)
 
 
