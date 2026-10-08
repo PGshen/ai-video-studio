@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import shutil
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -702,6 +703,32 @@ def save_draft(data_dir: Path | str, style_id: str) -> StyleDetail:
     return get_style(data_dir, style_id)
 
 
+_SWAP_LEFTOVER = re.compile(r"^\.(?P<id>.+)\.(?P<kind>old|tmp)-[0-9a-f]+$")
+
+
+def recover_interrupted_swaps(data_dir: Path | str) -> list[str]:
+    """启动时收拾 `_swap`/`_install` 被打断留下的 `.<id>.old-*`、`.<id>.tmp-*`（TD-58）。
+
+    两次 rename 之间进程被杀时，正式（或草稿）目录已经改名成 `.old-*` 而新目录还没就位：
+    目录缺失就把旧版本改回去；目录在就丢掉这份多余的旧备份。`.tmp-*` 是没装上的半成品，直接删。
+    返回被还原的风格 id。"""
+    restored: list[str] = []
+    for root in (styles_root(data_dir), drafts_root(data_dir)):
+        if not root.is_dir():
+            continue
+        for entry in sorted(root.iterdir()):
+            found = _SWAP_LEFTOVER.match(entry.name)
+            if found is None or entry.is_symlink() or not entry.is_dir():
+                continue
+            target = root / found["id"]
+            if found["kind"] == "old" and not target.exists():
+                entry.rename(target)
+                restored.append(found["id"])
+            else:
+                shutil.rmtree(entry, ignore_errors=True)
+    return restored
+
+
 __all__ = [
     "ENTRY_TEMPLATE",
     "UNCATEGORIZED",
@@ -730,6 +757,7 @@ __all__ = [
     "read_draft_file",
     "prune_draft",
     "read_style_files",
+    "recover_interrupted_swaps",
     "reorder_draft_screenshots",
     "save_draft",
     "screenshot_path",

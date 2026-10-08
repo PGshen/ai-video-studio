@@ -44,7 +44,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：崩溃恢复的两处残留（待开始）
+### T1：崩溃恢复的两处残留（完成）
 
 - **目标**：TD-54、TD-58。
 - **涉及文件**：`backend/src/studio/agent/recovery.py`、`backend/src/studio/styles/store.py`（`_swap`、`prune_draft`）、启动入口（`main.py` lifespan 里调用恢复处）、对应测试。
@@ -123,11 +123,11 @@
 
 ## 进度
 
-- 无
+- 2026-10-08 — T1 完成：恢复流程补做风格草稿清理（TD-54），启动时还原被打断的 `_swap`（TD-58），`make check` 全绿
 
 ## 下一步
 
-- 从 T1 开始：先读登记表 TD-54、TD-58 原文，再读 `agent/recovery.py` 与 `styles/store.py` 的 `_swap`、`prune_draft`，写 T1 的失败测试。
+- 从 T2 开始：先读登记表 TD-84 原文，再读 `timeline/lyrics.py`，写失败测试。
 
 ## 决策记录
 
