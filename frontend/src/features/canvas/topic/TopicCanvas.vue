@@ -25,9 +25,12 @@ const tab = ref<Tab>('brief')
 const mode = ref<'view' | 'edit'>('view')
 
 const { data: fileTree } = useFileTreeQuery(() => props.projectId)
-const { data: check } = useTopicCheckQuery(() => props.projectId)
+const { data: check, isError: checkFailed } = useTopicCheckQuery(() => props.projectId)
 
-const notes = computed(() => noteFiles(fileTree.value?.files.map((f) => f.path) ?? []))
+const filePaths = computed(() => fileTree.value?.files.map((f) => f.path) ?? [])
+const notes = computed(() => noteFiles(filePaths.value))
+// 简报文件还没写出来（或文件树还在加载）时不能进编辑模式：按钮按下后内容区仍是空提示。
+const briefMissing = computed(() => !filePaths.value.includes(BRIEF_PATH))
 const selectedNote = ref<string | null>(null)
 
 // 默认选中第一份笔记；选中的笔记消失（回滚/删除）时回到第一份。
@@ -71,11 +74,15 @@ watch([tab, selectedNote], () => {
         笔记（{{ notes.length }}）
       </button>
       <div class="ml-auto flex items-center gap-2">
-        <BriefStatusIcon :check="check" />
+        <BriefStatusIcon
+          :check="check"
+          :failed="checkFailed"
+        />
         <EditModeToggle
           v-if="tab === 'brief' || selectedNote"
           v-model:mode="mode"
           :busy="busy"
+          :unavailable="tab === 'brief' && briefMissing"
         />
         <slot name="actions" />
       </div>

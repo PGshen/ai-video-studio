@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * 工作台右侧的快照栏（独立的第三张卡片）：标题 + 快照数 + 收起按钮 + `SnapshotTimeline`
- * （上时间线下详情）。折叠时整栏隐藏、什么都不渲染——展开入口在画布右上角（`RailToggleButton`）。
- * 折叠状态与宽度由 `WorkbenchSplit` 的分隔条管理，这里只发 `toggle`。
+ * （上时间线下详情）。折叠时整栏隐藏（`v-show`，保持挂载，再展开时选中的快照还在）——展开入口在
+ * 画布右上角（`RailToggleButton`）。折叠状态与宽度由 `WorkbenchSplit` 的分隔条管理，这里只发
+ * `toggle`；窄屏（上下堆叠、始终展开）时不显示收起按钮，因为 `WorkbenchSplit` 在那里忽略它。
  */
 import { computed } from 'vue'
 import { HistoryIcon, PanelRightCloseIcon } from '@lucide/vue'
@@ -16,6 +17,8 @@ const props = defineProps<{
   /** 项目是否忙，原样传给 `SnapshotTimeline`。 */
   busy: boolean
   collapsed: boolean
+  /** 窄屏堆叠布局：栏始终展开，没有收起这回事。 */
+  narrow?: boolean
 }>()
 defineEmits<{ (e: 'toggle'): void }>()
 
@@ -25,7 +28,7 @@ const count = computed(() => snapshots.value?.length ?? 0)
 
 <template>
   <Card
-    v-if="!collapsed"
+    v-show="!collapsed"
     class="h-full min-h-0 min-w-60 gap-2 overflow-hidden py-3"
     data-testid="snapshot-rail"
   >
@@ -39,6 +42,7 @@ const count = computed(() => snapshots.value?.length ?? 0)
         >{{ count }}</span>
       </div>
       <Button
+        v-if="!narrow"
         variant="ghost"
         size="icon-sm"
         title="收起快照栏"

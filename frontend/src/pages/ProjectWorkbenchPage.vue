@@ -362,11 +362,12 @@ const canvasBusy = computed(() =>
             </Card>
           </template>
 
-          <template #rail="{ collapsed, toggle }">
+          <template #rail="{ collapsed, toggle, narrow: railNarrow }">
             <SnapshotRail
               :project-id="projectId"
               :busy="canvasBusy"
               :collapsed="collapsed"
+              :narrow="railNarrow"
               @toggle="toggle"
             />
           </template>

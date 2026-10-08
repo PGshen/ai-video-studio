@@ -18,6 +18,14 @@ describe('BriefStatusIcon', () => {
     expect(button.attributes('aria-label')).toBe(headline)
   })
 
+  it('检查失败：图标级别 failed，aria-label 说明失败，不转圈', () => {
+    const w = mount(BriefStatusIcon, { props: { check: undefined, failed: true }, attachTo: document.body })
+    const button = w.get('[data-testid="brief-status"]')
+    expect(button.attributes('data-level')).toBe('failed')
+    expect(button.attributes('aria-label')).toContain('检查失败')
+    expect(w.find('.animate-spin').exists()).toBe(false)
+  })
+
   it('键盘聚焦弹出气泡：结论 + 错误 + 警告', async () => {
     const w = mountIcon({ ok: false, errors: ['缺少标题'], warnings: ['来源偏少'] })
     await w.get('[data-testid="brief-status"]').trigger('focus')

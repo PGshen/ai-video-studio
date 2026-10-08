@@ -13,13 +13,17 @@ const NOTES_PREFIX = 'topic/notes/'
 const TEXT_EXTENSIONS = ['.md', '.markdown', '.txt']
 
 export interface BriefStatus {
-  level: 'unknown' | 'errors' | 'warnings' | 'ok'
+  level: 'unknown' | 'failed' | 'errors' | 'warnings' | 'ok'
   headline: string
   errors: string[]
   warnings: string[]
 }
 
-export function computeBriefStatus(check: TopicCheckOut | undefined): BriefStatus {
+/** `failed`：检查请求失败。已经有上一次结果时仍显示那份结果；没有时不再一直显示「正在检查」。 */
+export function computeBriefStatus(check: TopicCheckOut | undefined, failed = false): BriefStatus {
+  if (check === undefined && failed) {
+    return { level: 'failed', headline: '检查失败：暂时无法确认简报状态', errors: [], warnings: [] }
+  }
   if (check === undefined) {
     return { level: 'unknown', headline: '正在检查简报…', errors: [], warnings: [] }
   }

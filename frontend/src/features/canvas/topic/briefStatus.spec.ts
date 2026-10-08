@@ -6,6 +6,18 @@ describe('computeBriefStatus', () => {
     expect(computeBriefStatus(undefined)).toMatchObject({ level: 'unknown', errors: [], warnings: [] })
   })
 
+  it('检查请求失败且没有旧结果时是 failed，不再一直转圈', () => {
+    const status = computeBriefStatus(undefined, true)
+    expect(status.level).toBe('failed')
+    expect(status.headline).toContain('检查失败')
+    expect(status.errors).toEqual([])
+  })
+
+  it('请求失败但还有上一次的结果时，仍显示那份结果', () => {
+    const status = computeBriefStatus({ ok: true, errors: [], warnings: [] }, true)
+    expect(status.level).toBe('ok')
+  })
+
   it('有错误：提示暂不满足定稿条件，并带上全部错误', () => {
     const status = computeBriefStatus({ ok: false, errors: ['缺少章节「风险点」', 'x'], warnings: ['w'] })
     expect(status.level).toBe('errors')

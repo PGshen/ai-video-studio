@@ -5,16 +5,27 @@
  * 有错误时后端会拒绝定稿（计划 D4），这里只显示原因。
  */
 import { computed } from 'vue'
-import { CircleCheckIcon, CircleXIcon, LoaderCircleIcon, TriangleAlertIcon } from '@lucide/vue'
+import {
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleXIcon,
+  LoaderCircleIcon,
+  TriangleAlertIcon,
+} from '@lucide/vue'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { TopicCheckOut } from '@/types/api'
 import { computeBriefStatus } from './briefStatus'
 
-const props = defineProps<{ check: TopicCheckOut | undefined }>()
-const status = computed(() => computeBriefStatus(props.check))
+const props = defineProps<{
+  check: TopicCheckOut | undefined
+  /** 检查请求失败（没有旧结果时据此显示失败而不是一直转圈）。 */
+  failed?: boolean
+}>()
+const status = computed(() => computeBriefStatus(props.check, props.failed))
 
 const ICONS = {
   unknown: { icon: LoaderCircleIcon, tone: 'text-muted-foreground animate-spin' },
+  failed: { icon: CircleAlertIcon, tone: 'text-muted-foreground' },
   ok: { icon: CircleCheckIcon, tone: 'text-emerald-600' },
   warnings: { icon: TriangleAlertIcon, tone: 'text-amber-600' },
   errors: { icon: CircleXIcon, tone: 'text-destructive' },

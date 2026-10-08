@@ -15,8 +15,8 @@ vi.mock('./SnapshotTimeline.vue', () => ({
 
 import SnapshotRail from './SnapshotRail.vue'
 
-const mountRail = (collapsed: boolean) =>
-  mount(SnapshotRail, { props: { projectId: 'p1', busy: false, collapsed } })
+const mountRail = (collapsed: boolean, narrow = false) =>
+  mount(SnapshotRail, { props: { projectId: 'p1', busy: false, collapsed, narrow } })
 
 describe('SnapshotRail', () => {
   beforeEach(() => {
@@ -32,10 +32,15 @@ describe('SnapshotRail', () => {
     expect(w.get('[data-testid="toggle-snapshots"]').attributes('aria-label')).toBe('收起快照栏')
   })
 
-  it('折叠：什么都不渲染（整栏隐藏，展开入口在画布右上角）', () => {
+  it('折叠：整栏隐藏但保持挂载（展开入口在画布右上角；再展开时状态还在）', () => {
     const w = mountRail(true)
-    expect(w.find('[data-testid="snapshot-rail"]').exists()).toBe(false)
-    expect(w.find('[data-testid="timeline"]').exists()).toBe(false)
+    const rail = w.get('[data-testid="snapshot-rail"]')
+    expect((rail.element as HTMLElement).style.display).toBe('none')
+  })
+
+  it('窄屏（上下堆叠、始终展开）：不显示收起按钮，因为点了也不会有反应', () => {
+    const w = mountRail(false, true)
+    expect(w.find('[data-testid="snapshot-rail"]').exists()).toBe(true)
     expect(w.find('[data-testid="toggle-snapshots"]').exists()).toBe(false)
   })
 

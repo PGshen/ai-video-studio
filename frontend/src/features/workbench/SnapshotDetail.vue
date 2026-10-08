@@ -170,7 +170,7 @@ async function confirmRollback(): Promise<void> {
             v-if="unchanged"
             class="text-muted-foreground text-xs"
           >
-            与上一个快照相比没有变化
+            {{ present.length === 2 ? '这两个快照之间没有变化' : '与上一个快照相比没有变化' }}
           </p>
           <div class="text-xs">
             <p v-if="diffResult.added.length > 0">

@@ -5,13 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   files: [] as Array<{ path: string }>,
   check: undefined as unknown,
+  checkError: false,
 }))
 
 vi.mock('@/composables/queries', async () => {
   const { ref: vueRef } = await import('vue')
   return {
     useFileTreeQuery: () => ({ data: vueRef({ files: state.files }) }),
-    useTopicCheckQuery: () => ({ data: vueRef(state.check) }),
+    useTopicCheckQuery: () => ({ data: vueRef(state.check), isError: vueRef(state.checkError) }),
     useFileContentQuery: () => ({ data: vueRef('# hi'), isError: vueRef(false) }),
     useWriteFileMutation: () => ({ isPending: vueRef(false), mutateAsync: () => Promise.resolve() }),
   }
@@ -36,6 +37,7 @@ describe('TopicCanvas', () => {
   beforeEach(() => {
     state.files = [{ path: 'topic/brief.md' }, { path: 'topic/notes/a.md' }, { path: 'topic/notes/b.md' }]
     state.check = { errors: [], warnings: [] }
+    state.checkError = false
     document.body.innerHTML = ''
   })
 
@@ -101,5 +103,21 @@ describe('TopicCanvas', () => {
     expect(w.get('[data-testid="mode-edit"]').attributes('aria-pressed')).toBe('false')
     expect(w.get('[data-testid="mode-edit"]').attributes('disabled')).toBeDefined()
     expect(w.find('[data-testid="code-editor"]').exists()).toBe(false)
+  })
+
+  it('简报文件还不存在时编辑按钮禁用；存在时可用', () => {
+    state.files = [{ path: 'topic/notes/a.md' }]
+    const missing = mountCanvas()
+    expect(missing.get('[data-testid="mode-edit"]').attributes('disabled')).toBeDefined()
+    state.files = [{ path: 'topic/brief.md' }]
+    const present = mountCanvas()
+    expect(present.get('[data-testid="mode-edit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('检查请求失败（没有结果）时状态图标显示失败而不是一直转圈', () => {
+    state.check = undefined
+    state.checkError = true
+    const w = mountCanvas()
+    expect(w.get('[data-testid="brief-status"]').attributes('data-level')).toBe('failed')
   })
 })

@@ -105,7 +105,7 @@
 - **完成标准**：以上测试通过；TD-70 ② 在浏览器里实测切换标签的网络请求。
 - **验证命令**：`make check`
 
-### T7：快照栏与画布的七处小瑕疵（待开始）
+### T7：快照栏与画布的七处小瑕疵（完成，浏览器走查见验证记录）
 
 - **目标**：TD-49 ①–⑦。
 - **涉及文件**：`frontend/src/features/workbench/SnapshotRail.vue`、`SnapshotDetail.vue`、`SnapshotTimeline.vue` 及 spec、`features/canvas/topic/TopicCanvas.vue`、`EditModeToggle.vue`、`briefStatus.ts`。
@@ -129,10 +129,11 @@
 - 2026-10-08 — T4 完成：缓存键纳入编码参数（`encode_signature`）；镜头／`lib`／`global.js` 链接到工作区外时被静态检查报告、装配与哈希跳过、`_scene_sources` 拒绝；`prepare_turn` 的派生文件设只读（`seal_derived_upstream`）；`make check` 全绿
 - 2026-10-08 — T5 完成：补迁移往返后的定稿／前言端到端测试与未注册上游的回退测试；`prepare_turn` 失败消息带原异常类型名（TD-68）；`make check` 全绿
 - 2026-10-08 — T6 完成（单测层面）：放弃失败的提示在编辑／保存／AI 轮次结束后清掉（TD-62）；提交按钮在类型数据重取失败时也禁用、补不可用组合的测试、整理选择器夹具类型（TD-67）；预览组件首次打开后用 `v-show` 保持挂载，切走时暂停播放（TD-70 ②）；`make check` 全绿
+- 2026-10-08 — T7 完成（单测层面）：窄屏隐藏收起按钮、双选无差异的文案、旧 diff 的测试补实、检查失败显示失败图标、简报不存在时禁用编辑、编辑按钮包装元素有 role/aria、折叠快照栏改 `v-show` 保留选中（TD-49 ①–⑦）；`make check` 全绿
 
 ## 下一步
 
-- 从 T7 开始（前端）：读登记表 TD-49 原文，逐条先写失败测试。T7 做完后在隔离实例上做浏览器走查：TD-70 ② 的切换标签网络请求，TD-49 的窄屏收起／折叠保留选中／检查失败状态。
+- 在隔离实例上做浏览器走查（见 `docs/runbooks/verification.md` 的「HTML 动画画布的 L4 走查」与 worktree 一节）：TD-70 ② 切换标签的网络请求，TD-49 的窄屏收起按钮／折叠再展开保留选中／检查失败图标；结论写进「验证记录」，然后做 T8。
 
 ## 决策记录
 
