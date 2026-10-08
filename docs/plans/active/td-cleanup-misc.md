@@ -55,7 +55,7 @@
 - **完成标准**：以上测试通过。
 - **验证命令**：`make check`
 
-### T2：歌词解析的两处边角（待开始）
+### T2：歌词解析的两处边角（完成）
 
 - **目标**：TD-84 ①②。
 - **涉及文件**：`backend/src/studio/timeline/lyrics.py`（`_STAMP`、`parse_lrc`）、`backend/src/studio/api/music_import.py` 的歌词端点相关测试。
@@ -124,13 +124,15 @@
 ## 进度
 
 - 2026-10-08 — T1 完成：恢复流程补做风格草稿清理（TD-54），启动时还原被打断的 `_swap`（TD-58），`make check` 全绿
+- 2026-10-08 — T2 完成：时间戳小数位放宽到 1–6 位，晚于时长的条目只丢那一行（TD-84 ①②）；`make check` 全绿
 
 ## 下一步
 
-- 从 T2 开始：先读登记表 TD-84 原文，再读 `timeline/lyrics.py`，写失败测试。
+- 从 T3 开始：读登记表 TD-72、TD-74 原文，对照 `engines/audio/runner.py`/`song_job.py` 与 `timeline/imported.py`/`build.py`，纯重构，既有测试不改即通过。
 
 ## 决策记录
 
+- 2026-10-08 — T2：既有测试 `test_invalid_input_is_rejected_with_a_reason` 与 `test_bad_files_are_422...` 里"一行晚于时长就整份拒绝"的用例按 TD-84 ② 的要求改为"只有晚于时长的条目才报错（文案含"晚于歌曲时长"）"。
 - 2026-10-08 — 计划范围按负责人选择的「后端小项加前端小瑕疵」，并剔除了需要设计取舍或改公共接口的子项（见「不包含」），理由是这批的价值在于机械、可验证、风险低。
 - 2026-10-08 — 分支叠在未合并的 td-cleanup-music 上；`active/` 里暂时有两份计划，文档检查只给出警告。
 
