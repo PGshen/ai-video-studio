@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | 风格库截图之后（整理） |
 | 设计依据 | [style-screenshots](style-screenshots.md) 的整分支评审发现；登记表 [tech-debt.md](../../quality/tech-debt.md) 的 TD-85、TD-86 |
 | 分支 | `td-cleanup-screenshots` |
-| 批准记录 | 2026-10-08：负责人要求处理 style-screenshots 的遗留问题，范围按登记表里写好的建议修法；待验收 |
+| 批准记录 | 2026-10-08：负责人要求处理 style-screenshots 的遗留问题，范围按登记表里写好的建议修法；负责人验收通过，合并到 main |
 
 ## 目标
 
@@ -48,7 +48,7 @@
 
 ## 下一步
 
-- 等负责人验收；通过后按 SOP §7 收尾：计划移到 `plans/completed/`（已在该目录），rebase 到最新 main，`make check`，`--no-ff` 合并。
+- 无（已验收并合并）。
 
 ## 决策记录
 
