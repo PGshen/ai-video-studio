@@ -4,11 +4,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 执行中 |
 | 里程碑 | 风格库增强（M5 之后） |
 | 设计依据 | ADR [0019](../../decisions/0019-风格库改用磁盘目录存储.md)（目录存储与草稿流程）；本计划 T1 新增 ADR 0022（风格目录允许二进制截图）；设计在 2026-10-08 的对话中确定，要点见下方「设计要点」 |
 | 分支 | `style-screenshots`（独立 worktree） |
-| 批准记录 | 2026-10-08：负责人批准设计（截图走草稿流程、不复制进项目）；计划待批准 |
+| 批准记录 | 2026-10-08：负责人批准设计（截图走草稿流程、不复制进项目）；2026-10-08：负责人批准计划，选择 native 方式（本会话内联执行，结束后整分支评审一次） |
 
 ## 目标
 
@@ -66,7 +66,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：`styles.screenshots` 模块与 ADR（待开始）
+### T1：`styles.screenshots` 模块与 ADR（进行中）
 
 - **目标**：图片规范化和文件名规则做成纯能力层里的独立单元。
 - **涉及文件**：新建 `backend/src/studio/styles/screenshots.py`、`backend/tests/styles/test_screenshots.py`、`docs/decisions/0022-风格目录允许截图.md`；`layout.py` 加常量 `SCREENSHOTS_DIR = "screenshots"`。
