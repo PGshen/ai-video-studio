@@ -85,7 +85,7 @@
 - **完成标准**：以上测试通过。
 - **验证命令**：`make check`
 
-### T5：TD-63 登记表检查查出与"已处理"撞号（待开始）
+### T5：TD-63 登记表检查查出与"已处理"撞号（完成）
 
 - **目标**：`check_tech_debt_ids` 把"已处理"表里的整号也并入比较。
 - **涉及文件**：`scripts/check_docs.py`、`scripts/` 下对应测试（没有则新建一个与现有脚本测试同风格的）。
@@ -107,10 +107,11 @@
 - 2026-10-08 — T2 完成：`GridFit.raw_period` 记录折叠前周期，覆盖率抽成纯函数 `_coverage(fit, duration)`，分子分母同口径；慢歌（<60 BPM）不再误报“拍点不稳”，真稀疏仍告警。
 - 2026-10-08 — T3 完成：`find_sources` 成为找歌曲源文件的唯一规则（时间轴读取、`find_source`、`concept` 定稿拦截多个源文件共用）；`concept` 定稿后上传歌曲、上传/删除歌词三个端点回 409；成片前核对 `music/compose.py` 与 `render.json` 的 `script_hash`。
 - 2026-10-08 — T4 完成：歌词上传端点要求数字型 `Content-Length`（缺失或非数字回 422，不再 500），超限文案不变，`request.form()` 之后 `try/finally` 关闭表单；测试见 `tests/api/test_music_lyrics.py`。
+- 2026-10-08 — T5 完成：`check_tech_debt_ids` 的 `TD_ROW` 放宽空白，未处理区的号再与“已处理”区整号比较，撞号报错点名两表；“（部分）”行不计；测试见 `backend/tests/test_check_docs_tech_debt.py`（脚本无既有测试，放在后端 pytest 内以纳入 `make check`）。
 
 ## 下一步
 
-- 从 T5 开始，按计划任务顺序继续。
+- 从 T6，按计划任务顺序继续。
 
 ## 决策记录
 

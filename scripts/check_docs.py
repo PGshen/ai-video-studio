@@ -7,7 +7,8 @@ Checks:
   3. ADRs in docs/decisions/ follow the naming pattern, have unique numbers
      and contain all required sections.
   4. AGENTS.md stays short enough to be a map.
-  5. Open entries in docs/quality/tech-debt.md have unique TD numbers.
+  5. Open entries in docs/quality/tech-debt.md have unique TD numbers that are
+     not already used by a whole-ID row in the 已处理 table.
 
 Stdlib only, so it runs before any project dependency is installed.
 """
@@ -96,20 +97,29 @@ def check_sections(path: Path, text: str, required: list[str]) -> list[str]:
     return []
 
 
-TD_ROW = re.compile(r"^\| (TD-\d+) \|")
+TD_ROW = re.compile(r"^\|\s*(TD-\d+)\s*\|")
 
 
 def check_tech_debt_ids(path: Path, text: str) -> list[str]:
-    """Open entries (above the 已处理 heading) must not share a TD number."""
+    """Open entries must not share a TD number, nor reuse one already in 已处理.
+
+    Only whole IDs in the processed table count; partial rows such as
+    `TD-25（预算部分）` do not match TD_ROW and may coexist with an open entry.
+    """
+    open_text, _, done_text = text.partition("## 已处理")
+    rel = path.relative_to(ROOT)
     seen: set[str] = set()
     errors: list[str] = []
-    for line in text.split("## 已处理")[0].splitlines():
+    for line in open_text.splitlines():
         m = TD_ROW.match(line)
         if not m:
             continue
         if m.group(1) in seen:
-            errors.append(f"{path.relative_to(ROOT)}: 技术债编号 {m.group(1)} 重复")
+            errors.append(f"{rel}: 技术债编号 {m.group(1)} 重复")
         seen.add(m.group(1))
+    done = {m.group(1) for line in done_text.splitlines() if (m := TD_ROW.match(line))}
+    for td in sorted(seen & done, key=lambda x: int(x[3:])):
+        errors.append(f"{rel}: 技术债编号 {td} 同时出现在未处理表和已处理表")
     return errors
 
 
