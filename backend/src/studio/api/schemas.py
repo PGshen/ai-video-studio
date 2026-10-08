@@ -373,6 +373,9 @@ class StyleSummaryOut(BaseModel):
     """有未保存的草稿。"""
     is_new: bool
     """从未保存过（只有草稿）：点开直接进编辑，没有正式版本可看。"""
+    cover: str | None = None
+    """封面（第一张截图）的文件名；用 `/api/styles/{id}/screenshots/{name}` 取图（`is_new` 的风格
+    取草稿：`/draft/screenshots/{name}`）。没有截图时为 `None`。"""
     modified_at: datetime
 
 
@@ -384,6 +387,8 @@ class StyleOut(BaseModel):
     category: str
     description: str | None
     files: dict[str, str]
+    screenshots: list[str] = []
+    """截图文件名，按显示顺序，第一张是封面。"""
     is_default: bool
     modified_at: datetime
 
@@ -394,12 +399,21 @@ class DraftStatusOut(BaseModel):
     """从未保存过（正式版本不存在）。"""
     dirty: bool
     files: list[str]
+    screenshots: list[str] = []
     busy: bool = False
     """这套风格有对话轮次在排队或运行（AI 正在改草稿）：改动类操作会被拒绝，前端据此只读。"""
 
 
 class DraftFileOut(BaseModel):
     content: str
+
+
+class ScreenshotOrder(BaseModel):
+    """草稿截图的新顺序：必须正好是当前全部文件名的一个排列。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    names: list[str]
 
 
 class DraftFileWrite(BaseModel):

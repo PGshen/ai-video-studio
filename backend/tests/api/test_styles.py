@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from typing import Any
 
+import pytest
+from PIL import Image
 from sqlalchemy import Engine
 
 from studio.agent.fake import FakeRuntime, sleep, write
@@ -13,6 +16,7 @@ from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.sessions import get_session
 from studio.styles import store
 from studio.styles.layout import draft_dir, style_dir
+from studio.styles.screenshots import MAX_SCREENSHOTS
 
 from .conftest import ApiEnv, assert_detail
 
@@ -150,6 +154,7 @@ class TestDraftFiles:
             "dirty": False,
             "busy": False,
             "files": ["STYLE.md", "exemplars/exemplar-1.json", "references/color-scheme.md"],
+            "screenshots": [],
         }
 
         put = await api_env.client.put(f"{base}/files/references/notes.md", json={"content": "n"})
@@ -564,3 +569,174 @@ class TestBusyWhileAiIsEditing:
         assert draft.json() == {"content": "主色：深蓝"}
         saved = (await api_env.client.get(f"/api/styles/{style_id}")).json()
         assert saved["files"]["references/color-scheme.md"] == "主色：暖白"
+
+
+def _image(fmt: str = "PNG", size: tuple[int, int] = (64, 36)) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, (200, 40, 40)).save(buffer, format=fmt)
+    return buffer.getvalue()
+
+
+async def _upload(api_env: ApiEnv, style_id: str, data: bytes, name: str = "shot.png") -> Any:
+    return await api_env.client.post(
+        f"/api/styles/{style_id}/draft/screenshots", files={"file": (name, data, "image/png")}
+    )
+
+
+class TestScreenshots:
+    async def _draft(self, api_env: ApiEnv) -> tuple[str, str]:
+        style_id = _make(api_env)
+        base = f"/api/styles/{style_id}/draft"
+        await api_env.client.post(base)
+        return style_id, base
+
+    async def test_upload_appends_a_webp_and_marks_the_draft_dirty(self, api_env: ApiEnv) -> None:
+        style_id, base = await self._draft(api_env)
+
+        response = await _upload(api_env, style_id, _image("PNG"))
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        [name] = body["screenshots"]
+        assert body["dirty"] is True
+        image = await api_env.client.get(f"{base}/screenshots/{name}")
+        assert image.status_code == 200
+        assert image.headers["content-type"] == "image/webp"
+        assert "immutable" in image.headers["cache-control"]
+        assert Image.open(io.BytesIO(image.content)).format == "WEBP"
+
+    async def test_saved_screenshots_are_served_and_become_the_cover(self, api_env: ApiEnv) -> None:
+        style_id, _ = await self._draft(api_env)
+        first = (await _upload(api_env, style_id, _image("JPEG"))).json()["screenshots"][0]
+        await _upload(api_env, style_id, _image("PNG"))
+        saved = await api_env.client.post(f"/api/styles/{style_id}/draft/save")
+        assert saved.status_code == 200
+        assert saved.json()["screenshots"][0] == first
+
+        detail = (await api_env.client.get(f"/api/styles/{style_id}")).json()
+        assert detail["screenshots"] == saved.json()["screenshots"]
+        [item] = (await api_env.client.get("/api/styles")).json()
+        assert item["cover"] == first
+        served = await api_env.client.get(f"/api/styles/{style_id}/screenshots/{first}")
+        assert served.status_code == 200
+        assert served.headers["content-type"] == "image/webp"
+
+    async def test_a_style_without_screenshots_has_no_cover(self, api_env: ApiEnv) -> None:
+        _make(api_env)
+        [item] = (await api_env.client.get("/api/styles")).json()
+        assert item["cover"] is None
+
+    async def test_non_images_and_empty_files_are_422(self, api_env: ApiEnv) -> None:
+        style_id, _ = await self._draft(api_env)
+        for data in (b"plain text", b"", _image("GIF")):
+            response = await _upload(api_env, style_id, data)
+            assert response.status_code == 422, data[:8]
+        assert (await api_env.client.get(f"/api/styles/{style_id}/draft/files")).json()[
+            "screenshots"
+        ] == []
+
+    async def test_a_request_without_the_file_field_is_422(self, api_env: ApiEnv) -> None:
+        style_id, _ = await self._draft(api_env)
+        response = await api_env.client.post(
+            f"/api/styles/{style_id}/draft/screenshots", files={"other": ("a.png", _image())}
+        )
+        assert response.status_code == 422
+
+    async def test_oversized_uploads_are_422(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        style_id, _ = await self._draft(api_env)
+        monkeypatch.setattr("studio.api.styles.MAX_UPLOAD_BYTES", 10)
+        response = await _upload(api_env, style_id, _image("PNG", (200, 200)))
+        assert response.status_code == 422
+        assert "MB" in assert_detail(response) or "大小" in assert_detail(response)
+
+    async def test_the_13th_upload_is_422(self, api_env: ApiEnv) -> None:
+        style_id, _ = await self._draft(api_env)
+        for _ in range(MAX_SCREENSHOTS):
+            assert (await _upload(api_env, style_id, _image())).status_code == 200
+        response = await _upload(api_env, style_id, _image())
+        assert response.status_code == 422
+
+    async def test_uploading_to_an_unknown_style_is_404(self, api_env: ApiEnv) -> None:
+        assert (await _upload(api_env, "missing", _image())).status_code == 404
+
+    async def test_delete_and_reorder_only_touch_the_draft(self, api_env: ApiEnv) -> None:
+        style_id, base = await self._draft(api_env)
+        for fmt in ("PNG", "JPEG", "WEBP"):
+            await _upload(api_env, style_id, _image(fmt, (64 + len(fmt), 36)))
+        names = (await api_env.client.get(f"{base}/files")).json()["screenshots"]
+        await api_env.client.post(f"{base}/save")
+        await api_env.client.post(base)
+
+        moved = await api_env.client.put(
+            f"{base}/screenshots/order", json={"names": [names[2], names[0], names[1]]}
+        )
+        assert moved.status_code == 200, moved.text
+        reordered = moved.json()["screenshots"]
+        assert [n[4:] for n in reordered] == [names[2][4:], names[0][4:], names[1][4:]]
+        deleted = await api_env.client.delete(f"{base}/screenshots/{reordered[0]}")
+        assert deleted.status_code == 200
+        assert len(deleted.json()["screenshots"]) == 2
+        assert (await api_env.client.get(f"/api/styles/{style_id}")).json()["screenshots"] == names
+
+        await api_env.client.delete(base)
+        assert (await api_env.client.get(f"/api/styles/{style_id}")).json()["screenshots"] == names
+
+    async def test_reorder_with_a_wrong_list_is_422(self, api_env: ApiEnv) -> None:
+        style_id, base = await self._draft(api_env)
+        await _upload(api_env, style_id, _image())
+        for names in ([], ["001-aaaaaaaaaaaa.webp"]):
+            response = await api_env.client.put(f"{base}/screenshots/order", json={"names": names})
+            assert response.status_code == 422, names
+
+    async def test_deleting_an_unknown_screenshot_is_404(self, api_env: ApiEnv) -> None:
+        _, base = await self._draft(api_env)
+        response = await api_env.client.delete(f"{base}/screenshots/001-aaaaaaaaaaaa.webp")
+        assert response.status_code == 404
+
+    async def test_reading_rejects_bad_names_and_missing_files(self, api_env: ApiEnv) -> None:
+        style_id, base = await self._draft(api_env)
+        for prefix in (base, f"/api/styles/{style_id}"):
+            for bad in ("..%2FSTYLE.md", "STYLE.md", "x.webp", "order"):
+                response = await api_env.client.get(f"{prefix}/screenshots/{bad}")
+                assert response.status_code in (400, 404), (prefix, bad)
+            missing = await api_env.client.get(f"{prefix}/screenshots/009-aaaaaaaaaaaa.webp")
+            assert missing.status_code == 404
+
+    async def test_a_symlinked_screenshot_is_not_served(self, api_env: ApiEnv) -> None:
+        style_id, base = await self._draft(api_env)
+        secret = api_env.data_dir / "secret.txt"
+        secret.write_text("secret")
+        root = draft_dir(api_env.data_dir, style_id) / "screenshots"
+        root.mkdir()
+        (root / "001-aaaaaaaaaaaa.webp").symlink_to(secret)
+        response = await api_env.client.get(f"{base}/screenshots/001-aaaaaaaaaaaa.webp")
+        assert response.status_code in (400, 404)
+        assert b"secret" not in response.content
+
+    async def test_changes_are_409_while_ai_is_editing_but_reads_are_fine(
+        self, api_env: ApiEnv
+    ) -> None:
+        style_id, base = await self._draft(api_env)
+        name = (await _upload(api_env, style_id, _image())).json()["screenshots"][0]
+        turn_id = await _make_style_busy(api_env, style_id)
+        try:
+            upload = await _upload(api_env, style_id, _image())
+            delete = await api_env.client.delete(f"{base}/screenshots/{name}")
+            order = await api_env.client.put(f"{base}/screenshots/order", json={"names": [name]})
+            for response in (upload, delete, order):
+                assert response.status_code == 409
+                assert "AI 正在修改" in assert_detail(response)
+            assert (await api_env.client.get(f"{base}/screenshots/{name}")).status_code == 200
+        finally:
+            await api_env.release_busy(turn_id)
+        assert len((await api_env.client.get(f"{base}/files")).json()["screenshots"]) == 1
+
+    async def test_duplicate_copies_screenshots(self, api_env: ApiEnv) -> None:
+        style_id, _ = await self._draft(api_env)
+        await _upload(api_env, style_id, _image())
+        await api_env.client.post(f"/api/styles/{style_id}/draft/save")
+        copy = await api_env.client.post(f"/api/styles/{style_id}/duplicate")
+        assert copy.status_code == 201
+        assert len(copy.json()["screenshots"]) == 1

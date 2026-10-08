@@ -101,7 +101,7 @@
 - **完成标准**：新测试和既有的 store 测试全绿。
 - **验证命令**：`make check`
 
-### T3：API 端点（进行中）
+### T3：API 端点（完成）
 
 - **目标**：5 个端点和 3 个响应字段。
 - **涉及文件**：`backend/src/studio/api/styles.py`、`backend/src/studio/api/schemas.py`、`backend/tests/api/test_styles.py`、`backend/tests/api/test_projects.py`（只加一条断言：项目 `style/` 里没有截图）。
@@ -115,7 +115,7 @@
 - **完成标准**：API 测试全绿。
 - **验证命令**：`make check`
 
-### T4：前端接口、卡片封面、详情缩略图（待开始）
+### T4：前端接口、卡片封面、详情缩略图（进行中）
 
 - **目标**：AC2 的显示部分。
 - **涉及文件**：`frontend/src/types/api.ts`（手写类型，照抄后端新增的三个字段）、`frontend/src/api/endpoints.ts`、`endpoints.spec.ts`、`frontend/src/features/styles/styleFiles.ts`、`styleFiles.spec.ts`、`StyleCard.vue`、`StyleCard.spec.ts`、`StyleDetailView.vue`、`StyleDetailView.spec.ts`。
@@ -152,10 +152,11 @@
 
 - 2026-10-08 — T1 完成：`styles/screenshots.py`、25 个单测、ADR 0022，`make check` 绿
 - 2026-10-08 — T2 完成：`store.py` 接入截图（草稿/保存/复制/清理/dirty/封面），新增 `tests/styles/test_store_screenshots.py`
+- 2026-10-08 — T3 完成：5 个端点 + `cover`/`screenshots` 字段，API 测试 `TestScreenshots`，项目不复制截图的断言
 
 ## 下一步
 
-- 做 T3：先在 `backend/tests/api/test_styles.py` 写截图端点用例，再改 `api/styles.py`、`api/schemas.py`。store 的新函数：`add_draft_screenshot`、`delete_draft_screenshot`、`reorder_draft_screenshots`、`screenshot_path(..., draft=)`；`StyleSummary.cover`、`StyleDetail.screenshots`、`DraftStatus.screenshots`。
+- 做 T4：先写前端测试（`endpoints.spec.ts`、`styleFiles.spec.ts`、`StyleCard.spec.ts`、`StyleDetailView.spec.ts`），再改 `types/api.ts`、`endpoints.ts`、`styleFiles.ts`、`StyleCard.vue`、`StyleDetailView.vue`。后端接口已就绪：`GET /api/styles/{id}/screenshots/{name}`、`GET .../draft/screenshots/{name}`、`POST .../draft/screenshots`（字段 `file`）、`DELETE .../draft/screenshots/{name}`、`PUT .../draft/screenshots/order`（`{names}`）；列表项有 `cover`，详情和草稿状态有 `screenshots`。
 
 ## 决策记录
 
