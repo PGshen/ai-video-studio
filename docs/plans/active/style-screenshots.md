@@ -66,7 +66,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：`styles.screenshots` 模块与 ADR（进行中）
+### T1：`styles.screenshots` 模块与 ADR（完成）
 
 - **目标**：图片规范化和文件名规则做成纯能力层里的独立单元。
 - **涉及文件**：新建 `backend/src/studio/styles/screenshots.py`、`backend/tests/styles/test_screenshots.py`、`docs/decisions/0022-风格目录允许截图.md`；`layout.py` 加常量 `SCREENSHOTS_DIR = "screenshots"`。
@@ -83,7 +83,7 @@
 - **完成标准**：模块测试通过；import-linter 的 `styles` 契约仍然通过（Pillow 是第三方库，不违反契约）。
 - **验证命令**：`make check`
 
-### T2：store 接入截图（待开始）
+### T2：store 接入截图（进行中）
 
 - **目标**：草稿和正式版本的全部流程都带上截图。
 - **涉及文件**：`backend/src/studio/styles/store.py`、`backend/tests/styles/test_store.py`。
@@ -150,11 +150,11 @@
 
 ## 进度
 
-- 无
+- 2026-10-08 — T1 完成：`styles/screenshots.py`、25 个单测、ADR 0022，`make check` 绿
 
 ## 下一步
 
-- 负责人批准计划后，在 worktree `style-screenshots` 中从 T1 开始（先写 `backend/tests/styles/test_screenshots.py`）。
+- 在 worktree `.claude/worktrees/style-screenshots` 中做 T2：先在 `backend/tests/styles/test_store.py` 写截图相关用例，再改 `store.py`。
 
 ## 决策记录
 
