@@ -112,6 +112,8 @@ class Turn(Base):
     usage: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    attachments: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    """用户消息带的附件记录（迁移 0011）；旧行为空。"""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

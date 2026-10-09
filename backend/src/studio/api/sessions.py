@@ -56,6 +56,7 @@ from studio.agent.stage import StageRegistry
 from studio.api.deps import get_bus, get_engine, get_registry, get_runtime_factory, get_turn_runner
 from studio.api.profiles import key_configured
 from studio.api.schemas import (
+    AttachmentOut,
     MessageCreate,
     SessionCreate,
     SessionDetailOut,
@@ -143,6 +144,7 @@ def _turn_out(value: TurnValue) -> TurnOut:
         cost_usd=value.cost_usd,
         error=value.error,
         never_started=_never_started(value),
+        attachments=[AttachmentOut(**raw) for raw in value.attachments],
         created_at=value.created_at,
         updated_at=value.updated_at,
     )

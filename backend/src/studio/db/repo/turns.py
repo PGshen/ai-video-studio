@@ -8,7 +8,7 @@ max+1 不会撞号；`(session_id, seq)` 唯一索引（迁移 0002）是最后�
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -39,6 +39,7 @@ class TurnValue:
     error: str | None
     created_at: datetime
     updated_at: datetime
+    attachments: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +68,7 @@ def _turn_value(row: Turn) -> TurnValue:
         error=row.error,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        attachments=list(row.attachments or []),
     )
 
 
@@ -83,7 +85,11 @@ def _event_value(row: TurnEvent) -> TurnEventValue:
 
 
 def create_turn_if_session_idle(
-    engine: Engine, session_id: str, user_message: str
+    engine: Engine,
+    session_id: str,
+    user_message: str,
+    *,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> TurnValue | None:
     """会话没有 `queued`/`running` 的 turn 时插入一个 `queued` turn；否则返回 `None`。
 
@@ -97,7 +103,12 @@ def create_turn_if_session_idle(
         ).first()
         if busy is not None:
             return None
-        row = Turn(session_id=session_id, user_message=user_message, status="queued")
+        row = Turn(
+            session_id=session_id,
+            user_message=user_message,
+            status="queued",
+            attachments=attachments or None,
+        )
         db.add(row)
         db.flush()
         return _turn_value(row)

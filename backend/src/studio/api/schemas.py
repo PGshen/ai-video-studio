@@ -155,6 +155,19 @@ class SessionOut(BaseModel):
     title: str | None
 
 
+class AttachmentOut(BaseModel):
+    """用户消息带的一个附件（设计 2026-10-09 §4.3）。"""
+
+    kind: Literal["image", "file"]
+    name: str
+    size: int
+    sha256: str | None = None
+    """`kind="image"` 时是 blob 的 sha256，用 `/api/sessions/{id}/attachments/{sha256}` 取图。"""
+    path: str | None = None
+    """工作区相对路径：文件附件，或模型不支持图片时转存成文件的图片。"""
+    binary: bool = False
+
+
 class TurnOut(BaseModel):
     id: str
     session_id: str
@@ -167,6 +180,7 @@ class TurnOut(BaseModel):
     error: str | None
     never_started: bool = False
     """`interrupted` 且从未真正开始运行（重启时还在排队）；[继续] 重发 `user_message`（TD-19）。"""
+    attachments: list[AttachmentOut] = []
     created_at: datetime
     updated_at: datetime
 

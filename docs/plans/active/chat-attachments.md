@@ -108,7 +108,7 @@
 - **完成标准**：上面的测试全部通过；这个模块不 import fastapi。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_attachments.py -q`，然后 `make check`。
 
-### T2：持久化——`turns.attachments`（待开始）
+### T2：持久化——`turns.attachments`（完成）
 
 - **目标**：轮次记录能保存附件，接口能返回附件。
 - **涉及文件**：
@@ -227,20 +227,23 @@
 ## 进度
 
 - 2026-10-09 — T1 — `api/attachments.py` 与 37 个单元测试完成，make check 绿
+- 2026-10-09 — T2 — 迁移 0011、`TurnValue/TurnOut.attachments`、前端 `AttachmentOut` 类型，make check 绿
 
 ## 下一步
 
-- T2：持久化 `turns.attachments`（迁移 0011）。
+- T3：发消息接口（multipart）与附件读取接口，从 `tests/api/test_sessions.py` 的新测试开始。
 
 ## 决策记录
 
 - 2026-10-09 — 写入保护放在 `is_writable` 统一处理 `uploads/`，不逐个修改各阶段的 `WriteScope` — 这样所有阶段一次生效，以后新增的阶段也不会漏掉。
 - 2026-10-09 — T1：`AttachmentRecord` 多一个 `binary` 字段（内容不是 UTF-8 文本），另加 `compose_text`（原文 + 文件说明）和 `discard(written)` — `file_note` 判断 OpenAI 下能否读取、"继续"重建说明都需要它，只能在上传时算出并持久化。
 - 2026-10-09 — T1：模型不支持图片时转存的图片记录为 `kind="image"`，同时有 `sha256`（缩略图）和 `path`（文件说明）— 与设计 §4.3 的 `path` 说明一致。
+- 2026-10-09 — T2：前端 `TurnOut.attachments` 定为可选（`attachments?:`），消费方用 `?? []` — 后端总会返回，但前端大量 spec 夹具手写 `TurnOut`；可选可以避免无关改动。
 - 2026-10-09 — `python-multipart` 不写成显式依赖 — 它已经通过传递依赖装好，`music_import` 已经在用；遵守"不引入计划外依赖"这条约束。
 
 ## 意外与发现
 
+- 2026-10-09 — 前端 `pnpm run typecheck`（`vue-tsc --noEmit`）对 `files: []` 的 solution tsconfig 实际上什么都不检查；用 `-p tsconfig.app.json` 实测有 52 处既有错误（多在 spec 里）。不属于本计划，已经开了单独的任务；本计划的改动用 `-p tsconfig.app.json` 确认不新增错误。
 - 2026-10-09 — 写计划时发现风格对话的 cwd 是草稿目录，以及读工具有大小上限。已经升级给负责人，结论写进设计修订 R1、R2。
 
 ## 阻塞
