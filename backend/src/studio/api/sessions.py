@@ -380,6 +380,8 @@ async def send_message_endpoint(
         if text is not None and not isinstance(text, str):
             raise HTTPException(status_code=422, detail="text 字段必须是文本")
         files = await _read_files(form)
+    # 读表单要 await：期间可能开始了音乐上传，再查一次（从这里到写完文件之间不再 await）。
+    _refuse_during_upload(request, session)
     profile = get_model_profile_by_id(engine, session.model_profile_id)
     supports_vision = profile is not None and profile.supports_vision
     writes_workspace = any(not supports_vision or sniff_image(f.data) is None for f in files)

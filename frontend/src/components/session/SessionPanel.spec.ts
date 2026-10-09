@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   log: [] as string[],
   sentWith: [] as Array<{ sessionId: string; text: string; files?: File[] }>,
   sendFailure: null as Error | null,
+  localAttachments: [] as unknown[],
   turnStatus: null as { status: string; turnId: string } | null,
 }))
 
@@ -15,8 +16,9 @@ vi.mock('@/composables/useSessionStream', async () => {
       items: vueRef([]),
       turnStatus: vueRef(state.turnStatus),
       turns: vueRef(new Map()),
-      addLocalUserMessage: (text: string) => {
+      addLocalUserMessage: (text: string, attachments?: unknown[]) => {
         state.log.push(`add:${text}`)
+        state.localAttachments = attachments ?? []
         return 'local-1'
       },
       markTurnAccepted: () => {},
@@ -246,6 +248,17 @@ describe('SessionPanel：附件', () => {
 
     expect(state.sentWith).toEqual([{ sessionId: 's1', text: '看图', files: [a] }])
     expect(w.text()).not.toContain('a.png')
+  })
+
+  it('乐观消息只给图片保留预览地址（评审 M2：文件的 data URL 可能有几十 MB）', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    await attach(w, [png(), md()])
+    await submit(w, '看看')
+
+    expect(state.localAttachments).toEqual([
+      { kind: 'image', name: 'a.png', size: 3, previewUrl: expect.any(String) },
+      { kind: 'file', name: 'notes.md', size: 4 },
+    ])
   })
 
   it('只有附件、没有文字也能发送', async () => {

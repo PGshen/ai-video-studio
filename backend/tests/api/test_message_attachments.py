@@ -200,6 +200,29 @@ class TestProjectBusy:
         await _wait(api_env, response.json()["turn_id"])
 
 
+class TestMusicUploadDuringForm:
+    async def test_music_upload_started_while_reading_the_form_is_409(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """评审 I1：读表单期间开始的音乐上传，也要挡住这一轮（否则轮末越界检查会还原那次上传）。"""
+        from studio.api import sessions as sessions_api
+
+        pid, sid = await _project_session(api_env)
+        original = sessions_api._read_files
+
+        async def read_while_music_upload_starts(form: Any) -> Any:
+            api_env.app.state.music_uploads.add(pid)
+            return await original(form)
+
+        monkeypatch.setattr(sessions_api, "_read_files", read_while_music_upload_starts)
+
+        response = await _send(api_env, sid, "x", [("a.md", b"a")])
+
+        api_env.app.state.music_uploads.discard(pid)
+        assert response.status_code == 409
+        assert _uploads(api_env.workdir(pid)) == []
+
+
 class TestBrainstormSession:
     async def test_file_is_rejected(self, api_env: ApiEnv) -> None:
         sid = await _brainstorm_session(api_env)

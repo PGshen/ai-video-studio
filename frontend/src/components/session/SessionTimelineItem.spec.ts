@@ -171,6 +171,8 @@ describe('SessionTimelineItem：用户消息的附件', () => {
     expect(link.text()).toContain('notes.md')
     expect(link.attributes('href')).toBe('/api/projects/p%231/files/uploads/ab12cd34-notes.md')
     expect(link.attributes('target')).toBe('_blank')
+    // 评审 M1：上传的 .html/.svg 不能在应用源上直接打开（脚本会以应用身份运行），只下载。
+    expect(link.attributes('download')).toBe('notes.md')
   })
 
   it('没有项目（风格/选题会话）时文件只显示名字', () => {

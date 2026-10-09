@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * 用户消息下的附件（设计 2026-10-09 §6）：图片显示缩略图，点击在新标签页看原图；文件显示名字和
- * 大小，项目会话里链接到工作区原文件（风格/选题会话没有可访问的工作区，只显示名字）。
+ * 大小，项目会话里链接到工作区原文件（风格/选题会话没有可访问的工作区，只显示名字）。文件只下载、
+ * 不在应用源上直接打开：上传的 .html/.svg 里的脚本否则会以应用身份运行。
  * 真实 turn 的 `attachments` 优先；还没到时用乐观占位的本地预览。
  */
 import { computed } from 'vue'
@@ -69,6 +70,7 @@ const shown = computed<Shown[]>(() => {
       <a
         v-else-if="item.href"
         :href="item.href"
+        :download="item.name"
         target="_blank"
         rel="noopener"
         class="bg-muted hover:bg-accent flex items-center gap-2 rounded-md border px-2 py-1 text-xs"

@@ -135,16 +135,13 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
       }
     }
     const previews = (message.files as AttachmentFile[]).flatMap((item) =>
-      item.file
-        ? [
-            {
-              kind: classifyFile(item.file, accept.value).kind,
-              name: item.file.name,
-              size: item.file.size,
-              previewUrl: item.url,
-            },
-          ]
-        : [],
+      {
+        if (!item.file) return []
+        const kind = classifyFile(item.file, accept.value).kind
+        const base = { kind, name: item.file.name, size: item.file.size }
+        // 只有图片要缩略图；文件的 data URL 可能有几十 MB，不留在消息里。
+        return [kind === 'image' ? { ...base, previewUrl: item.url } : base]
+      },
     )
     await optimisticSend(
       optimisticMessages,
