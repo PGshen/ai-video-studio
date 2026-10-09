@@ -129,8 +129,11 @@ def list_turns(engine: Engine, session_id: str) -> list[TurnValue]:
         return [_turn_value(row) for row in rows]
 
 
-def record_run_profile(engine: Engine, turn_id: str, *, profile_name: str, model: str) -> None:
-    """turn 开跑时记下它用的模型配置（`usage.profile_name`/`usage.model`）。
+def record_run_profile(
+    engine: Engine, turn_id: str, *, profile_name: str, model: str, exec_mode: str | None = None
+) -> None:
+    """turn 开跑时记下它用的模型配置（`usage.profile_name`/`usage.model`）和执行模式
+    （`usage.exec_mode`，ADR 0024；给了才记）。
 
     收尾时 `finish_turn` 会用完整的 usage 覆盖。这里先写一份，是因为崩溃/重启恢复
     （`interrupt_turn`）不写 usage：不先记，被中断的一轮就成了"没用过任何配置"，
@@ -140,7 +143,10 @@ def record_run_profile(engine: Engine, turn_id: str, *, profile_name: str, model
         turn = db.get(Turn, turn_id)
         if turn is None:
             raise KeyError(turn_id)
-        turn.usage = {**(turn.usage or {}), "profile_name": profile_name, "model": model}
+        recorded: dict[str, str] = {"profile_name": profile_name, "model": model}
+        if exec_mode is not None:
+            recorded["exec_mode"] = exec_mode
+        turn.usage = {**(turn.usage or {}), **recorded}
 
 
 def previous_run_profile_name(engine: Engine, session_id: str, before_turn_id: str) -> str | None:

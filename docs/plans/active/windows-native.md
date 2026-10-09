@@ -116,7 +116,7 @@
 - **完成标准**：`grep -rn "killpg\|start_new_session" backend/src` 只剩 `proc.py` 里的结果；质量关口满足 D1。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；`cd backend && uv run pytest -m slow -k "html_video or mix"`（真实子进程，确认没有倒退）。
 
-### T5：执行策略与开关（待开始，机器：Windows，按基线对比）
+### T5：执行策略与开关（完成，机器：Windows，按基线对比）
 
 - **目标**：设计 §4.2、§4.3 的后端部分：`exec_mode` 决定两条运行时路径和 `render_music` 的行为；开关来自环境变量，设置页可以覆盖。
 - **涉及文件**：新增 `backend/src/studio/agent/exec_policy.py`、`backend/tests/agent/test_exec_policy.py`、`docs/decisions/0024-无隔离执行开关.md`；修改 `config.py`（`allow_unsandboxed_exec: bool = False`）、`db/repo/settings.py`（新键 `allow_unsandboxed_exec`，以及 `effective_allow_unsandboxed_exec`，仿照 `effective_web_mode`）、`agent/runner.py`（每轮开始时计算 `exec_mode`，放进 `TurnContext`）、`agent/claude_runtime.py` 和 `claude_scope.py`、`agent/openai_runtime.py`（`native_shell_supported` 改为根据 `exec_mode` 判断）、`agent/shell.py`（`LocalShellExecutor` 支持不包裹 sandbox 的模式）、`stages/common/score/tool.py`（`sandbox_wrapper` 改为根据 `exec_mode` 判断，三种模式三种行为）、`agent/events.py` 或轮次元数据（记录本轮的 `exec_mode`，供 T6 显示）。
@@ -225,16 +225,17 @@
 - 2026-10-09 — T2 完成：ruff 启用 `PLW1514`（预览规则，`explicit-preview-rules`），`scripts/` 纳入 ruff 检查，补一个 AST 测试覆盖 ruff 认不出的 `x.read_text()`；`tasks.py` 的所有步骤以 UTF-8 模式运行，Windows 上没开 UTF-8 模式时 pytest 直接报错提示。和基线比没有新增失败，12 个用例函数转为通过。剩余失败数：pytest 101 失败 + 30 error + 1 挂住，pyright 8
 - 2026-10-09 — T3 完成：`workspace.files.check_model_path`、`relpath_within`；`normalize_relpath`、`safe_path`、`apply_patch.to_workspace_relpath`、Claude 读写 hook（含 Glob 模式）改为共用它们；附件文件名去掉 Windows 不允许的字符和结尾的 `.`/空格。新增约 140 个用例（`tests/workspace/test_model_path.py`、hook 和 apply_patch 的 Windows 写法），已有的路径测试没有修改。和基线比没有新增失败，`apply_patch` 的 3 个基线失败转为通过。剩余失败数：pytest 98 失败 + 30 error + 1 挂住，pyright 8
 - 2026-10-10 — T4 完成：新模块 `studio.proc`（`spawn_kwargs`、`kill_tree`/`kill_proc_tree`/`kill_tree_sync`、`run_killing_tree`、`child_env`）及 import-linter 契约；配乐脚本、歌曲分析、ffprobe、ffmpeg 解码/出片/混音、Shell executor 全部改用它；Windows 上 `limited_argv` 原样返回，`run_compose` 事后检查 `music.wav` 大小（两个平台都查）。测试里的假 ffmpeg 改成 Python 脚本，挂住的取消用例随之修好；`os.kill(pid, 0)` 探活改为共用的 `fixtures.processes.pid_alive`。Windows 上 `tasks.py check` 第一次跑到 pytest：pyright 0 错误，pytest **6 失败**（3007 通过），全部属于 T8、T9。剩余失败数：pytest 6，pyright 0
+- 2026-10-10 — T5 完成：`agent/exec_policy.py`（`exec_mode`、`claude_sandbox_available`、`host_exec_mode`）；开关 `STUDIO_ALLOW_UNSANDBOXED_EXEC` + 设置键 `allow_unsandboxed_exec`（`effective_allow_unsandboxed_exec`）；每轮开始读一次，经 `TurnContext`/`ToolContext` 传给 Claude（`disabled` 去掉 Bash、禁 Bash/PowerShell、不传 sandbox；`unsandboxed` 放行 Bash+PowerShell）、OpenAI Shell（`unsandboxed` 时交给 `/bin/sh` 或 Git Bash）和 `render_music`（`disabled` 的报错指向设置页）；`turns.usage.exec_mode` 记下本轮模式；ADR 0024、`.env.example`、ARCHITECTURE 同步。新增 54 个用例，Windows 上 `echo 中文` 经 Git Bash 实测无乱码。剩余失败数：pytest 6（同 T4），pyright 0
 
 ## 下一步
 
-T1–T4 已完成（见「进度」）。Windows 上 `tasks.py check` 已能完整跑完，只剩 6 个失败（见 T4 的进度行）。接下来做 **T5：执行策略与开关**：
+T1–T5 已完成（见「进度」）。接下来做 **T6：设置页开关与"命令未隔离"标记**：
 
-1. 计划里 T5 状态改为「进行中」；先读设计 §4（尤其 §4.2 的表、§4.3），以及 `config.py`、`db/repo/settings.py`（照着 `effective_web_mode` 写）、`agent/runner.py`（`TurnContext` 的构造）、`agent/claude_runtime.py` 和 `claude_scope.py`（`allowed_tools`、`disallowed_tools`、`sandbox_settings`）、`agent/openai_runtime.py`（`native_shell_supported`）、`agent/shell.py`、`stages/common/score/tool.py`（`sandbox_wrapper`）、`agent/events.py`。
-2. 先写 `backend/tests/agent/test_exec_policy.py`（`exec_mode` 真值表）和三种模式下 Claude/OpenAI/`render_music` 的测试，再实现；ADR 0024 按设计 §10 写。
-3. Windows 上用 Fake 运行时跑的测试可以覆盖 `disabled`/`unsandboxed` 两种模式；`sandboxed` 的真实行为留到 T12 在 macOS 上确认。
-4. 验证：`uv run --project backend python scripts/tasks.py check`（PowerShell，已不需要 `--deselect`），和 T4 的 6 个失败比较。
-5. commit 并 push。
+1. 计划里 T6 状态改为「进行中」；先读联网模式的现有实现，照着它写：后端 `api/settings.py`、`api/schemas.py`（`web_mode`/`web_mode_source`/`web_mode_env` 那一组）、`tests/api/test_settings.py::test_web_mode_override_and_clear`；前端设置 → 通用的组件（`grep -rn web_mode frontend/src`）、`frontend/src/components/session/turnMeta.ts`（轮次元信息）、`types/api.ts`。
+2. 后端：设置接口读写 `allow_unsandboxed_exec`，返回生效值、来源（`ui`/`env`）、环境变量值，以及 `sandbox_available`（用 `exec_policy.seatbelt_available()`，T5 决策记录说明了为什么按 Seatbelt 判断）和当前生效的 `exec_mode`（`exec_policy.host_exec_mode`）；和联网模式共用"清除界面设置"。`turns.usage.exec_mode` 已由 T5 写入，`TurnOut.usage` 原样带出，确认前端类型里有这个字段。
+3. 前端：开关只在 `sandbox_available=false` 时显示，文案说明风险（ADR 0024「影响」第 2 条）和"下一轮对话起生效"；`usage.exec_mode == "unsandboxed"` 的轮次在元信息里显示"命令未隔离"。先写 vitest 和后端接口测试。
+4. Windows 上用 Fake 运行时在内置浏览器里看一眼开关和标记并截图（`.claude/launch.json` 的 api 和 frontend；如果 `preview_start` 在 Windows 上起不来，先按 T9 的 P14 处理）。
+5. 验证：`uv run --project backend python scripts/tasks.py check`，和 T4/T5 的 6 个失败比较；commit 并 push。
 
 ## 决策记录
 
@@ -268,6 +269,11 @@ T1–T4 已完成（见「进度」）。Windows 上 `tasks.py check` 已能完�
 - 2026-10-10 — T4：测试里用 `#!/bin/sh` 写的假 ffmpeg 改成 Python 脚本，并通过替换 `video.build_encode_command` 接进去（保留真实参数、只换程序），两个平台都能跑；没有用 T8 的标记跳过。基线里"挂住"的取消用例就是因为假 ffmpeg 在 Windows 上起不来、`started` 事件永远不会被设置。
 - 2026-10-10 — T4：**`os.kill(pid, 0)` 在 Windows 上不是探活，而是结束进程**（除 CTRL_C/CTRL_BREAK 以外的信号都会变成 `TerminateProcess`），用它判断"孙进程是否已被杀掉"的测试在 Windows 上会自己把进程杀掉而虚假通过。新增 `tests/fixtures/processes.py`（`pid_alive`、`wait_gone`，Windows 上用 `tasklist`），`test_proc`、`test_audio_runner`、`test_audio_song_job` 改用它。只在 POSIX 上跑的用例（`_group_gone`、Seatbelt 相关）里的 `os.killpg`/`signal.SIGKILL` 前面加了 `sys.platform` 判断，pyright 在 Windows 上就不再报错，不用 `type: ignore`。
 - 2026-10-10 — T4：`test_audio_runner.py::test_a_script_cannot_fill_the_disk` 依赖 `ulimit -f`，Windows 上暂时用 `skipif(sys.platform == "win32")`（T8 换成 `posix_only`）；另加 `test_an_oversized_wav_is_refused` 覆盖两个平台都有的事后大小检查。`test_fake.py::TestFakeDelay::test_register_fake_passes_delay` 在 Windows 上偶发失败（50 ms 的 sleep 量出来 47 ms，Windows 计时器精度约 15.6 ms），断言放宽一个时钟刻度。
+- 2026-10-10 — T5：开关的传递方式：`TurnContext` 和 `ToolContext` 各加一个 `allow_unsandboxed_exec: bool`（开关本身，不是模式），各执行点用自己的 sandbox 可用性去问 `exec_mode`。`render_music` 是业务工具，只拿得到 `ToolContext`，所以两边都要有。计划里写的"每轮开始时计算 `exec_mode`，放进 `TurnContext`"因此改为放开关；模式在执行点算。轮次记录的模式由 `host_exec_mode` 计算（Seatbelt 是否可用 + 开关），取最弱的执行点，供 T6 的标记使用。
+- 2026-10-10 — T5：`exec_mode` 用上了 `platform` 参数：`darwin` 上即使没有 sandbox 也只会是 `disabled`，开关不起作用（全局约束"在 macOS 上无效"、审查重点 3）。设计 §4.2 的表没写"macOS 缺 `sandbox-exec`"这一格，这里按"开关在 macOS 上无效"处理。
+- 2026-10-10 — T5：`exec_mode` 记在 `turns.usage.exec_mode`：开跑时随 `record_run_profile` 写一次（新增可选参数 `exec_mode`，被崩溃中断的轮次也留得下），收尾时随完整 usage 再写一次。开关和模式放在 `_Job` 上（`_run` 开头读一次），三种会话（项目、无项目、风格草稿）共用。
+- 2026-10-10 — T5：OpenAI Shell 的 `unsandboxed` 模式在 Windows 上需要一个能执行模型写的 sh 语法命令的 shell：用 Git Bash，查找顺序是 `CLAUDE_CODE_GIT_BASH_PATH`（和 Claude Code 用同一个变量）、`git` 所在目录旁边的 `bin/bash.exe`；找不到时这次调用失败并说明原因，**不回退到 `PATH` 里的 `bash`**（Windows 自带的 `C:\Windows\System32\bash.exe` 是 WSL，看到的是另一套文件系统）。
+- 2026-10-10 — T5：Claude 运行时的已有测试在 Windows 上会走 `disabled`（`options.tools` 里没有 Bash、`sandbox` 为空），所以测试辅助函数 `_runtime` 加了 `platform="darwin"` 默认值，另一个直接构造 `ClaudeRuntime` 的用例也补上；断言本身没有改。macOS 上这些测试不受影响（`platform` 本来就是 `darwin`）。`render_music` 用模块属性 `exec_platform` 注入平台，测试里不改全局 `sys.platform`（改了会影响 `studio.proc` 等其他代码）。
 
 ## 意外与发现
 

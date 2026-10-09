@@ -11,6 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from studio.agent.events import ImageData
+from studio.agent.exec_policy import exec_mode
 from studio.agent.shell_sandbox import SANDBOX_EXEC, sandbox_available, seatbelt_profile
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import get_settings, repo_root
@@ -53,6 +54,34 @@ def real_sandbox_wrapper(workdir: Path) -> WrapCommand | None:
 
 sandbox_wrapper: Callable[[Path], WrapCommand | None] = real_sandbox_wrapper
 """测试里替换成恒等包装或 `None`。"""
+
+exec_platform: str = sys.platform
+"""`exec_mode` 用的平台；测试里替换（不改全局的 `sys.platform`）。"""
+
+NO_SANDBOX_MESSAGE = (
+    "这台机器上没有沙箱（sandbox），默认不运行 agent 写的合成脚本。"
+    "如果接受风险，可以在 设置 → 通用 里打开「允许在无隔离环境执行 agent 命令」"
+    "（对话里下一轮起生效）。"
+)
+
+
+def run_unwrapped(argv: list[str], env: dict[str, str]) -> list[str]:
+    """`unsandboxed` 模式：原样运行；环境变量白名单、超时、大小检查仍由 `run_compose` 负责。"""
+    return argv
+
+
+def exec_wrapper(workdir: Path, *, allow_unsandboxed: bool) -> WrapCommand | None:
+    """本次运行合成脚本用的包装（ADR 0024）：有 sandbox 就用；没有时开关打开则原样运行，
+    否则 `None`（调用方报 `NO_SANDBOX_MESSAGE`）。agent 工具和配乐渲染接口共用。"""
+    wrap = sandbox_wrapper(workdir)
+    mode = exec_mode(
+        platform=exec_platform,
+        sandbox_available=wrap is not None,
+        allow_unsandboxed=allow_unsandboxed,
+    )
+    if mode == "sandboxed":
+        return wrap
+    return run_unwrapped if mode == "unsandboxed" else None
 
 
 def _lines(report: MusicReport) -> list[str]:
@@ -120,9 +149,9 @@ async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
     produce = ctx.stage == "produce"
     if import_source(ctx.workdir) is not None:
         return ToolResult(text=PRODUCE_IMPORT_MESSAGE, is_error=True)
-    wrap = sandbox_wrapper(ctx.workdir)
+    wrap = exec_wrapper(ctx.workdir, allow_unsandboxed=ctx.allow_unsandboxed_exec)
     if wrap is None:
-        return ToolResult(text="当前平台没有沙箱，不能运行合成脚本。", is_error=True)
+        return ToolResult(text=NO_SANDBOX_MESSAGE, is_error=True)
     if produce:
         # The script picks tempo, length and structure itself: no timeline in, no retime check.
         outcome = await render_music_core(ctx.workdir, wrap_command=wrap)

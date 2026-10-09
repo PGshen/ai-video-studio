@@ -9,6 +9,7 @@ from studio.db.engine import session_scope
 from studio.db.models import Setting
 from studio.db.repo.settings import (
     SettingsValidationError,
+    effective_allow_unsandboxed_exec,
     effective_web_mode,
     get_all_settings,
     update_settings,
@@ -161,3 +162,26 @@ def test_effective_web_mode_prefers_the_ui_override(migrated_engine: Engine) -> 
     update_settings(migrated_engine, {"web_mode": None})
     assert effective_web_mode(migrated_engine, "native") == "native"
     assert effective_web_mode(migrated_engine, "tools") == "tools"
+
+
+def test_allow_unsandboxed_exec_override_beats_env_and_clears(migrated_engine: Engine) -> None:
+    """ADR 0024: the UI setting overrides the env switch; clearing it falls back to the env."""
+    assert get_all_settings(migrated_engine).allow_unsandboxed_exec is None
+    assert effective_allow_unsandboxed_exec(migrated_engine, False) is False
+    assert effective_allow_unsandboxed_exec(migrated_engine, True) is True
+
+    update_settings(migrated_engine, {"allow_unsandboxed_exec": True})
+    assert effective_allow_unsandboxed_exec(migrated_engine, False) is True
+    update_settings(migrated_engine, {"allow_unsandboxed_exec": False})
+    assert effective_allow_unsandboxed_exec(migrated_engine, True) is False
+    assert "allow_unsandboxed_exec" in _stored_keys(migrated_engine)
+
+    update_settings(migrated_engine, {"allow_unsandboxed_exec": None})
+    assert "allow_unsandboxed_exec" not in _stored_keys(migrated_engine)
+    assert effective_allow_unsandboxed_exec(migrated_engine, True) is True
+
+
+@pytest.mark.parametrize("value", ["true", 1, "yes", [True]])
+def test_allow_unsandboxed_exec_must_be_a_boolean(migrated_engine: Engine, value: object) -> None:
+    with pytest.raises(SettingsValidationError):
+        update_settings(migrated_engine, {"allow_unsandboxed_exec": value})

@@ -34,12 +34,15 @@ def reel(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _ctx(workdir: Path, writes: list[tuple[str, str]]) -> ToolContext:
+def _ctx(
+    workdir: Path, writes: list[tuple[str, str]], *, allow_unsandboxed_exec: bool = False
+) -> ToolContext:
     return ToolContext(
         project_id="p",
         stage="music",
         workdir=workdir,
         record_tool_write=lambda rel, digest: writes.append((rel, digest)),
+        allow_unsandboxed_exec=allow_unsandboxed_exec,
     )
 
 
@@ -85,6 +88,57 @@ async def test_without_a_sandbox_the_tool_refuses_to_run(
     result = await invoke_tool(RENDER_MUSIC_TOOL, _ctx(reel, []), {})
     assert result.is_error and "沙箱" in result.text
     assert not (reel / "music" / "music.wav").exists()
+
+
+class TestExecModes:
+    """ADR 0024 / design §4.3: `render_music` per exec mode."""
+
+    async def test_sandboxed_uses_the_sandbox_and_ignores_the_switch(
+        self, reel: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        used: list[str] = []
+
+        def seatbelt(argv: list[str], env: dict[str, str]) -> list[str]:
+            used.append("seatbelt")
+            return argv
+
+        monkeypatch.setattr(music_tool, "sandbox_wrapper", lambda workdir: seatbelt)
+        result = await invoke_tool(
+            RENDER_MUSIC_TOOL, _ctx(reel, [], allow_unsandboxed_exec=True), {}
+        )
+        assert not result.is_error, result.text
+        assert used and set(used) == {"seatbelt"}
+
+    async def test_disabled_names_the_settings_switch(
+        self, reel: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(music_tool, "sandbox_wrapper", lambda workdir: None)
+        monkeypatch.setattr(music_tool, "exec_platform", "win32")
+        result = await invoke_tool(RENDER_MUSIC_TOOL, _ctx(reel, []), {})
+        assert result.is_error
+        assert "设置" in result.text and "无隔离" in result.text
+        assert not (reel / "music" / "music.wav").exists()
+
+    async def test_unsandboxed_runs_the_script_directly(
+        self, reel: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(music_tool, "sandbox_wrapper", lambda workdir: None)
+        monkeypatch.setattr(music_tool, "exec_platform", "win32")
+        result = await invoke_tool(
+            RENDER_MUSIC_TOOL, _ctx(reel, [], allow_unsandboxed_exec=True), {}
+        )
+        assert not result.is_error, result.text
+        assert (reel / "music" / "music.wav").is_file()
+
+    async def test_the_switch_has_no_effect_on_macos(
+        self, reel: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(music_tool, "sandbox_wrapper", lambda workdir: None)
+        monkeypatch.setattr(music_tool, "exec_platform", "darwin")
+        result = await invoke_tool(
+            RENDER_MUSIC_TOOL, _ctx(reel, [], allow_unsandboxed_exec=True), {}
+        )
+        assert result.is_error and "沙箱" in result.text
 
 
 async def test_unavailable_timeline_is_reported(

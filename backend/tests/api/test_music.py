@@ -12,6 +12,7 @@ import pytest
 
 from fixtures.synth_music import seed
 from fixtures.synth_music.products import FREE, render_free_products
+from studio.db.repo.settings import update_settings
 from studio.stages.common.score import tool as music_tool
 
 from .conftest import ApiEnv
@@ -210,6 +211,22 @@ async def test_render_is_refused_without_a_sandbox(
     monkeypatch.setattr(music_tool, "sandbox_wrapper", lambda workdir: None)
     response = await api_env.client.post(_url(pid, "render"))
     assert response.status_code == 409 and "沙箱" in response.json()["detail"]
+
+
+async def test_render_without_a_sandbox_follows_the_settings_switch(
+    api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0024: the UI render reads the effective switch on every request."""
+    pid, _ = await _reel(api_env, render=False)
+    monkeypatch.setattr(music_tool, "sandbox_wrapper", lambda workdir: None)
+    monkeypatch.setattr(music_tool, "exec_platform", "win32")
+
+    refused = await api_env.client.post(_url(pid, "render"))
+    assert refused.status_code == 409 and "设置" in refused.json()["detail"]
+
+    update_settings(api_env.app.state.engine, {"allow_unsandboxed_exec": True})
+    response = await api_env.client.post(_url(pid, "render"))
+    assert response.status_code == 200, response.text
 
 
 async def test_a_second_render_while_one_runs_is_refused(

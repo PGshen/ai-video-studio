@@ -33,7 +33,7 @@ from typing import Any
 
 from sqlalchemy import Engine
 
-from studio.agent import recovery, stage_flow, turn_events, turn_finish
+from studio.agent import exec_policy, recovery, stage_flow, turn_events, turn_finish
 from studio.agent.bus import BusEvent, SessionBus
 from studio.agent.preamble import (
     build_preamble,
@@ -57,7 +57,7 @@ from studio.db.repo import turns as turns_repo
 from studio.db.repo.profiles import ModelProfileValue, get_model_profile_by_id
 from studio.db.repo.projects import get_project
 from studio.db.repo.sessions import derive_title, get_session, set_session_title_if_unset
-from studio.db.repo.settings import effective_web_mode
+from studio.db.repo.settings import effective_allow_unsandboxed_exec, effective_web_mode
 from studio.db.repo.snapshots import latest_snapshot
 from studio.styles import store as style_store
 from studio.styles.layout import draft_dir
@@ -326,6 +326,11 @@ class TurnRunner:
 
     async def _run(self, job: _Job) -> None:
         state = _State()
+        # ADR 0024: read the switch once per turn; a change made mid-turn applies to the next.
+        job.allow_unsandboxed_exec = effective_allow_unsandboxed_exec(
+            self._engine, self._settings.allow_unsandboxed_exec
+        )
+        job.exec_mode = exec_policy.host_exec_mode(job.allow_unsandboxed_exec)
         try:
             await self._execute(job, state)
         except asyncio.CancelledError:
@@ -417,6 +422,7 @@ class TurnRunner:
             stage=job.stage.name,
             record_tool_write=record_tool_write,
             allow_web=allow_web,
+            allow_unsandboxed_exec=job.allow_unsandboxed_exec,
             engine=engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
@@ -453,6 +459,7 @@ class TurnRunner:
             stage=job.stage.name,
             record_tool_write=lambda _relpath, _sha256: None,
             allow_web=allow_web,
+            allow_unsandboxed_exec=job.allow_unsandboxed_exec,
             engine=self._engine,
             session_id=job.session.id,
             turn_id=job.turn_id,
@@ -487,6 +494,7 @@ class TurnRunner:
             stage=job.stage.name,
             record_tool_write=lambda _relpath, _sha256: None,
             allow_web=allow_web,
+            allow_unsandboxed_exec=job.allow_unsandboxed_exec,
             engine=self._engine,
             session_id=job.session.id,
             turn_id=job.turn_id,

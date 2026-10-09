@@ -37,6 +37,7 @@ import asyncio
 import logging
 import os
 import re
+import sys
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
 from pathlib import Path
@@ -67,6 +68,7 @@ from openai.types.shared import Reasoning
 
 from studio.agent import events
 from studio.agent.apply_patch import WorkspaceApplyPatchEditor
+from studio.agent.exec_policy import ExecMode, exec_mode
 from studio.agent.fallback_tools import build_fallback_tools
 from studio.agent.openai_tools import _Turn, build_function_tool, convert
 from studio.agent.runtime import (
@@ -122,10 +124,30 @@ FALLBACK_READ_TOOLS = frozenset({"list_files", "read_file"})
 """网关（非 `api.openai.com`）上代替 Shell 的兜底只读工具；写入仍走原生 `apply_patch`。"""
 
 
+def native_shell_mode(
+    profile: ModelProfileValue,
+    *,
+    sandbox_available: Callable[[], bool] = _sandbox_available,
+    allow_unsandboxed: bool = False,
+    platform: str | None = None,
+) -> ExecMode:
+    """`provider=openai` 的配置用不用、怎样用本地执行的原生 `ShellTool`（ADR 0024）。
+
+    网关（非官方 API）一律 `disabled`；官方 API 按 `exec_policy.exec_mode`：本机有
+    `sandbox-exec` 就包裹（`sandboxed`），没有时看开关（`unsandboxed` / `disabled`）。"""
+    if not is_official_openai(profile):
+        return "disabled"
+    return exec_mode(
+        platform=platform or sys.platform,
+        sandbox_available=sandbox_available(),
+        allow_unsandboxed=allow_unsandboxed,
+    )
+
+
 def native_shell_supported(
     profile: ModelProfileValue, *, sandbox_available: Callable[[], bool] = _sandbox_available
 ) -> bool:
-    """`provider=openai` 的配置能否用本地执行的原生 `ShellTool`。
+    """`provider=openai` 的配置能否用经 sandbox 包裹的原生 `ShellTool`（开关关闭时的判断）。
 
     本机必须能用 `sandbox-exec` 包裹 Shell（macOS，TD-20）；否则失败关闭、不提供 Shell。
     此外只有官方 API（`base_url` 为空或主机是 `api.openai.com`）支持：OpenRouter 的
@@ -133,7 +155,7 @@ def native_shell_supported(
     托管沙箱，看不到工作区（F2，2026-09-28 核实，见 docs/references/openai-agents-sdk.md）。
     其他网关按同样保守处理。
     """
-    return sandbox_available() and is_official_openai(profile)
+    return native_shell_mode(profile, sandbox_available=sandbox_available) != "disabled"
 
 
 def is_official_openai(profile: ModelProfileValue) -> bool:
@@ -282,6 +304,7 @@ class OpenAIRuntime:
         environ: Mapping[str, str] | None = None,
         repo_root: Path | None = None,
         sandbox_available: Callable[[], bool] = _sandbox_available,
+        platform: str | None = None,
     ) -> None:
         self._sessions_db = data_dir / SESSIONS_DB
         # Shell sandbox deny-read list, same policy as the Claude Bash sandbox (TD-1/TD-20).
@@ -291,6 +314,7 @@ class OpenAIRuntime:
             *sensitive_home_dirs(),  # TD-27
         ]
         self._sandbox_available = sandbox_available
+        self._platform = platform
         self._history_turns = history_turns
         self._model_factory = model_factory
         self._environ = environ if environ is not None else os.environ
@@ -303,12 +327,19 @@ class OpenAIRuntime:
             native.append(
                 ApplyPatchTool(editor=WorkspaceApplyPatchEditor(ctx.workdir, ctx.write_scope))
             )
-            if native_shell_supported(ctx.model_profile, sandbox_available=self._sandbox_available):
+            shell_mode = native_shell_mode(
+                ctx.model_profile,
+                sandbox_available=self._sandbox_available,
+                allow_unsandboxed=ctx.allow_unsandboxed_exec,
+                platform=self._platform,
+            )
+            if shell_mode != "disabled":
                 executor = LocalShellExecutor(
                     ctx.workdir,
                     turn.failed_calls,
                     environ=self._environ,
                     deny_read=self._shell_deny_read,
+                    sandboxed=shell_mode == "sandboxed",
                 )
                 native.append(ShellTool(executor=executor))
             else:

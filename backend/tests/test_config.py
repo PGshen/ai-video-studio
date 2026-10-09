@@ -143,3 +143,16 @@ def test_blank_web_mode_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setenv("STUDIO_WEB_MODE", "  ")
     assert Settings().web_mode == "tools"
+
+
+def test_allow_unsandboxed_exec_defaults_to_false_and_reads_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from studio.config import Settings
+
+    monkeypatch.delenv("STUDIO_ALLOW_UNSANDBOXED_EXEC", raising=False)
+    assert Settings().allow_unsandboxed_exec is False
+    monkeypatch.setenv("STUDIO_ALLOW_UNSANDBOXED_EXEC", "true")
+    assert Settings().allow_unsandboxed_exec is True
+    monkeypatch.setenv("STUDIO_ALLOW_UNSANDBOXED_EXEC", "")
+    assert Settings().allow_unsandboxed_exec is False

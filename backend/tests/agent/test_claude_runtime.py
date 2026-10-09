@@ -216,6 +216,7 @@ def _ctx(
     user_input: UserInput | None = None,
     record_tool_write: Callable[[str, str], None] = _noop_record,
     effort: Effort | None = None,
+    allow_unsandboxed_exec: bool = False,
 ) -> TurnContext:
     return TurnContext(
         system_prompt="系统提示词",
@@ -232,11 +233,13 @@ def _ctx(
         record_tool_write=record_tool_write,
         allow_web=allow_web,
         effort=effort,
+        allow_unsandboxed_exec=allow_unsandboxed_exec,
     )
 
 
-def _runtime(data_dir: Path, clients: Clients) -> ClaudeRuntime:
-    return ClaudeRuntime(data_dir, client_factory=clients, environ=_ENVIRON)
+def _runtime(data_dir: Path, clients: Clients, *, platform: str = "darwin") -> ClaudeRuntime:
+    # Most tests describe the sandboxed (macOS) behaviour; `TestExecModes` covers the others.
+    return ClaudeRuntime(data_dir, client_factory=clients, environ=_ENVIRON, platform=platform)
 
 
 async def _run(runtime: ClaudeRuntime, ctx: TurnContext) -> list[events.AgentEvent]:
@@ -847,6 +850,65 @@ class TestWindowsStylePathsInHooks:
         assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+def _tools(options: ClaudeAgentOptions) -> list[str]:
+    assert isinstance(options.tools, list)
+    return options.tools
+
+
+class TestExecModes:
+    """ADR 0024 / design §4.3: Bash (and Windows' PowerShell) per exec mode."""
+
+    async def _options(
+        self, workdir: Path, data_dir: Path, *, platform: str, allow: bool
+    ) -> ClaudeAgentOptions:
+        clients = Clients()
+        runtime = _runtime(data_dir, clients, platform=platform)
+        await _run(runtime, _ctx(workdir, allow_unsandboxed_exec=allow))
+        return clients.last.options
+
+    @pytest.mark.parametrize(("platform", "allow"), [("darwin", False), ("darwin", True)])
+    async def test_sandboxed_is_unchanged_and_ignores_the_switch(
+        self, workdir: Path, data_dir: Path, platform: str, allow: bool
+    ) -> None:
+        options = await self._options(workdir, data_dir, platform=platform, allow=allow)
+        assert _tools(options) == ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
+        assert "Bash" in options.allowed_tools
+        assert options.disallowed_tools == []
+        assert options.sandbox is not None and options.sandbox.get("enabled") is True
+
+    async def test_linux_uses_the_cli_sandbox(self, workdir: Path, data_dir: Path) -> None:
+        options = await self._options(workdir, data_dir, platform="linux", allow=False)
+        assert "Bash" in _tools(options)
+        assert options.sandbox is not None
+
+    async def test_disabled_removes_bash_and_powershell_without_a_sandbox_setting(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        options = await self._options(workdir, data_dir, platform="win32", allow=False)
+        assert "Bash" not in _tools(options)
+        assert "Bash" not in options.allowed_tools
+        assert "PowerShell" not in options.allowed_tools
+        assert set(options.disallowed_tools) == {"Bash", "PowerShell"}
+        # `enabled` + `failIfUnavailable` would make the Windows CLI refuse to start at all.
+        assert options.sandbox is None
+
+    async def test_unsandboxed_allows_bash_and_powershell_on_windows(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        options = await self._options(workdir, data_dir, platform="win32", allow=True)
+        assert {"Bash", "PowerShell"} <= set(_tools(options))
+        assert {"Bash", "PowerShell"} <= set(options.allowed_tools)
+        assert options.disallowed_tools == []
+        assert options.sandbox is None
+
+    async def test_write_hooks_stay_in_every_mode(self, workdir: Path, data_dir: Path) -> None:
+        for allow in (False, True):
+            options = await self._options(workdir, data_dir, platform="win32", allow=allow)
+            assert options.hooks is not None
+            matchers = [m.matcher for m in options.hooks["PreToolUse"]]
+            assert any(m and "Write" in m.split("|") for m in matchers)
+
+
 class TestWebHooks:
     """TD-39: native web tools get the URL-source hooks; without web nothing extra is registered."""
 
@@ -1244,7 +1306,9 @@ class TestSandbox:
     ) -> None:
         clients = Clients()
         repo = tmp_path / "repo"
-        runtime = ClaudeRuntime(data_dir, repo_root=repo, client_factory=clients, environ=_ENVIRON)
+        runtime = ClaudeRuntime(
+            data_dir, repo_root=repo, client_factory=clients, environ=_ENVIRON, platform="darwin"
+        )
         await _run(runtime, _ctx(workdir))
 
         sandbox = clients.last.options.sandbox

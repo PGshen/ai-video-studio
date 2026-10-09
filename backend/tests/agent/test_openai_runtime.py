@@ -59,6 +59,7 @@ from studio.agent.runtime import (
     TurnContext,
     UserInput,
 )
+from studio.agent.shell import LocalShellExecutor
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import Settings
 from studio.db.repo.profiles import ModelProfileValue
@@ -123,6 +124,7 @@ def _ctx(
     allow_web: bool = False,
     user_input: UserInput | None = None,
     effort: Effort | None = None,
+    allow_unsandboxed_exec: bool = False,
 ) -> TurnContext:
     return TurnContext(
         system_prompt="系统提示词",
@@ -139,6 +141,7 @@ def _ctx(
         record_tool_write=_noop_record,
         allow_web=allow_web,
         effort=effort,
+        allow_unsandboxed_exec=allow_unsandboxed_exec,
     )
 
 
@@ -154,6 +157,7 @@ def _runtime(
     history_turns: int = 20,
     repo_root: Path | None = None,
     sandbox: bool = True,
+    platform: str = "darwin",
 ) -> OpenAIRuntime:
     # Tool-surface tests inject the sandbox check so they run on every platform; tests that
     # actually execute shell commands are marked `darwin_only`.
@@ -164,6 +168,7 @@ def _runtime(
         history_turns=history_turns,
         repo_root=repo_root,
         sandbox_available=lambda: sandbox,
+        platform=platform,
     )
 
 
@@ -490,6 +495,70 @@ class TestEventConversion:
         end = _end(out)
         assert end.status == "failed"
         assert end.error is not None and "upstream exploded" in end.error
+
+
+def _shell_executor(tools: list[Any]) -> LocalShellExecutor | None:
+    for tool in tools:
+        if isinstance(tool, ShellTool):
+            executor = tool.executor
+            assert isinstance(executor, LocalShellExecutor)
+            return executor
+    return None
+
+
+class TestShellExecModes:
+    """ADR 0024 / design §4.3: the native Shell per exec mode (official API only)."""
+
+    async def _executor(
+        self,
+        workdir: Path,
+        data_dir: Path,
+        *,
+        sandbox: bool,
+        platform: str,
+        allow: bool,
+        profile: ModelProfileValue = _OPENAI,
+    ) -> LocalShellExecutor | None:
+        models = Models([[assistant_message("ok")]])
+        runtime = _runtime(data_dir, models, sandbox=sandbox, platform=platform)
+        await _run(runtime, _ctx(workdir, profile=profile, allow_unsandboxed_exec=allow))
+        return _shell_executor(models.calls[0].tools)
+
+    @pytest.mark.parametrize("allow", [False, True])
+    async def test_sandboxed_wraps_in_seatbelt(
+        self, workdir: Path, data_dir: Path, allow: bool
+    ) -> None:
+        executor = await self._executor(
+            workdir, data_dir, sandbox=True, platform="darwin", allow=allow
+        )
+        assert executor is not None and executor.sandboxed
+
+    async def test_disabled_offers_no_shell(self, workdir: Path, data_dir: Path) -> None:
+        executor = await self._executor(
+            workdir, data_dir, sandbox=False, platform="win32", allow=False
+        )
+        assert executor is None
+
+    async def test_unsandboxed_offers_an_unwrapped_shell(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        executor = await self._executor(
+            workdir, data_dir, sandbox=False, platform="win32", allow=True
+        )
+        assert executor is not None and not executor.sandboxed
+
+    async def test_the_switch_has_no_effect_on_macos(self, workdir: Path, data_dir: Path) -> None:
+        executor = await self._executor(
+            workdir, data_dir, sandbox=False, platform="darwin", allow=True
+        )
+        assert executor is None
+
+    async def test_gateways_never_get_a_shell(self, workdir: Path, data_dir: Path) -> None:
+        profile = dataclasses.replace(_OPENAI, base_url="https://openrouter.ai/api/v1")
+        executor = await self._executor(
+            workdir, data_dir, sandbox=False, platform="win32", allow=True, profile=profile
+        )
+        assert executor is None
 
 
 class TestNativeTools:

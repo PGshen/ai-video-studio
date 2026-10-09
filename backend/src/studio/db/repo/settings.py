@@ -6,6 +6,8 @@
 - `web_mode`：`tools`/`native`；缺省表示跟随环境变量 `STUDIO_WEB_MODE`（`effective_web_mode`）。
 - `tts_default`：`{voice, speech_rate}`，创建项目时复制进 `project.settings`（决策 D5）。
 - `default_style_preset_id`：创建项目时不指定风格就用它。
+- `allow_unsandboxed_exec`：布尔；缺省表示跟随环境变量 `STUDIO_ALLOW_UNSANDBOXED_EXEC`
+  （`effective_allow_unsandboxed_exec`，ADR 0024）。
 
 只校验「形状」：引用其他表的检查（模型配置、风格预设是否存在、key 是否已配置）在 api 层做，
 避免 `db.repo` 内部互相依赖。`update_settings` 是补丁语义：顶层键只改出现的；
@@ -44,6 +46,7 @@ _KEY_STAGE_DEFAULT_PROFILE: Final = "stage_default_profile"
 _KEY_WEB_MODE: Final = "web_mode"
 _KEY_TTS_DEFAULT: Final = "tts_default"
 _KEY_DEFAULT_STYLE: Final = "default_style_preset_id"
+_KEY_ALLOW_UNSANDBOXED_EXEC: Final = "allow_unsandboxed_exec"
 _TTS_FIELDS: Final = ("voice", "speech_rate")
 
 
@@ -60,6 +63,7 @@ class SettingsValue:
     tts_voice: str | None = None
     tts_speech_rate: float | None = None
     default_style_preset_id: str | None = None
+    allow_unsandboxed_exec: bool | None = None
 
 
 def _non_empty_str(value: object, what: str) -> str:
@@ -90,6 +94,12 @@ def _validate_web_mode(value: object) -> str | None:
     return str(value)
 
 
+def _validate_bool(value: object) -> bool | None:
+    if value is None or isinstance(value, bool):
+        return value
+    raise SettingsValidationError("allow_unsandboxed_exec 只接受 true / false")
+
+
 def _validate_tts_default(patch: object) -> dict[str, Any]:
     if not isinstance(patch, Mapping):
         raise SettingsValidationError("tts_default 必须是 {voice, speech_rate} 对象")
@@ -117,6 +127,7 @@ def _validate(patch: Mapping[str, Any]) -> dict[str, Any]:
         _KEY_STAGE_DEFAULT_PROFILE: _validate_stage_defaults,
         _KEY_WEB_MODE: _validate_web_mode,
         _KEY_TTS_DEFAULT: _validate_tts_default,
+        _KEY_ALLOW_UNSANDBOXED_EXEC: _validate_bool,
         _KEY_DEFAULT_STYLE: lambda v: (
             None if v is None else _non_empty_str(v, "default_style_preset_id")
         ),
@@ -177,6 +188,7 @@ def get_all_settings(engine: Engine) -> SettingsValue:
         tts_voice=tts.get("voice"),
         tts_speech_rate=tts.get("speech_rate"),
         default_style_preset_id=stored.get(_KEY_DEFAULT_STYLE),
+        allow_unsandboxed_exec=stored.get(_KEY_ALLOW_UNSANDBOXED_EXEC),
     )
 
 
@@ -190,3 +202,10 @@ def effective_web_mode(
 ) -> Literal["tools", "native"]:
     """界面覆盖优先，否则用环境变量（`Settings.web_mode`）。TurnRunner 每轮读一次，不缓存。"""
     return web_mode_override(engine) or env_default
+
+
+def effective_allow_unsandboxed_exec(engine: Engine, env_default: bool) -> bool:
+    """界面覆盖优先，否则用环境变量（`Settings.allow_unsandboxed_exec`）。TurnRunner 每轮开始时
+    读一次（本轮之内不变），配乐渲染接口每次请求读一次；不缓存。"""
+    override = get_all_settings(engine).allow_unsandboxed_exec
+    return env_default if override is None else override
