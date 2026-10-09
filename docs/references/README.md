@@ -24,6 +24,7 @@ agent SDK 和前端组件库更新很快，AI 的训练知识可能已经过时�
 | [sse-starlette.md](sse-starlette.md) | sse-starlette、httpx `ASGITransport` 流式测试的限制 |
 | [legacy-assets.md](legacy-assets.md) | 旧项目 `../ai-video` 中可迁移的资产 |
 | [manim.md](manim.md) | manim（Manim Community）渲染引擎（已下线，ADR 0027，仅供历史参考） |
+| [windows.md](windows.md) | Windows 11 原生环境：编码与换行、进程树、符号链接、工具链的实测结论 |
 | [ffmpeg.md](ffmpeg.md) | ffmpeg（本机 Homebrew 安装）：滤镜可用性、字幕叠加方案 |
 | [volcengine-tts.md](volcengine-tts.md) | Volcengine TTS：真实合成的时间戳粒度、开头/结尾静音、对齐结果 |
 | [tavily.md](tavily.md) | Tavily 搜索与网页抓取：端点、字段、错误码 |

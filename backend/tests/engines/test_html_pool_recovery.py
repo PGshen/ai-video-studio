@@ -8,13 +8,13 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 from fixtures.html_engine import projects as fx
+from fixtures.processes import descendants
 from studio.engines.render.html.assemble import assemble
 from studio.engines.render.html.browser import BrowserClosed
 from studio.engines.render.html.pool import BrowserPool
@@ -23,23 +23,7 @@ pytestmark = pytest.mark.slow
 
 
 def _descendants() -> list[tuple[int, str]]:
-    out = subprocess.run(
-        ["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, check=True
-    ).stdout.splitlines()
-    rows = []
-    for line in out:
-        parts = line.split(None, 2)
-        if len(parts) == 3:
-            rows.append((int(parts[0]), int(parts[1]), parts[2]))
-    mine = {os.getpid()}
-    grew = True
-    while grew:
-        grew = False
-        for pid, ppid, _ in rows:
-            if ppid in mine and pid not in mine:
-                mine.add(pid)
-                grew = True
-    return [(pid, command) for pid, _, command in rows if pid in mine and pid != os.getpid()]
+    return descendants(os.getpid())
 
 
 def _browser_main_pids() -> list[int]:

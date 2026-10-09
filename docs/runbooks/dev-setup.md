@@ -12,6 +12,35 @@
 
 Manim 引擎已下线（ADR 0027），不再需要 cairo、pango、LaTeX。
 
+## Windows 11（原生，不用 WSL）
+
+2026-10-10 在 Windows 11 Pro 上实测走通（windows-native 计划 T9）；实测细节见 [references/windows.md](../references/windows.md)。
+
+| 依赖 | 用途 | 安装 |
+|---|---|---|
+| Git for Windows | 版本管理；自带的 sh 跑 pre-commit hook；Git Bash 是无隔离模式下执行 agent 命令的 shell | `winget install Git.Git` |
+| uv | Python 包管理，Python 3.12 | `winget install astral-sh.uv`（或 `irm https://astral.sh/uv/install.ps1 \| iex`） |
+| Node 22+ 和 pnpm | 前端 | `winget install OpenJS.NodeJS.LTS`，然后 `corepack enable` |
+| ffmpeg | 成片出帧编码、混音、音频解码 | `winget install Gyan.FFmpeg` 或 `scoop install ffmpeg`；新开终端后 `ffprobe -version` 能运行 |
+| Claude Code | 开发会话；`claude-login` 模型配置用它的登录状态 | `irm https://claude.ai/install.ps1 \| iex`，新开终端运行 `claude` 登录一次 |
+| 开发者模式 | 不提权创建符号链接（工作区越界检查的测试要用） | 设置 → 系统 → 开发者选项 → 开发人员模式 |
+
+步骤（**命令都在 PowerShell 里运行**；Git Bash 里中文输出是乱码）：
+
+1. 打开开发者模式后，用 Python 验证（PowerShell 5.1 的 `New-Item -ItemType SymbolicLink` 即使开了开发者模式也要管理员，不能用来验证）：
+
+   ```bash
+   python -c "import os, tempfile; d = tempfile.mkdtemp(); os.symlink(d, d + '-link'); print('ok')"
+   ```
+
+2. 仓库放在不太深的路径下（工作区路径过长会碰到 260 字符的限制）；clone 之后在仓库里设置 `git config core.autocrlf false`（Git for Windows 的系统级配置默认把文件转成 CRLF；仓库有 `.gitattributes`，新 clone 按 LF 检出）。
+3. 复制 `backend/.env`（不入库）。`tasks.py` 只支持字面量写法，见下面「配置」。
+4. 初始化：`uv run --project backend python scripts/tasks.py setup`。如果 `pnpm install` 因为 npm 镜像源缺包报 404，可以临时换源：`cd frontend; pnpm install --registry=https://registry.npmmirror.com/`（不改全局配置，lockfile 不变）。
+5. 质量关口：`uv run --project backend python scripts/tasks.py check`。直接跑 pytest 时先 `$env:PYTHONUTF8=1`（Windows 默认按 GBK 读写文本，`conftest.py` 发现没开 UTF-8 模式会直接报错）。
+6. 启动：`uv run --project backend python scripts/tasks.py dev`；`Ctrl+C`（或 `Ctrl+Break`、关闭窗口）结束三个进程。
+
+Windows 上没有沙箱：默认 agent 拿不到命令工具，合成配乐会报错；需要时在 设置 → 通用 里打开「允许在无隔离环境执行 agent 命令」，先读那里的风险说明（ADR 0024）。没有 `ulimit`，配乐脚本的 CPU 只受超时限制，产物大小在运行后检查。
+
 ## 命令行路径
 
 所有命令的逻辑都在 `scripts/tasks.py`，Makefile 每个目标只是一行转调（ADR 0025）；Windows 上不用 make，在仓库根目录运行 `uv run --project backend python scripts/tasks.py <目标>`。Claude Code 沙箱中的 `PATH` 可能不包含 `~/.local/bin` 和 nvm 的 shims：Makefile 自己定位 `uv`，`tasks.py` 再定位 `uv` 和 `pnpm`（先找 `PATH`，再找常见安装位置），不依赖调用方的 `PATH`。在 Makefile 之外手动执行时，使用绝对路径，例如 `~/.local/bin/uv run pytest`（在 `backend/` 目录下）。
