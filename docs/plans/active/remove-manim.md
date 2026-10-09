@@ -55,7 +55,7 @@
 - **测试**：先改测试断言上述行为并确认失败。
 - **验证命令**：`make check`
 
-### T2：删除 manim 阶段、引擎与 worker 分支（待开始）
+### T2：删除 manim 阶段、引擎与 worker 分支（完成）
 
 - **目标**：manim 相关代码全部删除，依赖它的通用测试夹具迁移到 `animation_html`。
 - **涉及文件**：删除 `stages/animation/`、`engines/render/manim/`、`tests/engines/test_manim_*.py`、`tests/stages/test_animation_{validate,preview,prompt}.py`、`tests/fixtures/animation/`（视引用情况保留音频夹具）；修改 `main.py`、`worker.py`、`api/scene_checks.py`、`api/animation_stage.py`、`api/animation.py`、`agent/tools.py`、`config.py`、`db/repo/settings.py`、`stages/common/suggest_upstream_change.py`（`stages` 集合）；以及 `tests/agent/*`、`tests/smoke/support.py`、`tests/test_worker.py`、`tests/api/test_animation_*` 等夹具迁移。
@@ -83,13 +83,19 @@
 ## 进度
 
 - 2026-10-09 — T1 — `valid_kinds`/`PRESETS` 去掉 manim，新增 `DEFAULT_KIND`（HTML 讲解），`unavailable_reason` 对 manim 返回下线原因；创建 manim 项目 422。默认类型变化只让 4 个测试需要调整，`make check` 绿
+- 2026-10-09 — T2 — 删除 `stages/animation/`、`engines/render/manim/`、`engines/render/base.py`（只服务 manim）；worker 只走 HTML，老项目任务以"Manim 已下线"失败；渲染/定稿端点对老项目 409；镜头检查只认 HTML 工具；默认模型设置读时丢弃 `animation` 键。测试夹具迁到 `animation_html`，`make check` 绿
 
 ## 下一步
 
-- 从 T2 开始：删除 `stages/animation/`、`engines/render/manim/`，先跑 `grep -rln "stages.animation\b\|engines.render.manim" backend` 找出所有引用。
+- 从 T3 开始：`backend/pyproject.toml` 删 `manim`、`pyflakes`，`cd backend && uv lock && uv sync`，确认 `grep -i manim uv.lock` 为空，跑 `make check` 和 `uv run pytest -m slow`。
 
 ## 决策记录
 
+- 2026-10-09 — 一并删除 `engines/render/base.py`（`RenderEngine` 协议等）— 只有 manim 引擎和 worker 的 manim 分支在用，HTML 引擎不依赖它。
+- 2026-10-09 — 渲染（`POST /render`）和成片定稿对老 manim 项目返回 409，worker 也兜底失败 — 阶段已不注册，提前给可读原因，避免任务排进队列后才失败。
+- 2026-10-09 — `stage_default_profile` 去掉 `animation` 后，库里已存的该键读时丢弃而不是迁移 — 不需要数据迁移，写入时照常校验。
+- 2026-10-09 — `fixtures/animation/` 保留：其中叙事产物（narrative/timing/音频）被 HTML、配乐等种子共用；`seed.py` 改为老 manim 项目种子，用来测只读行为。
+- 2026-10-09 — `suggest_upstream_change` 的 `stages` 声明改为实际挂载它的阶段（narrative、music、animation_html、produce）— 该字段只是声明，原值里的 `animation` 已不存在。
 - 2026-10-09 — 老 manim 项目保留为只读，不做数据迁移 — 负责人选择；只有 2 个此类项目，其中 1 个是可删除的验证项目。
 - 2026-10-09 — `Engine` 类型保留 `"manim"` 字面量 — 只用于解析已存的项目设置，避免老项目被当成损坏数据。
 

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from fixtures.animation.seed import seed_animation_project
+from fixtures.animation.seed import seed_legacy_manim_project
 from fixtures.animation_html.seed import seed_animation_html_project
 from studio.api.animation_stage import animation_stage_of
 from studio.db.repo.snapshots import latest_snapshot
@@ -95,18 +95,17 @@ async def test_html_finalize_rejects_changes_made_after_the_render(api_env: ApiE
     assert "重新渲染" in assert_detail(response)
 
 
-async def test_manim_project_still_renders_and_finalizes_the_animation_stage(
-    api_env: ApiEnv,
-) -> None:
-    pid = seed_animation_project(
+async def test_legacy_manim_project_can_neither_render_nor_finalize(api_env: ApiEnv) -> None:
+    """Manim is retired (ADR 0027): old projects stay readable but never reach the worker."""
+    pid = seed_legacy_manim_project(
         api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
     )
-    assert (await api_env.client.post(f"/api/projects/{pid}/render")).status_code == 201
+    assert (await api_env.client.post(f"/api/projects/{pid}/render")).status_code == 409
     snapshot = latest_snapshot(api_env.app.state.engine, pid)
     assert snapshot is not None
     _write_final_json(api_env, pid, snapshot.id)
     response = await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
-    assert response.status_code == 200 and response.json()["stage"] == "animation"
+    assert response.status_code == 409
 
 
 async def test_render_is_refused_while_an_agent_turn_is_running(api_env: ApiEnv) -> None:

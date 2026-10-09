@@ -10,10 +10,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-
-from studio.engines.render.manim import keyframes
-
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "studio"
 
 
@@ -41,31 +37,3 @@ def _subprocess_calls_without_stdin() -> list[str]:
 
 def test_every_subprocess_call_sets_stdin_explicitly() -> None:
     assert _subprocess_calls_without_stdin() == []
-
-
-@pytest.mark.asyncio
-async def test_extract_keyframe_passes_nostdin_and_devnull(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, object] = {}
-
-    class _FakeProc:
-        returncode = 0
-
-        async def communicate(self) -> tuple[bytes, bytes]:
-            return b"png-bytes", b""
-
-    async def _fake_exec(*cmd: str, **kwargs: object) -> _FakeProc:
-        captured["cmd"] = list(cmd)
-        captured["kwargs"] = kwargs
-        return _FakeProc()
-
-    monkeypatch.setattr(keyframes.asyncio, "create_subprocess_exec", _fake_exec)
-
-    await keyframes.extract_keyframe("/tmp/x.mp4", 1.0)
-
-    cmd = captured["cmd"]
-    assert isinstance(cmd, list)
-    assert cmd[0] == "ffmpeg"
-    assert "-nostdin" in cmd
-    kwargs = captured["kwargs"]
-    assert isinstance(kwargs, dict)
-    assert kwargs["stdin"] == keyframes.asyncio.subprocess.DEVNULL

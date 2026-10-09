@@ -66,6 +66,6 @@ SUGGEST_UPSTREAM_CHANGE_TOOL = ToolSpec(
         "to_stage 只能是本阶段的直接上游（动画阶段填 narrative，叙事阶段填 topic）。"
     ),
     input_model=SuggestUpstreamChangeArgs,
-    stages={"animation", "narrative"},
+    stages={"narrative", "music", "animation_html", "produce"},
     handler=_handler,
 )

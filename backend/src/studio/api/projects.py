@@ -431,7 +431,7 @@ async def reopen_stage_endpoint(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if stage == animation_stage(engine, project_id):
         # `completed_at`（`api.animation.finalize_render_endpoint` 设置）代表
-        # "成片已经和工作区一致地定稿过"；重新打开出片阶段（Manim 动画、HTML 动画、配乐与动画）
+        # "成片已经和工作区一致地定稿过"；重新打开出片阶段（HTML 动画、配乐与动画）
         # 后工作区又能改，成片不再代表当前状态，这条"已完成"的标记要跟着撤销（评审发现）。
         clear_project_completed(engine, project_id)
     return _stage_out(value)

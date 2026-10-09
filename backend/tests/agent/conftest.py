@@ -11,10 +11,18 @@ from studio.agent.stage import StageRegistry
 from studio.db.engine import make_engine, migrate
 from studio.db.repo.projects import create_project
 from studio.db.repo.stages import create_stage
-from studio.stages.animation import STAGE as ANIMATION
+from studio.stages.animation_html import STAGE as ANIMATION
 from studio.stages.narrative import STAGE as NARRATIVE
 from studio.stages.topic import STAGE as TOPIC
 from studio.workspace import BlobStore, create_snapshot, project_dir
+
+EXPLAINER_SETTINGS = {
+    "video_kind": "explainer_html",
+    "engine": "html",
+    "narration": True,
+    "music_source": "none",
+    "pipeline": ["topic", "narrative", "animation_html"],
+}
 
 
 @pytest.fixture
@@ -26,9 +34,9 @@ def workdir(tmp_path: Path) -> Path:
 
 @dataclass
 class StudioEnv:
-    """A migrated DB, a blob store, the three placeholder stages and one project
-    whose stage rows start as topic=active, narrative/animation=locked (the
-    state T7's project creation will produce)."""
+    """A migrated DB, a blob store, the three explainer stages and one HTML explainer project
+    whose stage rows start as topic=active, narrative/animation_html=locked (the state project
+    creation produces)."""
 
     data_dir: Path
     engine: Engine
@@ -47,13 +55,17 @@ class StudioEnv:
         path.write_text(content, encoding="utf-8")
 
     def new_project(self, title: str = "另一个项目") -> str:
-        project = create_project(self.engine, title=title)
+        project = create_project(self.engine, title=title, settings=dict(EXPLAINER_SETTINGS))
         _init_project(self, project.id)
         return project.id
 
 
 def _init_project(env: StudioEnv, project_id: str) -> None:
-    for stage, status in (("topic", "active"), ("narrative", "locked"), ("animation", "locked")):
+    for stage, status in (
+        ("topic", "active"),
+        ("narrative", "locked"),
+        ("animation_html", "locked"),
+    ):
         create_stage(env.engine, project_id=project_id, stage=stage, status=status)
     style = project_dir(env.data_dir, project_id) / "style" / "STYLE.md"
     style.parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +81,7 @@ def env(tmp_path: Path) -> Iterator[StudioEnv]:
     registry = StageRegistry()
     for stage in (TOPIC, NARRATIVE, ANIMATION):
         registry.register(stage)
-    project = create_project(engine, title="测试项目")
+    project = create_project(engine, title="测试项目", settings=dict(EXPLAINER_SETTINGS))
     studio_env = StudioEnv(
         data_dir=data_dir,
         engine=engine,

@@ -38,7 +38,6 @@ from studio.db.repo.projects import create_project
 from studio.db.repo.sessions import create_session
 from studio.db.repo.stages import create_stage
 from studio.db.repo.turns import TurnEventValue, TurnValue, get_turn, list_events
-from studio.stages.animation import STAGE as ANIMATION
 from studio.stages.animation_html import STAGE as ANIMATION_HTML
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 from studio.stages.concept import STAGE as CONCEPT
@@ -330,11 +329,12 @@ def build_harness(
     cancel_grace_seconds: float = 10.0,
     real_stages: bool = False,
     web_mode: Literal["tools", "native"] = "tools",
-    html: bool = False,
     reel: bool = False,
     music_video: bool = False,
 ) -> SmokeHarness:
-    """`real_stages=True`（M4）：注册真实的 brainstorm/topic/narrative/animation 阶段（带联网
+    """项目默认是 HTML 讲解（Manim 已下线，ADR 0027）；`reel`/`music_video` 换成短片/MV。
+
+    `real_stages=True`（M4）：注册真实的 brainstorm/topic/narrative/animation_html 等阶段（带联网
     工具、`check_brief` 等），并按 `web_mode` 决定联网方式；默认仍是 M1 的精简阶段。"""
     data_dir = tmp_path / "data"
     engine = make_engine(tmp_path / "studio.db")
@@ -353,7 +353,6 @@ def build_harness(
             CONCEPT,
             MUSIC,
             PRODUCE,
-            ANIMATION,
             ANIMATION_HTML,
             STYLE,
         ):
@@ -361,7 +360,7 @@ def build_harness(
     else:
         registry.register(SmokeStage(TOPIC))
         registry.register(_NoWebStage(NARRATIVE))
-        registry.register(_NoWebStage(ANIMATION))
+        registry.register(_NoWebStage(ANIMATION_HTML))
     factory = RuntimeFactory()
     register_claude(factory, settings)
     register_openai(factory, settings)
@@ -377,8 +376,9 @@ def build_harness(
         cancel_grace_seconds=cancel_grace_seconds,
     )
 
-    last = "animation_html" if html or reel or music_video else "animation"
-    pipeline = ["concept", "produce"] if music_video or reel else ["topic", "narrative", last]
+    pipeline = (
+        ["concept", "produce"] if music_video or reel else ["topic", "narrative", "animation_html"]
+    )
     project_settings = (
         {
             "video_kind": "music_video",
@@ -403,8 +403,6 @@ def build_harness(
             "music_source": "none",
             "pipeline": pipeline,
         }
-        if html
-        else None
     )
     project = create_project(engine, title="冒烟测试", settings=project_settings)
     for index, stage in enumerate(pipeline):

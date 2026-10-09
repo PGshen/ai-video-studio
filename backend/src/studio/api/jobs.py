@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
-from studio.api.animation_stage import animation_stage
+from studio.api.animation_stage import require_live_animation_stage
 from studio.api.deps import get_engine, get_settings, get_turn_runner
 from studio.api.schemas import JobOut
 from studio.config import Settings
@@ -77,7 +77,7 @@ def create_render_job_endpoint(
     _require_project(engine, project_id)
     if turn_runner.is_project_busy(project_id):
         raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请等它结束再渲染成片")
-    stage = get_stage(engine, project_id, animation_stage(engine, project_id))
+    stage = get_stage(engine, project_id, require_live_animation_stage(engine, project_id))
     if stage is None:
         raise HTTPException(status_code=404, detail="项目没有动画阶段")
     if stage.status == "locked":

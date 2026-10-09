@@ -6,9 +6,9 @@
 选题定稿（T4 fixture）→ narrative agent（真实 `TurnRunner` + `FakeRuntime`）
 跑一轮：写 `narrative.json` → `validate_narrative` → `synthesize_tts`（假 TTS
 引擎，不发网络请求）→ `stage_flow.finalize` 定稿叙事，动画阶段解锁 → 动画阶段
-开一轮，`upstream/narrative/` 里能读到同 schema 的产物，`validate_scenes` 能
-解析出镜头 id（此时还没写镜头代码，所以它会点名"缺少代码"的镜头，这正好证明
-id 列表读得懂；不要求真的通过 manim 校验）。
+开一轮，`upstream/narrative/` 里能读到同 schema 的产物，`validate_scenes_html` 能
+解析出镜头 id（此时还没写镜头脚本，所以它会点名缺脚本的镜头，这正好证明 id 列表
+读得懂）。
 """
 
 from __future__ import annotations
@@ -171,14 +171,14 @@ class TestNarrativeEndToEndFlow:
             assert scene["alignment_coverage"] == 1.0
 
         # 2. 叙事定稿：动画阶段从 locked 变 active。
-        assert _stage_status(api_env, pid, "animation") == "locked"
+        assert _stage_status(api_env, pid, "animation_html") == "locked"
         stage_flow.finalize(engine, blobs, api_env.app.state.registry, pid, "narrative")
-        assert _stage_status(api_env, pid, "animation") == "active"
+        assert _stage_status(api_env, pid, "animation_html") == "active"
 
-        # 3. 动画阶段开一轮：upstream/narrative/ 有同 schema 的产物，validate_scenes
-        #    读得懂镜头 id（还没写镜头代码，所以点名"缺少代码"的镜头）。
+        # 3. 动画阶段开一轮：upstream/narrative/ 有同 schema 的产物，validate_scenes_html
+        #    读得懂镜头 id（还没写镜头脚本，所以点名缺脚本的镜头）。
         animation_session_id = await _run_turn(
-            api_env, pid, "animation", [call_tool("validate_scenes")]
+            api_env, pid, "animation_html", [call_tool("validate_scenes_html")]
         )
         upstream_dir = workdir / "upstream" / "narrative"
         assert json.loads((upstream_dir / "narrative.json").read_text(encoding="utf-8")) == (
@@ -186,7 +186,9 @@ class TestNarrativeEndToEndFlow:
         )
         assert (upstream_dir / "timing.json").is_file()
 
-        validate_result = _tool_results_by_name(api_env, animation_session_id)["validate_scenes"]
+        validate_result = _tool_results_by_name(api_env, animation_session_id)[
+            "validate_scenes_html"
+        ]
         assert validate_result["is_error"] is True
         assert "s-hook" in validate_result["text"]
         assert "s-explain" in validate_result["text"]

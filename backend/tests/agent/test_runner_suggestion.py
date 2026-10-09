@@ -19,7 +19,7 @@ async def test_a_successful_suggestion_becomes_a_persisted_event_of_the_same_tur
     env: StudioEnv,
 ) -> None:
     h = _make_harness(env)
-    session = h.session(stage="animation")
+    session = h.session(stage="animation_html")
 
     turn = await h.run(
         session,
@@ -35,7 +35,7 @@ async def test_a_successful_suggestion_becomes_a_persisted_event_of_the_same_tur
     [event] = _suggestion_events(env, session)
     assert event.turn_id == turn.id
     assert event.payload["suggestion_id"] == row.id
-    assert event.payload["from_stage"] == "animation"
+    assert event.payload["from_stage"] == "animation_html"
     assert event.payload["to_stage"] == "narrative"
     assert event.payload["content"] == "s-hook 旁白太长"
     assert event.payload["status"] == "open"
@@ -45,7 +45,7 @@ async def test_the_event_comes_after_the_tool_result_and_is_published_live(
     env: StudioEnv,
 ) -> None:
     h = _make_harness(env)
-    session = h.session(stage="animation")
+    session = h.session(stage="animation_html")
     received, pump = _collect(h.bus, session)
 
     await h.run(
@@ -60,7 +60,7 @@ async def test_the_event_comes_after_the_tool_result_and_is_published_live(
 
 async def test_each_suggestion_in_a_turn_gets_exactly_one_event(env: StudioEnv) -> None:
     h = _make_harness(env)
-    session = h.session(stage="animation")
+    session = h.session(stage="animation_html")
 
     await h.run(
         session,
@@ -77,7 +77,7 @@ async def test_each_suggestion_in_a_turn_gets_exactly_one_event(env: StudioEnv) 
 
 async def test_a_rejected_call_creates_neither_a_row_nor_an_event(env: StudioEnv) -> None:
     h = _make_harness(env)
-    session = h.session(stage="animation")
+    session = h.session(stage="animation_html")
 
     await h.run(
         session,
@@ -91,7 +91,7 @@ async def test_a_rejected_call_creates_neither_a_row_nor_an_event(env: StudioEnv
 async def test_the_tool_sees_the_direct_upstream_of_the_running_stage(env: StudioEnv) -> None:
     h = _make_harness(env)
 
-    await h.run(h.session(stage="animation"), [fake.say("x")])
+    await h.run(h.session(stage="animation_html"), [fake.say("x")])
     assert h.contexts[-1].tool_context().upstream_stages == ("narrative",)
     await h.run(h.session(stage="narrative"), [fake.say("x")])
     assert h.contexts[-1].tool_context().upstream_stages == ("topic",)
@@ -101,7 +101,7 @@ async def test_the_tool_sees_the_direct_upstream_of_the_running_stage(env: Studi
 
 async def test_the_tool_sees_the_running_turn_id(env: StudioEnv) -> None:
     h = _make_harness(env)
-    session = h.session(stage="animation")
+    session = h.session(stage="animation_html")
 
     turn = await h.run(session, [fake.say("x")])
 

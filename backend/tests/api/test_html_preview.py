@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from fixtures.animation.seed import seed_animation_project
+from fixtures.animation.seed import seed_legacy_manim_project
 from fixtures.animation_html.seed import seed_animation_html_project
 from fixtures.html_engine import projects as fx
 
@@ -200,7 +200,7 @@ async def test_inconsistent_narrative_is_409_naming_the_scene(api_env: ApiEnv, p
 
 
 async def test_manim_projects_have_no_html_preview(api_env: ApiEnv) -> None:
-    manim = seed_animation_project(
+    manim = seed_legacy_manim_project(
         api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
     )
     response = await api_env.client.get(f"{_base(manim)}/meta")

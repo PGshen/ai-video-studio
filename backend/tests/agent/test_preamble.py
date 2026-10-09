@@ -20,7 +20,7 @@ from studio.agent.stage import StageRegistry
 from studio.agent.stage_flow import finalize
 from studio.db.repo.projects import update_project_settings
 from studio.db.repo.stages import create_stage, update_stage
-from studio.stages.animation import STAGE as ANIMATION_STAGE
+from studio.stages.animation_html import STAGE as ANIMATION_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
 from studio.workspace import BlobStore, ModifiedFile, WorkspaceDiff, create_snapshot
@@ -298,6 +298,9 @@ def test_upstream_changes_slice_by_artifact_dirs_not_stage_name(
     (env.workdir / "visual" / "note.txt").write_text("new", encoding="utf-8")
     new_snap = create_snapshot(env.engine, env.blobs, env.project_id, "turn")
 
+    update_project_settings(
+        env.engine, env.project_id, {"pipeline": ["topic", "narrative", "visual", "animation_html"]}
+    )
     create_stage(env.engine, project_id=env.project_id, stage="visual", status="finalized")
     update_stage(env.engine, env.project_id, "visual", finalized_snapshot_id=new_snap.id)
     create_stage(env.engine, project_id=env.project_id, stage="animation_html", status="active")

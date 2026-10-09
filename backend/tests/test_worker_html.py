@@ -19,7 +19,7 @@ from sqlalchemy import Engine
 
 from fixtures.animation_html.seed import seed_animation_html_project
 from fixtures.html_engine import projects as fx
-from fixtures.html_engine.worker_fakes import ExplodingManim, FakeBackend
+from fixtures.html_engine.worker_fakes import FakeBackend
 from studio import worker_html
 from studio.db.engine import make_engine, migrate, session_scope
 from studio.db.models import Job
@@ -64,7 +64,6 @@ async def _run(env: HtmlEnv, backend: FakeBackend) -> str:
         env.engine,
         env.blobs,
         data_dir=env.data_dir,
-        render_engine=ExplodingManim(),
         html_backend=backend.as_backend(),
     )
     assert claimed is True
