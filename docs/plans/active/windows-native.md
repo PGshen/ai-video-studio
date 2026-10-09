@@ -6,12 +6,12 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 已批准 |
 | 里程碑 | 平台支持（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [windows-native-support 设计](../../design/2026-10-09-windows-native-support.md)（负责人 2026-10-09 批准） |
 | 分支 | `windows-native`，从 main 切出；两台机器通过 `origin` 同步 |
-| 批准记录 | 待负责人批准 |
-| 执行方式 | 待负责人选择（见「决策记录」D1） |
+| 批准记录 | 2026-10-09：负责人批准计划；D1 选备选方案（T1–T11 全部在 Windows 上做），会话内直接执行 |
+| 执行方式 | 会话内直接执行（不派子代理），完成后由一个独立评审检查整个分支；T1–T11 在 Windows 上，T12 回到 macOS |
 
 ## 目标
 
@@ -32,7 +32,8 @@
 - `scripts/tasks.py` **只用标准库**，不 import `studio`；Makefile 各目标只有一行，转调 `tasks.py`；`make check` 仍然是质量关口的名字。
 - `.dev/`（pid 文件）不放在 `data/` 下，并加进 `.gitignore`。工作区仍然不能在 uvicorn reload 的监听范围内（AGENTS.md 红线）。
 - 平台相关的跳过只能用 `conftest.py` 里统一定义的 `posix_only`、`macos_only` 标记和"能否建符号链接"的探测 fixture，每处写明原因。不用 `xfail`、`# type: ignore`、`noqa`。
-- 每个任务结束时，**在该任务指定的机器上**跑 `make check`（macOS）或 `tasks.py check`（Windows）并读完结果；至少一个 commit，格式 `<type>(<scope>): <中文说明>`；结束会话前 push，让另一台机器能接着做。
+- **质量关口（D1）**：T1–T8 在 Windows 上做，此时 `tasks.py check` 还不可能全绿。开工前在「意外与发现」里记一份 **Windows 基线失败清单**（失败的测试 id 和失败原因的类别）；每个任务的完成标准改为"和基线比没有新增失败，并且本任务负责修复的那些失败已经消失"，提交时在「进度」里写明剩余失败数。T1 完成之前用 `cd backend; uv run pytest` 和 `uv run ruff check .` 代替。macOS 上的回归统一在 T12 补上；POSIX 分支的真实测试（例如 `killpg` 清理孙进程）在 Windows 上会被跳过，T12 必须在 macOS 上确认它们执行过并且通过。T9 结束时 Windows 上必须全绿。
+- 每个任务结束时跑完质量关口并读完结果；至少一个 commit，格式 `<type>(<scope>): <中文说明>`；结束会话前 push，让另一台机器能接着做。
 - 外部行为以 `docs/references/` 为准；在 Windows 上实测的新结论补进 references，注明日期和"Windows 11 实测"。
 
 ## 审查重点
@@ -60,7 +61,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞。「机器」= 该任务的质量关口在哪台机器上跑。 -->
 
-### T1：任务脚本骨架与行尾（待开始，机器：macOS）
+### T1：任务脚本骨架与行尾（待开始，机器：Windows，按基线对比）
 
 - **目标**：`scripts/tasks.py` 接管除 `dev` 以外的全部命令；Makefile 变成薄壳；仓库行尾统一为 LF。完成后 Windows 上就有了能跑的质量关口入口（结果暂时是红的）。
 - **涉及文件**：新增 `scripts/tasks.py`、`.gitattributes`、`backend/tests/scripts/test_tasks.py`（以及 `__init__.py`）、`docs/decisions/0025-Python任务脚本.md`；修改 `Makefile`、`.githooks/pre-commit`、`AGENTS.md`「常用命令」、`docs/runbooks/dev-setup.md`（命令写法）。
@@ -74,10 +75,10 @@
   - pre-commit hook：调用 `tasks.py check-fast`；先找 `uv`（PATH 里没有就试 `~/.local/bin/uv`），保持 sh 语法。
   - ADR 0025：`tasks.py` 是工具链逻辑的唯一来源，Makefile 只是薄壳；Windows 上的写法；不迁移 `export-legacy-styles`。
 - **测试**：先写 `test_tasks.py`，用 `importlib` 按文件路径加载 `scripts/tasks.py`。覆盖：`parse_dotenv` 的全部写法和报错（审查重点 5，另外用一份夹具在 macOS 上和 `bash -c 'set -a; . file; env'` 的结果逐项比较，这条用例标 `posix_only`，T8 之前先用 `sys.platform` 判断）；`smoke_env` 两个平台的白名单；`find_uv` 在 PATH 里没有时会去找候选位置。
-- **完成标准**：macOS 上 `make check`、`make check-fast`、`make smoke` 的行为和输出不变（提交时 hook 能运行）；`uv run --project backend python scripts/tasks.py check` 和 `make check` 结果一致。
-- **验证命令**：`make check`；`uv run --project backend python scripts/tasks.py check-docs`。
+- **完成标准**：Windows 上 `tasks.py check`、`check-fast` 能运行（结果对照基线），提交时 hook 能运行；Makefile 薄壳在 macOS 上的等价性（`make check` 与 `tasks.py check` 结果一致、`make smoke` 照常）留到 T12 确认。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；`uv run --project backend python scripts/tasks.py check-docs`。
 
-### T2：文本 IO 一律 UTF-8（待开始，机器：macOS）
+### T2：文本 IO 一律 UTF-8（待开始，机器：Windows，按基线对比）
 
 - **目标**：把"文本 IO 显式写 UTF-8"变成 lint 规则，并修好现有的违规。
 - **涉及文件**：`backend/pyproject.toml`（ruff 的 `select` 加上 `PLW1514`）；所有被报出来的位置，已知的有 `stages/common/score/exemplar/audio-techniques.py`；`scripts/tasks.py`、`scripts/check_docs.py`。
@@ -86,10 +87,10 @@
   - `scripts/` 下的 Python 文件不在 `backend` 的 ruff 检查范围内。`tasks.py check-backend` 额外对 `scripts/*.py` 跑一次 `ruff check --select PLW1514`，或者在 `scripts/` 下加一份 ruff 配置，二选一并写进决策记录。
   - 范例脚本 `audio-techniques.py` 是给模型照抄的，改完后要确认对应的提示词和测试没有逐字依赖原来的写法。
 - **测试**：lint 规则本身就是检查；另外加一条测试，在一个临时文件里写入没有 `encoding` 的 `open()`，确认 ruff 会报出来，防止以后有人把规则删掉。
-- **完成标准**：`make check` 全绿，`ruff check` 报告里有这条规则。
-- **验证命令**：`make check`。
+- **完成标准**：质量关口满足 D1，`ruff check` 报告里有这条规则。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）。
 
-### T3：统一的模型路径校验（待开始，机器：macOS）
+### T3：统一的模型路径校验（待开始，机器：Windows，按基线对比）
 
 - **目标**：设计 §5——不管在哪个平台，盘符、反斜杠、UNC、保留名之类的路径都在第一道检查就被拒绝。
 - **涉及文件**：`backend/src/studio/workspace/files.py`（新增 `check_model_path`，`normalize_relpath` 和 `safe_path` 改成调用它）、`backend/src/studio/agent/apply_patch.py`（`to_workspace_relpath`）、`backend/src/studio/agent/claude_scope.py`（读写 hook、Glob 模式检查）、`backend/src/studio/agent/fallback_tools.py`（如果它有自己的路径判断，同样接入）；测试 `backend/tests/workspace/test_model_path.py`，以及 `test_files.py`、`test_apply_patch.py`、`test_claude_runtime.py` 里相关的用例。
@@ -98,10 +99,10 @@
   - 绝对路径的入口（Claude 的 `file_path`、`apply_patch` 的绝对路径）：判断"是否在工作区内"时，两边都先 `resolve()` 再 `os.path.normcase`，然后才比较。这个比较集中写在一个函数里（例如 `workspace.files.relpath_within(workdir, raw) -> str`），hook 和 `apply_patch` 共用，不各写一份。
   - Glob 模式：在现有检查（`/`、`~`、`..`）的基础上，同样拒绝盘符、`\` 和 `:`。
 - **测试**：参数化表格覆盖设计 §5 的所有写法和审查重点 1，每条都断言抛 `ScopeError`；另有一组现有的合法写法断言能通过。hook 测试要模拟 Windows 风格的绝对路径（用 `PureWindowsPath` 构造的输入），断言被拒绝。
-- **完成标准**：`make check` 全绿，已有的路径相关测试不需要修改就能通过。如果需要修改，就停下来，在「意外与发现」里说明原因。
-- **验证命令**：`make check`。
+- **完成标准**：质量关口满足 D1，已有的路径相关测试不需要修改就能通过。如果需要修改，就停下来，在「意外与发现」里说明原因。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）。
 
-### T4：跨平台进程管理 `studio/proc.py`（待开始，机器：macOS）
+### T4：跨平台进程管理 `studio/proc.py`（待开始，机器：Windows，按基线对比）
 
 - **目标**：设计 §6——统一启动受控子进程的参数、结束整棵进程树的方式和 UTF-8 环境；替换所有 `killpg`、`start_new_session` 和只结束顶层进程的 `proc.kill()`。
 - **涉及文件**：新增 `backend/src/studio/proc.py`、`backend/tests/test_proc.py`；修改 `engines/audio/runner.py`（`limited_argv` 按平台分支，删除 `kill_group`）、`engines/audio/song_job.py`、`engines/audio/song.py`（同步的 `subprocess.run`）、`engines/audio/probe.py`、`engines/render/manim/process.py`、`engines/render/manim/engine.py`、`engines/render/manim/keyframes.py`、`engines/render/html/video.py`、`engines/render/mix.py`、`agent/shell.py`；`backend/pyproject.toml`（新增 import-linter 契约：`studio.proc` 不依赖任何其他 `studio` 模块）；`docs/ARCHITECTURE.md`。
@@ -112,10 +113,10 @@
   - 现在所有向子进程传 `env=` 的地方都改成经过 `child_env`；没有传 `env` 的地方（继承父进程的环境）保持继承，但也要加上 UTF-8 变量。逐处判断，写进决策记录。
   - 外部程序的输出统一用 `decode("utf-8", errors="replace")`。
 - **测试**：`spawn_kwargs`、`limited_argv` 用参数注入测两个分支；`kill_tree` 在 POSIX 上真实测试：启动一个会派生孙进程的 Python 子进程，`kill_tree` 之后孙进程也不在了；Windows 分支 mock `taskkill` 的调用，断言参数正确。已有的 `test_audio_runner.py`、`test_shell.py` 等对 `killpg` 的 mock 改为针对 `kill_tree`。审查重点 4：断言 manim dry-run、`run_compose`、Shell executor 收到的环境里有 `PYTHONUTF8=1`。
-- **完成标准**：`grep -rn "killpg\|start_new_session" backend/src` 只剩 `proc.py` 里的结果；`make check` 全绿。
-- **验证命令**：`make check`；`cd backend && uv run pytest -m slow -k "manim or html_video or mix"`（真实子进程，确认没有倒退）。
+- **完成标准**：`grep -rn "killpg\|start_new_session" backend/src` 只剩 `proc.py` 里的结果；质量关口满足 D1。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；`cd backend && uv run pytest -m slow -k "manim or html_video or mix"`（真实子进程，确认没有倒退）。
 
-### T5：执行策略与开关（待开始，机器：macOS）
+### T5：执行策略与开关（待开始，机器：Windows，按基线对比）
 
 - **目标**：设计 §4.2、§4.3 的后端部分：`exec_mode` 决定两条运行时路径和 `render_music` 的行为；开关来自环境变量，设置页可以覆盖。
 - **涉及文件**：新增 `backend/src/studio/agent/exec_policy.py`、`backend/tests/agent/test_exec_policy.py`、`docs/decisions/0024-无隔离执行开关.md`；修改 `config.py`（`allow_unsandboxed_exec: bool = False`）、`db/repo/settings.py`（新键 `allow_unsandboxed_exec`，以及 `effective_allow_unsandboxed_exec`，仿照 `effective_web_mode`）、`agent/runner.py`（每轮开始时计算 `exec_mode`，放进 `TurnContext`）、`agent/claude_runtime.py` 和 `claude_scope.py`、`agent/openai_runtime.py`（`native_shell_supported` 改为根据 `exec_mode` 判断）、`agent/shell.py`（`LocalShellExecutor` 支持不包裹 sandbox 的模式）、`stages/common/score/tool.py`（`sandbox_wrapper` 改为根据 `exec_mode` 判断，三种模式三种行为）、`agent/events.py` 或轮次元数据（记录本轮的 `exec_mode`，供 T6 显示）。
@@ -127,10 +128,10 @@
   - 开关在本轮开始时读取一次，本轮之内不变（审查重点 3）。
   - ADR 0024 按设计 §10 撰写。
 - **测试**：`exec_mode` 的完整真值表；Claude 运行时三种模式下的 `ClaudeAgentOptions`（`allowed_tools`、`disallowed_tools`、`sandbox`）；OpenAI 运行时三种模式下是否提供 Shell；`render_music` 三种模式下各自的包裹函数和错误；设置覆盖的优先级（界面设置 > 环境变量 > 默认值）；本轮进行中修改设置不影响本轮（审查重点 3）；在 macOS 上把开关设为 `true`，结果仍然是 `sandboxed`。
-- **完成标准**：`make check` 全绿；macOS 上的已有行为不变（已有的运行时测试不需要修改就能通过）。
-- **验证命令**：`make check`。
+- **完成标准**：质量关口满足 D1；macOS 上的已有行为不变（已有的运行时测试不需要修改就能通过）。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）。
 
-### T6：设置页开关与"命令未隔离"标记（待开始，机器：macOS）
+### T6：设置页开关与"命令未隔离"标记（待开始，机器：Windows，按基线对比）
 
 - **目标**：设计 §4.3 的界面部分。
 - **涉及文件**：`backend/src/studio/api/`（设置接口和"通用"那一组：读写 `allow_unsandboxed_exec`，返回 `sandbox_available` 和当前生效的 `exec_mode`）；`frontend/src/` 中设置 → 通用的组件、轮次标记组件、API 类型；对应的后端接口测试和 vitest。
@@ -139,10 +140,10 @@
   - `exec_mode == "unsandboxed"` 的轮次显示"命令未隔离"标记，放在轮次元信息里现有标记的旁边。T5 已经把 `exec_mode` 记进轮次数据。
   - 这一步要先读现有的联网模式设置和轮次标记的实现，照着它们的结构来写，不新建一套模式。
 - **测试**：接口测试（读写、清除、`sandbox_available` 为真或假时的返回）；vitest：开关的显示条件、标记的显示条件。
-- **完成标准**：`make check` 全绿；在内置浏览器里用 Fake 运行时看一眼：在 macOS 上把 `sandbox_available` 模拟成 `false`（用测试用的环境变量或依赖注入），开关和标记都能显示，并截图。
-- **验证命令**：`make check`；L4 截图。
+- **完成标准**：质量关口满足 D1；在 Windows 上用 Fake 运行时在内置浏览器里看一眼（Windows 上 `sandbox_available` 本来就是 `false`），开关和标记都能显示，并截图。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；L4 截图。
 
-### T7：`tasks.py dev`（待开始，机器：macOS）
+### T7：`tasks.py dev`（待开始，机器：Windows，按基线对比）
 
 - **目标**：设计 §8.2——用 Python 启动 api、worker 和前端三个进程，基于 pid 文件清理旧进程，退出时结束整棵进程树；删除 `scripts/dev.sh`。
 - **涉及文件**：`scripts/tasks.py`（`dev` 子命令）、`.gitignore`（`.dev/`）、`Makefile`（`dev` 改为一行）、删除 `scripts/dev.sh`、`.claude/launch.json`（如果需要调整）、`docs/runbooks/dev-setup.md`；测试 `backend/tests/scripts/test_tasks_dev.py`。
@@ -154,10 +155,10 @@
   - `.env` 用 T1 的 `parse_dotenv` 解析；绑定地址仍然来自 `python -m studio.config`；导出 `STUDIO_BIND_PORT`。
   - 退出：处理 `KeyboardInterrupt`（POSIX 上还要处理 SIGTERM），对三个进程逐个 `kill_tree`，然后删除 pid 文件。任意一个子进程意外退出时，整体退出并报告是哪一个。
 - **测试**：pid 文件读写；"是否属于本项目"的判断（注入 `ps`、`tasklist` 的输出）；`netstat -ano` 的解析（夹具）；审查重点 2 的场景。启动和结束用一个假的子命令（例如三个 `python -c "sleep"`）在 POSIX 上做真实测试，断言退出后进程树清空（审查重点 6 的 macOS 部分）。
-- **完成标准**：macOS 上 `make dev` 能启动，Ctrl+C 后 `ps` 里没有本项目残留的 uvicorn、worker、vite；连续启动两次第二次能正常清理；`make check` 全绿。
-- **验证命令**：`make check`；手动 `make dev` → Ctrl+C → `ps aux | grep -E "uvicorn|studio.worker|vite"`。
+- **完成标准**：Windows 上 `tasks.py dev` 能启动，Ctrl+C 后 `tasklist` 里没有本项目残留的进程；连续启动两次第二次能正常清理；质量关口满足 D1。macOS 上的 `make dev` 验证在 T12 做。
+- **验证命令**：`tasks.py check`；手动 `tasks.py dev` → Ctrl+C → `tasklist /FI "IMAGENAME eq python.exe"`、`tasklist /FI "IMAGENAME eq node.exe"`。
 
-### T8：测试的平台标记（待开始，机器：macOS）
+### T8：测试的平台标记（待开始，机器：Windows，按基线对比）
 
 - **目标**：只适用于 POSIX 或 macOS 的测试在 Windows 上被有理由地跳过；需要符号链接的测试在没有权限时跳过并给出提示；其余测试在 Windows 上都应该能跑。
 - **涉及文件**：`backend/tests/conftest.py`（`posix_only`、`macos_only` 标记的注册和跳过逻辑，`symlinks_supported` fixture）、`backend/pyproject.toml`（`markers`）；设计 §3 P11 提到的约 28 个测试文件（用 `grep -rlE "killpg|sandbox-exec|/bin/sh|chmod|symlink_to|os\.symlink" backend/tests` 找出来）。
@@ -166,8 +167,8 @@
   - 涉及 `chmod` 的测试（`upstream` 只读）：Windows 上能测的部分（文件只读属性）保留，测目录权限位的部分标 `posix_only`。
   - 测试里的路径断言如果用了 `str(path)` 拼接 `/`，改成 `as_posix()` 或 `Path` 比较。逐个文件 grep 检查，但不在 macOS 上猜测 Windows 的失败；没有把握的留到 T9 实测。
 - **测试**：这个任务本身就是改测试；另外加一条元测试：确认 `posix_only` 在 `sys.platform == "win32"` 时确实会跳过（用 `pytester` 或直接调用 hook 函数）。
-- **完成标准**：macOS 上 `make check` 全绿，跳过的数量没有变化（macOS 上一个都不应该跳过，用 `pytest -rs` 确认）。
-- **验证命令**：`make check`；`cd backend && uv run pytest -rs | tail -20`。
+- **完成标准**：Windows 上原本因 POSIX 依赖失败的测试变成"有理由的跳过"，`pytest -rs` 的跳过列表逐条有理由；macOS 上一个都不应该跳过，这一点在 T12 确认。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；`cd backend && uv run pytest -rs | tail -20`。
 
 ### T9：Windows 首次跑通质量关口（待开始，机器：Windows）
 
@@ -212,7 +213,7 @@
 
 - **目标**：AC1、AC7。
 - **涉及文件**：`docs/quality/tech-debt.md`（manim 执行 agent 代码没有 sandbox；Windows 上没有 CPU 时间和文件大小的硬限制；Windows 上 `upstream/` 的只读保护变弱）、`docs/quality/QUALITY.md`、`docs/ARCHITECTURE.md`、`AGENTS.md`、`docs/plans/TODO.md`。
-- **接口与要点**：在 macOS 上拉取 Windows 会话的全部改动，跑 `make check`、`make dev`、`make smoke SMOKE_ARGS="-k claude_login"`；逐条核对 AC7 的文档清单；整理「意外与发现」，把应该改成机器检查的约定挑出来。
+- **接口与要点**：在 macOS 上拉取 Windows 会话的全部改动；先确认 T1–T8 里在 Windows 上被跳过的 POSIX 测试在 macOS 上都执行了而且通过（`pytest -rs` 不应该有任何跳过），修掉 macOS 上的回归；然后跑 `make check`、`make dev`、`make smoke SMOKE_ARGS="-k claude_login"`；逐条核对 AC7 的文档清单；整理「意外与发现」，把应该改成机器检查的约定挑出来。
 - **完成标准**：AC1、AC7；计划状态改为"待验收"。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k claude_login"`。
 
@@ -224,14 +225,20 @@
 
 ## 下一步
 
-- 等负责人批准计划，并对 D1（T1–T8 在哪台机器上做）做出决定。
-- 批准后：从 main 切出 `windows-native` 分支，push 到 `origin`，从 T1 开始。
+在 Windows 电脑上开 Claude Code 会话，按顺序执行：
+
+1. 按设计 §9.3 装好依赖（Git for Windows、uv、Node 22+ 和 pnpm、ffmpeg、MiKTeX、Claude Code），在 设置 → 系统 → 开发者选项 里打开开发者模式。
+2. `git config --global core.autocrlf false`，然后把仓库 clone 到短路径下（例如 `C:\dev\ai-video-studio`），`git checkout windows-native`（分支已在 `origin` 上）。
+3. 复制 `backend/.env`（从 Mac 上拷贝，不进仓库）。
+4. 先手动装依赖：`cd backend; uv sync; uv run playwright install chromium`，`cd ..\frontend; pnpm install`。
+5. 记录 Windows 基线：`cd backend; uv run pytest -p no:cacheprovider -q 2>&1 | Tee-Object ..\.dev-baseline.txt`（文件不入库），把失败数和按原因归类的清单写进「意外与发现」，commit。
+6. 从 T1 开始，按任务循环（SOP §4）执行；每个任务结束时 commit 并 push。
 
 ## 决策记录
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
-- 2026-10-09 — **D1（草稿，待负责人确认）**：T1–T8 的质量关口在 macOS 上跑，T9–T11 在 Windows 上跑，T12 回到 macOS。理由：T8 完成之前，Windows 上的 `tasks.py check` 必然大面积失败，在 Windows 上做 T1–T8 就没有可用的"绿色基线"来判断改动是否引入了回归。**备选**：T1–T8 也在 Windows 上做，开工前先记录一份 Windows 基线失败清单，每个任务的完成标准改为"没有新增失败，并且本任务负责修复的那些失败已经消失"。这样不用来回切换机器，但判断依据更弱，macOS 上的回归要等到 T12 才能发现。
+- 2026-10-09 — **D1（负责人已决定：采用备选方案，T1–T11 全部在 Windows 上做，T12 回到 macOS）**。原推荐方案：T1–T8 的质量关口在 macOS 上跑。理由：T8 完成之前，Windows 上的 `tasks.py check` 必然大面积失败，在 Windows 上做 T1–T8 就没有可用的"绿色基线"来判断改动是否引入了回归。**备选**：T1–T8 也在 Windows 上做，开工前先记录一份 Windows 基线失败清单，每个任务的完成标准改为"没有新增失败，并且本任务负责修复的那些失败已经消失"。这样不用来回切换机器，但判断依据更弱，macOS 上的回归要等到 T12 才能发现。
 - 2026-10-09 — 计划任务的顺序是先做工具链（T1），这样 Windows 上尽早有可以运行的 `tasks.py check`；`dev` 放在 T7，等 `proc.py`（T4）稳定之后再做。
 
 ## 意外与发现
