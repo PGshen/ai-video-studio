@@ -60,14 +60,14 @@
 
 ## 验收标准
 
-- [ ] AC1：项目会话发送"文字 + 1 张图片 + 1 个 `.md` 文件"后，模型的回答提到了图片内容，也读到了 `.md` 的内容；`uploads/` 下出现这个文件，右侧文件树能看到它。（验证方式：`make smoke` 新增的用例，加上浏览器截图）
-- [ ] AC2：选题对话只能选图片；如果绕过前端直接发文件，接口返回 422。（验证方式：端点测试，加上浏览器操作截图）
-- [ ] AC3：刷新页面后，时间线里的用户消息仍然显示图片缩略图和文件名。（验证方式：浏览器截图）
-- [ ] AC4：超出大小或数量限制、类型不对时返回 422，前端显示中文提示，已选的附件保留。（验证方式：端点测试和组件测试）
-- [ ] AC5：agent 改不了 `uploads/`；回滚到某个快照时，`uploads/` 回到那个版本的状态。（验证方式：runner 测试）
-- [ ] AC6：风格对话可以上传文件；保存风格成功，正式版本里不含 `uploads/`。（验证方式：style store 测试和 runner_style 测试）
-- [ ] AC7：大于 300 kB 的 PDF 在附件 chip 上显示警告；发给模型的说明里标明"可能无法直接读取"。（验证方式：单元测试和组件测试）
-- [ ] AC8：`make check` 全绿。
+- [x] AC1：项目会话发送"文字 + 1 张图片 + 1 个 `.md` 文件"后，模型的回答提到了图片内容，也读到了 `.md` 的内容；`uploads/` 下出现这个文件，右侧文件树能看到它。（验证方式：`make smoke` 新增的用例，加上浏览器截图）
+- [x] AC2：选题对话只能选图片；如果绕过前端直接发文件，接口返回 422。（验证方式：端点测试，加上浏览器操作截图）
+- [x] AC3：刷新页面后，时间线里的用户消息仍然显示图片缩略图和文件名。（验证方式：浏览器截图）
+- [x] AC4：超出大小或数量限制、类型不对时返回 422，前端显示中文提示，已选的附件保留。（验证方式：端点测试和组件测试）
+- [x] AC5：agent 改不了 `uploads/`；回滚到某个快照时，`uploads/` 回到那个版本的状态。（验证方式：runner 测试）
+- [x] AC6：风格对话可以上传文件；保存风格成功，正式版本里不含 `uploads/`。（验证方式：style store 测试和 runner_style 测试）
+- [x] AC7：大于 300 kB 的 PDF 在附件 chip 上显示警告；发给模型的说明里标明"可能无法直接读取"。（验证方式：单元测试和组件测试）
+- [x] AC8：`make check` 全绿。
 
 ## 任务
 
@@ -213,7 +213,7 @@
 - **完成标准**：AC3 有组件测试，在浏览器里能看到。
 - **验证命令**：`make check`。
 
-### T7：冒烟测试、技术债与自验证（待开始）
+### T7：冒烟测试、技术债与自验证（完成）
 
 - **目标**：用真实模型验证整条链路，补齐记录。
 - **涉及文件**：
@@ -231,7 +231,7 @@
 
 ## 下一步
 
-- T7：冒烟用例（`backend/tests/smoke/`）、登记技术债、浏览器自验证（AC1/2/3/6）并填「验证记录」。
+- 全部任务完成，等独立评审和负责人验收。
 
 ## 决策记录
 
@@ -252,6 +252,8 @@
 
 ## 意外与发现
 
+- 2026-10-09 — T7：第一版冒烟提示（“原样告诉我暗号”）被模型当成提示注入而拒绝；改成真实的选题场景（参考图配色 + 资料里的项目代号）后通过。
+- 2026-10-09 — T7：浏览器走查用的是负责人自己开着的 `make dev`（热重载已经加载本分支代码），启动时迁移把 `data/studio.db` 升到了 0011（只新增一个可为空的列）。走查建了一个临时项目「附件功能验证（可删除）」。
 - 2026-10-09 — T5：`PromptInput` 提交时 `files` 是 `{...AttachmentFile, url: dataUrl}`，原始 `File` 仍在 `.file` 上，可以直接拿来上传；代价是组件库会先把每个附件读成 data URL（20 MB 的文件也会读一遍），本地单人使用可以接受。jsdom 下 `URL.createObjectURL` 不认 jsdom 的 File，测试里需要打桩。
 - 2026-10-09 — T4：runner 的 guard 测试（Shell 改 `uploads/` 被还原）在改动前就能通过，因为 topic 阶段的写入范围本来就不含 `uploads/`；`is_writable` 的改动保护的是写入范围更宽的阶段，由 `test_scope.py::test_uploads_are_never_writable` 覆盖。
 - 2026-10-09 — 前端 `pnpm run typecheck`（`vue-tsc --noEmit`）对 `files: []` 的 solution tsconfig 实际上什么都不检查；用 `-p tsconfig.app.json` 实测有 52 处既有错误（多在 spec 里）。不属于本计划，已经开了单独的任务；本计划的改动用 `-p tsconfig.app.json` 确认不新增错误。
@@ -263,4 +265,11 @@
 
 ## 验证记录
 
-- 无
+- AC1：`make smoke SMOKE_ARGS="-k attachments_claude_login"` → 1 passed（证据 `data/evidence/chat-attachments/smoke/20261009T072412Z-attachments-claude-login.json`：模型用 Read 读了 `uploads/…-资料.md`，回答“左边纯蓝、右边纯黄”和代号“青柠-4271”）。浏览器里在临时项目的选题会话中发送 png + md，回答同样正确；`GET /api/projects/{id}/files/uploads/85577dab-资料.md` 返回 200。
+- AC2：浏览器打开选题页的头脑风暴面板，文件框 `accept="image/png,image/jpeg,image/webp,image/gif"`，选择 PDF 后没有 chip，输入框上方显示“选题对话只支持图片”；接口层见 `test_message_attachments.py::TestBrainstormSession`。
+- AC3：发送后刷新页面，用户消息下的缩略图地址是 `/api/sessions/{id}/attachments/{sha}`，图片加载成功（naturalWidth 64），文件链接到工作区原文件；组件测试见 `SessionTimelineItem.spec.ts`。
+- AC4：`test_attachments.py` 的上限用例、`test_message_attachments.py::test_oversized_file_is_422_and_writes_nothing`、`SessionPanel.spec.ts` 的“超过上限的附件不发送”“发送失败时附件保留”。
+- AC5：`test_scope.py::test_uploads_are_never_writable`、`test_runner.py::TestGuard::test_shell_changes_to_uploads_are_restored`、`test_snapshot.py::test_scan_includes_uploads`。
+- AC6：`test_message_attachments.py::TestStyleSession`、`tests/styles/test_store.py::test_uploads_are_kept`、`test_save_leaves_uploads_behind`。没有在负责人的风格库里实际走查（会产生风格草稿）。
+- AC7：浏览器里 400 kB 的 PDF chip 显示“agent 可能读不到全文，建议转成文本后再上传”；`test_attachments.py::TestFileNote`。
+- AC8：`make check` 全部通过。
