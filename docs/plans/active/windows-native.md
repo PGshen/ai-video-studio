@@ -229,9 +229,7 @@
 - 2026-10-10 — T6 完成：`/api/settings` 返回并接受 `allow_unsandboxed_exec`（另有 `_source`、`_env`、`sandbox_available`、`exec_mode`），补丁用 `StrictBool`；设置 → 通用新增「命令执行」一节（只在没有沙箱时显示，带风险说明、来源文案、清除按钮）；回复操作栏对 `usage.exec_mode == "unsandboxed"` 的轮次显示「命令未隔离」。Windows 上用 Fake 运行时在内置浏览器里验证并截图（`data/evidence/windows-native/t6-*.jpg`，不入库），验证用的项目已删除、开关已恢复为环境变量。剩余失败数：pytest 6（同 T4），pyright 0；前端 lint、typecheck、vitest 全绿
 - 2026-10-10 — T7 完成：`tasks.py dev`（`Supervisor`、pid 文件 `.dev/pids.json`、`cleanup_stale`/`belongs_to_project`、`port_listeners`/`parse_netstat_listeners`），删除 `scripts/dev.sh`，Makefile 的 `dev` 改为一行；dev-setup、verification、AGENTS 同步。Windows 实测：启动两次、每次 `Ctrl+Break` 后约 10 个进程全部消失、pid 文件删除、第二次启动端口空闲；模拟 `dev` 自身崩溃（只杀 supervisor）后再启动，三个遗留服务被识别为本项目并清理。剩余失败数：pytest 6（同 T4），pyright 0
 - 2026-10-10 — T8 完成：`conftest.py` 的 `posix_only`/`macos_only`/`windows_only` 标记（必须写原因，否则 `UsageError`）和元测试；所有临时 `skipif` 换成标记；Seatbelt profile 的 3 个字符串用例标 `macos_only`、目录名带 `"` 的和 `chmod 0` 的标 `posix_only`；没有符号链接权限（`WinError 1314`）时由报告钩子转为带提示的跳过。Windows 上 `pytest -rs` 共 37 个跳过，逐条有理由（见「验证记录」）。剩余失败数：pytest 1（`TestPreambleAcrossTurns`，T9），pyright 0
-- 2026-10-10 — T9 完成：**Windows 上 `tasks.py check` 全绿**（pytest 3104 通过、37 个有理由的跳过；vitest 1248 通过；lint、format、pyright、import 契约、文档检查全过）。最后一个失败查明是文本模式把 `
-` 写成 `
-`：`src` 里 13 处文本写入加 `newline=""` 并用 AST 测试守住。`pytest -m slow` 在 Windows 上 64 通过、2 个 Seatbelt 专用跳过（假 ffmpeg 之外，真实 Chromium 崩溃恢复、短片全流程经无隔离路径 + Chromium + ffmpeg 都通过）。dev-setup 新增 Windows 一节，新增 `references/windows.md`。剩余失败数：0
+- 2026-10-10 — T9 完成：**Windows 上 `tasks.py check` 全绿**（pytest 3104 通过、37 个有理由的跳过；vitest 1248 通过；lint、format、pyright、import 契约、文档检查全过）。最后一个失败查明是文本模式把 `\n` 写成 `\r\n`：`src` 里 13 处文本写入加 `newline=""` 并用 AST 测试守住。`pytest -m slow` 在 Windows 上 64 通过、2 个 Seatbelt 专用跳过（假 ffmpeg 之外，真实 Chromium 崩溃恢复、短片全流程经无隔离路径 + Chromium + ffmpeg 都通过）。dev-setup 新增 Windows 一节，新增 `references/windows.md`。剩余失败数：0
 
 ## 下一步
 
