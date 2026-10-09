@@ -1,0 +1,3 @@
+# scripts/ 下的标准库脚本沿用后端的 ruff 规则（windows-native 计划 T2）；
+# tasks.py check-backend / check-fast 会一并检查这里。
+extend = "../backend/pyproject.toml"

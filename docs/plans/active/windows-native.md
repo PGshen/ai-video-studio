@@ -78,7 +78,7 @@
 - **完成标准**：Windows 上 `tasks.py check`、`check-fast` 能运行（结果对照基线），提交时 hook 能运行；Makefile 薄壳在 macOS 上的等价性（`make check` 与 `tasks.py check` 结果一致、`make smoke` 照常）留到 T12 确认。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；`uv run --project backend python scripts/tasks.py check-docs`。
 
-### T2：文本 IO 一律 UTF-8（待开始，机器：Windows，按基线对比）
+### T2：文本 IO 一律 UTF-8（完成，机器：Windows，按基线对比）
 
 - **目标**：把"文本 IO 显式写 UTF-8"变成 lint 规则，并修好现有的违规。
 - **涉及文件**：`backend/pyproject.toml`（ruff 的 `select` 加上 `PLW1514`）；所有被报出来的位置，已知的有 `stages/common/score/exemplar/audio-techniques.py`；`scripts/tasks.py`、`scripts/check_docs.py`。
@@ -222,15 +222,16 @@
 
 - 2026-10-09 — 开工准备：分支、计划移入 active、工作区刷成 LF、装依赖、记录 Windows 基线（见「意外与发现」）
 - 2026-10-09 — T1 完成：`scripts/tasks.py`（除 `dev`）、Makefile 薄壳、`.gitattributes`、pre-commit 改调 `tasks.py check-fast`、ADR 0025。Windows 上 `tasks.py check` 能运行，按基线在 pyright 一步失败（8 个错误，和基线相同）；新增 `tests/scripts/test_tasks.py` 31 通过、1 跳过（与 bash 比较的用例，Windows 上另用 Git Bash 手动比过，一致）；pytest 其余部分不受影响（本任务没动 `backend/src`）。剩余失败数：pytest 113 失败 + 30 error + 1 挂住，pyright 8
+- 2026-10-09 — T2 完成：ruff 启用 `PLW1514`（预览规则，`explicit-preview-rules`），`scripts/` 纳入 ruff 检查，补一个 AST 测试覆盖 ruff 认不出的 `x.read_text()`；`tasks.py` 的所有步骤以 UTF-8 模式运行，Windows 上没开 UTF-8 模式时 pytest 直接报错提示。和基线比没有新增失败，12 个用例函数转为通过。剩余失败数：pytest 101 失败 + 30 error + 1 挂住，pyright 8
 
 ## 下一步
 
-开工准备和 T1 已完成（见「进度」），Windows 基线见「意外与发现」。接下来做 **T2：文本 IO 一律 UTF-8**：
+T1、T2 已完成（见「进度」），Windows 基线见「意外与发现」。接下来做 **T3：统一的模型路径校验**：
 
-1. 计划里 T2 状态改为「进行中」；先写会失败的测试：在临时目录写一个没有 `encoding` 的 `open()`，用 `uv run ruff check --select PLW1514` 跑它，断言报错（防止规则被删）。
-2. `backend/pyproject.toml` 的 ruff `select` 加 `PLW1514`，修掉报出来的位置（包括 `stages/common/score/exemplar/audio-techniques.py`，改完确认提示词和测试没有逐字依赖原写法）。
-3. `scripts/*.py` 的 lint：二选一（`tasks.py check-backend` 额外跑 `ruff check --select PLW1514 ../scripts`，或给 `scripts/` 加 ruff 配置），写进决策记录。
-4. 基线对比：在 `backend/` 下运行 `uv run pytest -p no:cacheprovider -q -rfE --deselect tests/engines/test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file`（那条用例在 Windows 上会挂住，T4 修），和 `.dev/baseline-failures.txt` 比较；`tasks.py check` 在 T4 修好 pyright 之前会停在 pyright 一步。
+1. 计划里 T3 状态改为「进行中」；先读 `workspace/files.py`（`normalize_relpath`、`safe_path`）、`agent/apply_patch.py`（`to_workspace_relpath`）、`agent/claude_scope.py`（读写 hook、Glob 检查）、`agent/fallback_tools.py`，以及设计 §5 的拒绝清单。
+2. 先写 `backend/tests/workspace/test_model_path.py`：参数化覆盖设计 §5 和审查重点 1 的所有写法（断言 `ScopeError`），加一组现有合法写法（断言通过）；hook 测试用 `PureWindowsPath` 构造 Windows 绝对路径。基线里 `test_apply_patch.py::TestCreate::test_absolute_path_inside_workdir_is_accepted`、`TestNormalisedPaths::test_to_workspace_relpath`、`test_openai_runtime.py::TestReviewFixes::test_apply_patch_args_are_normalised_with_move_to` 应在 T3 后转为通过。
+3. 实现 `check_model_path` 和共用的 `relpath_within`，各入口改为调用它们。
+4. 基线对比（**测试必须在 UTF-8 模式下跑**，T2 起 conftest 会拒绝非 UTF-8 模式）：PowerShell 里 `$env:PYTHONUTF8=1; cd backend; uv run pytest -p no:cacheprovider -q -rfE --deselect tests/engines/test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file > ..\.dev\t3-pytest.txt`，再和 `.dev/base-ids.txt`（基线失败的用例函数列表）比较；`tasks.py check` 在 T4 修好 pyright 之前会停在 pyright 一步。
 5. commit 并 push（分支已跟踪 `origin/windows-native`）。
 
 ## 决策记录
@@ -250,6 +251,9 @@
 - 2026-10-09 — T1：`tasks.py` 的子命令把 `smoke` 和 `import-legacy-styles` 后面的参数原样传下去（`argparse.REMAINDER`），所以 Makefile 仍然写 `smoke $(SMOKE_ARGS)`、`import-legacy-styles <文件> $(IMPORT_ARGS)`；`check-docs` 改用运行 `tasks.py` 的那个 Python（`sys.executable`），不再依赖 `python3`。`find_uv`、`find_pnpm` 为了测试加了关键字参数 `home`、`platform`（`find_pnpm` 还有 `environ`），不传时取当前机器的值。
 - 2026-10-09 — T1：`.gitignore` 的 `.dev/` 从 T7 提前到 T1 加，Windows 基线的原始输出放在 `.dev/` 里（不入库）。`.gitattributes` 除了设计 §7 列的类型，还把 `*.webp`、`*.gif`、`*.ico`、`*.pdf`、字体标成 `binary`（仓库里已有 13 个 webp）；`git add --renormalize .` 后没有任何已有文件的内容变化。
 - 2026-10-09 — T1：`.env` 解析遵循 bash 的规则：`#` 只有在引号外、前面是空白时才是注释（`a#b` 的值是 `a#b`）；引号外有空白、后面又不是注释时报错（bash 会把它当成命令执行）；单引号内的 `$` 是字面量，允许。本机的 `backend/.env` 只用了 `KEY=VALUE`，在支持的子集内。
+- 2026-10-09 — T2：`PLW1514` 在 ruff 0.16.9 里还是**预览规则**，只写进 `select` 不生效。做法：`[tool.ruff.lint]` 加 `preview = true` 和 `explicit-preview-rules = true`，只有点名的预览规则生效；打开后除了 `PLW1514` 没有新增任何报错。预览模式下 `--output-format concise` 输出的是规则名（`unspecified-encoding`）而不是代码，测试按规则名断言。
+- 2026-10-09 — T2：`scripts/` 的 lint 选了"加一份配置"：`scripts/ruff.toml` 只写 `extend = "../backend/pyproject.toml"`，`tasks.py` 的 `check-backend` 对 `. ../scripts` 跑 `ruff check` 和 `ruff format --check`，`check-fast` 跑 `ruff check`。这样 scripts 和后端完全同一套规则（顺手修了 `check_docs.py` 一处超长行的格式）。
+- 2026-10-09 — T2：`PLW1514` 只认得出能推断为 `Path` 的值，`(workdir / "x").read_text()`、`Path` 参数上的调用都漏掉（`src` 里没有漏网的，`tests` 里约 220 处）。补救分两部分：① `tests/test_lint_rules.py` 用 AST 检查 `src`、`scripts` 里所有 `.read_text()`（无位置参数）和 `.write_text(x)`（一个位置参数）都带 `encoding`；② 测试代码不逐处改，改为要求测试在 UTF-8 模式下运行：`tasks.py` 给它启动的所有进程加 `PYTHONUTF8=1`、`PYTHONIOENCODING=utf-8`（设计 §7，`utf8_env`，T4 的 `studio.proc.child_env` 要在注释里互相指向），`tests/conftest.py` 在 Windows 上发现没有 UTF-8 模式时以 `UsageError` 退出并给出命令。理由：测试的职责是验证产品代码，产品代码的编码已经由 lint 保证；逐处改 220 处测试收益小、噪声大。代价：Windows 上直接 `uv run pytest` 要先设 `PYTHONUTF8=1`。
 
 ## 意外与发现
 
@@ -268,6 +272,7 @@
     7. **只读权限**（`test_upstream.py::test_unreadable_file_counts_as_drift`，靠 `chmod 000`）→ T8 标 `posix_only`。
     8. **排序或时间相关**（`test_repo_projects.py:74` 最新的排在前面、`test_repo_turns` 最近一轮、`test_snapshot` 回滚后不多建快照、`test_runner.py:846` 前言 diff、`test_model_switch`、`test_runner_style`、`styles/test_store` 的 prune）：原因未确认，疑似 Windows 上时钟精度低导致时间戳相同，或文件 mtime 精度；→ T9 逐条确认。
     9. **编码**：同一批失败用例在设置 `PYTHONUTF8=1` 后重跑，有 16 条变成通过（`read_text()` 走 `encoding='locale'`，即 GBK）→ T2、T4。
+  - T2 之后复核：第 8 类里的 `test_repo_projects`、`test_repo_turns`、`test_snapshot`、`test_model_switch`、`test_runner_style`、`styles/test_store` 在 UTF-8 模式下都通过了，所以至少在这次运行里它们属于编码问题而不是时钟精度；`test_runner.py::TestPreambleAcrossTurns` 仍然失败，留给 T9。
 - 2026-10-09 — 开发者模式打开后，Python 的 `os.symlink` 不需要提权就能建符号链接；但 **Windows PowerShell 5.1 的 `New-Item -ItemType SymbolicLink` 仍然报"需要管理员权限"**（它没有用 `SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE`）。dev-setup 的 Windows 一节（T9）里验证开发者模式要用 Python，不要用 PowerShell。
 - 2026-10-09 — 本机 Git Bash 里的 `pnpm`（nvm4w 的 sh 启动脚本）把路径解析成 `C:\Users\pp\anaconda3\Library\c\nvm4w\...`，运行失败；PowerShell 里的 `pnpm`（`pnpm.ps1`/`pnpm.cmd`）正常。`tasks.py` 用 `shutil.which("pnpm")` 找到的是 `pnpm.CMD`，不受影响。
 - 2026-10-09 — 本机 npm 镜像源（清华 tuna）缺 `@codemirror/lang-javascript-6.2.5.tgz`（404），`pnpm install` 失败；这次用 `pnpm install --registry=https://registry.npmmirror.com/` 装好，没有改全局配置，lockfile 没有变化。

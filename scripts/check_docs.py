@@ -150,7 +150,9 @@ def main() -> int:
             errors.append(f"{path.relative_to(ROOT)}: ADR 文件名应为 NNNN-标题.md")
             continue
         if m.group(1) in seen:
-            errors.append(f"{path.relative_to(ROOT)}: ADR 编号 {m.group(1)} 与 {seen[m.group(1)].name} 重复")
+            errors.append(
+                f"{path.relative_to(ROOT)}: ADR 编号 {m.group(1)} 与 {seen[m.group(1)].name} 重复"
+            )
         seen[m.group(1)] = path
         errors += check_sections(path, path.read_text(encoding="utf-8"), ADR_SECTIONS)
 

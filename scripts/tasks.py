@@ -231,6 +231,12 @@ def smoke_env(
 # ---- running steps ----
 
 
+def utf8_env(base: Mapping[str, str]) -> dict[str, str]:
+    """A copy of `base` with Python's UTF-8 mode on (design §7): the Windows default is the
+    locale code page (GBK on a Chinese system). Mirrors `studio.proc.child_env`."""
+    return {**base, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+
+
 def run_step(
     label: str,
     argv: Sequence[str],
@@ -239,7 +245,8 @@ def run_step(
     env: Mapping[str, str] | None = None,
 ) -> None:
     print(f"==> {label}", flush=True)
-    code = subprocess.run(list(argv), cwd=cwd, env=None if env is None else dict(env)).returncode
+    child_env = utf8_env(os.environ if env is None else env)
+    code = subprocess.run(list(argv), cwd=cwd, env=child_env).returncode
     if code != 0:
         raise StepFailed(label, code)
 
@@ -274,8 +281,8 @@ def cmd_check_docs(_args: argparse.Namespace) -> None:
 def cmd_check_backend(_args: argparse.Namespace) -> None:
     _uv_steps(
         [
-            ("ruff check", ["run", "ruff", "check", "."]),
-            ("ruff format --check", ["run", "ruff", "format", "--check", "."]),
+            ("ruff check", ["run", "ruff", "check", ".", "../scripts"]),
+            ("ruff format --check", ["run", "ruff", "format", "--check", ".", "../scripts"]),
             ("pyright", ["run", "pyright"]),
             ("lint-imports", ["run", "lint-imports"]),
             ("pytest", ["run", "pytest"]),
@@ -303,7 +310,7 @@ def cmd_check(args: argparse.Namespace) -> None:
 def cmd_check_fast(args: argparse.Namespace) -> None:
     """The subset pre-commit runs."""
     cmd_check_docs(args)
-    _uv_steps([("ruff check", ["run", "ruff", "check", "."])])
+    _uv_steps([("ruff check", ["run", "ruff", "check", ".", "../scripts"])])
     _pnpm_steps([("frontend lint", ["run", "lint"])])
 
 

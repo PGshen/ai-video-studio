@@ -7,6 +7,7 @@ The script lives outside the backend package, so it is loaded by path (same as
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -287,3 +288,30 @@ def test_makefile_targets_are_thin_wrappers() -> None:
         assert recipe is not None, name
         assert recipe.group(1).startswith(f"\t@$(TASKS) {name}"), name
         assert recipe.group(1).count("\n") == 1, name
+
+
+def test_steps_run_in_utf8_mode(tmp_path: Path) -> None:
+    """Design §7: every process tasks.py starts gets PYTHONUTF8 / PYTHONIOENCODING."""
+    out = tmp_path / "flags.txt"
+    code = (
+        "import os, sys, pathlib; pathlib.Path(sys.argv[1]).write_text("
+        "f'{sys.flags.utf8_mode} {os.environ[\"PYTHONIOENCODING\"]}', encoding='utf-8')"
+    )
+    tasks.run_step("probe", [sys.executable, "-c", code, str(out)], cwd=tmp_path)
+    assert out.read_text(encoding="utf-8") == "1 utf-8"
+
+
+def test_utf8_env_keeps_the_base_and_does_not_mutate_it() -> None:
+    base = {"PATH": "/bin"}
+    env = tasks.utf8_env(base)
+    assert env == {"PATH": "/bin", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+    assert base == {"PATH": "/bin"}
+
+
+def test_an_explicit_env_is_also_utf8(tmp_path: Path) -> None:
+    """`smoke` passes a whitelisted env; UTF-8 mode is added on top of it."""
+    out = tmp_path / "flags.txt"
+    code = "import sys, pathlib; pathlib.Path(sys.argv[1]).write_text(str(sys.flags.utf8_mode))"
+    env = {k: v for k, v in os.environ.items() if k.upper() not in ("PYTHONUTF8",)}
+    tasks.run_step("probe", [sys.executable, "-c", code, str(out)], cwd=tmp_path, env=env)
+    assert out.read_text(encoding="utf-8") == "1"
