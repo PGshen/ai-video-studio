@@ -63,7 +63,7 @@
 - **测试**：worker 对 manim 项目失败的测试；设置读取忽略旧键的测试；其余为删除和迁移。
 - **验证命令**：`make check`
 
-### T3：移除依赖（待开始）
+### T3：移除依赖（完成）
 
 - **涉及文件**：`backend/pyproject.toml`、`backend/uv.lock`、`Makefile`（如有 manim 相关）。
 - **要点**：删 `manim`、`pyflakes`，`uv lock` 后确认被一并移除的传递依赖没有被 `studio` 直接 import（当前直接 import 的第三方包已核对：numpy、PIL、librosa 等均为显式依赖）。
@@ -85,9 +85,11 @@
 - 2026-10-09 — T1 — `valid_kinds`/`PRESETS` 去掉 manim，新增 `DEFAULT_KIND`（HTML 讲解），`unavailable_reason` 对 manim 返回下线原因；创建 manim 项目 422。默认类型变化只让 4 个测试需要调整，`make check` 绿
 - 2026-10-09 — T2 — 删除 `stages/animation/`、`engines/render/manim/`、`engines/render/base.py`（只服务 manim）；worker 只走 HTML，老项目任务以"Manim 已下线"失败；渲染/定稿端点对老项目 409；镜头检查只认 HTML 工具；默认模型设置读时丢弃 `animation` 键。测试夹具迁到 `animation_html`，`make check` 绿
 
+- 2026-10-09 — T3 — 删 `manim`、`pyflakes`，`uv lock` 连带移除 25 个包（av、pycairo、manimpango、moderngl、pyglet、skia-pathops、pydub 等）；确认 `studio` 不直接 import 其中任何一个；`make check` 绿，`pytest -m slow` 66 passed
+
 ## 下一步
 
-- 从 T3 开始：`backend/pyproject.toml` 删 `manim`、`pyflakes`，`cd backend && uv lock && uv sync`，确认 `grep -i manim uv.lock` 为空，跑 `make check` 和 `uv run pytest -m slow`。
+- 从 T4 开始：前端。`frontend/src/types/api.ts`、`composables/videoKindChoice.ts`、`features/ideas/CreateProjectDialog.vue`（默认 `explainer_html`）、`test/videoKindsFixture.ts`、`pages/ProjectWorkbenchPage.vue`（`stage === 'animation'` 改为下线提示）、`features/settings/settingsView.ts`。
 
 ## 决策记录
 
