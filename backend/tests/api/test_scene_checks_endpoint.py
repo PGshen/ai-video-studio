@@ -55,13 +55,13 @@ class TestGetSceneChecks:
         session = create_session(
             engine,
             project_id=pid,
-            stage="animation",
+            stage="animation_html",
             model_profile_id="fake-profile",
             runtime="fake",
         )
         turn = create_turn_if_session_idle(engine, session.id, "嗯")
         assert turn is not None
-        manifest = {"animation/scenes/s-hook.py": "sha-a"}
+        manifest = {"animation/scenes/s-hook.js": "sha-a"}
         append_event(
             engine,
             turn_id=turn.id,
@@ -70,7 +70,7 @@ class TestGetSceneChecks:
             payload={
                 "turn_id": turn.id,
                 "call_id": "c1",
-                "name": "render_preview",
+                "name": "render_preview_html",
                 "args": {"scene_id": "s-hook"},
             },
         )

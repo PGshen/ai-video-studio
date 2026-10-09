@@ -1,6 +1,7 @@
 import pytest
 
 from studio.stages.pipeline import (
+    DEFAULT_KIND,
     KIND_SETTING_KEYS,
     LEGACY_KIND,
     PRESETS,
@@ -13,10 +14,13 @@ from studio.stages.pipeline import (
     video_kind_of,
 )
 
-CASES = [
+# Manim is retired (ADR 0027): only stored legacy projects still derive its pipeline.
+LEGACY_CASES = [
     (ProjectKind("manim", True, "none"), ["topic", "narrative", "animation"]),
     (ProjectKind("manim", True, "synth"), ["topic", "narrative", "music", "animation"]),
-    (ProjectKind("manim", True, "import"), ["topic", "narrative", "music", "animation"]),
+]
+
+CASES = [
     (ProjectKind("html", True, "none"), ["topic", "narrative", "animation_html"]),
     (ProjectKind("html", True, "synth"), ["topic", "narrative", "music", "animation_html"]),
     (ProjectKind("html", True, "import"), ["topic", "narrative", "music", "animation_html"]),
@@ -25,7 +29,7 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize(("kind", "expected"), CASES)
+@pytest.mark.parametrize(("kind", "expected"), CASES + LEGACY_CASES)
 def test_build_pipeline(kind: ProjectKind, expected: list[str]) -> None:
     assert build_pipeline(kind) == expected
 
@@ -53,8 +57,9 @@ def test_video_kind_of() -> None:
 
 def test_valid_kinds() -> None:
     kinds = valid_kinds()
-    assert len(kinds) == 8
-    assert len(set(kinds)) == 8
+    assert len(kinds) == 5
+    assert len(set(kinds)) == 5
+    assert all(k.engine == "html" for k in kinds)
     assert all(kind_errors(k) == [] for k in kinds)
     assert [k for k in kinds] == [c[0] for c in CASES]
 
@@ -62,6 +67,7 @@ def test_valid_kinds() -> None:
 def test_kind_from_settings_legacy_and_roundtrip() -> None:
     assert kind_from_settings({}) == LEGACY_KIND
     assert LEGACY_KIND == ProjectKind("manim", True, "none")
+    assert kind_from_settings(kind_settings(LEGACY_KIND)) == LEGACY_KIND
     for kind in valid_kinds():
         settings = kind_settings(kind)
         assert set(settings) == set(KIND_SETTING_KEYS)
@@ -82,8 +88,12 @@ def test_kind_from_settings_falls_back_to_legacy_on_partial_fields() -> None:
     assert kind_from_settings({"engine": "html", "narration": False}) == LEGACY_KIND
 
 
+def test_default_kind_is_html_explainer() -> None:
+    assert DEFAULT_KIND == ProjectKind("html", True, "none")
+
+
 def test_presets() -> None:
-    assert len(PRESETS) == 4
+    assert [p.video_kind for p in PRESETS] == ["explainer_html", "motion_reel", "music_video"]
     for preset in PRESETS:
         assert kind_errors(preset.default) == []
         assert video_kind_of(preset.default) == preset.video_kind

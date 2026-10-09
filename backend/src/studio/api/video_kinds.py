@@ -1,8 +1,9 @@
-"""`GET /api/video-kinds`：可创建的视频类型（预设 + 8 种合法配置及其可用性）。
+"""`GET /api/video-kinds`：可创建的视频类型（预设 + 5 种合法配置及其可用性）。
 
 可用性 = 流水线里的每个阶段都已在注册表里注册；尚未实现的阶段会让对应类型显示为不可用，
 并给出可读原因。导入音乐只有无旁白的 HTML 音乐视频这一种形态（时间轴读取不支持旁白）。
-项目创建端点复用同一个判断（`unavailable_reason`）。
+Manim 引擎已下线（ADR 0027），老项目只读，不能再创建。项目创建端点复用同一个判断
+（`unavailable_reason`）。
 """
 
 from __future__ import annotations
@@ -42,17 +43,16 @@ def unavailable_reason(
     engine: str | None = None,
     narration: bool | None = None,
 ) -> str | None:
-    """流水线里有未注册阶段时返回中文原因（按流水线顺序列出全部）；导入音乐只支持无旁白的 HTML
-    音乐视频（`engine`/`narration` 给出时才判断）；Manim 动画阶段不读配乐、成片也不混音，所以
-    Manim 加配乐不可用。可用返回 `None`。"""
+    """Manim 已下线时返回下线原因；流水线里有未注册阶段时返回中文原因（按流水线顺序列出全部）；
+    导入音乐只支持无旁白的 HTML 音乐视频（`engine`/`narration` 给出时才判断）。可用返回 `None`。"""
+    if engine == "manim":
+        return "Manim 动画已下线，只能查看老项目"
     missing = [name for name in pipeline if not registry.has(name)]
     if missing:
         titles = "".join(f"「{STAGE_TITLES.get(name, name)}」" for name in missing)
         return f"{titles}阶段尚未实现"
-    if music_source == "import" and (engine == "manim" or narration is True):
+    if music_source == "import" and narration is True:
         return "「配乐（导入音乐）」目前只支持无旁白的 HTML 音乐视频"
-    if engine == "manim" and music_source not in (None, "none"):
-        return "「配乐」暂不支持 Manim 动画（成片不会混入配乐）"
     return None
 
 
