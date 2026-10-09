@@ -6,10 +6,10 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 已批准（暂缓） |
+| 状态 | 执行中 |
 | 里程碑 | 平台支持（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [windows-native-support 设计](../../design/2026-10-09-windows-native-support.md)（负责人 2026-10-09 批准） |
-| 分支 | `windows-native`，从 main 切出；两台机器通过 `origin` 同步 |
+| 分支 | `windows-native`，2026-10-09 在 Windows 机器上从 main（`13fcef0`）切出；两台机器通过 `origin` 同步 |
 | 批准记录 | 2026-10-09：负责人批准计划；D1 选备选方案（T1–T11 全部在 Windows 上做），会话内直接执行 |
 | 执行方式 | 会话内直接执行（不派子代理），完成后由一个独立评审检查整个分支；T1–T11 在 Windows 上，T12 回到 macOS |
 
@@ -224,20 +224,24 @@
 
 ## 下一步
 
-本计划已批准、暂缓执行，放在 `docs/plans/todo/`。负责人决定开工时，在 Windows 电脑上开 Claude Code 会话，按顺序执行：
+2026-10-09 已在 Windows 机器（仓库在 `C:\Users\pp\AI\agent\ai-video-studio`）上开工：分支 `windows-native` 已切出，计划已移入 `active/`。本机环境的实际情况见决策记录 2026-10-09「开工时的环境调整」。接下来：
 
-0. `git mv docs/plans/todo/windows-native.md docs/plans/active/`，状态改为「执行中」，同步 TODO.md 里的链接，commit。
-
-1. 按设计 §9.3 装好依赖（Git for Windows、uv、Node 22+ 和 pnpm、ffmpeg、Claude Code），在 设置 → 系统 → 开发者选项 里打开开发者模式。
-2. `git config --global core.autocrlf false`，然后把仓库 clone 到短路径下（例如 `C:\dev\ai-video-studio`），`git checkout windows-native`（分支已在 `origin` 上）。
-3. 复制 `backend/.env`（从 Mac 上拷贝，不进仓库）。
-4. 先手动装依赖：`cd backend; uv sync; uv run playwright install chromium`，`cd ..\frontend; pnpm install`。
-5. 记录 Windows 基线：`cd backend; uv run pytest -p no:cacheprovider -q 2>&1 | Tee-Object ..\.dev-baseline.txt`（文件不入库），把失败数和按原因归类的清单写进「意外与发现」，commit。
-6. 从 T1 开始，按任务循环（SOP §4）执行；每个任务结束时 commit 并 push。
+1. **负责人处理**（AI 不能代做）：在 设置 → 系统 → 开发者选项 里打开开发者模式；安装 ffmpeg（`winget install Gyan.FFmpeg` 或 `scoop install ffmpeg`），装完后新开终端确认 `ffmpeg -version`、`ffprobe -version` 可用；把 Mac 上的 `backend/.env` 复制到本机（只有 T10、T11 和 smoke 需要，可以晚点再做）。
+2. 行尾：本机系统级 `core.autocrlf=true`，工作区文件目前是 CRLF。经负责人同意后执行 `git config core.autocrlf false`，再用 `git checkout -- .` 把工作区刷成 LF（只改行尾，不丢内容；执行前 `git status` 必须是干净的）。
+3. 装依赖：`cd backend; uv sync; uv run playwright install chromium`，`cd ..\frontend; pnpm install`；`git config core.hooksPath .githooks`。
+4. 记录 Windows 基线：`cd backend; uv run pytest -p no:cacheprovider -q 2>&1 | Tee-Object ..\.dev-baseline.txt`（文件不入库），另外分别跑一次 `uv run ruff check .`、`uv run pyright`、`uv run lint-imports`，以及前端的 `pnpm run lint; pnpm run typecheck; pnpm exec vitest run`，把失败数和按原因归类的清单写进「意外与发现」，commit。
+5. 从 T1 开始，按任务循环（SOP §4）执行；每个任务结束时 commit 并 push。
 
 ## 决策记录
 
 - 2026-10-09 — Manim 引擎下线（[ADR 0027](../../decisions/0027-下线Manim引擎.md)）后，删去本计划里 manim 相关的文件、验证项和 MiKTeX 依赖；讲解类验收改用 HTML 引擎。设计文档 §9.3 中的 MiKTeX 由该 ADR 取代，不再需要。
+- 2026-10-09 — **开工前复核 Manim 下线的影响**：计划正文里已经没有 manim 相关的文件、任务和验收项（`grep -i manim` 只剩上一条决策记录）。设计文档里还留着的 manim 内容（§3 关于 manim 无 sandbox 的现状说明、§4.2 表格里的"manim 渲染"一行、§6 关于 manim 派生 ffmpeg 的段落、§6.4 子进程列表里的 manim、§9.3 的 LaTeX 和 manim wheel 说明、§10 的"manim 执行 agent 代码没有 sandbox"技术债、§11 第 5 条的"manim 引擎"、§12 的 manim 安装风险）都已被 ADR 0027 取代。按红线不改已批准的设计，执行时以本计划为准：T4 的 `kill_tree` 和 `child_env` 只覆盖现有的子进程（配乐脚本、歌曲分析、ffmpeg/ffprobe、HTML 成片、Shell）；T12 不登记 manim 的技术债；T9 写 dev-setup 的 Windows 一节时不包含 LaTeX。`backend/src` 里剩下的 `manim` 字样都是老项目只读兼容的代码，不属于本计划。
+- 2026-10-09 — **开工时的环境调整**（本机实测，和原「下一步」的假设不一致的地方）：
+  - 仓库不 clone 到 `C:\dev`，保留在现有的 `C:\Users\pp\AI\agent\ai-video-studio`（路径 36 个字符，比设计 §12 担心的深度短得多）；如果 T9 或 T11 遇到 260 字符的问题再处理。
+  - `windows-native` 分支原来设想在 macOS 上切出并 push，实际没有；改为在 Windows 上从 main 切出，第一次 push 时在 `origin` 上创建。
+  - Git for Windows 的系统级配置里有 `core.autocrlf=true`（`C:/Program Files/Git/etc/gitconfig`），工作区里的文件是 CRLF。不改系统和全局配置，只在仓库里设置 `core.autocrlf false`，并把工作区刷成 LF（见「下一步」第 2 步）；T1 的 `.gitattributes` 之后会让这件事不再依赖本机配置。
+  - 本机的 `uv` 来自 Anaconda（`~/anaconda3/Scripts/uv`，0.11.3），`node` 和 `pnpm` 来自 nvm4w（`C:\nvm4w\nodejs`，Node 22.17.0）；另外通过 scoop 装了 `make`。T1 的 `find_uv`、`find_pnpm` 先找 PATH，所以这些位置不需要写死；`make` 在 Windows 上不作为正式入口（Makefile 用的是 `SHELL := /bin/bash`），Windows 上的入口仍然是 `tasks.py`。
+  - 本机 PATH 里没有 `claude` 命令（桌面版自带的 CLI 不在 PATH 里）。T10 的 `claude-login` 实测依赖 claude-agent-sdk 自带的 CLI，到时候先确认它能用。
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
 - 2026-10-09 — **D1（负责人已决定：采用备选方案，T1–T11 全部在 Windows 上做，T12 回到 macOS）**。原推荐方案：T1–T8 的质量关口在 macOS 上跑。理由：T8 完成之前，Windows 上的 `tasks.py check` 必然大面积失败，在 Windows 上做 T1–T8 就没有可用的"绿色基线"来判断改动是否引入了回归。**备选**：T1–T8 也在 Windows 上做，开工前先记录一份 Windows 基线失败清单，每个任务的完成标准改为"没有新增失败，并且本任务负责修复的那些失败已经消失"。这样不用来回切换机器，但判断依据更弱，macOS 上的回归要等到 T12 才能发现。
