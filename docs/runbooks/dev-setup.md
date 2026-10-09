@@ -8,9 +8,9 @@
 |---|---|---|
 | uv | Python 包管理，Python 3.12 | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | Node 22+ 和 pnpm | 前端 | nvm 或 brew；`corepack enable` |
-| cairo、pango、pkg-config | manim 的原生依赖 | `brew install cairo pango pkg-config` |
-| ffmpeg | 渲染、音频合成、关键帧抽取 | `brew install ffmpeg` |
-| LaTeX | manim 的公式渲染 | `brew install --cask mactex-no-gui`（或 BasicTeX 加所需的宏包） |
+| ffmpeg | 成片出帧编码、混音、音频解码 | `brew install ffmpeg` |
+
+Manim 引擎已下线（ADR 0027），不再需要 cairo、pango、LaTeX。
 
 ## 命令行路径
 

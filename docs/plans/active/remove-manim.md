@@ -75,7 +75,7 @@
 - **要点**：类型保留 `'manim'`/`'explainer_manim'` 以显示老项目（标签"知识讲解（Manim，已下线）"）；创建默认 `explainer_html`；`stage === 'animation'` 显示下线提示，不再渲染 Manim 画布；去掉只服务 manim 的 `.py` 镜头路径逻辑。
 - **验证命令**：`make check`；浏览器打开新建项目对话框和老项目截图。
 
-### T5：文档与收尾（待开始）
+### T5：文档与收尾（完成）
 
 - **涉及文件**：ADR `docs/decisions/0027-下线Manim引擎.md`、`ARCHITECTURE.md`、`README.md`、`runbooks/dev-setup.md`、`runbooks/verification.md`、`quality/QUALITY.md`、`quality/tech-debt.md`、`plans/TODO.md`、`references/README.md`、`references/manim.md`、`plans/todo/windows-native.md`。
 - **验证命令**：`make check`（含文档检查）
@@ -87,10 +87,11 @@
 
 - 2026-10-09 — T3 — 删 `manim`、`pyflakes`，`uv lock` 连带移除 25 个包（av、pycairo、manimpango、moderngl、pyglet、skia-pathops、pydub 等）；确认 `studio` 不直接 import 其中任何一个；`make check` 绿，`pytest -m slow` 66 passed
 - 2026-10-09 — T4 — 删除 `AnimationCanvas.vue`；新建对话框只剩 HTML 讲解/短片/MV，默认 HTML 讲解；老项目动画阶段显示下线提示；镜头脚本路径固定 `.js`；设置页默认模型去掉 `animation`。另补后端：老项目 `animation` 阶段新建会话、发消息返回 409。`make check` 绿，浏览器实测见验证记录
+- 2026-10-09 — T5 — ADR 0027；ARCHITECTURE、README、dev-setup、verification、QUALITY、references 更新；windows-native 计划去掉 manim/MiKTeX，讲解类验收改用 HTML。`make check` 绿
 
 ## 下一步
 
-- 从 T5 开始：写 ADR `docs/decisions/0027-下线Manim引擎.md`，更新 ARCHITECTURE、README、dev-setup、verification、QUALITY、tech-debt、TODO、references（README、manim.md）、`plans/todo/windows-native.md`；然后自验证、评审。
+- 自验证（填「验证记录」），然后请评审者（新 subagent）评审整条分支，处理评审意见后请负责人验收。
 
 ## 决策记录
 
