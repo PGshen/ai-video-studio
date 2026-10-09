@@ -381,6 +381,16 @@ async def send_message_endpoint(
             raise HTTPException(status_code=422, detail="text 字段必须是文本")
         files = await _read_files(form)
     profile = get_model_profile_by_id(engine, session.model_profile_id)
+    supports_vision = profile is not None and profile.supports_vision
+    writes_workspace = any(not supports_vision or sniff_image(f.data) is None for f in files)
+    # 另一个会话的一轮正在跑时，它结束时的越界检查会把新出现的 uploads/ 文件当越权改动删掉。
+    # 从这里到写完文件之间不 await，相对调度器是原子的（见 `TurnRunner.is_project_busy`）。
+    if (
+        writes_workspace
+        and session.project_id is not None
+        and turn_runner.is_project_busy(session.project_id)
+    ):
+        raise HTTPException(status_code=409, detail="项目里有对话正在运行，请等它结束再上传文件")
     try:
         prepared = prepare_input(
             text or "",
@@ -388,7 +398,7 @@ async def send_message_endpoint(
             workdir=_session_workdir(settings, session),
             blobs=blobs,
             runtime=session.runtime,
-            supports_vision=profile is not None and profile.supports_vision,
+            supports_vision=supports_vision,
         )
     except AttachmentError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

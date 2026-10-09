@@ -159,7 +159,7 @@
 - **完成标准**：AC2 和 AC4 的后端部分有测试证据。
 - **验证命令**：`make check`。
 
-### T4：`uploads/` 只读，以及风格草稿的处理（待开始）
+### T4：`uploads/` 只读，以及风格草稿的处理（完成）
 
 - **目标**：agent 改不了 `uploads/`；风格草稿的清理和保存都跳过 `uploads/`（修订 R1）。
 - **涉及文件**：
@@ -231,7 +231,7 @@
 
 ## 下一步
 
-- T4：`uploads/` 只读（`workspace/scope.py::is_writable`）与风格草稿 `prune_draft`/保存跳过 `uploads/`。
+- T5：前端发送附件。先确认 `PromptInput` 的 `submit` 里 `files` 能否拿回原始 `File`，结论写进「意外与发现」。
 
 ## 决策记录
 
@@ -242,10 +242,13 @@
 - 2026-10-09 — T3：`TurnRunner.start_turn` 多一个 `user_message` 关键字参数 — `UserInput.text` 已经拼上文件说明，`turns.user_message` 要存原文（全局约束）。
 - 2026-10-09 — T3：会话的工作目录判断与 `TurnRunner._execute` 一致：有项目 → 项目工作区；无项目有 `subject_id` → 风格草稿；都没有 → 选题会话。风格阶段本身被标为 `workspaceless`，不能用阶段标记判断。
 - 2026-10-09 — T3：JSON 分支改为手动解析 `MessageCreate`，失败时 422 的 detail 是中文字符串（以前是 FastAPI 的校验列表）— 同一端点要同时接受 JSON 和 multipart。
+- 2026-10-09 — T4：同一项目里另一个会话的一轮正在运行时，带文件（会写工作区）的消息返回 409；只带图片的照常排队 — 正在运行的那一轮结束时，越界检查会把新出现的 `uploads/` 文件当越权改动删掉。设计 §5.2 只要求检查本会话是否忙，这里补上项目级检查。
+- 2026-10-09 — T4：styles 不能依赖 workspace（结构规则 4），所以 `styles/layout.py` 另写一份 `UPLOADS_DIR`，用 `tests/styles/test_layout.py` 保证和 `workspace/scope.py` 一致。
 - 2026-10-09 — `python-multipart` 不写成显式依赖 — 它已经通过传递依赖装好，`music_import` 已经在用；遵守"不引入计划外依赖"这条约束。
 
 ## 意外与发现
 
+- 2026-10-09 — T4：runner 的 guard 测试（Shell 改 `uploads/` 被还原）在改动前就能通过，因为 topic 阶段的写入范围本来就不含 `uploads/`；`is_writable` 的改动保护的是写入范围更宽的阶段，由 `test_scope.py::test_uploads_are_never_writable` 覆盖。
 - 2026-10-09 — 前端 `pnpm run typecheck`（`vue-tsc --noEmit`）对 `files: []` 的 solution tsconfig 实际上什么都不检查；用 `-p tsconfig.app.json` 实测有 52 处既有错误（多在 spec 里）。不属于本计划，已经开了单独的任务；本计划的改动用 `-p tsconfig.app.json` 确认不新增错误。
 - 2026-10-09 — 写计划时发现风格对话的 cwd 是草稿目录，以及读工具有大小上限。已经升级给负责人，结论写进设计修订 R1、R2。
 

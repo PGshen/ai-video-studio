@@ -26,8 +26,8 @@ from studio.agent.events import ImageData
 from studio.agent.fallback_tools import MAX_READ_BYTES
 from studio.agent.runtime import UserInput
 from studio.workspace import BlobStore
+from studio.workspace.scope import UPLOADS_DIR
 
-UPLOADS_DIR = "uploads"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGES = 6
 MAX_FILE_BYTES = 20 * 1024 * 1024

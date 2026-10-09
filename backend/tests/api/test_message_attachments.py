@@ -171,6 +171,35 @@ class TestProjectSession:
         assert _uploads(api_env.workdir(pid)) == []
 
 
+class TestProjectBusy:
+    """另一个会话的一轮正在跑时，它结束时的越界检查会把新出现的 `uploads/` 文件当越权改动删掉，
+    所以带文件的消息要等项目空闲；只带图片的不写工作区，照常排队。"""
+
+    async def test_file_is_409_while_another_session_runs(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pid, sid = await _project_session(api_env)
+        monkeypatch.setattr(api_env.app.state.turn_runner, "is_project_busy", lambda _pid: True)
+
+        response = await _send(api_env, sid, "x", [("a.md", b"a")])
+
+        assert response.status_code == 409
+        assert_detail(response)
+        assert _uploads(api_env.workdir(pid)) == []
+
+    async def test_image_is_accepted_while_another_session_runs(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _, sid = await _project_session(api_env)
+        monkeypatch.setattr(api_env.app.state.turn_runner, "is_project_busy", lambda _pid: True)
+
+        response = await _send(api_env, sid, "x", [("a.png", PNG)])
+
+        assert response.status_code == 202, response.text
+        monkeypatch.undo()
+        await _wait(api_env, response.json()["turn_id"])
+
+
 class TestBrainstormSession:
     async def test_file_is_rejected(self, api_env: ApiEnv) -> None:
         sid = await _brainstorm_session(api_env)

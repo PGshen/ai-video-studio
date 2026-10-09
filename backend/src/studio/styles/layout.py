@@ -10,6 +10,9 @@ ENTRY_NAME: Final = "STYLE.md"
 REFERENCES_DIR: Final = "references"
 EXEMPLARS_DIR: Final = "exemplars"
 SCREENSHOTS_DIR: Final = "screenshots"
+UPLOADS_DIR: Final = "uploads"
+"""对话附件目录（设计 2026-10-09 修订 R1），和 `workspace.scope.UPLOADS_DIR` 同名；styles 不能依赖
+workspace，所以各写一份，由 `tests/styles/test_layout.py` 保证一致。"""
 
 _STYLE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
 

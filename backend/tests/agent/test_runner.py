@@ -626,6 +626,22 @@ class TestGuard:
         await h.run(session_id, [fake.say("嗯")])
         assert "被还原" in h.last_prompt and "style/STYLE.md" in h.last_prompt
 
+    async def test_shell_changes_to_uploads_are_restored(self, h: Harness) -> None:
+        h.env.write("uploads/ab12cd34-a.md", "用户上传")
+        session_id = h.session()
+
+        await h.run(
+            session_id,
+            [
+                fake.shell_write("uploads/ab12cd34-a.md", "被改了"),
+                fake.shell_write("uploads/new.md", "新增"),
+            ],
+        )
+
+        uploads = h.env.workdir / "uploads"
+        assert (uploads / "ab12cd34-a.md").read_text(encoding="utf-8") == "用户上传"
+        assert not (uploads / "new.md").exists()
+
     async def test_write_into_upstream_is_restored(self, h: Harness) -> None:
         h.env.write("topic/brief.md", "定稿简报")
         finalize(h.env.engine, h.env.blobs, h.env.registry, h.env.project_id, "topic")
