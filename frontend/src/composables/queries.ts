@@ -299,7 +299,8 @@ export function useSessionQuery(sessionId: MaybeRefOrGetter<string | null>) {
 export function useSendMessageMutation(sessionId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: MessageCreate) => api.sendMessage(toValue(sessionId), body),
+    mutationFn: (body: MessageCreate & { files?: File[] }) =>
+      api.sendMessage(toValue(sessionId), body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.session(toValue(sessionId)) })
       // 会话标题由后端按第一条消息自动生成：发完消息后列表要重取，标题才会出现。

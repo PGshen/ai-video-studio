@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({
   log: [] as string[],
-  sentWith: [] as Array<{ sessionId: string; text: string }>,
+  sentWith: [] as Array<{ sessionId: string; text: string; files?: File[] }>,
+  sendFailure: null as Error | null,
   turnStatus: null as { status: string; turnId: string } | null,
 }))
 
@@ -27,9 +28,10 @@ vi.mock('@/composables/useSessionStream', async () => {
 })
 vi.mock('@/composables/queries', () => ({
   useSendMessageMutation: (sessionId: () => string) => ({
-    mutateAsync: async (body: { text: string }) => {
+    mutateAsync: async (body: { text: string; files?: File[] }) => {
       state.log.push('send')
-      state.sentWith.push({ sessionId: sessionId(), text: body.text })
+      if (state.sendFailure) throw state.sendFailure
+      state.sentWith.push({ sessionId: sessionId(), text: body.text, files: body.files })
       return { turn_id: 't1' }
     },
   }),
@@ -200,5 +202,88 @@ describe('SessionPanel：beforeSend', () => {
     const w = mountPanel({ sessionId: 's1' })
     await submit(w, '你好')
     expect(state.sentWith).toEqual([{ sessionId: 's1', text: '你好' }])
+  })
+})
+
+
+describe('SessionPanel：附件', () => {
+  beforeEach(() => {
+    // jsdom 的 File 和 Node 的 URL.createObjectURL 不兼容；附件预览地址在这里不重要。
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'data:,preview')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    state.log = []
+    state.sentWith = []
+    state.sendFailure = null
+    document.body.innerHTML = ''
+  })
+
+  async function attach(w: ReturnType<typeof mountPanel>, files: File[]) {
+    const input = w.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { value: files, configurable: true })
+    await input.trigger('change')
+    await flushPromises()
+  }
+
+  const png = () => new File(['png'], 'a.png', { type: 'image/png' })
+  const md = () => new File(['# hi'], 'notes.md', { type: 'text/markdown' })
+
+  it('选中的附件显示成 chip，可以移除', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    await attach(w, [png(), md()])
+    expect(w.text()).toContain('a.png')
+    expect(w.text()).toContain('notes.md')
+
+    await w.get('button[aria-label="移除 notes.md"]').trigger('click')
+    expect(w.text()).not.toContain('notes.md')
+  })
+
+  it('发送时把原始文件交给 sendMessage', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    const a = png()
+    await attach(w, [a])
+    await submit(w, '看图')
+
+    expect(state.sentWith).toEqual([{ sessionId: 's1', text: '看图', files: [a] }])
+    expect(w.text()).not.toContain('a.png')
+  })
+
+  it('只有附件、没有文字也能发送', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    await attach(w, [png()])
+    await submit(w, '')
+
+    expect(state.sentWith).toHaveLength(1)
+  })
+
+  it('发送失败时附件保留，显示错误', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    await attach(w, [md()])
+    state.sendFailure = new Error('文件太大')
+    await submit(w, '读一下')
+
+    expect(w.text()).toContain('notes.md')
+    expect(w.text()).toContain('文件太大')
+  })
+
+  it('超过上限的附件不发送，提示原因', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    const big = new File(['x'], 'big.png', { type: 'image/png' })
+    Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 })
+    await attach(w, [big])
+    await submit(w, 'x')
+
+    expect(state.sentWith).toEqual([])
+    expect(w.text()).toContain('超过 5 MB')
+  })
+
+  it('images 模式：文件选择框只接受图片，非图片被拦下并提示', async () => {
+    const w = mountPanel({ sessionId: 's1', attachmentAccept: 'images' })
+    expect(w.get('input[type="file"]').attributes('accept')).toContain('image/png')
+
+    await attach(w, [md()])
+
+    expect(w.text()).not.toContain('notes.md')
+    expect(w.text()).toContain('选题对话只支持图片')
   })
 })

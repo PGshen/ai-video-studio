@@ -174,7 +174,7 @@
 - **完成标准**：上面的测试全部通过；现有的写入范围测试没有退化。
 - **验证命令**：`make check`。
 
-### T5：前端——发送附件（待开始）
+### T5：前端——发送附件（完成）
 
 - **目标**：对话框可以添加附件、预览附件、把附件发出去。
 - **涉及文件**：
@@ -231,7 +231,7 @@
 
 ## 下一步
 
-- T5：前端发送附件。先确认 `PromptInput` 的 `submit` 里 `files` 能否拿回原始 `File`，结论写进「意外与发现」。
+- T6：时间线回显附件（`SessionTimelineItem` + 用户消息数据来源），乐观消息带本地预览。
 
 ## 决策记录
 
@@ -244,10 +244,14 @@
 - 2026-10-09 — T3：JSON 分支改为手动解析 `MessageCreate`，失败时 422 的 detail 是中文字符串（以前是 FastAPI 的校验列表）— 同一端点要同时接受 JSON 和 multipart。
 - 2026-10-09 — T4：同一项目里另一个会话的一轮正在运行时，带文件（会写工作区）的消息返回 409；只带图片的照常排队 — 正在运行的那一轮结束时，越界检查会把新出现的 `uploads/` 文件当越权改动删掉。设计 §5.2 只要求检查本会话是否忙，这里补上项目级检查。
 - 2026-10-09 — T4：styles 不能依赖 workspace（结构规则 4），所以 `styles/layout.py` 另写一份 `UPLOADS_DIR`，用 `tests/styles/test_layout.py` 保证和 `workspace/scope.py` 一致。
+- 2026-10-09 — T5：回形针用 `PromptInputButton` 加 `openFileDialog` 自己写（`AttachButton.vue`）— 组件库的 `PromptInputActionAddAttachments` 是下拉菜单项，不能单独放。
+- 2026-10-09 — T5：带附件的发送失败时，`onSubmit` 向 `PromptInput` 重新抛出错误，让它保留附件、恢复文字；不带附件时照旧吞掉错误，行为不变。409 改为优先显示后端给的中文 detail（项目忙时的提示和会话忙不同）。
+- 2026-10-09 — T5：乐观消息的本地预览挪到 T6 和时间线渲染一起做 — 渲染组件在 T6。
 - 2026-10-09 — `python-multipart` 不写成显式依赖 — 它已经通过传递依赖装好，`music_import` 已经在用；遵守"不引入计划外依赖"这条约束。
 
 ## 意外与发现
 
+- 2026-10-09 — T5：`PromptInput` 提交时 `files` 是 `{...AttachmentFile, url: dataUrl}`，原始 `File` 仍在 `.file` 上，可以直接拿来上传；代价是组件库会先把每个附件读成 data URL（20 MB 的文件也会读一遍），本地单人使用可以接受。jsdom 下 `URL.createObjectURL` 不认 jsdom 的 File，测试里需要打桩。
 - 2026-10-09 — T4：runner 的 guard 测试（Shell 改 `uploads/` 被还原）在改动前就能通过，因为 topic 阶段的写入范围本来就不含 `uploads/`；`is_writable` 的改动保护的是写入范围更宽的阶段，由 `test_scope.py::test_uploads_are_never_writable` 覆盖。
 - 2026-10-09 — 前端 `pnpm run typecheck`（`vue-tsc --noEmit`）对 `files: []` 的 solution tsconfig 实际上什么都不检查；用 `-p tsconfig.app.json` 实测有 52 处既有错误（多在 spec 里）。不属于本计划，已经开了单独的任务；本计划的改动用 `-p tsconfig.app.json` 确认不新增错误。
 - 2026-10-09 — 写计划时发现风格对话的 cwd 是草稿目录，以及读工具有大小上限。已经升级给负责人，结论写进设计修订 R1、R2。

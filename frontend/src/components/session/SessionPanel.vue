@@ -18,6 +18,7 @@ import {
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
+  type AttachmentFile,
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
 import { useSessionStream } from '@/composables/useSessionStream'
@@ -30,6 +31,9 @@ import { ApiError } from '@/api/http'
 import { computeTurnControls } from './turnControls'
 import { CONTINUE_TEXT, optimisticSend } from './optimisticSend'
 import PromptPrefill from './PromptPrefill.vue'
+import AttachButton from './AttachButton.vue'
+import AttachmentChips from './AttachmentChips.vue'
+import { type AttachmentAccept, acceptAttribute, validateAttachments } from './attachmentRules'
 import SessionTimeline from './SessionTimeline.vue'
 
 /**
@@ -45,7 +49,11 @@ const props = defineProps<{
   createSession?: () => Promise<string>
   /** 每次发送（含「继续」）之前先执行；失败（reject）则不发送，错误显示在输入框上方。 */
   beforeSend?: () => Promise<void>
+  /** 能上传哪些附件：默认图片和文件都行；选题对话没有工作区，只收图片（设计 2026-10-09）。 */
+  attachmentAccept?: AttachmentAccept
 }>()
+
+const accept = computed<AttachmentAccept>(() => props.attachmentAccept ?? 'all')
 const emit = defineEmits<{
   /** 用户发的新消息已被后端接收（[继续] 不发：它没有把输入框里的内容发出去）。 */
   (e: 'sent'): void
@@ -85,7 +93,7 @@ const inputDisabled = computed(
 
 function describeError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 409) return '会话忙，请等待当前一轮结束'
+    if (error.status === 409 && typeof error.detail !== 'string') return '会话忙，请等待当前一轮结束'
     return typeof error.detail === 'string' ? error.detail : error.message
   }
   return error instanceof Error ? error.message : '未知错误'
@@ -93,9 +101,19 @@ function describeError(error: unknown): string {
 
 const optimisticMessages = { add: addLocalUserMessage, remove: removeLocalUserMessage }
 
+/**
+ * 带附件的发送失败时向 `PromptInput` 抛出：它据此保留附件（并恢复文字），错误已经显示在
+ * `sendError` 里。不带附件时照旧吞掉错误（行为不变）。
+ */
 async function onSubmit(message: PromptInputMessage): Promise<void> {
   const text = message.text.trim()
-  if (!text || (!props.sessionId && !props.createSession)) return
+  const files = (message.files as AttachmentFile[]).flatMap((item) => (item.file ? [item.file] : []))
+  if ((!text && files.length === 0) || (!props.sessionId && !props.createSession)) return
+  const problem = validateAttachments(files, accept.value)
+  if (problem) {
+    sendError.value = problem
+    throw new Error(problem)
+  }
   sendError.value = null
   emit('sending', true)
   try {
@@ -112,16 +130,23 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
       }
     }
     await optimisticSend(optimisticMessages, text, async () => {
-      const accepted = await sendMutation.mutateAsync({ text })
+      const accepted = await sendMutation.mutateAsync(files.length ? { text, files } : { text })
       markTurnAccepted(accepted.turn_id, text)
     })
     emit('sent')
     emit('accepted')
   } catch (error) {
     sendError.value = describeError(error)
+    if (files.length) throw error
   } finally {
     emit('sending', false)
   }
+}
+
+/** `PromptInput` 添加附件时的拦截（类型不符等）；提交失败已经在 `onSubmit` 里处理过。 */
+function onInputError(error: { code: string; message: string }): void {
+  if (error.code === 'submit_error') return
+  sendError.value = error.code === 'accept' && accept.value === 'images' ? '选题对话只支持图片' : error.message
 }
 
 async function onStop(): Promise<void> {
@@ -192,13 +217,23 @@ async function onContinue(): Promise<void> {
       {{ sendError }}
     </p>
 
-    <PromptInput @submit="onSubmit">
+    <PromptInput
+      :accept="acceptAttribute(accept)"
+      multiple
+      @submit="onSubmit"
+      @error="onInputError"
+    >
       <PromptPrefill :prefill="prefill" />
+      <AttachmentChips :accept="accept" />
       <PromptInputBody>
         <PromptInputTextarea :disabled="inputDisabled" />
       </PromptInputBody>
       <PromptInputFooter>
         <div class="flex min-w-0 items-center">
+          <AttachButton
+            :disabled="inputDisabled"
+            :label="accept === 'images' ? '添加图片' : '添加图片或文件'"
+          />
           <slot name="tools" />
         </div>
         <div class="ml-auto flex items-center gap-2">

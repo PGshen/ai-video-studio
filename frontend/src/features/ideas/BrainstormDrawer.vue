@@ -43,6 +43,7 @@ const createSession = useEnsureSession(ref(brainstormScope), sessionId)
         :session-id="sessionId"
         :project-id="null"
         :create-session="createSession"
+        attachment-accept="images"
       >
         <template #tools>
           <SessionModelTool

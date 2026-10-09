@@ -199,8 +199,17 @@ export function getSession(sessionId: string): Promise<SessionDetailOut> {
   return request(`/sessions/${encodePathSegment(sessionId)}`)
 }
 
-export function sendMessage(sessionId: string, body: MessageCreate): Promise<TurnAccepted> {
-  return request(`/sessions/${encodePathSegment(sessionId)}/messages`, { method: 'POST', body })
+/** 有附件时发 multipart（`text` 加若干 `files`），否则发 JSON（设计 2026-10-09 §4.1）。 */
+export function sendMessage(
+  sessionId: string,
+  body: MessageCreate & { files?: File[] },
+): Promise<TurnAccepted> {
+  const path = `/sessions/${encodePathSegment(sessionId)}/messages`
+  if (!body.files?.length) return request(path, { method: 'POST', body: { text: body.text } })
+  const form = new FormData()
+  form.append('text', body.text)
+  for (const file of body.files) form.append('files', file)
+  return uploadForm(path, form)
 }
 
 export function cancelSession(sessionId: string): Promise<TurnAccepted> {
