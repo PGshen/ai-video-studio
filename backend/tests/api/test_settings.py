@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from studio.agent import exec_policy
 from studio.db.repo.profiles import get_model_profile
 from studio.db.repo.settings import get_all_settings
 
@@ -34,7 +35,67 @@ class TestGetSettings:
             "web_mode_env": "tools",
             "tts_default": {"voice": "zizi", "speech_rate": 1.0},
             "default_style_preset_id": None,
+            "allow_unsandboxed_exec": False,
+            "allow_unsandboxed_exec_source": "env",
+            "allow_unsandboxed_exec_env": False,
+            "sandbox_available": exec_policy.seatbelt_available(),
+            "exec_mode": exec_policy.host_exec_mode(False),
         }
+
+
+class TestExecSwitchSettings:
+    """ADR 0024 / plan T6: the unsandboxed-exec switch in Settings → General."""
+
+    @pytest.mark.parametrize(
+        ("seatbelt", "platform", "allow", "mode"),
+        [
+            (False, "win32", False, "disabled"),
+            (False, "win32", True, "unsandboxed"),
+            (True, "darwin", True, "sandboxed"),
+        ],
+    )
+    async def test_sandbox_and_mode_are_reported(
+        self,
+        api_env: ApiEnv,
+        monkeypatch: pytest.MonkeyPatch,
+        seatbelt: bool,
+        platform: str,
+        allow: bool,
+        mode: str,
+    ) -> None:
+        monkeypatch.setattr(exec_policy, "seatbelt_available", lambda: seatbelt)
+        monkeypatch.setattr(exec_policy.sys, "platform", platform)
+        body = (await _patch(api_env, {"allow_unsandboxed_exec": allow})).json()
+        assert body["sandbox_available"] is seatbelt
+        assert body["exec_mode"] == mode
+
+    async def test_override_and_clear(self, api_env: ApiEnv) -> None:
+        body = (await _patch(api_env, {"allow_unsandboxed_exec": True})).json()
+        assert (
+            body["allow_unsandboxed_exec"],
+            body["allow_unsandboxed_exec_source"],
+            body["allow_unsandboxed_exec_env"],
+        ) == (True, "ui", False)
+
+        body = (await _patch(api_env, {"allow_unsandboxed_exec": None})).json()
+        assert (body["allow_unsandboxed_exec"], body["allow_unsandboxed_exec_source"]) == (
+            False,
+            "env",
+        )
+        assert get_all_settings(api_env.app.state.engine).allow_unsandboxed_exec is None
+
+    async def test_an_explicit_false_overrides_an_env_true(self, api_env: ApiEnv) -> None:
+        api_env.app.state.settings.allow_unsandboxed_exec = True
+        body = (await _patch(api_env, {"allow_unsandboxed_exec": False})).json()
+        assert (body["allow_unsandboxed_exec"], body["allow_unsandboxed_exec_source"]) == (
+            False,
+            "ui",
+        )
+        assert body["allow_unsandboxed_exec_env"] is True
+
+    async def test_non_boolean_is_422(self, api_env: ApiEnv) -> None:
+        response = await _patch(api_env, {"allow_unsandboxed_exec": "yes"})
+        assert response.status_code == 422
 
 
 class TestPatchSettings:

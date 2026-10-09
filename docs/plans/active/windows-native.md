@@ -131,7 +131,7 @@
 - **完成标准**：质量关口满足 D1；macOS 上的已有行为不变（已有的运行时测试不需要修改就能通过）。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）。
 
-### T6：设置页开关与"命令未隔离"标记（待开始，机器：Windows，按基线对比）
+### T6：设置页开关与"命令未隔离"标记（完成，机器：Windows，按基线对比）
 
 - **目标**：设计 §4.3 的界面部分。
 - **涉及文件**：`backend/src/studio/api/`（设置接口和"通用"那一组：读写 `allow_unsandboxed_exec`，返回 `sandbox_available` 和当前生效的 `exec_mode`）；`frontend/src/` 中设置 → 通用的组件、轮次标记组件、API 类型；对应的后端接口测试和 vitest。
@@ -226,16 +226,17 @@
 - 2026-10-09 — T3 完成：`workspace.files.check_model_path`、`relpath_within`；`normalize_relpath`、`safe_path`、`apply_patch.to_workspace_relpath`、Claude 读写 hook（含 Glob 模式）改为共用它们；附件文件名去掉 Windows 不允许的字符和结尾的 `.`/空格。新增约 140 个用例（`tests/workspace/test_model_path.py`、hook 和 apply_patch 的 Windows 写法），已有的路径测试没有修改。和基线比没有新增失败，`apply_patch` 的 3 个基线失败转为通过。剩余失败数：pytest 98 失败 + 30 error + 1 挂住，pyright 8
 - 2026-10-10 — T4 完成：新模块 `studio.proc`（`spawn_kwargs`、`kill_tree`/`kill_proc_tree`/`kill_tree_sync`、`run_killing_tree`、`child_env`）及 import-linter 契约；配乐脚本、歌曲分析、ffprobe、ffmpeg 解码/出片/混音、Shell executor 全部改用它；Windows 上 `limited_argv` 原样返回，`run_compose` 事后检查 `music.wav` 大小（两个平台都查）。测试里的假 ffmpeg 改成 Python 脚本，挂住的取消用例随之修好；`os.kill(pid, 0)` 探活改为共用的 `fixtures.processes.pid_alive`。Windows 上 `tasks.py check` 第一次跑到 pytest：pyright 0 错误，pytest **6 失败**（3007 通过），全部属于 T8、T9。剩余失败数：pytest 6，pyright 0
 - 2026-10-10 — T5 完成：`agent/exec_policy.py`（`exec_mode`、`claude_sandbox_available`、`host_exec_mode`）；开关 `STUDIO_ALLOW_UNSANDBOXED_EXEC` + 设置键 `allow_unsandboxed_exec`（`effective_allow_unsandboxed_exec`）；每轮开始读一次，经 `TurnContext`/`ToolContext` 传给 Claude（`disabled` 去掉 Bash、禁 Bash/PowerShell、不传 sandbox；`unsandboxed` 放行 Bash+PowerShell）、OpenAI Shell（`unsandboxed` 时交给 `/bin/sh` 或 Git Bash）和 `render_music`（`disabled` 的报错指向设置页）；`turns.usage.exec_mode` 记下本轮模式；ADR 0024、`.env.example`、ARCHITECTURE 同步。新增 54 个用例，Windows 上 `echo 中文` 经 Git Bash 实测无乱码。剩余失败数：pytest 6（同 T4），pyright 0
+- 2026-10-10 — T6 完成：`/api/settings` 返回并接受 `allow_unsandboxed_exec`（另有 `_source`、`_env`、`sandbox_available`、`exec_mode`），补丁用 `StrictBool`；设置 → 通用新增「命令执行」一节（只在没有沙箱时显示，带风险说明、来源文案、清除按钮）；回复操作栏对 `usage.exec_mode == "unsandboxed"` 的轮次显示「命令未隔离」。Windows 上用 Fake 运行时在内置浏览器里验证并截图（`data/evidence/windows-native/t6-*.jpg`，不入库），验证用的项目已删除、开关已恢复为环境变量。剩余失败数：pytest 6（同 T4），pyright 0；前端 lint、typecheck、vitest 全绿
 
 ## 下一步
 
-T1–T5 已完成（见「进度」）。接下来做 **T6：设置页开关与"命令未隔离"标记**：
+T1–T6 已完成（见「进度」）。接下来做 **T7：`tasks.py dev`**：
 
-1. 计划里 T6 状态改为「进行中」；先读联网模式的现有实现，照着它写：后端 `api/settings.py`、`api/schemas.py`（`web_mode`/`web_mode_source`/`web_mode_env` 那一组）、`tests/api/test_settings.py::test_web_mode_override_and_clear`；前端设置 → 通用的组件（`grep -rn web_mode frontend/src`）、`frontend/src/components/session/turnMeta.ts`（轮次元信息）、`types/api.ts`。
-2. 后端：设置接口读写 `allow_unsandboxed_exec`，返回生效值、来源（`ui`/`env`）、环境变量值，以及 `sandbox_available`（用 `exec_policy.seatbelt_available()`，T5 决策记录说明了为什么按 Seatbelt 判断）和当前生效的 `exec_mode`（`exec_policy.host_exec_mode`）；和联网模式共用"清除界面设置"。`turns.usage.exec_mode` 已由 T5 写入，`TurnOut.usage` 原样带出，确认前端类型里有这个字段。
-3. 前端：开关只在 `sandbox_available=false` 时显示，文案说明风险（ADR 0024「影响」第 2 条）和"下一轮对话起生效"；`usage.exec_mode == "unsandboxed"` 的轮次在元信息里显示"命令未隔离"。先写 vitest 和后端接口测试。
-4. Windows 上用 Fake 运行时在内置浏览器里看一眼开关和标记并截图（`.claude/launch.json` 的 api 和 frontend；如果 `preview_start` 在 Windows 上起不来，先按 T9 的 P14 处理）。
-5. 验证：`uv run --project backend python scripts/tasks.py check`，和 T4/T5 的 6 个失败比较；commit 并 push。
+1. 计划里 T7 状态改为「进行中」；先读 `scripts/dev.sh`（要保留的行为：`python -m studio.config` 读绑定地址、导出 `STUDIO_BIND_PORT`、uvicorn `--reload --reload-dir backend/src`、worker 不 reload、`stdin` 一律 `DEVNULL`、清理旧进程不误杀）、设计 §8.2，以及 `studio/proc.py`（要复制进 `tasks.py` 的 `spawn_kwargs`、`kill_tree_sync`）。
+2. 先写 `backend/tests/scripts/test_tasks_dev.py`：pid 文件读写；"是否属于本项目"（注入 `ps`/`tasklist`/`wmic` 输出——Windows 上 `tasklist` 不给命令行，T7 要确定用什么拿命令行：`wmic` 已弃用，可以用 PowerShell 的 `Get-CimInstance Win32_Process`，写进决策记录）；`netstat -ano` 解析（夹具）；审查重点 2；用三个 `python -c "sleep"` 假命令在本机（Windows）真实测试启动和退出后进程树清空。
+3. 实现 `dev` 子命令，删除 `scripts/dev.sh`，Makefile 的 `dev` 改为一行，`.claude/launch.json` 不需要改（T6 已确认 `preview_start` 在 Windows 上能直接起 `uv` 和 `pnpm`，P14 通过）。
+4. 手动验证：`uv run --project backend python scripts/tasks.py dev` → 浏览器打开 → Ctrl+C → `tasklist` 无残留；连续启动两次。
+5. 验证命令：`tasks.py check`（和 6 个已知失败比较）；commit 并 push。
 
 ## 决策记录
 
@@ -274,6 +275,8 @@ T1–T5 已完成（见「进度」）。接下来做 **T6：设置页开关与"
 - 2026-10-10 — T5：`exec_mode` 记在 `turns.usage.exec_mode`：开跑时随 `record_run_profile` 写一次（新增可选参数 `exec_mode`，被崩溃中断的轮次也留得下），收尾时随完整 usage 再写一次。开关和模式放在 `_Job` 上（`_run` 开头读一次），三种会话（项目、无项目、风格草稿）共用。
 - 2026-10-10 — T5：OpenAI Shell 的 `unsandboxed` 模式在 Windows 上需要一个能执行模型写的 sh 语法命令的 shell：用 Git Bash，查找顺序是 `CLAUDE_CODE_GIT_BASH_PATH`（和 Claude Code 用同一个变量）、`git` 所在目录旁边的 `bin/bash.exe`；找不到时这次调用失败并说明原因，**不回退到 `PATH` 里的 `bash`**（Windows 自带的 `C:\Windows\System32\bash.exe` 是 WSL，看到的是另一套文件系统）。
 - 2026-10-10 — T5：Claude 运行时的已有测试在 Windows 上会走 `disabled`（`options.tools` 里没有 Bash、`sandbox` 为空），所以测试辅助函数 `_runtime` 加了 `platform="darwin"` 默认值，另一个直接构造 `ClaudeRuntime` 的用例也补上；断言本身没有改。macOS 上这些测试不受影响（`platform` 本来就是 `darwin`）。`render_music` 用模块属性 `exec_platform` 注入平台，测试里不改全局 `sys.platform`（改了会影响 `studio.proc` 等其他代码）。
+- 2026-10-10 — T6：设置接口的 `sandbox_available` 按 Seatbelt 是否可用（`exec_policy.seatbelt_available()`）判断，`exec_mode` 用 `host_exec_mode`，和轮次记录同一口径（最弱的执行点）。Linux 上这意味着开关会显示（Claude 本身有沙箱，但配乐脚本和 OpenAI Shell 没有），这正是开关管得到的部分。补丁里的 `allow_unsandboxed_exec` 用 `StrictBool`：pydantic 默认会把 `"yes"` 转成 `true`，开关这种安全相关的值不接受隐式转换。
+- 2026-10-10 — T6：界面只用纯函数做可测的部分（`execSwitchVisible`、`execSourceText`、`EXEC_SWITCH_RISKS`、`formatTurnMeta().unsandboxed`），vitest 覆盖显示条件；组件本身照联网模式的写法，没有单独的组件测试，用内置浏览器实测代替。
 
 ## 意外与发现
 
@@ -297,6 +300,9 @@ T1–T5 已完成（见「进度」）。接下来做 **T6：设置页开关与"
 - 2026-10-09 — 本机 Git Bash 里的 `pnpm`（nvm4w 的 sh 启动脚本）把路径解析成 `C:\Users\pp\anaconda3\Library\c\nvm4w\...`，运行失败；PowerShell 里的 `pnpm`（`pnpm.ps1`/`pnpm.cmd`）正常。`tasks.py` 用 `shutil.which("pnpm")` 找到的是 `pnpm.CMD`，不受影响。
 - 2026-10-09 — 本机 npm 镜像源（清华 tuna）缺 `@codemirror/lang-javascript-6.2.5.tgz`（404），`pnpm install` 失败；这次用 `pnpm install --registry=https://registry.npmmirror.com/` 装好，没有改全局配置，lockfile 没有变化。
 - 2026-10-09 — Git Bash 里 `lint-imports`、`check_docs.py` 等的中文输出是乱码（控制台代码页是 GBK）；PowerShell 里显示正常。不影响结果，T9 写 dev-setup 时提一句"在 PowerShell 里跑"。
+- 2026-10-10 — **P14 结论**：Claude 桌面版的 `preview_start` 在 Windows 上能直接用 `.claude/launch.json` 起 api（`uv run uvicorn ... --reload`）和 frontend（`pnpm run dev`），不需要改 `launch.json`；`preview_stop` 之后没有残留的 python/node/uv 进程。uvicorn `--reload` 下 asyncio 子进程也正常（Fake 运行时的一轮跑完，P13 的一部分，ffprobe 等真实子进程留到 T9/T11 确认）。
+- 2026-10-10 — 内置浏览器面板隐藏时，坐标点击和截图会因"页面没有绘制"超时；`form_input`、`javascript_tool`、`get_page_text` 不受影响，截图重试一两次通常能成功。
+- 2026-10-10 — 一次 `ruff check --fix` 改写测试文件时报 `os error 1224`（"请求的操作无法在使用用户映射区域打开的文件上执行"），重试即成功：文件当时被别的进程（编辑器或索引）映射着。这是 Windows 文件占用（P12）的一个实例，T10 处理 `PermissionError` 重试时一并考虑。
 
 ## 阻塞
 

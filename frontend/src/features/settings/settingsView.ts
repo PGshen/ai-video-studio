@@ -70,3 +70,23 @@ export function keyStatus(profile: ModelProfileOut): '本机登录' | '已配置
   if (profile.api_key_env === null) return '本机登录'
   return profile.key_configured ? '已配置' : '未配置'
 }
+
+/** 「无隔离执行」开关只在本机没有沙箱时出现（ADR 0024；macOS 上永远用沙箱，开关无效）。 */
+export function execSwitchVisible(settings: SettingsOut): boolean {
+  return !settings.sandbox_available
+}
+
+/** 打开开关前要让使用者知道的事（ADR 0024「影响」）。 */
+export const EXEC_SWITCH_RISKS: readonly string[] = [
+  '打开后，agent 的命令（Claude 的 Bash/PowerShell、OpenAI 的 Shell）和合成配乐脚本直接在本机运行：能读到当前用户能读的任何文件，也能联网。',
+  '主要风险是在选题或头脑风暴阶段读到被注入的网页，进而读取本机文件并发出去。工作区之外的写入不会被还原。',
+  '关闭时 agent 拿不到命令工具，合成配乐会报错；改动下一轮对话起生效，进行中的一轮不受影响。',
+]
+
+export function execSourceText(settings: SettingsOut): string {
+  if (settings.allow_unsandboxed_exec_source === 'ui') {
+    const env = settings.allow_unsandboxed_exec_env ? '开' : '关'
+    return `当前由界面设置；清除后回到环境变量 STUDIO_ALLOW_UNSANDBOXED_EXEC 的值（${env}）`
+  }
+  return '当前来自环境变量 STUDIO_ALLOW_UNSANDBOXED_EXEC（backend/.env，默认关），在这里切换会覆盖它'
+}

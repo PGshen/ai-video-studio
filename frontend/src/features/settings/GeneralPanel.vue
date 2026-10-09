@@ -3,6 +3,8 @@
  * 「通用」子页（计划 M5 T10）：各阶段的默认模型（新建会话时预选）和联网模式。
  * 联网模式的界面设置覆盖环境变量 `STUDIO_WEB_MODE`，下一轮起生效（TurnRunner 每轮重新读）；
  * 选原生联网时说明没有 URL 来源保护，并标注 OpenAI 托管搜索经 OpenRouter 未验证（TD-39）。
+ * 本机没有沙箱时（Windows）多一项「允许在无隔离环境执行 agent 命令」（ADR 0024），同样覆盖
+ * 环境变量、下一轮起生效。
  */
 import { computed } from 'vue'
 import { errorMessage } from '@/api/http'
@@ -15,6 +17,9 @@ import {
 import type { WebMode } from '@/types/api'
 import {
   DEFAULT_PROFILE_STAGES,
+  EXEC_SWITCH_RISKS,
+  execSourceText,
+  execSwitchVisible,
   WEB_MODE_HINTS,
   WEB_MODE_LABELS,
   defaultProfileChoices,
@@ -49,6 +54,10 @@ function setStageDefault(stage: string, event: Event): void {
 
 function setWebMode(mode: WebMode | null): void {
   patch.mutate({ web_mode: mode })
+}
+
+function setAllowUnsandboxed(value: boolean | null): void {
+  patch.mutate({ allow_unsandboxed_exec: value })
 }
 </script>
 
@@ -176,6 +185,63 @@ function setWebMode(mode: WebMode | null): void {
             {{ note }}
           </li>
         </ul>
+      </div>
+
+      <div
+        v-if="execSwitchVisible(settings)"
+        class="flex flex-col gap-3"
+        data-testid="exec-switch-section"
+      >
+        <div>
+          <h2 class="text-lg font-medium">
+            命令执行
+          </h2>
+          <p class="text-muted-foreground text-sm">
+            这台电脑上没有沙箱，默认不让 agent 执行命令和合成配乐脚本。
+          </p>
+        </div>
+
+        <label class="flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm">
+          <input
+            type="checkbox"
+            class="mt-1"
+            :checked="settings.allow_unsandboxed_exec"
+            :disabled="patch.isPending.value"
+            data-testid="allow-unsandboxed-exec"
+            @change="setAllowUnsandboxed(($event.target as HTMLInputElement).checked)"
+          >
+          <span class="font-medium">允许在无隔离环境执行 agent 命令</span>
+        </label>
+
+        <ul
+          class="flex flex-col gap-1 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm"
+          data-testid="exec-switch-risks"
+        >
+          <li
+            v-for="note in EXEC_SWITCH_RISKS"
+            :key="note"
+          >
+            {{ note }}
+          </li>
+        </ul>
+
+        <p
+          class="text-muted-foreground text-sm"
+          data-testid="exec-switch-source"
+        >
+          {{ execSourceText(settings) }}
+        </p>
+        <div v-if="settings.allow_unsandboxed_exec_source === 'ui'">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="clear-exec-switch"
+            :disabled="patch.isPending.value"
+            @click="setAllowUnsandboxed(null)"
+          >
+            清除界面设置，回到环境变量
+          </Button>
+        </div>
       </div>
 
       <p

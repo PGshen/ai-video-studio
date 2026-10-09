@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * 回复操作栏（设计 §6）：复制、用量、用时、时间。数据来自 `TurnOut`；turn 缺失、还在运行或
- * 时间不合法时整行不显示。
+ * 回复操作栏（设计 §6）：复制、用量、用时、时间；没有经过沙箱的轮次加「命令未隔离」（ADR 0024）。
+ * 数据来自 `TurnOut`；turn 缺失、还在运行或时间不合法时整行不显示。
  */
 import { computed } from 'vue'
-import { CheckIcon, ClockIcon, CopyIcon, DatabaseIcon } from '@lucide/vue'
+import { CheckIcon, ClockIcon, CopyIcon, DatabaseIcon, ShieldOffIcon } from '@lucide/vue'
 import type { TurnOut } from '@/types/api'
 import { formatTurnMeta } from '@/components/session/turnMeta'
 import { useCopy } from './useCopy'
@@ -50,6 +50,12 @@ const { copied, copy } = useCopy()
       v-if="meta.duration"
       class="flex items-center gap-1"
     ><ClockIcon class="size-4" />用时 {{ meta.duration }}</span>
+    <span
+      v-if="meta.unsandboxed"
+      class="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+      title="这一轮 agent 的命令和脚本没有经过沙箱（设置 → 通用里的开关已打开）"
+      data-testid="reply-unsandboxed"
+    ><ShieldOffIcon class="size-4" />命令未隔离</span>
     <span>{{ meta.time }}</span>
   </div>
 </template>

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StrictBool
 
 from studio.agent.runtime import Effort
 from studio.stages.pipeline import Engine, MusicSource, VideoKind
@@ -362,6 +362,15 @@ class SettingsOut(BaseModel):
     tts_default: TtsDefaultOut
     """新项目的默认音色/语速；没设置时是内置默认值。"""
     default_style_preset_id: str | None
+    allow_unsandboxed_exec: bool
+    """有效的「无隔离执行」开关（ADR 0024）：界面覆盖优先，否则用环境变量的值。"""
+    allow_unsandboxed_exec_source: Literal["ui", "env"]
+    allow_unsandboxed_exec_env: bool
+    """环境变量给出的值，界面「清除覆盖」后回落到它。"""
+    sandbox_available: bool
+    """本机有没有 agent 命令用的沙箱（Seatbelt）；`false` 时前端才显示开关。"""
+    exec_mode: Literal["sandboxed", "unsandboxed", "disabled"]
+    """按当前开关，下一轮对话的执行模式（`exec_policy.host_exec_mode`）。"""
 
 
 class SettingsPatch(BaseModel):
@@ -373,6 +382,7 @@ class SettingsPatch(BaseModel):
     web_mode: Literal["tools", "native"] | None = None
     tts_default: dict[str, Any] | None = None
     default_style_preset_id: str | None = None
+    allow_unsandboxed_exec: StrictBool | None = None
 
 
 class StyleSummaryOut(BaseModel):

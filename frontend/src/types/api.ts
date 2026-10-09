@@ -349,7 +349,19 @@ export interface SettingsOut {
   web_mode_env: WebMode
   tts_default: TtsDefaultOut
   default_style_preset_id: string | null
+  /** 有效的「无隔离执行」开关（ADR 0024）：界面覆盖优先，否则是环境变量。 */
+  allow_unsandboxed_exec: boolean
+  allow_unsandboxed_exec_source: 'ui' | 'env'
+  /** 环境变量 `STUDIO_ALLOW_UNSANDBOXED_EXEC` 的值，「清除覆盖」后回落到它。 */
+  allow_unsandboxed_exec_env: boolean
+  /** 本机有没有 agent 命令用的沙箱；`false` 时才显示开关。 */
+  sandbox_available: boolean
+  /** 按当前开关，下一轮对话的执行模式。 */
+  exec_mode: ExecMode
 }
+
+/** agent 执行命令和代码的方式（ADR 0024）。 */
+export type ExecMode = 'sandboxed' | 'unsandboxed' | 'disabled'
 
 /** `PATCH /api/settings`：只改出现的字段，`null` 清除。 */
 export interface SettingsPatch {
@@ -357,6 +369,7 @@ export interface SettingsPatch {
   web_mode?: WebMode | null
   tts_default?: { voice?: string | null; speech_rate?: number | null }
   default_style_preset_id?: string | null
+  allow_unsandboxed_exec?: boolean | null
 }
 
 /**

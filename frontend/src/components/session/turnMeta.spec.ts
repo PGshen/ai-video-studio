@@ -132,3 +132,18 @@ describe('formatTurnMeta', () => {
     expect(meta?.duration).toBeUndefined()
   })
 })
+
+describe('命令未隔离标记（ADR 0024）', () => {
+  it('usage.exec_mode 为 unsandboxed 的轮次带标记', () => {
+    const meta = formatTurnMeta(turn({ usage: { input_tokens: 1, output_tokens: 1, exec_mode: 'unsandboxed' } }))
+    expect(meta?.unsandboxed).toBe(true)
+  })
+
+  it('其余模式和旧数据没有标记', () => {
+    for (const mode of ['sandboxed', 'disabled', undefined]) {
+      const meta = formatTurnMeta(turn({ usage: { input_tokens: 1, output_tokens: 1, exec_mode: mode } }))
+      expect(meta?.unsandboxed).toBeFalsy()
+    }
+    expect(formatTurnMeta(turn({ usage: null }))?.unsandboxed).toBeFalsy()
+  })
+})

@@ -1,4 +1,5 @@
-"""`/api/settings`：各阶段默认模型、联网模式、新项目默认音色/语速、默认风格（计划 M5 T1）。
+"""`/api/settings`：各阶段默认模型、联网模式、新项目默认音色/语速、默认风格（计划 M5 T1）、
+无隔离执行开关（ADR 0024，windows-native T6）。
 
 补丁语义（`PATCH`）：只改请求里出现的字段，`null` 清除。形状校验在 `db.repo.settings`；
 这里补上引用其他资源的检查——模型配置存在、运行时已启用、key 已配置；音色在可用列表内；
@@ -13,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import Engine
 
+from studio.agent import exec_policy
 from studio.agent.runtime import RuntimeFactory
 from studio.api.deps import get_engine, get_runtime_factory, get_settings
 from studio.api.profiles import key_configured
@@ -33,6 +35,11 @@ router = APIRouter(prefix="/api", tags=["settings"])
 
 
 def _out(value: SettingsValue, env: Settings) -> SettingsOut:
+    allow = (
+        env.allow_unsandboxed_exec
+        if value.allow_unsandboxed_exec is None
+        else value.allow_unsandboxed_exec
+    )
     return SettingsOut(
         stage_default_profile=value.stage_default_profile,
         web_mode=value.web_mode or env.web_mode,
@@ -43,6 +50,11 @@ def _out(value: SettingsValue, env: Settings) -> SettingsOut:
             speech_rate=value.tts_speech_rate or DEFAULT_SPEED,
         ),
         default_style_preset_id=value.default_style_preset_id,
+        allow_unsandboxed_exec=allow,
+        allow_unsandboxed_exec_source="ui" if value.allow_unsandboxed_exec is not None else "env",
+        allow_unsandboxed_exec_env=env.allow_unsandboxed_exec,
+        sandbox_available=exec_policy.seatbelt_available(),
+        exec_mode=exec_policy.host_exec_mode(allow),
     )
 
 
