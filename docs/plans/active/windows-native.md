@@ -231,7 +231,7 @@
 2. `backend/pyproject.toml` 的 ruff `select` 加 `PLW1514`，修掉报出来的位置（包括 `stages/common/score/exemplar/audio-techniques.py`，改完确认提示词和测试没有逐字依赖原写法）。
 3. `scripts/*.py` 的 lint：二选一（`tasks.py check-backend` 额外跑 `ruff check --select PLW1514 ../scripts`，或给 `scripts/` 加 ruff 配置），写进决策记录。
 4. 基线对比：在 `backend/` 下运行 `uv run pytest -p no:cacheprovider -q -rfE --deselect tests/engines/test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file`（那条用例在 Windows 上会挂住，T4 修），和 `.dev/baseline-failures.txt` 比较；`tasks.py check` 在 T4 修好 pyright 之前会停在 pyright 一步。
-5. commit 并 push（第一次 push 会在 `origin` 上建 `windows-native` 分支）。
+5. commit 并 push（分支已跟踪 `origin/windows-native`）。
 
 ## 决策记录
 
@@ -239,7 +239,7 @@
 - 2026-10-09 — **开工前复核 Manim 下线的影响**：计划正文里已经没有 manim 相关的文件、任务和验收项（`grep -i manim` 只剩上一条决策记录）。设计文档里还留着的 manim 内容（§3 关于 manim 无 sandbox 的现状说明、§4.2 表格里的"manim 渲染"一行、§6 关于 manim 派生 ffmpeg 的段落、§6.4 子进程列表里的 manim、§9.3 的 LaTeX 和 manim wheel 说明、§10 的"manim 执行 agent 代码没有 sandbox"技术债、§11 第 5 条的"manim 引擎"、§12 的 manim 安装风险）都已被 ADR 0027 取代。按红线不改已批准的设计，执行时以本计划为准：T4 的 `kill_tree` 和 `child_env` 只覆盖现有的子进程（配乐脚本、歌曲分析、ffmpeg/ffprobe、HTML 成片、Shell）；T12 不登记 manim 的技术债；T9 写 dev-setup 的 Windows 一节时不包含 LaTeX。`backend/src` 里剩下的 `manim` 字样都是老项目只读兼容的代码，不属于本计划。
 - 2026-10-09 — **开工时的环境调整**（本机实测，和原「下一步」的假设不一致的地方）：
   - 仓库不 clone 到 `C:\dev`，保留在现有的 `C:\Users\pp\AI\agent\ai-video-studio`（路径 36 个字符，比设计 §12 担心的深度短得多）；如果 T9 或 T11 遇到 260 字符的问题再处理。
-  - `windows-native` 分支原来设想在 macOS 上切出并 push，实际没有；改为在 Windows 上从 main 切出，第一次 push 时在 `origin` 上创建。
+  - `origin` 上的 `windows-native` 分支还停在计划入库时的 `1709e95`（早已包含在 main 里），没有带上 remove-manim 之后的 main；改为在 Windows 上从最新 main 切出，push 时快进覆盖了旧的远端分支（没有丢提交）。
   - Git for Windows 的系统级配置里有 `core.autocrlf=true`（`C:/Program Files/Git/etc/gitconfig`），工作区里的文件是 CRLF。不改系统和全局配置，只在仓库里设置 `core.autocrlf false`，并把工作区刷成 LF（见「下一步」第 2 步）；T1 的 `.gitattributes` 之后会让这件事不再依赖本机配置。
   - 本机的 `uv` 来自 Anaconda（`~/anaconda3/Scripts/uv`，0.11.3），`node` 和 `pnpm` 来自 nvm4w（`C:\nvm4w\nodejs`，Node 22.17.0）；另外通过 scoop 装了 `make`。T1 的 `find_uv`、`find_pnpm` 先找 PATH，所以这些位置不需要写死；`make` 在 Windows 上不作为正式入口（Makefile 用的是 `SHELL := /bin/bash`），Windows 上的入口仍然是 `tasks.py`。
   - 本机 PATH 里没有 `claude` 命令（桌面版自带的 CLI 不在 PATH 里）。T10 的 `claude-login` 实测依赖 claude-agent-sdk 自带的 CLI，到时候先确认它能用。
