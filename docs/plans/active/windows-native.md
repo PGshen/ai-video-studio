@@ -227,7 +227,7 @@
 2026-10-09 已在 Windows 机器（仓库在 `C:\Users\pp\AI\agent\ai-video-studio`）上开工：分支 `windows-native` 已切出，计划已移入 `active/`。本机环境的实际情况见决策记录 2026-10-09「开工时的环境调整」。接下来：
 
 1. **负责人处理**（AI 不能代做）：在 设置 → 系统 → 开发者选项 里打开开发者模式；安装 ffmpeg（`winget install Gyan.FFmpeg` 或 `scoop install ffmpeg`），装完后新开终端确认 `ffmpeg -version`、`ffprobe -version` 可用；把 Mac 上的 `backend/.env` 复制到本机（只有 T10、T11 和 smoke 需要，可以晚点再做）。
-2. 行尾：本机系统级 `core.autocrlf=true`，工作区文件目前是 CRLF。经负责人同意后执行 `git config core.autocrlf false`，再用 `git checkout -- .` 把工作区刷成 LF（只改行尾，不丢内容；执行前 `git status` 必须是干净的）。
+2. ~~行尾~~：已完成（2026-10-09）。本仓库已设置 `core.autocrlf false`，提交身份为 PGshen；工作区 1125 个文本文件全部是 LF（`git ls-files --eol`），刷之前确认过差异只有行尾（`git diff --ignore-cr-at-eol` 为空）。
 3. 装依赖：`cd backend; uv sync; uv run playwright install chromium`，`cd ..\frontend; pnpm install`；`git config core.hooksPath .githooks`。
 4. 记录 Windows 基线：`cd backend; uv run pytest -p no:cacheprovider -q 2>&1 | Tee-Object ..\.dev-baseline.txt`（文件不入库），另外分别跑一次 `uv run ruff check .`、`uv run pyright`、`uv run lint-imports`，以及前端的 `pnpm run lint; pnpm run typecheck; pnpm exec vitest run`，把失败数和按原因归类的清单写进「意外与发现」，commit。
 5. 从 T1 开始，按任务循环（SOP §4）执行；每个任务结束时 commit 并 push。
