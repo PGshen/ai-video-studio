@@ -1,0 +1,23 @@
+# 仓库里的文本一律 LF，不依赖各机器的 core.autocrlf（设计 §7，ADR 0025）。
+* text=auto eol=lf
+
+# 二进制资产
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.mp4 binary
+*.pdf binary
+
+# Windows 脚本如果以后出现，要 CRLF
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf

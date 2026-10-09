@@ -61,7 +61,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞。「机器」= 该任务的质量关口在哪台机器上跑。 -->
 
-### T1：任务脚本骨架与行尾（待开始，机器：Windows，按基线对比）
+### T1：任务脚本骨架与行尾（完成，机器：Windows，按基线对比）
 
 - **目标**：`scripts/tasks.py` 接管除 `dev` 以外的全部命令；Makefile 变成薄壳；仓库行尾统一为 LF。完成后 Windows 上就有了能跑的质量关口入口（结果暂时是红的）。
 - **涉及文件**：新增 `scripts/tasks.py`、`.gitattributes`、`backend/tests/scripts/test_tasks.py`（以及 `__init__.py`）、`docs/decisions/0025-Python任务脚本.md`；修改 `Makefile`、`.githooks/pre-commit`、`AGENTS.md`「常用命令」、`docs/runbooks/dev-setup.md`（命令写法）。
@@ -220,17 +220,18 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-10-09 — 开工准备：分支、计划移入 active、工作区刷成 LF、装依赖、记录 Windows 基线（见「意外与发现」）
+- 2026-10-09 — T1 完成：`scripts/tasks.py`（除 `dev`）、Makefile 薄壳、`.gitattributes`、pre-commit 改调 `tasks.py check-fast`、ADR 0025。Windows 上 `tasks.py check` 能运行，按基线在 pyright 一步失败（8 个错误，和基线相同）；新增 `tests/scripts/test_tasks.py` 31 通过、1 跳过（与 bash 比较的用例，Windows 上另用 Git Bash 手动比过，一致）；pytest 其余部分不受影响（本任务没动 `backend/src`）。剩余失败数：pytest 113 失败 + 30 error + 1 挂住，pyright 8
 
 ## 下一步
 
-2026-10-09 已在 Windows 机器（仓库在 `C:\Users\pp\AI\agent\ai-video-studio`）上开工：分支 `windows-native` 已切出，计划已移入 `active/`。本机环境的实际情况见决策记录 2026-10-09「开工时的环境调整」。接下来：
+开工准备和 T1 已完成（见「进度」），Windows 基线见「意外与发现」。接下来做 **T2：文本 IO 一律 UTF-8**：
 
-1. **负责人处理**（AI 不能代做）：在 设置 → 系统 → 开发者选项 里打开开发者模式；安装 ffmpeg（`winget install Gyan.FFmpeg` 或 `scoop install ffmpeg`），装完后新开终端确认 `ffmpeg -version`、`ffprobe -version` 可用；把 Mac 上的 `backend/.env` 复制到本机（只有 T10、T11 和 smoke 需要，可以晚点再做）。
-2. ~~行尾~~：已完成（2026-10-09）。本仓库已设置 `core.autocrlf false`，提交身份为 PGshen；工作区 1125 个文本文件全部是 LF（`git ls-files --eol`），刷之前确认过差异只有行尾（`git diff --ignore-cr-at-eol` 为空）。
-3. 装依赖：`cd backend; uv sync; uv run playwright install chromium`，`cd ..\frontend; pnpm install`；`git config core.hooksPath .githooks`。
-4. 记录 Windows 基线：`cd backend; uv run pytest -p no:cacheprovider -q 2>&1 | Tee-Object ..\.dev-baseline.txt`（文件不入库），另外分别跑一次 `uv run ruff check .`、`uv run pyright`、`uv run lint-imports`，以及前端的 `pnpm run lint; pnpm run typecheck; pnpm exec vitest run`，把失败数和按原因归类的清单写进「意外与发现」，commit。
-5. 从 T1 开始，按任务循环（SOP §4）执行；每个任务结束时 commit 并 push。
+1. 计划里 T2 状态改为「进行中」；先写会失败的测试：在临时目录写一个没有 `encoding` 的 `open()`，用 `uv run ruff check --select PLW1514` 跑它，断言报错（防止规则被删）。
+2. `backend/pyproject.toml` 的 ruff `select` 加 `PLW1514`，修掉报出来的位置（包括 `stages/common/score/exemplar/audio-techniques.py`，改完确认提示词和测试没有逐字依赖原写法）。
+3. `scripts/*.py` 的 lint：二选一（`tasks.py check-backend` 额外跑 `ruff check --select PLW1514 ../scripts`，或给 `scripts/` 加 ruff 配置），写进决策记录。
+4. 基线对比：在 `backend/` 下运行 `uv run pytest -p no:cacheprovider -q -rfE --deselect tests/engines/test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file`（那条用例在 Windows 上会挂住，T4 修），和 `.dev/baseline-failures.txt` 比较；`tasks.py check` 在 T4 修好 pyright 之前会停在 pyright 一步。
+5. commit 并 push（第一次 push 会在 `origin` 上建 `windows-native` 分支）。
 
 ## 决策记录
 
@@ -246,12 +247,31 @@
 
 - 2026-10-09 — **D1（负责人已决定：采用备选方案，T1–T11 全部在 Windows 上做，T12 回到 macOS）**。原推荐方案：T1–T8 的质量关口在 macOS 上跑。理由：T8 完成之前，Windows 上的 `tasks.py check` 必然大面积失败，在 Windows 上做 T1–T8 就没有可用的"绿色基线"来判断改动是否引入了回归。**备选**：T1–T8 也在 Windows 上做，开工前先记录一份 Windows 基线失败清单，每个任务的完成标准改为"没有新增失败，并且本任务负责修复的那些失败已经消失"。这样不用来回切换机器，但判断依据更弱，macOS 上的回归要等到 T12 才能发现。
 - 2026-10-09 — 计划任务的顺序是先做工具链（T1），这样 Windows 上尽早有可以运行的 `tasks.py check`；`dev` 放在 T7，等 `proc.py`（T4）稳定之后再做。
+- 2026-10-09 — T1：`tasks.py` 的子命令把 `smoke` 和 `import-legacy-styles` 后面的参数原样传下去（`argparse.REMAINDER`），所以 Makefile 仍然写 `smoke $(SMOKE_ARGS)`、`import-legacy-styles <文件> $(IMPORT_ARGS)`；`check-docs` 改用运行 `tasks.py` 的那个 Python（`sys.executable`），不再依赖 `python3`。`find_uv`、`find_pnpm` 为了测试加了关键字参数 `home`、`platform`（`find_pnpm` 还有 `environ`），不传时取当前机器的值。
+- 2026-10-09 — T1：`.gitignore` 的 `.dev/` 从 T7 提前到 T1 加，Windows 基线的原始输出放在 `.dev/` 里（不入库）。`.gitattributes` 除了设计 §7 列的类型，还把 `*.webp`、`*.gif`、`*.ico`、`*.pdf`、字体标成 `binary`（仓库里已有 13 个 webp）；`git add --renormalize .` 后没有任何已有文件的内容变化。
+- 2026-10-09 — T1：`.env` 解析遵循 bash 的规则：`#` 只有在引号外、前面是空白时才是注释（`a#b` 的值是 `a#b`）；引号外有空白、后面又不是注释时报错（bash 会把它当成命令执行）；单引号内的 `$` 是字面量，允许。本机的 `backend/.env` 只用了 `KEY=VALUE`，在支持的子集内。
 
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 无
+- 2026-10-09 — **Windows 基线**（开工前、`backend/src` 未改动；开发者模式已开；原始输出在本机 `.dev/baseline-pytest.txt`、`.dev/baseline-failures.txt`，不入库）：
+  - 通过：`check_docs`、`ruff check`、`ruff format --check`、`lint-imports`（25 个契约）、前端 `lint`、`typecheck`、vitest（1242 通过）。
+  - pyright：8 个错误，都是 `os.killpg`、`signal.SIGKILL` 在 Windows 上不存在——`agent/shell.py:44`、`engines/audio/runner.py:72`（T4），`tests/agent/test_openai_runtime.py:927`、`tests/agent/test_shell.py:95`、`tests/engines/test_html_pool_recovery.py:67,82`（T4 改 mock 或 T8 加标记）。
+  - pytest：2673 通过、**113 失败、30 error**、30 跳过、89 个按默认标记排除；另有 **1 条会挂住**：`tests/engines/test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file`（取消后等待 ffmpeg 退出，一直不返回），基线和之后的对比都先用 `--deselect` 排除它，T4 负责修。按原因分类（数字是 `--tb=line` 统计到的条目，参数化用例会重复计数）：
+    1. **`/bin/sh` 不存在**（约 66 条 `FileNotFoundError` + 由它引起的 30 个 fixture error，以及十余条"脚本执行出错/配乐脚本无法使用 [WinError 2]"断言）：`engines/audio/runner.py` 的 `limited_argv` 用 `/bin/sh -c 'ulimit …'` 包裹配乐脚本和歌曲分析。涉及 `test_worker_html_music`、`api/test_music`、`test_audio_runner`、`test_music_render(_free)`、`test_produce_stage/_pipeline`、`test_music_stage`、`test_synth_music_flow`、`test_audio_song_job`、`test_music_import_tools`、`test_produce_music_tools`、`test_music_tool`。→ T4（Windows 上 `limited_argv` 原样返回）。
+    2. **`os.killpg` 不存在**（1 条，`engines/audio/runner.py:72`）→ T4。
+    3. **测试用 `#!/bin/sh` 写的假 ffmpeg**（7 条 `OSError: %1 不是有效的 Win32 应用程序`，`test_html_video.py`）→ T4 或 T8（改成 Python 写的假程序，或标 `posix_only`）。
+    4. **路径分隔符和绝对路径**：`apply_patch` 的 `to_workspace_relpath` 对 Windows 绝对路径返回原样（`test_apply_patch.py:42,173`、`test_openai_runtime.py:992`）→ T3；`test_html_video.py:60` 期望 `/tmp/o.tmp.mp4` 得到 `\tmp\o.tmp.mp4`（测试里的路径断言）→ T8。
+    5. **Seatbelt 配置的断言**（`test_shell_sandbox.py:76,100,316`，Windows 路径拼进 profile、`StopIteration`）→ T8 标 `macos_only`。
+    6. **Windows 不允许的文件名**（`"` 出现在文件名里，`test_shell_sandbox` 的 `test_quotes_and_backslashes…`）→ T8。
+    7. **只读权限**（`test_upstream.py::test_unreadable_file_counts_as_drift`，靠 `chmod 000`）→ T8 标 `posix_only`。
+    8. **排序或时间相关**（`test_repo_projects.py:74` 最新的排在前面、`test_repo_turns` 最近一轮、`test_snapshot` 回滚后不多建快照、`test_runner.py:846` 前言 diff、`test_model_switch`、`test_runner_style`、`styles/test_store` 的 prune）：原因未确认，疑似 Windows 上时钟精度低导致时间戳相同，或文件 mtime 精度；→ T9 逐条确认。
+    9. **编码**：同一批失败用例在设置 `PYTHONUTF8=1` 后重跑，有 16 条变成通过（`read_text()` 走 `encoding='locale'`，即 GBK）→ T2、T4。
+- 2026-10-09 — 开发者模式打开后，Python 的 `os.symlink` 不需要提权就能建符号链接；但 **Windows PowerShell 5.1 的 `New-Item -ItemType SymbolicLink` 仍然报"需要管理员权限"**（它没有用 `SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE`）。dev-setup 的 Windows 一节（T9）里验证开发者模式要用 Python，不要用 PowerShell。
+- 2026-10-09 — 本机 Git Bash 里的 `pnpm`（nvm4w 的 sh 启动脚本）把路径解析成 `C:\Users\pp\anaconda3\Library\c\nvm4w\...`，运行失败；PowerShell 里的 `pnpm`（`pnpm.ps1`/`pnpm.cmd`）正常。`tasks.py` 用 `shutil.which("pnpm")` 找到的是 `pnpm.CMD`，不受影响。
+- 2026-10-09 — 本机 npm 镜像源（清华 tuna）缺 `@codemirror/lang-javascript-6.2.5.tgz`（404），`pnpm install` 失败；这次用 `pnpm install --registry=https://registry.npmmirror.com/` 装好，没有改全局配置，lockfile 没有变化。
+- 2026-10-09 — Git Bash 里 `lint-imports`、`check_docs.py` 等的中文输出是乱码（控制台代码页是 GBK）；PowerShell 里显示正常。不影响结果，T9 写 dev-setup 时提一句"在 PowerShell 里跑"。
 
 ## 阻塞
 

@@ -14,7 +14,7 @@ Manim 引擎已下线（ADR 0027），不再需要 cairo、pango、LaTeX。
 
 ## 命令行路径
 
-Claude Code 沙箱中的 `PATH` 可能不包含 `~/.local/bin` 和 nvm 的 shims。Makefile 自己定位 `uv` 和 `pnpm`（`UV`/`PNPM` 变量，见 `Makefile` 开头），不依赖调用方的 `PATH`。在 Makefile 之外手动执行时，使用绝对路径，例如 `~/.local/bin/uv run pytest`（在 `backend/` 目录下）。
+所有命令的逻辑都在 `scripts/tasks.py`，Makefile 每个目标只是一行转调（ADR 0025）；Windows 上不用 make，在仓库根目录运行 `uv run --project backend python scripts/tasks.py <目标>`。Claude Code 沙箱中的 `PATH` 可能不包含 `~/.local/bin` 和 nvm 的 shims：Makefile 自己定位 `uv`，`tasks.py` 再定位 `uv` 和 `pnpm`（先找 `PATH`，再找常见安装位置），不依赖调用方的 `PATH`。在 Makefile 之外手动执行时，使用绝对路径，例如 `~/.local/bin/uv run pytest`（在 `backend/` 目录下）。
 
 `.claude/launch.json`（Claude 桌面版 `preview_start` 用）不写本机绝对路径：`runtimeExecutable` 直接是 `uv`、`pnpm`，要求启动 Claude 桌面版的环境 `PATH` 里能找到这两个命令（例如 `~/.local/bin` 与 nvm 的 `bin` 目录已加入登录 shell 的 `PATH`）；找不到时改用 `make dev`。数据目录不在 launch.json 里指定，用默认的 `<仓库或 worktree 根>/data/`（`config.py` 按源码位置推算）；它只开 Fake 运行时（`STUDIO_ENABLE_FAKE_RUNTIME=true`），不导出 `backend/.env`，真实模型的 key 和 `TAVILY_API_KEY` 读不到（此时选题/头脑风暴的 `web_search` 会返回「TAVILY_API_KEY 未设置」）；要用真实模型和联网，用 `make dev`，或者先 `set -a; . backend/.env; set +a` 再手动起 uvicorn。
 
@@ -26,13 +26,13 @@ Fake 运行时可以用 `STUDIO_FAKE_DELAY_SECONDS=<秒>` 让默认脚本在回�
 make setup
 ```
 
-这一步会安装后端（`cd backend && uv sync`）和前端（`frontend/` 出现后自动生效）的依赖，并执行 `git config core.hooksPath .githooks`，启用 pre-commit（跑 `make check-fast`）。`make setup` 还会运行 `cd backend && uv run playwright install chromium`，为 HTML 动画引擎下载无头 Chromium（约 150 MB）；缺失时预览工具和成片会报错并附这条命令。
+这一步会安装后端（`cd backend && uv sync`）和前端（`frontend/` 出现后自动生效）的依赖，并执行 `git config core.hooksPath .githooks`，启用 pre-commit（跑 `tasks.py check-fast`）。`make setup` 还会运行 `cd backend && uv run playwright install chromium`，为 HTML 动画引擎下载无头 Chromium（约 150 MB）；缺失时预览工具和成片会报错并附这条命令。
 
 `uv sync` 会在需要时自动下载锁定的 Python 3.12（`backend/pyproject.toml` 里 `requires-python = ">=3.12,<3.13"`），不需要手动安装。
 
 ## 配置
 
-- 后端配置从 `backend/.env` 读取（`STUDIO_` 前缀的环境变量），参考 `backend/.env.example`：数据目录、host/port、并发数、是否启用 Fake 运行时。模型 key（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）不是 `Settings` 字段，运行时按模型配置的 `api_key_env` 从**进程环境变量**读取；也写在 `backend/.env` 里——`scripts/dev.sh`（`make dev`）启动前会用 `set -a; . backend/.env; set +a` 把它整体导出到环境中（`make smoke` 在 T15 同样处理）。直接手动运行 `uvicorn` 时要自己导出，否则 key 读不到，对应模型的 turn 会以"环境变量未设置"失败。`backend/.env` 按 shell 语法解析（值里有空格或特殊字符要加引号）。
+- 后端配置从 `backend/.env` 读取（`STUDIO_` 前缀的环境变量），参考 `backend/.env.example`：数据目录、host/port、并发数、是否启用 Fake 运行时。模型 key（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）不是 `Settings` 字段，运行时按模型配置的 `api_key_env` 从**进程环境变量**读取；也写在 `backend/.env` 里——`scripts/dev.sh`（`make dev`）启动前会用 `set -a; . backend/.env; set +a` 把它整体导出到环境中（`make smoke` 由 `tasks.py` 解析 `.env` 后只把白名单变量传给 pytest）。直接手动运行 `uvicorn` 时要自己导出，否则 key 读不到，对应模型的 turn 会以"环境变量未设置"失败。`backend/.env` 按 shell 语法解析（值里有空格或特殊字符要加引号）；`tasks.py` 只支持字面量：`KEY=VALUE`、`export` 前缀、单双引号、`#` 注释，遇到 `$`、反引号、反斜杠会报错并指出行号。
 - 数据目录（`data_dir`）默认为仓库根目录下的 `data/`，可以用 `STUDIO_DATA_DIR` 指向其他位置；解析后的路径不能落在 `backend/src` 之下（否则启动时报错），因为那会被 uvicorn `--reload` 监听到。
 
 ## 联网搜索（选题阶段、头脑风暴）

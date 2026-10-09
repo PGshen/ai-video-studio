@@ -25,6 +25,8 @@ dist/
 .DS_Store
 
 # 本地工具工作区
+# tasks.py 的本地状态（dev 的 pid 文件、Windows 基线记录）；不放在 data/ 下
+.dev/
 .claude/worktrees/
 .superpowers/
 
