@@ -10,7 +10,10 @@
     <div class="flex shrink-0 items-center justify-end gap-2">
       <slot name="actions" />
     </div>
-    <p class="text-muted-foreground rounded border p-4 text-sm" data-testid="manim-retired">
+    <p
+      class="text-muted-foreground rounded border p-4 text-sm"
+      data-testid="manim-retired"
+    >
       Manim 动画已下线：这个老项目的动画阶段不能再对话、预览或渲染成片；选题和叙事仍可在各自阶段查看。
     </p>
   </div>
