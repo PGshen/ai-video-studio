@@ -63,7 +63,7 @@ def _write_bytes(ctx: ToolContext, relpath: str, data: bytes) -> None:
 def _write_text(ctx: ToolContext, relpath: str, text: str) -> None:
     path = files.safe_path(ctx.workdir, relpath)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="")
     ctx.record_tool_write(relpath, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
 

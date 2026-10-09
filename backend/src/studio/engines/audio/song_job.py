@@ -113,7 +113,7 @@ def _main(argv: list[str]) -> int:
     # Picture first: the JSON is the last artifact to appear, and a failure leaves nothing behind.
     (out_dir / "analysis.png").write_bytes(picture)
     (out_dir / "analysis.json").write_text(
-        json.dumps(analysis.to_document(), ensure_ascii=False), encoding="utf-8"
+        json.dumps(analysis.to_document(), ensure_ascii=False), encoding="utf-8", newline=""
     )
     return 0
 

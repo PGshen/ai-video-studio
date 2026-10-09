@@ -29,7 +29,7 @@ def _fail(workdir: Path, reason: str) -> None:
     (workdir / TIMELINE_PATH).unlink(missing_ok=True)
     error = workdir / ERROR_PATH
     error.parent.mkdir(parents=True, exist_ok=True)
-    error.write_text(reason + "\n", encoding="utf-8")
+    error.write_text(reason + "\n", encoding="utf-8", newline="")
 
 
 def _prepare_music_project(workdir: Path) -> None:
@@ -46,6 +46,7 @@ def _prepare_music_project(workdir: Path) -> None:
         (workdir / TIMELINE_PATH).write_text(
             json.dumps(loaded.timeline.model_dump(mode="json"), ensure_ascii=False, indent=2),
             encoding="utf-8",
+            newline="",
         )
 
 
@@ -78,4 +79,5 @@ def prepare_turn(workdir: Path) -> None:
         (workdir / TIMELINE_PATH).write_text(
             json.dumps(timeline.model_dump(mode="json"), ensure_ascii=False, indent=2),
             encoding="utf-8",
+            newline="",
         )

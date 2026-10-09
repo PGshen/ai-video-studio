@@ -21,7 +21,9 @@ describe('router', () => {
     expect(matched[0]?.name).toBe('projects')
   })
 
-  it('resolves /projects/:id/:stage with route params', async () => {
+  // The push lazily imports the whole workbench page graph; its first transform took over the
+  // default 5 s on Windows right after the backend suite (windows-native T9).
+  it('resolves /projects/:id/:stage with route params', { timeout: 30_000 }, async () => {
     const router = makeRouter()
     await router.push('/projects/proj-1/topic')
     const route = router.currentRoute.value

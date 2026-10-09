@@ -187,7 +187,7 @@ class CostLedger:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         payload = {"total_cost_usd": entry.total, "unsettled": entry.unsettled}
-        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.write_text(json.dumps(payload), encoding="utf-8", newline="")
         tmp.replace(path)
 
 

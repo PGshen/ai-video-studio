@@ -181,7 +181,7 @@ def write_text(workdir: Path | str, relpath: str, content: str, scope: WriteScop
         raise ScopeError(f"不在可写范围内：{relpath}")
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="")
 
 
 def delete_file(workdir: Path | str, relpath: str, scope: WriteScope) -> None:
@@ -211,7 +211,7 @@ def write_text_unscoped(workdir: Path | str, relpath: str, content: str) -> None
     """
     path = safe_path(workdir, relpath)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="")
 
 
 def init_workspace(data_dir: Path | str, project_id: str, initial_files: dict[str, str]) -> Path:

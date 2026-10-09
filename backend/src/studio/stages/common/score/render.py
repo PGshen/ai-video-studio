@@ -107,7 +107,9 @@ async def _run_and_check(
     timeline_path: Path | None = None
     if timeline is not None:
         timeline_path = run_dir / "timeline.json"
-        timeline_path.write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
+        timeline_path.write_text(
+            json.dumps(timeline, ensure_ascii=False), encoding="utf-8", newline=""
+        )
     try:
         result = await run_compose(
             script, timeline_path, run_dir, timeout=timeout, wrap_command=wrap_command

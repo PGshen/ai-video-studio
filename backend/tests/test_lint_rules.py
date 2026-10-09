@@ -116,3 +116,52 @@ def test_windows_without_utf8_mode_is_refused_with_a_hint() -> None:
     assert "tasks.py" in (utf8_mode_problem("win32", 0) or "")
     assert utf8_mode_problem("win32", 1) is None
     assert utf8_mode_problem("darwin", 0) is None
+
+
+# ---- text writes keep "\n" as is (windows-native T9) ----
+#
+# Text mode turns "\n" into "\r\n" on Windows, so the same agent edit would store different
+# bytes (and snapshot hashes) than on macOS. Production code writes text with `newline=""`.
+
+
+def _translating_writes(tree: ast.AST) -> list[int]:
+    lines = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or any(kw.arg == "newline" for kw in node.keywords):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr == "write_text" and len(node.args) == 1:
+            lines.append(node.lineno)
+        elif isinstance(func, ast.Name) and func.id == "open":
+            mode = node.args[1] if len(node.args) > 1 else None
+            mode = mode or next((kw.value for kw in node.keywords if kw.arg == "mode"), None)
+            if (
+                isinstance(mode, ast.Constant)
+                and isinstance(mode.value, str)
+                and set(mode.value) & {"w", "a", "x"}
+                and "b" not in mode.value
+            ):
+                lines.append(node.lineno)
+    return lines
+
+
+def test_the_newline_check_catches_translating_writes() -> None:
+    tree = ast.parse(
+        "def f(p):\n"
+        "    p.write_text('x', encoding='utf-8')\n"
+        "    p.write_text('x', encoding='utf-8', newline='')\n"
+        "    open(p, 'w', encoding='utf-8')\n"
+        "    open(p, 'wb')\n"
+        "    open(p, encoding='utf-8')\n"
+        "    files.write_text(d, 'a.md', 'x', scope)\n"
+    )
+    assert _translating_writes(tree) == [2, 4]
+
+
+def test_production_text_writes_keep_newlines() -> None:
+    offenders = [
+        f"{path.relative_to(REPO_ROOT).as_posix()}:{line}"
+        for path in sorted((BACKEND / "src").rglob("*.py"))
+        for line in _translating_writes(ast.parse(path.read_text(encoding="utf-8")))
+    ]
+    assert offenders == []

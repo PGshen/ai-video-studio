@@ -190,4 +190,4 @@ wav.close()
 doc = {"bpm": bpm, "duration": duration, "events": events}
 if not grid:
     doc["offset"] = offset  # the declared grid of a narration project
-json.dump(doc, open(os.environ["STUDIO_OUT_EVENTS"], "w", encoding="utf-8"))
+json.dump(doc, open(os.environ["STUDIO_OUT_EVENTS"], "w", encoding="utf-8", newline=""))

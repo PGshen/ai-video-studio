@@ -423,5 +423,5 @@ async def _run_html_job(
         "rendered_at": datetime.now(UTC).isoformat(),
     }
     (output_dir / "final.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8", newline=""
     )
