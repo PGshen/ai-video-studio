@@ -33,7 +33,12 @@ import { CONTINUE_TEXT, optimisticSend } from './optimisticSend'
 import PromptPrefill from './PromptPrefill.vue'
 import AttachButton from './AttachButton.vue'
 import AttachmentChips from './AttachmentChips.vue'
-import { type AttachmentAccept, acceptAttribute, validateAttachments } from './attachmentRules'
+import {
+  type AttachmentAccept,
+  acceptAttribute,
+  classifyFile,
+  validateAttachments,
+} from './attachmentRules'
 import SessionTimeline from './SessionTimeline.vue'
 
 /**
@@ -129,10 +134,27 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
         creatingSession.value = false
       }
     }
-    await optimisticSend(optimisticMessages, text, async () => {
-      const accepted = await sendMutation.mutateAsync(files.length ? { text, files } : { text })
-      markTurnAccepted(accepted.turn_id, text)
-    })
+    const previews = (message.files as AttachmentFile[]).flatMap((item) =>
+      item.file
+        ? [
+            {
+              kind: classifyFile(item.file, accept.value).kind,
+              name: item.file.name,
+              size: item.file.size,
+              previewUrl: item.url,
+            },
+          ]
+        : [],
+    )
+    await optimisticSend(
+      optimisticMessages,
+      text,
+      async () => {
+        const accepted = await sendMutation.mutateAsync(files.length ? { text, files } : { text })
+        markTurnAccepted(accepted.turn_id, text)
+      },
+      previews,
+    )
     emit('sent')
     emit('accepted')
   } catch (error) {

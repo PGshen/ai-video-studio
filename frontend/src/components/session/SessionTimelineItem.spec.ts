@@ -140,3 +140,75 @@ describe('用户消息', () => {
     expect(writeText).toHaveBeenCalledWith('看一下 README')
   })
 })
+
+describe('SessionTimelineItem：用户消息的附件', () => {
+  const withAttachments = (): TurnOut => ({
+    ...turn(new Date('2026-10-09T08:00:00Z')),
+    attachments: [
+      { kind: 'image', name: 'a.png', size: 3, sha256: 'abc', path: null, binary: true },
+      {
+        kind: 'file',
+        name: 'notes.md',
+        size: 2048,
+        sha256: null,
+        path: 'uploads/ab12cd34-notes.md',
+        binary: false,
+      },
+    ],
+  })
+
+  it('图片显示会话附件缩略图，文件在项目里链接到工作区原文件', () => {
+    const wrapper = mount(SessionTimelineItem, {
+      props: {
+        item: user(),
+        projectId: 'p#1',
+        sessionId: 's 1',
+        turns: new Map([['t1', withAttachments()]]),
+      },
+    })
+    expect(wrapper.get('img[alt="a.png"]').attributes('src')).toBe('/api/sessions/s%201/attachments/abc')
+    const link = wrapper.get('a[data-testid="attachment-file"]')
+    expect(link.text()).toContain('notes.md')
+    expect(link.attributes('href')).toBe('/api/projects/p%231/files/uploads/ab12cd34-notes.md')
+    expect(link.attributes('target')).toBe('_blank')
+  })
+
+  it('没有项目（风格/选题会话）时文件只显示名字', () => {
+    const wrapper = mount(SessionTimelineItem, {
+      props: {
+        item: user(),
+        projectId: null,
+        sessionId: 's1',
+        turns: new Map([['t1', withAttachments()]]),
+      },
+    })
+    expect(wrapper.find('a[data-testid="attachment-file"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('notes.md')
+  })
+
+  it('乐观占位用本地预览', () => {
+    const wrapper = mount(SessionTimelineItem, {
+      props: {
+        item: user({
+          turnId: 'local-1',
+          attachments: [
+            { kind: 'image', name: 'b.png', size: 3, previewUrl: 'blob:local' },
+            { kind: 'file', name: 'c.pdf', size: 9 },
+          ],
+        }),
+        projectId: 'p1',
+        sessionId: 's1',
+        turns: new Map(),
+      },
+    })
+    expect(wrapper.get('img[alt="b.png"]').attributes('src')).toBe('blob:local')
+    expect(wrapper.text()).toContain('c.pdf')
+  })
+
+  it('没有附件的旧消息不渲染附件区', () => {
+    const wrapper = mount(SessionTimelineItem, {
+      props: { item: user(), projectId: 'p1', sessionId: 's1', turns: new Map([['t1', turn(new Date())]]) },
+    })
+    expect(wrapper.find('[data-testid="message-attachments"]').exists()).toBe(false)
+  })
+})

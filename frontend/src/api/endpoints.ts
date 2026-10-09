@@ -212,6 +212,11 @@ export function sendMessage(
   return uploadForm(path, form)
 }
 
+/** 会话附件里的图片（`GET /sessions/{id}/attachments/{sha256}`），直接给 `<img>`。 */
+export function attachmentUrl(sessionId: string, sha256: string): string {
+  return `/api/sessions/${encodePathSegment(sessionId)}/attachments/${encodePathSegment(sha256)}`
+}
+
 export function cancelSession(sessionId: string): Promise<TurnAccepted> {
   return request(`/sessions/${encodePathSegment(sessionId)}/cancel`, { method: 'POST' })
 }
