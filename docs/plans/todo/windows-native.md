@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 已批准 |
+| 状态 | 已批准（暂缓） |
 | 里程碑 | 平台支持（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [windows-native-support 设计](../../design/2026-10-09-windows-native-support.md)（负责人 2026-10-09 批准） |
 | 分支 | `windows-native`，从 main 切出；两台机器通过 `origin` 同步 |
@@ -225,7 +225,9 @@
 
 ## 下一步
 
-在 Windows 电脑上开 Claude Code 会话，按顺序执行：
+本计划已批准、暂缓执行，放在 `docs/plans/todo/`。负责人决定开工时，在 Windows 电脑上开 Claude Code 会话，按顺序执行：
+
+0. `git mv docs/plans/todo/windows-native.md docs/plans/active/`，状态改为「执行中」，同步 TODO.md 里的链接，commit。
 
 1. 按设计 §9.3 装好依赖（Git for Windows、uv、Node 22+ 和 pnpm、ffmpeg、MiKTeX、Claude Code），在 设置 → 系统 → 开发者选项 里打开开发者模式。
 2. `git config --global core.autocrlf false`，然后把仓库 clone 到短路径下（例如 `C:\dev\ai-video-studio`），`git checkout windows-native`（分支已在 `origin` 上）。

@@ -40,7 +40,7 @@
 | 需要 | 去哪里 |
 |---|---|
 | 工作流程、关口、升级条件 | [docs/SOP.md](docs/SOP.md) |
-| 当前任务和交接信息 | `docs/plans/active/` |
+| 当前任务和交接信息 | `docs/plans/active/`（已批准、暂缓执行的计划在 `docs/plans/todo/`） |
 | 待办（还没写成计划的工作） | [docs/plans/TODO.md](docs/plans/TODO.md) |
 | 过去为什么这么决定 | [docs/decisions/](docs/decisions/) |
 | 外部 SDK 和库的已验证行为 | [docs/references/](docs/references/README.md) |

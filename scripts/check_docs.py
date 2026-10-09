@@ -3,7 +3,7 @@
 
 Checks:
   1. Relative markdown links resolve to existing files.
-  2. Plans in docs/plans/{active,completed}/ contain all required sections.
+  2. Plans in docs/plans/{todo,active,completed}/ contain all required sections.
   3. ADRs in docs/decisions/ follow the naming pattern, have unique numbers
      and contain all required sections.
   4. AGENTS.md stays short enough to be a map.
@@ -134,7 +134,7 @@ def main() -> int:
         errors += check_links(path, path.read_text(encoding="utf-8"))
 
     plans_dir = ROOT / "docs" / "plans"
-    for sub in ("active", "completed"):
+    for sub in ("todo", "active", "completed"):
         for path in sorted((plans_dir / sub).glob("*.md")):
             errors += check_sections(path, path.read_text(encoding="utf-8"), PLAN_SECTIONS)
     active = list((plans_dir / "active").glob("*.md"))
