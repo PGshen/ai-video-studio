@@ -484,6 +484,20 @@ describe('useSessionStream', () => {
     ])
   })
 
+  it('addLocalUserMessage 带附件预览，换成真实 turnId 时附件保留', async () => {
+    getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
+    const { result } = await setup('s1')
+    const onEvent = openStreamMock.mock.calls[0]![1].onEvent as (e: StreamEvent) => void
+    const attachments = [{ kind: 'image' as const, name: 'a.png', size: 3, previewUrl: 'blob:x' }]
+
+    result.addLocalUserMessage('看图', attachments)
+    onEvent(frame('turn_status', { turn_id: 't1', status: 'queued', error: null, seq: null }))
+
+    expect(result.items.value).toEqual([
+      { kind: 'user_message', turnId: 't1', text: '看图', at: expect.any(String), attachments },
+    ])
+  })
+
   it('addLocalUserMessage 按发送顺序（FIFO）依次和到达的 turn 配对', async () => {
     getSessionMock.mockResolvedValue(sessionDetail({ turns: [] }))
     const { result } = await setup('s1')

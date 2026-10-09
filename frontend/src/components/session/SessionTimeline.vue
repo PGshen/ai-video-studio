@@ -57,6 +57,7 @@ const disclosure = useDisclosure(toRef(props, 'sessionId'))
       v-else
       :item="block"
       :project-id="projectId"
+      :session-id="sessionId"
       :turns="turns"
     />
     <ReplyFooter

@@ -40,22 +40,48 @@ HTTP 层）。顺序：先 `bus.subscribe`（同步完成的注册，返回
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import ValidationError
 from sqlalchemy import Engine
 from sse_starlette.sse import EventSourceResponse
+from starlette.datastructures import FormData, UploadFile
 
 from studio.agent.bus import SessionBus
+from studio.agent.events import ImageData
 from studio.agent.runner import SessionBusyError, TurnRunner
 from studio.agent.runtime import RuntimeFactory, UserInput
 from studio.agent.stage import StageRegistry
-from studio.api.deps import get_bus, get_engine, get_registry, get_runtime_factory, get_turn_runner
+from studio.api.attachments import (
+    MAX_FILE_BYTES,
+    MAX_FILES,
+    MAX_IMAGES,
+    AttachmentError,
+    AttachmentRecord,
+    IncomingFile,
+    compose_text,
+    discard,
+    prepare_input,
+    sniff_image,
+)
+from studio.api.deps import (
+    get_blobs,
+    get_bus,
+    get_engine,
+    get_registry,
+    get_runtime_factory,
+    get_settings,
+    get_turn_runner,
+)
 from studio.api.profiles import key_configured
 from studio.api.schemas import (
+    AttachmentOut,
     MessageCreate,
     SessionCreate,
     SessionDetailOut,
@@ -64,6 +90,7 @@ from studio.api.schemas import (
     TurnAccepted,
     TurnOut,
 )
+from studio.config import Settings
 from studio.db.repo import turns as turns_repo
 from studio.db.repo.profiles import get_model_profile_by_id
 from studio.db.repo.projects import get_project
@@ -76,6 +103,9 @@ from studio.db.repo.sessions import (
     set_session_model_if_idle,
 )
 from studio.db.repo.turns import TurnValue
+from studio.styles import store as style_store
+from studio.styles.layout import draft_dir
+from studio.workspace import BlobStore, project_dir
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +139,7 @@ WIRE_EVENT_TYPES = frozenset(
 """
 
 _RESUMABLE_TURN_STATUSES = ("interrupted", "budget_exceeded")
+_BUSY_DETAIL = "会话正忙，请等待当前一轮结束"
 _CANCELLABLE_TURN_STATUSES = ("queued", "running")
 
 
@@ -143,6 +174,7 @@ def _turn_out(value: TurnValue) -> TurnOut:
         cost_usd=value.cost_usd,
         error=value.error,
         never_started=_never_started(value),
+        attachments=[AttachmentOut(**raw) for raw in value.attachments],
         created_at=value.created_at,
         updated_at=value.updated_at,
     )
@@ -286,20 +318,157 @@ def _refuse_during_upload(request: Request, session: SessionValue) -> None:
         raise HTTPException(status_code=409, detail="项目正在上传音乐，请等上传结束再发消息")
 
 
+def _session_workdir(settings: Settings, session: SessionValue) -> Path | None:
+    """附件文件写到哪里：项目工作区、风格草稿（修订 R1），选题会话没有工作区返回 `None`。
+
+    和 `TurnRunner._execute` 的分支一致：没有项目但有 `subject_id` 的是绑定目录的风格会话。"""
+    if session.project_id is not None:
+        return project_dir(settings.data_dir, session.project_id)
+    if session.subject_id is None:
+        return None
+    try:
+        style_store.open_draft(settings.data_dir, session.subject_id)
+    except style_store.StyleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="这套风格已不存在") from exc
+    return draft_dir(settings.data_dir, session.subject_id)
+
+
+async def _read_files(form: FormData) -> list[IncomingFile]:
+    """读出表单里的 `files`；单个超过文件上限就立即 422，不把超大内容读进内存。"""
+    files: list[IncomingFile] = []
+    for item in form.getlist("files"):
+        if not isinstance(item, UploadFile):
+            raise HTTPException(status_code=422, detail="files 字段必须是文件")
+        data = await item.read(MAX_FILE_BYTES + 1)
+        if len(data) > MAX_FILE_BYTES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"文件 {item.filename} 超过 {MAX_FILE_BYTES // (1024 * 1024)} MB 上限",
+            )
+        files.append(IncomingFile(name=item.filename or "file", data=data))
+    return files
+
+
+def _refuse_if_busy(engine: Engine, session_id: str) -> None:
+    latest = turns_repo.latest_turn(engine, session_id)
+    if latest is not None and latest.status in _CANCELLABLE_TURN_STATUSES:
+        raise HTTPException(status_code=409, detail=_BUSY_DETAIL)
+
+
 @router.post("/sessions/{session_id}/messages", response_model=TurnAccepted, status_code=202)
 async def send_message_endpoint(
     session_id: str,
-    body: MessageCreate,
     request: Request,
     engine: Engine = Depends(get_engine),
     turn_runner: TurnRunner = Depends(get_turn_runner),
+    settings: Settings = Depends(get_settings),
+    blobs: BlobStore = Depends(get_blobs),
 ) -> TurnAccepted:
-    _refuse_during_upload(request, _require_session(engine, session_id))
+    """JSON `{text}`，或 multipart：`text` 加若干 `files`（设计 2026-10-09 §4.1）。"""
+    session = _require_session(engine, session_id)
+    _refuse_during_upload(request, session)
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        try:
+            body = MessageCreate.model_validate(await request.json())
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status_code=422, detail="请求体应为 {text: string}") from exc
+        return await _start(turn_runner, session_id, UserInput(text=body.text))
+
+    _refuse_if_busy(engine, session_id)
+    async with request.form(max_files=MAX_IMAGES + MAX_FILES + 1) as form:
+        text = form.get("text")
+        if text is not None and not isinstance(text, str):
+            raise HTTPException(status_code=422, detail="text 字段必须是文本")
+        files = await _read_files(form)
+    # 读表单要 await：期间可能开始了音乐上传，再查一次（从这里到写完文件之间不再 await）。
+    _refuse_during_upload(request, session)
+    profile = get_model_profile_by_id(engine, session.model_profile_id)
+    supports_vision = profile is not None and profile.supports_vision
+    writes_workspace = any(not supports_vision or sniff_image(f.data) is None for f in files)
+    # 另一个会话的一轮正在跑时，它结束时的越界检查会把新出现的 uploads/ 文件当越权改动删掉。
+    # 从这里到写完文件之间不 await，相对调度器是原子的（见 `TurnRunner.is_project_busy`）。
+    if (
+        writes_workspace
+        and session.project_id is not None
+        and turn_runner.is_project_busy(session.project_id)
+    ):
+        raise HTTPException(status_code=409, detail="项目里有对话正在运行，请等它结束再上传文件")
     try:
-        turn_id = await turn_runner.start_turn(session_id, UserInput(text=body.text))
+        prepared = prepare_input(
+            text or "",
+            files,
+            workdir=_session_workdir(settings, session),
+            blobs=blobs,
+            runtime=session.runtime,
+            supports_vision=supports_vision,
+        )
+    except AttachmentError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        return await _start(
+            turn_runner,
+            session_id,
+            prepared.user_input,
+            user_message=text or "",
+            attachments=[r.to_dict() for r in prepared.records],
+        )
+    except BaseException:
+        discard(prepared.written)
+        raise
+
+
+async def _start(
+    turn_runner: TurnRunner,
+    session_id: str,
+    user_input: UserInput,
+    *,
+    user_message: str | None = None,
+    attachments: list[dict[str, Any]] | None = None,
+) -> TurnAccepted:
+    try:
+        turn_id = await turn_runner.start_turn(
+            session_id, user_input, user_message=user_message, attachments=attachments
+        )
     except SessionBusyError as exc:
-        raise HTTPException(status_code=409, detail="会话正忙，请等待当前一轮结束") from exc
+        raise HTTPException(status_code=409, detail=_BUSY_DETAIL) from exc
     return TurnAccepted(turn_id=turn_id)
+
+
+@router.get("/sessions/{session_id}/attachments/{sha256}")
+def get_attachment_endpoint(
+    session_id: str,
+    sha256: str,
+    engine: Engine = Depends(get_engine),
+    blobs: BlobStore = Depends(get_blobs),
+) -> Response:
+    """这个会话某一轮附件里的图片字节；sha 不属于这个会话时 404。"""
+    _require_session(engine, session_id)
+    owned = any(
+        raw.get("sha256") == sha256
+        for turn in turns_repo.list_turns(engine, session_id)
+        for raw in turn.attachments
+    )
+    if not owned:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    try:
+        data = blobs.get(sha256)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="附件不存在") from exc
+    return Response(content=data, media_type=sniff_image(data) or "application/octet-stream")
+
+
+def _resend_input(turn: TurnValue, runtime: str, blobs: BlobStore) -> UserInput:
+    """TD-19 重发从未开始的一轮：按 `turn.attachments` 重建图片和文件说明。"""
+    records = [AttachmentRecord.from_dict(raw) for raw in turn.attachments]
+    images: list[ImageData] = []
+    for record in records:
+        if record.kind == "image" and record.path is None and record.sha256 is not None:
+            data = blobs.get(record.sha256)
+            media_type = sniff_image(data) or "application/octet-stream"
+            images.append(
+                ImageData(media_type=media_type, data_base64=base64.b64encode(data).decode())
+            )
+    return UserInput(text=compose_text(turn.user_message, records, runtime), images=images)
 
 
 @router.post("/sessions/{session_id}/cancel", response_model=TurnAccepted, status_code=202)
@@ -323,18 +492,24 @@ async def continue_session_endpoint(
     request: Request,
     engine: Engine = Depends(get_engine),
     turn_runner: TurnRunner = Depends(get_turn_runner),
+    blobs: BlobStore = Depends(get_blobs),
 ) -> TurnAccepted:
-    _refuse_during_upload(request, _require_session(engine, session_id))
+    session = _require_session(engine, session_id)
+    _refuse_during_upload(request, session)
     turn = turns_repo.latest_turn(engine, session_id)
     if turn is None or turn.status not in _RESUMABLE_TURN_STATUSES:
         raise HTTPException(status_code=409, detail="当前会话没有可以继续的一轮")
-    try:
-        # TD-19: a turn that never started (still queued at restart) is re-sent as is.
-        text = turn.user_message if _never_started(turn) else CONTINUE_TEXT
-        turn_id = await turn_runner.start_turn(session_id, UserInput(text=text))
-    except SessionBusyError as exc:
-        raise HTTPException(status_code=409, detail="会话正忙，请等待当前一轮结束") from exc
-    return TurnAccepted(turn_id=turn_id)
+    if not _never_started(turn):
+        return await _start(turn_runner, session_id, UserInput(text=CONTINUE_TEXT))
+    # TD-19: a turn that never started (still queued at restart) is re-sent as is,
+    # attachments included.
+    return await _start(
+        turn_runner,
+        session_id,
+        _resend_input(turn, session.runtime, blobs),
+        user_message=turn.user_message,
+        attachments=turn.attachments or None,
+    )
 
 
 def _sse_message(

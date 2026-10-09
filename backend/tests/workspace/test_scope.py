@@ -15,6 +15,14 @@ def _write(path: Path, content: str | bytes) -> None:
 
 
 class TestIsWritable:
+    def test_uploads_are_never_writable(self) -> None:
+        """设计 2026-10-09 §5.4：用户上传的文件对 agent 只读，不管阶段声明了什么。"""
+        scope = WriteScope(writable=["*"], tool_managed=[])
+
+        assert is_writable(scope, "uploads/ab12cd34-a.md") is False
+        assert is_writable(scope, "uploads") is False
+        assert is_writable(scope, "uploadsx/a.md") is True
+
     def test_glob_star_star_matches_everything_under_dir(self) -> None:
         scope = WriteScope(writable=["topic/**"], tool_managed=[])
 

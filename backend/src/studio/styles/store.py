@@ -30,6 +30,7 @@ from studio.styles.layout import (
     EXEMPLARS_DIR,
     REFERENCES_DIR,
     SCREENSHOTS_DIR,
+    UPLOADS_DIR,
     draft_dir,
     drafts_root,
     is_valid_style_id,
@@ -155,6 +156,8 @@ def _read_tree(root: Path) -> tuple[StyleFiles, list[str]]:
                 problems.append(f"不允许符号链接：{(base / name).relative_to(root).as_posix()}")
         if base == root and SCREENSHOTS_DIR in dirnames:
             dirnames.remove(SCREENSHOTS_DIR)  # 二进制截图不进 StyleFiles，下面单独检查
+        if base == root and UPLOADS_DIR in dirnames:
+            dirnames.remove(UPLOADS_DIR)  # 对话附件不属于风格本身（设计 2026-10-09 修订 R1）
         for name in filenames:
             if name in _IGNORED_FILES:
                 continue
@@ -654,6 +657,8 @@ def prune_draft(data_dir: Path | str, style_id: str) -> list[str]:
             continue
         if entry.name == ENTRY_NAME and entry.is_file() and not entry.is_symlink():
             continue
+        if entry.name == UPLOADS_DIR and entry.is_dir() and not entry.is_symlink():
+            continue  # 用户上传的对话附件，随草稿一起删（设计 2026-10-09 修订 R1）
         if entry.name == SCREENSHOTS_DIR and entry.is_dir() and not entry.is_symlink():
             for child in sorted(entry.iterdir()):
                 if child.name in _IGNORED_FILES:

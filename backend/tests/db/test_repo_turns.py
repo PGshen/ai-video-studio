@@ -207,3 +207,24 @@ class TestEvents:
                     " created_at) VALUES ('x', 't1', 's', 1, 'text', '{}', '2026-01-01')"
                 )
             )
+
+
+class TestTurnAttachments:
+    def test_attachments_default_to_empty(self, migrated_engine: Engine) -> None:
+        sid = _session(migrated_engine)
+        turn = create_turn_if_session_idle(migrated_engine, sid, "hi")
+        assert turn is not None
+        assert turn.attachments == []
+        fetched = get_turn(migrated_engine, turn.id)
+        assert fetched is not None and fetched.attachments == []
+
+    def test_attachments_round_trip(self, migrated_engine: Engine) -> None:
+        sid = _session(migrated_engine)
+        records = [
+            {"kind": "image", "name": "a.png", "size": 3, "sha256": "abc", "path": None},
+            {"kind": "file", "name": "b.md", "size": 4, "sha256": None, "path": "uploads/x-b.md"},
+        ]
+        turn = create_turn_if_session_idle(migrated_engine, sid, "hi", attachments=records)
+        assert turn is not None
+        fetched = get_turn(migrated_engine, turn.id)
+        assert fetched is not None and fetched.attachments == records

@@ -23,6 +23,9 @@ from studio.workspace.blobs import BlobStore
 from studio.workspace.layout import EXCLUDED_TOP_DIRS
 from studio.workspace.snapshot import Manifest
 
+UPLOADS_DIR = "uploads"
+"""用户随消息上传的文件（设计 2026-10-09 §5.4）：对 agent 只读，任何阶段都不能写。"""
+
 
 @dataclass(frozen=True, slots=True)
 class WriteScope:
@@ -43,6 +46,8 @@ def is_writable(scope: WriteScope, relpath: str) -> bool:
     用 `fnmatch` 做 glob 匹配：`*` 匹配任意字符（含 `/`），所以 `topic/**`
     能匹配 `topic/` 下任意深度的文件；没有通配符的模式则要求完全相等。
     """
+    if relpath == UPLOADS_DIR or relpath.startswith(f"{UPLOADS_DIR}/"):
+        return False
     if _matches_any(scope.tool_managed, relpath):
         return False
     return _matches_any(scope.writable, relpath)

@@ -40,3 +40,10 @@ def test_ids_that_could_escape_the_directory_are_invalid(style_id: str) -> None:
 def test_invalid_ids_are_rejected_when_building_paths(fn: Callable[[Path, str], Path]) -> None:
     with pytest.raises(ValueError):
         fn(Path("/data"), "../evil")
+
+
+def test_uploads_dir_matches_the_workspace_one() -> None:
+    from studio.styles.layout import UPLOADS_DIR
+    from studio.workspace.scope import UPLOADS_DIR as WORKSPACE_UPLOADS_DIR
+
+    assert UPLOADS_DIR == WORKSPACE_UPLOADS_DIR

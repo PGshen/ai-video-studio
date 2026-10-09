@@ -510,6 +510,31 @@ class TestPruneDraft:
         assert removed == ["notes.md"]
         assert not (draft / ".cache").exists()
 
+    def test_uploads_are_kept(self, tmp_path: Path) -> None:
+        """修订 R1：草稿里的 `uploads/` 是用户上传的对话附件，每轮清理时保留。"""
+        style_id = _saved(tmp_path)
+        store.open_draft(tmp_path, style_id)
+        draft = draft_dir(tmp_path, style_id)
+        (draft / "uploads").mkdir()
+        (draft / "uploads" / "ab12cd34-ref.pdf").write_bytes(b"%PDF-binary\xff")
+
+        assert store.prune_draft(tmp_path, style_id) == []
+        assert (draft / "uploads" / "ab12cd34-ref.pdf").exists()
+        assert store.validate_draft(tmp_path, style_id) == []
+
+    def test_save_leaves_uploads_behind(self, tmp_path: Path) -> None:
+        """修订 R1：保存成正式版本不带 `uploads/`，草稿连同附件一起删掉。"""
+        style_id = _saved(tmp_path)
+        store.open_draft(tmp_path, style_id)
+        draft = draft_dir(tmp_path, style_id)
+        (draft / "uploads").mkdir()
+        (draft / "uploads" / "ab12cd34-ref.pdf").write_bytes(b"%PDF-binary\xff")
+
+        store.save_draft(tmp_path, style_id)
+
+        assert not (style_dir(tmp_path, style_id) / "uploads").exists()
+        assert not draft.exists()
+
     def test_a_clean_draft_is_left_alone(self, tmp_path: Path) -> None:
         style_id = _saved(tmp_path)
         store.open_draft(tmp_path, style_id)

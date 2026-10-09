@@ -28,6 +28,7 @@ import {
   listBrainstormSessions,
   listIdeas,
   patchSettings,
+  sendMessage,
   sessionStreamUrl,
   setProjectStatus,
   updateIdea,
@@ -340,6 +341,32 @@ describe('endpoints：风格截图', () => {
     expect((xhr.body as FormData).get('file')).toBe(file)
     xhr.respond(200, { id: 's#1', screenshots: ['001-aaaaaaaaaaaa.webp'] })
     await expect(promise).resolves.toMatchObject({ screenshots: ['001-aaaaaaaaaaaa.webp'] })
+  })
+
+  it('sendMessage 没有附件时发 JSON', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"turn_id":"t"}', { status: 202 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await sendMessage('s#1', { text: '你好' })
+
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
+    expect(String(url)).toBe('/api/sessions/s%231/messages')
+    expect(JSON.parse(String(init.body))).toEqual({ text: '你好' })
+  })
+
+  it('sendMessage 带附件时发 multipart：text 加若干 files', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const a = new File(['png'], 'a.png', { type: 'image/png' })
+    const b = new File(['md'], 'b.md')
+    const promise = sendMessage('s#1', { text: '看看', files: [a, b] })
+    const xhr = FakeXhr.last
+    expect(xhr.method).toBe('POST')
+    expect(xhr.url).toBe('/api/sessions/s%231/messages')
+    const form = xhr.body as FormData
+    expect(form.get('text')).toBe('看看')
+    expect(form.getAll('files')).toEqual([a, b])
+    xhr.respond(202, { turn_id: 't1' })
+    await expect(promise).resolves.toEqual({ turn_id: 't1' })
   })
 
   it('deleteStyleScreenshot 对 id 和文件名编码', async () => {

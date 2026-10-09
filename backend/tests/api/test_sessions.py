@@ -183,6 +183,33 @@ class TestGetSession:
         assert turn["status"] == "done"
         assert turn["end_snapshot_id"] is not None
 
+    async def test_turns_carry_attachments(self, api_env: ApiEnv) -> None:
+        pid = await _project(api_env)
+        session = create_session(
+            api_env.app.state.engine,
+            project_id=pid,
+            stage="topic",
+            model_profile_id=_fake_profile_id(api_env),
+            runtime="fake",
+        )
+        record = {
+            "kind": "file",
+            "name": "b.md",
+            "size": 4,
+            "sha256": None,
+            "path": "uploads/x-b.md",
+            "binary": False,
+        }
+        turn = create_turn_if_session_idle(
+            api_env.app.state.engine, session.id, "看附件", attachments=[record]
+        )
+        assert turn is not None
+        interrupt_turn(api_env.app.state.engine, turn.id, end_snapshot_id=None)
+
+        response = await api_env.client.get(f"/api/sessions/{session.id}")
+
+        assert response.json()["turns"][0]["attachments"] == [record]
+
 
 class TestSendMessage:
     async def test_returns_202_with_turn_id(self, api_env: ApiEnv) -> None:

@@ -68,12 +68,21 @@ import type {
   TurnStatusPayload,
 } from '@/types/events'
 
+/** 乐观占位里的附件：真实 turn 的 `attachments` 到达之前，用本地预览渲染。 */
+export interface LocalAttachment {
+  kind: 'image' | 'file'
+  name: string
+  size: number
+  previewUrl?: string
+}
+
 export interface UserMessageItem {
   kind: 'user_message'
   turnId: string
   text: string
   /** 乐观占位的发送时间（ISO）：真实 turn 的元数据到达之前，气泡下的时间用它。 */
   at?: string
+  attachments?: LocalAttachment[]
 }
 
 export interface TextItem {
@@ -173,7 +182,7 @@ export interface UseSessionStreamResult {
    * 空文本"两条。返回这条占位的 `turnId`（`local-<n>`），发送失败时传给
    * `removeLocalUserMessage` 撤回。
    */
-  addLocalUserMessage: (text: string) => string
+  addLocalUserMessage: (text: string, attachments?: LocalAttachment[]) => string
   /**
    * 发送接口（`POST .../messages`、`.../continue`）返回 `turn_id` 后调用：先把这一轮标成
    * `queued`。`turn_status` 是瞬时事件，面板的 SSE 连接在开发环境（vite 代理）里可能比发送
@@ -230,7 +239,12 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
   const userMessageInserted = new Set<string>()
   const toolCallIndex = new Map<string, number>()
   // 乐观插入、还没被真实 turn 认领的占位（FIFO：先发送的消息先配对）。
-  let pendingLocalMessages: { placeholderId: string; text: string; at: string }[] = []
+  let pendingLocalMessages: {
+    placeholderId: string
+    text: string
+    at: string
+    attachments?: LocalAttachment[]
+  }[] = []
   let localMessageCounter = 0
 
   // 审查发现的竞态（`sessionId` 在上一次 `watch` 回调还卡在 `await
@@ -290,12 +304,13 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
     if (projectId) void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
   }
 
-  function addLocalUserMessage(text: string): string {
+  function addLocalUserMessage(text: string, attachments?: LocalAttachment[]): string {
     const placeholderId = `local-${localMessageCounter}`
     localMessageCounter += 1
     const at = new Date().toISOString()
-    pendingLocalMessages.push({ placeholderId, text, at })
-    items.value.push({ kind: 'user_message', turnId: placeholderId, text, at })
+    const extra = attachments?.length ? { attachments } : {}
+    pendingLocalMessages.push({ placeholderId, text, at, ...extra })
+    items.value.push({ kind: 'user_message', turnId: placeholderId, text, at, ...extra })
     return placeholderId
   }
 
@@ -338,7 +353,13 @@ export function useSessionStream(sessionId: Ref<string | null>): UseSessionStrea
         (item) => item.kind === 'user_message' && item.turnId === pending.placeholderId,
       )
       if (idx !== -1) {
-        items.value[idx] = { kind: 'user_message', turnId, text: pending.text, at: pending.at }
+        items.value[idx] = {
+          kind: 'user_message',
+          turnId,
+          text: pending.text,
+          at: pending.at,
+          ...(pending.attachments ? { attachments: pending.attachments } : {}),
+        }
         return
       }
     }

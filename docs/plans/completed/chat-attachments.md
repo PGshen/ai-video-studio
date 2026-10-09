@@ -6,12 +6,12 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 已完成 |
 | 里程碑 | 功能增强（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [chat-attachments 设计](../../design/2026-10-09-chat-attachments.md)（负责人 2026-10-09 批准，含 §10 修订 R1、R2） |
 | 分支 | `chat-attachments`，从 main 切出 |
-| 批准记录 | 待批准 |
-| 执行方式 | 待负责人选择 |
+| 批准记录 | 2026-10-09：负责人批准计划；2026-10-09：负责人验收通过 |
+| 执行方式 | 会话内直接执行，完成后一个独立评审检查整个分支 |
 
 ## 目标
 
@@ -60,20 +60,20 @@
 
 ## 验收标准
 
-- [ ] AC1：项目会话发送"文字 + 1 张图片 + 1 个 `.md` 文件"后，模型的回答提到了图片内容，也读到了 `.md` 的内容；`uploads/` 下出现这个文件，右侧文件树能看到它。（验证方式：`make smoke` 新增的用例，加上浏览器截图）
-- [ ] AC2：选题对话只能选图片；如果绕过前端直接发文件，接口返回 422。（验证方式：端点测试，加上浏览器操作截图）
-- [ ] AC3：刷新页面后，时间线里的用户消息仍然显示图片缩略图和文件名。（验证方式：浏览器截图）
-- [ ] AC4：超出大小或数量限制、类型不对时返回 422，前端显示中文提示，已选的附件保留。（验证方式：端点测试和组件测试）
-- [ ] AC5：agent 改不了 `uploads/`；回滚到某个快照时，`uploads/` 回到那个版本的状态。（验证方式：runner 测试）
-- [ ] AC6：风格对话可以上传文件；保存风格成功，正式版本里不含 `uploads/`。（验证方式：style store 测试和 runner_style 测试）
-- [ ] AC7：大于 300 kB 的 PDF 在附件 chip 上显示警告；发给模型的说明里标明"可能无法直接读取"。（验证方式：单元测试和组件测试）
-- [ ] AC8：`make check` 全绿。
+- [x] AC1：项目会话发送"文字 + 1 张图片 + 1 个 `.md` 文件"后，模型的回答提到了图片内容，也读到了 `.md` 的内容；`uploads/` 下出现这个文件，右侧文件树能看到它。（验证方式：`make smoke` 新增的用例，加上浏览器截图）
+- [x] AC2：选题对话只能选图片；如果绕过前端直接发文件，接口返回 422。（验证方式：端点测试，加上浏览器操作截图）
+- [x] AC3：刷新页面后，时间线里的用户消息仍然显示图片缩略图和文件名。（验证方式：浏览器截图）
+- [x] AC4：超出大小或数量限制、类型不对时返回 422，前端显示中文提示，已选的附件保留。（验证方式：端点测试和组件测试）
+- [x] AC5：agent 改不了 `uploads/`；回滚到某个快照时，`uploads/` 回到那个版本的状态。（验证方式：runner 测试）
+- [x] AC6：风格对话可以上传文件；保存风格成功，正式版本里不含 `uploads/`。（验证方式：style store 测试和 runner_style 测试）
+- [x] AC7：大于 300 kB 的 PDF 在附件 chip 上显示警告；发给模型的说明里标明"可能无法直接读取"。（验证方式：单元测试和组件测试）
+- [x] AC8：`make check` 全绿。
 
 ## 任务
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：附件解析与分流模块（待开始）
+### T1：附件解析与分流模块（完成）
 
 - **目标**：用一个纯函数模块把上传内容变成 `UserInput` 加附件记录。这个模块不依赖 FastAPI 的请求对象。
 - **涉及文件**：新增 `backend/src/studio/api/attachments.py`；新增 `backend/tests/api/test_attachments.py`。
@@ -108,7 +108,7 @@
 - **完成标准**：上面的测试全部通过；这个模块不 import fastapi。
 - **验证命令**：`cd backend && uv run pytest tests/api/test_attachments.py -q`，然后 `make check`。
 
-### T2：持久化——`turns.attachments`（待开始）
+### T2：持久化——`turns.attachments`（完成）
 
 - **目标**：轮次记录能保存附件，接口能返回附件。
 - **涉及文件**：
@@ -125,7 +125,7 @@
 - **完成标准**：旧数据库升级后，现有测试全部通过。
 - **验证命令**：`make check`。
 
-### T3：发消息接口与附件读取接口（待开始）
+### T3：发消息接口与附件读取接口（完成）
 
 - **目标**：用 multipart 发消息能跑通；可以读取附件里的图片。
 - **涉及文件**：
@@ -159,7 +159,7 @@
 - **完成标准**：AC2 和 AC4 的后端部分有测试证据。
 - **验证命令**：`make check`。
 
-### T4：`uploads/` 只读，以及风格草稿的处理（待开始）
+### T4：`uploads/` 只读，以及风格草稿的处理（完成）
 
 - **目标**：agent 改不了 `uploads/`；风格草稿的清理和保存都跳过 `uploads/`（修订 R1）。
 - **涉及文件**：
@@ -174,7 +174,7 @@
 - **完成标准**：上面的测试全部通过；现有的写入范围测试没有退化。
 - **验证命令**：`make check`。
 
-### T5：前端——发送附件（待开始）
+### T5：前端——发送附件（完成）
 
 - **目标**：对话框可以添加附件、预览附件、把附件发出去。
 - **涉及文件**：
@@ -198,7 +198,7 @@
 - **完成标准**：AC2 和 AC4 的前端部分、AC7 的前端部分都有测试。
 - **验证命令**：`make check`。
 
-### T6：前端——时间线回显（待开始）
+### T6：前端——时间线回显（完成）
 
 - **目标**：历史消息里显示附件。
 - **涉及文件**：
@@ -213,7 +213,7 @@
 - **完成标准**：AC3 有组件测试，在浏览器里能看到。
 - **验证命令**：`make check`。
 
-### T7：冒烟测试、技术债与自验证（待开始）
+### T7：冒烟测试、技术债与自验证（完成）
 
 - **目标**：用真实模型验证整条链路，补齐记录。
 - **涉及文件**：
@@ -226,19 +226,40 @@
 
 ## 进度
 
-- 无
+- 2026-10-09 — T1 — `api/attachments.py` 与 37 个单元测试完成，make check 绿
+- 2026-10-09 — T2 — 迁移 0011、`TurnValue/TurnOut.attachments`、前端 `AttachmentOut` 类型，make check 绿
 
 ## 下一步
 
-- 等负责人批准计划、选择执行方式。批准后：从 main 切出 `chat-attachments` 分支，从 T1 开始。
+- 无（已完成）。评审遗留的 Minor 见「意外与发现」，负责人尚未决定是否排期。
 
 ## 决策记录
 
+- 2026-10-09 — 收尾：`uploads/` 只读、项目忙时拒绝写工作区的附件写成 [ADR 0026](../../decisions/0026-对话附件放在工作区uploads目录且对agent只读.md)。
 - 2026-10-09 — 写入保护放在 `is_writable` 统一处理 `uploads/`，不逐个修改各阶段的 `WriteScope` — 这样所有阶段一次生效，以后新增的阶段也不会漏掉。
+- 2026-10-09 — T1：`AttachmentRecord` 多一个 `binary` 字段（内容不是 UTF-8 文本），另加 `compose_text`（原文 + 文件说明）和 `discard(written)` — `file_note` 判断 OpenAI 下能否读取、"继续"重建说明都需要它，只能在上传时算出并持久化。
+- 2026-10-09 — T1：模型不支持图片时转存的图片记录为 `kind="image"`，同时有 `sha256`（缩略图）和 `path`（文件说明）— 与设计 §4.3 的 `path` 说明一致。
+- 2026-10-09 — T2：前端 `TurnOut.attachments` 定为可选（`attachments?:`），消费方用 `?? []` — 后端总会返回，但前端大量 spec 夹具手写 `TurnOut`；可选可以避免无关改动。
+- 2026-10-09 — T3：`TurnRunner.start_turn` 多一个 `user_message` 关键字参数 — `UserInput.text` 已经拼上文件说明，`turns.user_message` 要存原文（全局约束）。
+- 2026-10-09 — T3：会话的工作目录判断与 `TurnRunner._execute` 一致：有项目 → 项目工作区；无项目有 `subject_id` → 风格草稿；都没有 → 选题会话。风格阶段本身被标为 `workspaceless`，不能用阶段标记判断。
+- 2026-10-09 — T3：JSON 分支改为手动解析 `MessageCreate`，失败时 422 的 detail 是中文字符串（以前是 FastAPI 的校验列表）— 同一端点要同时接受 JSON 和 multipart。
+- 2026-10-09 — T4：同一项目里另一个会话的一轮正在运行时，带文件（会写工作区）的消息返回 409；只带图片的照常排队 — 正在运行的那一轮结束时，越界检查会把新出现的 `uploads/` 文件当越权改动删掉。设计 §5.2 只要求检查本会话是否忙，这里补上项目级检查。
+- 2026-10-09 — T4：styles 不能依赖 workspace（结构规则 4），所以 `styles/layout.py` 另写一份 `UPLOADS_DIR`，用 `tests/styles/test_layout.py` 保证和 `workspace/scope.py` 一致。
+- 2026-10-09 — T5：回形针用 `PromptInputButton` 加 `openFileDialog` 自己写（`AttachButton.vue`）— 组件库的 `PromptInputActionAddAttachments` 是下拉菜单项，不能单独放。
+- 2026-10-09 — T5：带附件的发送失败时，`onSubmit` 向 `PromptInput` 重新抛出错误，让它保留附件、恢复文字；不带附件时照旧吞掉错误，行为不变。409 改为优先显示后端给的中文 detail（项目忙时的提示和会话忙不同）。
+- 2026-10-09 — T5：乐观消息的本地预览挪到 T6 和时间线渲染一起做 — 渲染组件在 T6。
+- 2026-10-09 — T6：文件附件在项目会话里改成新标签页打开工作区原文件（`workspaceFileUrl`），不在右侧文件面板打开 — 各阶段画布各自管理文件选中状态，没有统一的“打开文件”入口，接入要改每个画布，超出本计划。风格和选题会话只显示文件名，所以修订 R1 的“文件已不存在”提示不会出现。
 - 2026-10-09 — `python-multipart` 不写成显式依赖 — 它已经通过传递依赖装好，`music_import` 已经在用；遵守"不引入计划外依赖"这条约束。
 
 ## 意外与发现
 
+- 2026-10-09 — 独立评审遗留的 Minor（未修，待负责人决定）：M3 重发从未开始的一轮时不检查当前模型是否支持图片；M4 大小上限在 Starlette 收完整个请求体后才生效（不是流式中止，也没有总大小上限）；M5 项目会话回滚后文件链接会打开 404；M6 选题对话里混合粘贴图片和 PDF 时 PDF 被静默丢掉，HEIC/BMP 的提示文案容易误解；M7 前端“可能读不全”警告不考虑 OpenAI 二进制和不支持图片的模型；M8 消息接口的请求体从 OpenAPI 文档消失；M9 风格已删除、不支持图片这两种情况缺端点层测试；M10 `safe_name` 不处理 Windows 非法字符（`: * ? " < > |`、末尾的 `.`），执行 windows-native 计划时需要处理。
+- 2026-10-09 — T7：一次 `make check` 里 `router.spec.ts` 的“resolves /projects/:id/:stage”超时（5 s，动态加载页面组件）；当时机器同时开着 dev server 和浏览器。单独重跑 3 次、完整 `make check` 重跑都通过，判断是负载下的偶发超时，不是本计划引入的。
+- 2026-10-09 — T7：第一版冒烟提示（“原样告诉我暗号”）被模型当成提示注入而拒绝；改成真实的选题场景（参考图配色 + 资料里的项目代号）后通过。
+- 2026-10-09 — T7：浏览器走查用的是负责人自己开着的 `make dev`（热重载已经加载本分支代码），启动时迁移把 `data/studio.db` 升到了 0011（只新增一个可为空的列）。走查建了一个临时项目「附件功能验证（可删除）」。
+- 2026-10-09 — T5：`PromptInput` 提交时 `files` 是 `{...AttachmentFile, url: dataUrl}`，原始 `File` 仍在 `.file` 上，可以直接拿来上传；代价是组件库会先把每个附件读成 data URL（20 MB 的文件也会读一遍），本地单人使用可以接受。jsdom 下 `URL.createObjectURL` 不认 jsdom 的 File，测试里需要打桩。
+- 2026-10-09 — T4：runner 的 guard 测试（Shell 改 `uploads/` 被还原）在改动前就能通过，因为 topic 阶段的写入范围本来就不含 `uploads/`；`is_writable` 的改动保护的是写入范围更宽的阶段，由 `test_scope.py::test_uploads_are_never_writable` 覆盖。
+- 2026-10-09 — 前端 `pnpm run typecheck`（`vue-tsc --noEmit`）对 `files: []` 的 solution tsconfig 实际上什么都不检查；用 `-p tsconfig.app.json` 实测有 52 处既有错误（多在 spec 里）。不属于本计划，已经开了单独的任务；本计划的改动用 `-p tsconfig.app.json` 确认不新增错误。
 - 2026-10-09 — 写计划时发现风格对话的 cwd 是草稿目录，以及读工具有大小上限。已经升级给负责人，结论写进设计修订 R1、R2。
 
 ## 阻塞
@@ -247,4 +268,11 @@
 
 ## 验证记录
 
-- 无
+- AC1：`make smoke SMOKE_ARGS="-k attachments_claude_login"` → 1 passed（证据 `data/evidence/chat-attachments/smoke/20261009T072412Z-attachments-claude-login.json`：模型用 Read 读了 `uploads/…-资料.md`，回答“左边纯蓝、右边纯黄”和代号“青柠-4271”）。浏览器里在临时项目的选题会话中发送 png + md，回答同样正确；`GET /api/projects/{id}/files/uploads/85577dab-资料.md` 返回 200。
+- AC2：浏览器打开选题页的头脑风暴面板，文件框 `accept="image/png,image/jpeg,image/webp,image/gif"`，选择 PDF 后没有 chip，输入框上方显示“选题对话只支持图片”；接口层见 `test_message_attachments.py::TestBrainstormSession`。
+- AC3：发送后刷新页面，用户消息下的缩略图地址是 `/api/sessions/{id}/attachments/{sha}`，图片加载成功（naturalWidth 64），文件链接到工作区原文件；组件测试见 `SessionTimelineItem.spec.ts`。
+- AC4：`test_attachments.py` 的上限用例、`test_message_attachments.py::test_oversized_file_is_422_and_writes_nothing`、`SessionPanel.spec.ts` 的“超过上限的附件不发送”“发送失败时附件保留”。
+- AC5：`test_scope.py::test_uploads_are_never_writable`、`test_runner.py::TestGuard::test_shell_changes_to_uploads_are_restored`、`test_snapshot.py::test_scan_includes_uploads`。
+- AC6：`test_message_attachments.py::TestStyleSession`、`tests/styles/test_store.py::test_uploads_are_kept`、`test_save_leaves_uploads_behind`。没有在负责人的风格库里实际走查（会产生风格草稿）。
+- AC7：浏览器里 400 kB 的 PDF chip 显示“agent 可能读不到全文，建议转成文本后再上传”；`test_attachments.py::TestFileNote`。
+- AC8：`make check` 全部通过。

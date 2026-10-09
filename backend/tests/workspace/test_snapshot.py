@@ -339,3 +339,11 @@ class TestRollback:
             rollback(engine, blobs, project_id, bad.id)
 
         assert not (workdir.parent / "escaped.txt").exists()
+
+
+def test_scan_includes_uploads(tmp_path: Path) -> None:
+    """上传的文件进快照（设计 2026-10-09 §5.4），回滚时随版本还原。"""
+    (tmp_path / "uploads").mkdir()
+    (tmp_path / "uploads" / "ab12cd34-a.md").write_text("x", encoding="utf-8")
+
+    assert "uploads/ab12cd34-a.md" in scan(tmp_path)

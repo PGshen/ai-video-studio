@@ -214,3 +214,25 @@ def test_0010_adds_a_nullable_stale_from_to_project_stages_and_keeps_existing_ro
 
     assert upgraded == [("st1", "stale", None)]
     assert "stale_from" not in old_columns
+
+
+def test_0011_adds_a_nullable_attachments_column_to_turns_and_keeps_existing_rows(
+    engine: Engine,
+) -> None:
+    config = _alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0010")
+        connection.execute(
+            text(
+                "INSERT INTO turns (id, session_id, user_message, status, created_at, "
+                "updated_at) VALUES ('t1', 's1', 'hi', 'done', '2026-10-01', '2026-10-01')"
+            )
+        )
+        command.upgrade(config, "0011")
+        upgraded = connection.execute(text("SELECT id, attachments FROM turns")).all()
+        command.downgrade(config, "0010")
+        old_columns = {col["name"] for col in inspect(connection).get_columns("turns")}
+
+    assert upgraded == [("t1", None)]
+    assert "attachments" not in old_columns

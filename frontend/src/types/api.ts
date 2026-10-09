@@ -233,8 +233,20 @@ export interface TurnOut {
   error: string | null
   /** `interrupted` 且从未真正开始运行（重启时还在排队）；[继续] 会重发 `user_message`（TD-19）。 */
   never_started: boolean
+  /** 这一轮用户消息带的附件（设计 2026-10-09 §4.3）。 */
+  attachments?: AttachmentOut[]
   created_at: string
   updated_at: string
+}
+
+/** 用户消息带的一个附件。`kind='image'` 时 `sha256` 指向会话附件图片；`path` 是工作区相对路径。 */
+export interface AttachmentOut {
+  kind: 'image' | 'file'
+  name: string
+  size: number
+  sha256: string | null
+  path: string | null
+  binary: boolean
 }
 
 export interface SessionDetailOut extends SessionOut {

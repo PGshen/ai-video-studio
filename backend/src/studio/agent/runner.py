@@ -124,8 +124,19 @@ class TurnRunner:
 
     # ---- public API ---------------------------------------------------
 
-    async def start_turn(self, session_id: str, user_input: UserInput) -> str:
-        """创建 turn 并排队；返回 turn id。会话忙时抛 `SessionBusyError`。"""
+    async def start_turn(
+        self,
+        session_id: str,
+        user_input: UserInput,
+        *,
+        user_message: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> str:
+        """创建 turn 并排队；返回 turn id。会话忙时抛 `SessionBusyError`。
+
+        `attachments` 是这一轮用户消息的附件记录（`api/attachments.AttachmentRecord.to_dict()`），
+        随 turn 持久化；`user_input` 里已经包含图片和追加的文件说明，所以存进
+        `turns.user_message` 的用户原文由 `user_message` 单独给出（缺省同 `user_input.text`）。"""
         session = get_session(self._engine, session_id)
         if session is None:
             raise SessionNotFoundError(session_id)
@@ -138,7 +149,12 @@ class TurnRunner:
         if profile is None:
             raise LookupError(f"模型配置不存在：{session.model_profile_id}")
 
-        turn = turns_repo.create_turn_if_session_idle(self._engine, session_id, user_input.text)
+        turn = turns_repo.create_turn_if_session_idle(
+            self._engine,
+            session_id,
+            user_input.text if user_message is None else user_message,
+            attachments=attachments,
+        )
         if turn is None:
             raise SessionBusyError(session_id)
         job = _Job(turn.id, session, session.project_id, stage, profile, user_input)

@@ -11,6 +11,7 @@ import type { TurnOut } from '@/types/api'
 import { useCopy } from './activity/useCopy'
 import type { PlainItem } from './groupTimeline'
 import { noticeText } from './noticeText'
+import MessageAttachments from './MessageAttachments.vue'
 import SafeMarkdown from './SafeMarkdown.vue'
 import SuggestionCard from './SuggestionCard.vue'
 import { snapshotEventLabel } from './snapshotReason'
@@ -19,6 +20,7 @@ import { formatClock } from './turnMeta'
 const props = defineProps<{
   item: PlainItem
   projectId: string | null
+  sessionId?: string | null
   turns?: ReadonlyMap<string, TurnOut>
 }>()
 
@@ -36,9 +38,18 @@ const userTime = computed(() => {
     v-if="item.kind === 'user_message'"
     class="flex flex-col items-end gap-1"
   >
-    <Message from="user">
+    <Message
+      v-if="item.text"
+      from="user"
+    >
       <MessageContent>{{ item.text }}</MessageContent>
     </Message>
+    <MessageAttachments
+      :server="turns?.get(item.turnId)?.attachments"
+      :local="item.attachments"
+      :project-id="projectId"
+      :session-id="sessionId ?? null"
+    />
     <div class="text-muted-foreground flex items-center gap-3 text-xs">
       <span
         v-if="userTime"
