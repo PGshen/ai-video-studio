@@ -1,6 +1,6 @@
 # 原生支持 Windows
 
-状态：待批准（2026-10-09）。本文不修改已批准的设计；涉及 [ADR 0009 Shell 沙箱](../decisions/0009-Shell沙箱.md) 和 [ADR 0006 纯本地 SOP](../decisions/0006-纯本地SOP.md) 的地方，按本文 §10 新增 ADR，不改旧 ADR 的正文。
+状态：已批准（负责人 2026-10-09 批准）。本文不修改已批准的设计；涉及 [ADR 0009 Shell 沙箱](../decisions/0009-Shell沙箱.md) 和 [ADR 0006 纯本地 SOP](../decisions/0006-纯本地SOP.md) 的地方，按本文 §10 新增 ADR，不改旧 ADR 的正文。
 
 ## 1. 背景与目标
 
