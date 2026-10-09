@@ -11,17 +11,27 @@ Stdlib only and never imports `studio`: it must work before `backend/.venv` is c
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import IO, Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND = REPO_ROOT / "backend"
 FRONTEND = REPO_ROOT / "frontend"
+PID_FILE = REPO_ROOT / ".dev" / "pids.json"
+"""`dev`'s record of what it started; outside `data/` (uvicorn must not watch it)."""
+FRONTEND_PORT = 5173
 
 # Keys the smoke tests read from the environment (moved from the Makefile).
 SMOKE_KEYS = (
@@ -343,6 +353,315 @@ def cmd_import_legacy_styles(args: argparse.Namespace) -> None:
     )
 
 
+# ---- dev: api + worker + frontend (design §8.2) ----
+#
+# `_spawn_kwargs` and `_kill_tree_sync` are stdlib copies of `studio.proc.spawn_kwargs` /
+# `kill_tree_sync` (backend/src/studio/proc.py): this script must not import `studio`.
+# Change both together.
+
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+_WINDOWS_IMAGES = frozenset({"python.exe", "uv.exe", "node.exe", "cmd.exe"})
+"""Images `dev` starts on Windows (`cmd.exe` runs `pnpm.CMD`); anything else is not ours."""
+
+
+def _spawn_kwargs(platform: str | None = None) -> dict[str, Any]:
+    if (platform or sys.platform) == "win32":
+        return {"creationflags": _CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _kill_tree_sync(pid: int, platform: str | None = None) -> bool:
+    if (platform or sys.platform) == "win32":
+        try:
+            done = subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(pid)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except OSError:
+            return False
+        return done.returncode == 0
+    if sys.platform != "win32":
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(pid, signal.SIGKILL)
+    return True
+
+
+def read_pid_file(path: Path) -> list[dict[str, Any]]:
+    """Entries `{"name", "pid", "cmd"}`; a missing or malformed file is empty (best effort)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [
+        entry
+        for entry in data
+        if isinstance(entry, dict)
+        and isinstance(entry.get("name"), str)
+        and isinstance(entry.get("pid"), int)
+    ]
+
+
+def write_pid_file(path: Path, entries: Sequence[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(list(entries), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+ProcessInfo = tuple[str, str]
+"""`(image name, command line)` of a live process."""
+
+
+def process_info(pid: int, platform: str | None = None) -> ProcessInfo | None:
+    """Name and command line of `pid`, or `None` when it is gone (or cannot be inspected)."""
+    if (platform or sys.platform) == "win32":
+        # `tasklist` has no command line; CIM is the supported way (wmic is deprecated).
+        script = (
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+            f"$p = Get-CimInstance Win32_Process -Filter 'ProcessId={int(pid)}'; "
+            "if ($p) { $p.Name; $p.CommandLine }"
+        )
+        argv = ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+    else:
+        argv = ["ps", "-o", "command=", "-p", str(pid)]
+    try:
+        done = subprocess.run(argv, capture_output=True, check=False, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = done.stdout.decode("utf-8", errors="replace").strip().splitlines()
+    if done.returncode != 0 or not lines:
+        return None
+    if (platform or sys.platform) == "win32":
+        return (lines[0].strip(), " ".join(lines[1:]).strip())
+    command = lines[0].strip()
+    return (Path(command.split(" ", 1)[0]).name, command)
+
+
+def belongs_to_project(
+    info: ProcessInfo | None, root: Path, *, platform: str | None = None
+) -> bool:
+    """Review point 2: a PID from the pid file may have been reused by another program, so
+    only kill it when its command line names this repository (and, on Windows, its image is
+    one `dev` starts). Paths compare case- and separator-insensitively on Windows."""
+    if info is None:
+        return False
+    name, command = info
+    if (platform or sys.platform) == "win32":
+        if name.lower() not in _WINDOWS_IMAGES:
+            return False
+        return str(root).replace("/", "\\").lower() in command.replace("/", "\\").lower()
+    return str(root) in command
+
+
+def cleanup_stale(
+    entries: Sequence[Mapping[str, Any]],
+    root: Path,
+    *,
+    process_info: Callable[[int], ProcessInfo | None],
+    kill: Callable[[int], object],
+    log: IO[str],
+    platform: str | None = None,
+) -> None:
+    """Kill what a previous `dev` left running, but only processes that are still ours."""
+    for entry in entries:
+        pid = int(entry["pid"])
+        info = process_info(pid)
+        if info is None:
+            continue
+        if belongs_to_project(info, root, platform=platform):
+            print(f"清理上一次遗留的 {entry['name']}（pid {pid}）", file=log)
+            kill(pid)
+        else:
+            print(f"pid {pid}（原来的 {entry['name']}）已被其他程序使用，跳过", file=log)
+
+
+def parse_netstat_listeners(text: str, port: int) -> list[int]:
+    """PIDs listening on TCP `port` in `netstat -ano` output (Windows)."""
+    pids: list[int] = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 5 or parts[0].upper() != "TCP" or parts[3].upper() != "LISTENING":
+            continue
+        if parts[1].rsplit(":", 1)[-1] == str(port):
+            pid = int(parts[4])
+            if pid not in pids:
+                pids.append(pid)
+    return pids
+
+
+def port_listeners(port: int, platform: str | None = None) -> list[int]:
+    if (platform or sys.platform) == "win32":
+        argv = ["netstat", "-ano", "-p", "TCP"]
+    else:
+        argv = ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"]
+    try:
+        out = subprocess.run(argv, capture_output=True, check=False, timeout=15).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    text = out.decode("utf-8", errors="replace")
+    if (platform or sys.platform) == "win32":
+        return parse_netstat_listeners(text, port)
+    return sorted({int(line) for line in text.split() if line.isdigit()})
+
+
+@dataclass
+class Service:
+    name: str
+    argv: list[str]
+    cwd: Path
+
+
+@dataclass
+class Supervisor:
+    """Starts services in their own process groups, prefixes their output, and kills every
+    tree on `stop()`. stdin is always DEVNULL: a child that reads the terminal (ffmpeg does by
+    default) would otherwise be stopped by SIGTTIN and freeze the API (lesson from dev.sh)."""
+
+    services: Sequence[Service]
+    env: Mapping[str, str] | None
+    pid_file: Path
+    out: IO[str] = field(default_factory=lambda: sys.stdout)
+    started: list[dict[str, Any]] = field(default_factory=list)
+    _procs: list[tuple[Service, subprocess.Popen[bytes]]] = field(default_factory=list)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def start(self) -> None:
+        env = utf8_env(os.environ if self.env is None else self.env)
+        for service in self.services:
+            child = subprocess.Popen(
+                service.argv,
+                cwd=service.cwd,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                **_spawn_kwargs(),
+            )
+            self._procs.append((service, child))
+            self.started.append(
+                {"name": service.name, "pid": child.pid, "cmd": " ".join(service.argv)}
+            )
+            threading.Thread(target=self._pump, args=(service.name, child), daemon=True).start()
+        write_pid_file(self.pid_file, self.started)
+
+    def _pump(self, name: str, child: subprocess.Popen[bytes]) -> None:
+        assert child.stdout is not None
+        for raw in iter(child.stdout.readline, b""):
+            line = f"[{name}] " + raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            with self._lock:
+                try:
+                    print(line, file=self.out, flush=True)
+                except UnicodeEncodeError:
+                    # A GBK console cannot show e.g. Vite's `➜`; the thread must keep draining
+                    # the pipe or the child blocks once it fills.
+                    encoding = getattr(self.out, "encoding", None) or "ascii"
+                    safe = line.encode(encoding, errors="replace").decode(encoding)
+                    print(safe, file=self.out, flush=True)
+
+    def wait(self, *, poll: float = 0.5) -> tuple[str, int]:
+        """Block until a service exits; returns its name and exit code."""
+        while True:
+            for service, child in self._procs:
+                code = child.poll()
+                if code is not None:
+                    return service.name, code
+            time.sleep(poll)
+
+    def stop(self) -> None:
+        for _service, child in self._procs:
+            # A child that already exited has no tree to find on Windows, and its PID may be
+            # reused; POSIX still kills its group (leftovers keep the group alive).
+            if child.poll() is None or sys.platform != "win32":
+                if not _kill_tree_sync(child.pid) and child.poll() is None:
+                    child.kill()
+        for _service, child in self._procs:
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                child.wait(timeout=10)
+        self.pid_file.unlink(missing_ok=True)
+
+
+def _interrupt(_signum: int, _frame: object) -> None:
+    raise KeyboardInterrupt
+
+
+def _bind_address(uv: str, env: Mapping[str, str]) -> tuple[str, str]:
+    done = subprocess.run(
+        [uv, "run", "--project", str(BACKEND), "python", "-m", "studio.config"],
+        cwd=BACKEND,
+        env=utf8_env(env),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+    )
+    parts = done.stdout.decode("utf-8", errors="replace").split()
+    if done.returncode != 0 or len(parts) != 2:
+        sys.stderr.write(done.stderr.decode("utf-8", errors="replace"))
+        raise TaskError("无法从 `python -m studio.config` 读取绑定地址，请检查上面的报错")
+    return parts[0], parts[1]
+
+
+def _require_free(port: int, label: str) -> None:
+    owners = port_listeners(port)
+    if owners:
+        raise TaskError(
+            f"端口 {port}（{label}）被 pid {', '.join(map(str, owners))} 占用，"
+            "不是本项目上一次留下的进程；请手动结束它或修改端口配置"
+        )
+
+
+def cmd_dev(_args: argparse.Namespace) -> None:
+    """Start api (uvicorn --reload), worker and the frontend; Ctrl+C stops all three."""
+    if sys.platform == "win32":
+        signal.signal(signal.SIGBREAK, _interrupt)  # Ctrl+Break / closing the console window
+    else:
+        signal.signal(signal.SIGTERM, _interrupt)  # `kill <dev pid>` stops like Ctrl+C
+    with contextlib.suppress(AttributeError, ValueError):
+        sys.stdout.reconfigure(line_buffering=True)  # keep progress visible when redirected
+    cleanup_stale(
+        read_pid_file(PID_FILE),
+        REPO_ROOT,
+        process_info=process_info,
+        kill=_kill_tree_sync,
+        log=sys.stdout,
+    )
+    PID_FILE.unlink(missing_ok=True)
+    # Model keys are read from the process environment (pydantic-settings does not export
+    # backend/.env), so `.env` is merged in here, as `set -a; . backend/.env` used to.
+    env = {**os.environ, **load_dotenv()}
+    uv, pnpm = find_uv(), find_pnpm()
+    host, port = _bind_address(uv, env)
+    env["STUDIO_BIND_PORT"] = port  # vite.config.ts proxies /api to it
+    _require_free(int(port), "api")
+    _require_free(FRONTEND_PORT, "frontend")
+    project = ["--project", str(BACKEND)]  # absolute paths: `belongs_to_project` looks for them
+    services = [
+        # Only backend/src is watched: the workspace (data/) must never trigger a reload.
+        Service(
+            "api",
+            [uv, "run", *project, "uvicorn", "studio.main:app", "--reload"]
+            + ["--reload-dir", str(BACKEND / "src"), "--host", host, "--port", port],
+            BACKEND,
+        ),
+        Service("worker", [uv, "run", *project, "python", "-m", "studio.worker"], BACKEND),
+        Service("web", [pnpm, "--dir", str(FRONTEND), "run", "dev"], FRONTEND),
+    ]
+    supervisor = Supervisor(services, env=env, pid_file=PID_FILE)
+    try:
+        supervisor.start()
+        print(f"api: http://{host}:{port}（OpenAPI：/docs）")
+        print(f"frontend: http://127.0.0.1:{FRONTEND_PORT}")
+        print("worker: 已启动；按 Ctrl+C 退出")
+        name, code = supervisor.wait()
+        raise TaskError(f"{name} 意外退出（退出码 {code}），其余进程已结束")
+    except KeyboardInterrupt:
+        print("\n正在结束 api、worker、frontend…")
+    finally:
+        supervisor.stop()
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace], None]] = {
     "setup": cmd_setup,
     "check": cmd_check,
@@ -350,6 +669,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], None]] = {
     "check-docs": cmd_check_docs,
     "check-backend": cmd_check_backend,
     "check-frontend": cmd_check_frontend,
+    "dev": cmd_dev,
     "smoke": cmd_smoke,
     "import-legacy-styles": cmd_import_legacy_styles,
 }

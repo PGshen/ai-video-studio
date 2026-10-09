@@ -102,7 +102,7 @@ def test_openai_price_settings_empty_string_means_unset(monkeypatch: pytest.Monk
 
 
 def test_main_prints_host_and_port(tmp_path: Path) -> None:
-    """TD-2：`dev.sh` 靠 `python -m studio.config` 的 stdout 拿绑定地址，
+    """TD-2：`tasks.py dev` 靠 `python -m studio.config` 的 stdout 拿绑定地址，
     改端口后 uvicorn 必须真的换端口，而不是脚本里写死的 8000。"""
     env = dict(os.environ)
     env["STUDIO_PORT"] = "9123"

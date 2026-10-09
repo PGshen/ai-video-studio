@@ -32,7 +32,7 @@ make setup
 
 ## 配置
 
-- 后端配置从 `backend/.env` 读取（`STUDIO_` 前缀的环境变量），参考 `backend/.env.example`：数据目录、host/port、并发数、是否启用 Fake 运行时。模型 key（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）不是 `Settings` 字段，运行时按模型配置的 `api_key_env` 从**进程环境变量**读取；也写在 `backend/.env` 里——`scripts/dev.sh`（`make dev`）启动前会用 `set -a; . backend/.env; set +a` 把它整体导出到环境中（`make smoke` 由 `tasks.py` 解析 `.env` 后只把白名单变量传给 pytest）。直接手动运行 `uvicorn` 时要自己导出，否则 key 读不到，对应模型的 turn 会以"环境变量未设置"失败。`backend/.env` 按 shell 语法解析（值里有空格或特殊字符要加引号）；`tasks.py` 只支持字面量：`KEY=VALUE`、`export` 前缀、单双引号、`#` 注释，遇到 `$`、反引号、反斜杠会报错并指出行号。
+- 后端配置从 `backend/.env` 读取（`STUDIO_` 前缀的环境变量），参考 `backend/.env.example`：数据目录、host/port、并发数、是否启用 Fake 运行时。模型 key（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）不是 `Settings` 字段，运行时按模型配置的 `api_key_env` 从**进程环境变量**读取；也写在 `backend/.env` 里——`make dev`（`tasks.py dev`）启动前会解析它并整体合并进子进程的环境（`make smoke` 由 `tasks.py` 解析 `.env` 后只把白名单变量传给 pytest）。直接手动运行 `uvicorn` 时要自己导出，否则 key 读不到，对应模型的 turn 会以"环境变量未设置"失败。`backend/.env` 按 shell 语法解析（值里有空格或特殊字符要加引号）；`tasks.py` 只支持字面量：`KEY=VALUE`、`export` 前缀、单双引号、`#` 注释，遇到 `$`、反引号、反斜杠会报错并指出行号。
 - 数据目录（`data_dir`）默认为仓库根目录下的 `data/`，可以用 `STUDIO_DATA_DIR` 指向其他位置；解析后的路径不能落在 `backend/src` 之下（否则启动时报错），因为那会被 uvicorn `--reload` 监听到。
 
 ## 联网搜索（选题阶段、头脑风暴）
@@ -84,9 +84,9 @@ make setup
 make dev
 ```
 
-会执行 `scripts/dev.sh`：同时启动后端（`uvicorn studio.main:app --reload --reload-dir <绝对路径>/backend/src`）和前端（`cd frontend && pnpm run dev`），两者共用一个 trap，`Ctrl+C` 会一起结束。
+Windows（PowerShell）上运行 `uv run --project backend python scripts/tasks.py dev`。两者都由 `tasks.py dev` 实现（ADR 0025）：同时启动 api（`uv run --project <仓库>/backend uvicorn studio.main:app --reload --reload-dir <仓库>/backend/src`，绑定地址读自 `python -m studio.config`）、worker（不 reload）和前端（`pnpm --dir <仓库>/frontend run dev`，导出 `STUDIO_BIND_PORT` 给 vite 的代理），三路输出加 `[api]`、`[worker]`、`[web]` 前缀。`Ctrl+C`（Windows 上 `Ctrl+Break` 或关闭终端窗口同样有效；POSIX 上 `kill` 发 SIGTERM 也一样）会结束三棵进程树（POSIX 进程组 `killpg`，Windows `taskkill /T /F`）。
 
-启动前会先清理上一次遗留的旧进程：占用 api 端口（读自 `Settings`）和 5173 的进程、残留的 `studio.worker`，只要工作目录或命令行属于本仓库就会先 TERM、5 秒后 KILL（uvicorn reloader 等父进程一并结束，否则会被重新拉起）；端口被**非本项目**进程占用时不会误杀，而是打印占用者并退出。每个后台任务单独一个进程组，`Ctrl+C` 时整组结束（先 SIGCONT 再 TERM，被停住的进程也能清理掉），避免再产生孤儿进程。后台任务的 stdin 一律重定向到 `/dev/null`：它们是终端的后台进程组，读终端会被 SIGTTIN 停住整组；后端代码里所有子进程同样要显式设 `stdin`（由 `backend/tests/test_subprocess_stdin.py` 守住）。
+启动记录写在 `<仓库>/.dev/pids.json`（不在 `data/` 下，已 gitignore）。下次启动前先按它清理上一次遗留的进程：**只结束命令行里带本仓库路径的进程**（Windows 上还要求映像名是 `python.exe`、`uv.exe`、`node.exe` 或 `cmd.exe`），PID 已被别的程序复用时跳过并提示。清理之后端口仍被占用（例如别的程序占着 8000），就报出占用者的 PID 后退出，不去结束它（POSIX 用 `lsof`，Windows 用 `netstat -ano`）。三个进程的 stdin 一律是 `DEVNULL`：读终端的子进程（ffmpeg 默认会读 stdin）在 POSIX 上会被 SIGTTIN 停住；后端代码里所有子进程同样要显式设 `stdin`（由 `backend/tests/test_subprocess_stdin.py` 守住）。
 
 启动后可以访问：
 - 后端：http://127.0.0.1:8000（健康检查 `/api/health`，OpenAPI 文档在 `/docs`）

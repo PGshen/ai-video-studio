@@ -138,7 +138,7 @@ def repo_root() -> Path:
 
 
 if __name__ == "__main__":
-    # `dev.sh` 用这一行的输出取真正生效的绑定地址（TD-2）：Settings.host/port
-    # 此前只是声明字段，没人读它们，改 STUDIO_PORT 不会影响 dev.sh 里写死的端口。
+    # `tasks.py dev` 用这一行的输出取真正生效的绑定地址（TD-2）：Settings.host/port
+    # 此前只是声明字段，没人读它们，改 STUDIO_PORT 不会影响原来 dev.sh 里写死的端口。
     _settings = Settings()
     print(f"{_settings.host} {_settings.port}")

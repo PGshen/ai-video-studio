@@ -143,7 +143,7 @@
 - **完成标准**：质量关口满足 D1；在 Windows 上用 Fake 运行时在内置浏览器里看一眼（Windows 上 `sandbox_available` 本来就是 `false`），开关和标记都能显示，并截图。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；L4 截图。
 
-### T7：`tasks.py dev`（待开始，机器：Windows，按基线对比）
+### T7：`tasks.py dev`（完成，机器：Windows，按基线对比）
 
 - **目标**：设计 §8.2——用 Python 启动 api、worker 和前端三个进程，基于 pid 文件清理旧进程，退出时结束整棵进程树；删除 `scripts/dev.sh`。
 - **涉及文件**：`scripts/tasks.py`（`dev` 子命令）、`.gitignore`（`.dev/`）、`Makefile`（`dev` 改为一行）、删除 `scripts/dev.sh`、`.claude/launch.json`（如果需要调整）、`docs/runbooks/dev-setup.md`；测试 `backend/tests/scripts/test_tasks_dev.py`。
@@ -227,16 +227,17 @@
 - 2026-10-10 — T4 完成：新模块 `studio.proc`（`spawn_kwargs`、`kill_tree`/`kill_proc_tree`/`kill_tree_sync`、`run_killing_tree`、`child_env`）及 import-linter 契约；配乐脚本、歌曲分析、ffprobe、ffmpeg 解码/出片/混音、Shell executor 全部改用它；Windows 上 `limited_argv` 原样返回，`run_compose` 事后检查 `music.wav` 大小（两个平台都查）。测试里的假 ffmpeg 改成 Python 脚本，挂住的取消用例随之修好；`os.kill(pid, 0)` 探活改为共用的 `fixtures.processes.pid_alive`。Windows 上 `tasks.py check` 第一次跑到 pytest：pyright 0 错误，pytest **6 失败**（3007 通过），全部属于 T8、T9。剩余失败数：pytest 6，pyright 0
 - 2026-10-10 — T5 完成：`agent/exec_policy.py`（`exec_mode`、`claude_sandbox_available`、`host_exec_mode`）；开关 `STUDIO_ALLOW_UNSANDBOXED_EXEC` + 设置键 `allow_unsandboxed_exec`（`effective_allow_unsandboxed_exec`）；每轮开始读一次，经 `TurnContext`/`ToolContext` 传给 Claude（`disabled` 去掉 Bash、禁 Bash/PowerShell、不传 sandbox；`unsandboxed` 放行 Bash+PowerShell）、OpenAI Shell（`unsandboxed` 时交给 `/bin/sh` 或 Git Bash）和 `render_music`（`disabled` 的报错指向设置页）；`turns.usage.exec_mode` 记下本轮模式；ADR 0024、`.env.example`、ARCHITECTURE 同步。新增 54 个用例，Windows 上 `echo 中文` 经 Git Bash 实测无乱码。剩余失败数：pytest 6（同 T4），pyright 0
 - 2026-10-10 — T6 完成：`/api/settings` 返回并接受 `allow_unsandboxed_exec`（另有 `_source`、`_env`、`sandbox_available`、`exec_mode`），补丁用 `StrictBool`；设置 → 通用新增「命令执行」一节（只在没有沙箱时显示，带风险说明、来源文案、清除按钮）；回复操作栏对 `usage.exec_mode == "unsandboxed"` 的轮次显示「命令未隔离」。Windows 上用 Fake 运行时在内置浏览器里验证并截图（`data/evidence/windows-native/t6-*.jpg`，不入库），验证用的项目已删除、开关已恢复为环境变量。剩余失败数：pytest 6（同 T4），pyright 0；前端 lint、typecheck、vitest 全绿
+- 2026-10-10 — T7 完成：`tasks.py dev`（`Supervisor`、pid 文件 `.dev/pids.json`、`cleanup_stale`/`belongs_to_project`、`port_listeners`/`parse_netstat_listeners`），删除 `scripts/dev.sh`，Makefile 的 `dev` 改为一行；dev-setup、verification、AGENTS 同步。Windows 实测：启动两次、每次 `Ctrl+Break` 后约 10 个进程全部消失、pid 文件删除、第二次启动端口空闲；模拟 `dev` 自身崩溃（只杀 supervisor）后再启动，三个遗留服务被识别为本项目并清理。剩余失败数：pytest 6（同 T4），pyright 0
 
 ## 下一步
 
-T1–T6 已完成（见「进度」）。接下来做 **T7：`tasks.py dev`**：
+T1–T7 已完成（见「进度」）。接下来做 **T8：测试的平台标记**：
 
-1. 计划里 T7 状态改为「进行中」；先读 `scripts/dev.sh`（要保留的行为：`python -m studio.config` 读绑定地址、导出 `STUDIO_BIND_PORT`、uvicorn `--reload --reload-dir backend/src`、worker 不 reload、`stdin` 一律 `DEVNULL`、清理旧进程不误杀）、设计 §8.2，以及 `studio/proc.py`（要复制进 `tasks.py` 的 `spawn_kwargs`、`kill_tree_sync`）。
-2. 先写 `backend/tests/scripts/test_tasks_dev.py`：pid 文件读写；"是否属于本项目"（注入 `ps`/`tasklist`/`wmic` 输出——Windows 上 `tasklist` 不给命令行，T7 要确定用什么拿命令行：`wmic` 已弃用，可以用 PowerShell 的 `Get-CimInstance Win32_Process`，写进决策记录）；`netstat -ano` 解析（夹具）；审查重点 2；用三个 `python -c "sleep"` 假命令在本机（Windows）真实测试启动和退出后进程树清空。
-3. 实现 `dev` 子命令，删除 `scripts/dev.sh`，Makefile 的 `dev` 改为一行，`.claude/launch.json` 不需要改（T6 已确认 `preview_start` 在 Windows 上能直接起 `uv` 和 `pnpm`，P14 通过）。
-4. 手动验证：`uv run --project backend python scripts/tasks.py dev` → 浏览器打开 → Ctrl+C → `tasklist` 无残留；连续启动两次。
-5. 验证命令：`tasks.py check`（和 6 个已知失败比较）；commit 并 push。
+1. 计划里 T8 状态改为「进行中」；在 `backend/tests/conftest.py` 注册 `posix_only`、`macos_only` 标记（`pytest_configure` 里 `addinivalue_line` + `pytest_collection_modifyitems` 按 `sys.platform` 加 skip，跳过理由来自标记参数），`backend/pyproject.toml` 的 `markers` 同步；先写元测试（标记在 `win32` 上确实跳过，用 `pytester` 或直接调 hook）。
+2. 把已有的临时 `skipif` 换成标记，每处写明原因：`tests/workspace/test_model_path.py::test_windows_compares_case_insensitively`（Windows 专有，可能需要 `windows_only` 或保留 `skipif` 并写进决策记录）、`tests/engines/test_audio_runner.py::test_a_script_cannot_fill_the_disk`、`tests/scripts/test_tasks.py::test_parse_dotenv_matches_bash`、`tests/agent/test_shell.py` 和 `test_openai_runtime.py` 的 `darwin_only`、`test_audio_runner` 的 Seatbelt 用例等（`grep -rn "skipif" backend/tests`）。
+3. 修掉剩下 6 个失败里属于平台差异的 5 个：`test_shell_sandbox.py` 的 4 个 Seatbelt profile 用例（`macos_only`，或把路径断言改成平台无关——它们只拼字符串，也许能在 Windows 上跑通，先看能不能改测试而不是跳过）、`test_upstream.py::test_unreadable_file_counts_as_drift`（`chmod 000`，`posix_only`）。`test_runner.py::TestPreambleAcrossTurns::test_user_edit_snapshot_and_preamble_diff` 留给 T9。
+4. `cd backend; $env:PYTHONUTF8=1; uv run pytest -rs` 的跳过列表逐条有理由；`tasks.py check` 只剩 1 个失败（T9 处理）。
+5. commit 并 push。
 
 ## 决策记录
 
@@ -277,6 +278,10 @@ T1–T6 已完成（见「进度」）。接下来做 **T7：`tasks.py dev`**：
 - 2026-10-10 — T5：Claude 运行时的已有测试在 Windows 上会走 `disabled`（`options.tools` 里没有 Bash、`sandbox` 为空），所以测试辅助函数 `_runtime` 加了 `platform="darwin"` 默认值，另一个直接构造 `ClaudeRuntime` 的用例也补上；断言本身没有改。macOS 上这些测试不受影响（`platform` 本来就是 `darwin`）。`render_music` 用模块属性 `exec_platform` 注入平台，测试里不改全局 `sys.platform`（改了会影响 `studio.proc` 等其他代码）。
 - 2026-10-10 — T6：设置接口的 `sandbox_available` 按 Seatbelt 是否可用（`exec_policy.seatbelt_available()`）判断，`exec_mode` 用 `host_exec_mode`，和轮次记录同一口径（最弱的执行点）。Linux 上这意味着开关会显示（Claude 本身有沙箱，但配乐脚本和 OpenAI Shell 没有），这正是开关管得到的部分。补丁里的 `allow_unsandboxed_exec` 用 `StrictBool`：pydantic 默认会把 `"yes"` 转成 `true`，开关这种安全相关的值不接受隐式转换。
 - 2026-10-10 — T6：界面只用纯函数做可测的部分（`execSwitchVisible`、`execSourceText`、`EXEC_SWITCH_RISKS`、`formatTurnMeta().unsandboxed`），vitest 覆盖显示条件；组件本身照联网模式的写法，没有单独的组件测试，用内置浏览器实测代替。
+- 2026-10-10 — T7：判断"是否属于本项目"靠命令行里的仓库路径，所以 `dev` 启动三个服务时一律用绝对路径（`uv run --project <仓库>/backend ...`、`--reload-dir <仓库>/backend/src`、`pnpm --dir <仓库>/frontend run dev`），否则 `uv run uvicorn ...` 的命令行里没有路径可认。Windows 上拿命令行用 PowerShell 的 `Get-CimInstance Win32_Process`（`tasklist` 没有命令行，`wmic` 已弃用）；映像名白名单在计划写的 `python.exe`、`uv.exe`、`node.exe` 之外加了 `cmd.exe`：`pnpm.CMD` 是批处理，顶层进程就是 `cmd.exe`。另外 Windows 上路径按不区分大小写、`/` 和 `\` 等同比较。
+- 2026-10-10 — T7：`dev` 在 Windows 上也处理 `SIGBREAK`（Ctrl+Break、关闭控制台窗口都会发它），和 Ctrl+C 一样收尾；信号处理在清理旧进程之前就装好。子进程放在新的进程组里，控制台的 Ctrl+C 只发给 `dev` 自己，由它负责结束三棵进程树。`dev` 自身的 stdout 改为行缓冲，输出被重定向时也能及时看到进度。
+- 2026-10-10 — T7：实测发现**输出转发线程会因为编码错误而退出**：`dev` 的 stdout 是 GBK（重定向到文件，或代码页是 936 的控制台）时，Vite 打印的 `➜` 抛 `UnicodeEncodeError`，线程退出后管道不再有人读，子进程写满管道就会卡住。改为遇到编码错误时用当前编码的 `replace` 写出，线程不退出；加了测试。
+- 2026-10-10 — T7：自动化实测用脚本代替终端里的 Ctrl+C：本机终端面板的 shell 集成加载失败（PowerShell 配置文件里的 `claude-desktop.ps1` 路径不存在），`run_in_terminal` 用不了；改为在新进程组里启动 `tasks.py dev`，再发 `CTRL_BREAK_EVENT`。真正的 Ctrl+C 在 T11 走完整流程时由负责人在终端里确认一次。
 
 ## 意外与发现
 

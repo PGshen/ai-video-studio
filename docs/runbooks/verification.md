@@ -35,7 +35,7 @@ cd backend && uv run pytest -m slow tests/engines/test_html_video.py tests/engin
 
 ## 冒烟测试（`make smoke`）
 
-- 命令：`make smoke`。它先导出 `backend/.env`（同 `scripts/dev.sh`），再在 `env -i` 白名单环境里运行 `cd backend && uv run pytest -m smoke -v -rs`；默认的 `make check` 用 `addopts = "-m 'not smoke'"` 排除这些用例。
+- 命令：`make smoke`。它由 `tasks.py smoke` 解析 `backend/.env`，只把白名单变量（模型 key、`STUDIO_*` 和运行必需的系统变量）传给 `cd backend && uv run pytest -m smoke -v -rs`；默认的 `make check` 用 `addopts = "-m 'not smoke'"` 排除这些用例。
 - 用例（`backend/tests/smoke/test_smoke.py`），每种运行时/认证方式一个，都经 `TurnRunner` 在临时数据目录里跑真实的 turn：
   - `test_claude_api_key`：需要 `ANTHROPIC_API_KEY`（模型配置 `claude-sonnet`）；另跑一轮恢复会话，验证 API key 模式的会话存储（R4）。
   - `test_claude_login`：本机已登录的 Claude Code 订阅账号（`claude-login`），找不到 `claude` CLI 或设了 `STUDIO_SMOKE_SKIP_LOGIN=1` 时跳过；三轮：最小对话 → 恢复会话 + Bash 沙箱探测（R3、R4）→ 叙事阶段尝试写 `upstream/`（R5）。消耗订阅额度。

@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 _spec = importlib.util.spec_from_file_location("tasks", REPO_ROOT / "scripts" / "tasks.py")
 assert _spec is not None and _spec.loader is not None
 tasks = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = tasks  # dataclasses look the module up by name
 _spec.loader.exec_module(tasks)
 
 
@@ -274,6 +275,7 @@ def test_cli_has_all_makefile_targets() -> None:
         "check-docs",
         "check-backend",
         "check-frontend",
+        "dev",
         "smoke",
         "import-legacy-styles",
     }

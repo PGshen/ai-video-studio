@@ -29,7 +29,7 @@ check-frontend:
 	@$(TASKS) check-frontend
 
 dev:
-	@bash scripts/dev.sh
+	@$(TASKS) dev
 
 # 真实模型的冒烟测试：只带白名单变量运行 pytest -m smoke（见 tasks.py smoke_env）。
 smoke:
