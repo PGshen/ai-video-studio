@@ -31,7 +31,6 @@ STAGES: Final = (
     "concept",
     "music",
     "produce",
-    "animation",
     "animation_html",
     "style",
 )
@@ -168,7 +167,12 @@ def get_all_settings(engine: Engine) -> SettingsValue:
         stored = {row.key: row.value for row in db.scalars(select(Setting))}
     tts = stored.get(_KEY_TTS_DEFAULT) or {}
     return SettingsValue(
-        stage_default_profile=dict(stored.get(_KEY_STAGE_DEFAULT_PROFILE) or {}),
+        # Keys of retired stages (Manim's `animation`, ADR 0027) may still be stored; drop them.
+        stage_default_profile={
+            stage: profile_id
+            for stage, profile_id in (stored.get(_KEY_STAGE_DEFAULT_PROFILE) or {}).items()
+            if stage in STAGES
+        },
         web_mode=stored.get(_KEY_WEB_MODE),
         tts_voice=tts.get("voice"),
         tts_speech_rate=tts.get("speech_rate"),

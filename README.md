@@ -11,7 +11,7 @@ M1–M5 已完成，主流程可用：
 | 能力 | 说明 |
 |---|---|
 | 头脑风暴与选题池 | 没有项目的对话，agent 联网搜索并往选题池写想法卡片；从卡片创建项目 |
-| 三个阶段 | `topic`（选题简报）→ `narrative`（叙事 JSON）→ `animation`（manim 场景代码、配音、预览与成片渲染） |
+| 三个阶段 | `topic`（选题简报）→ `narrative`（叙事 JSON）→ `animation_html`（HTML/Canvas 场景代码、预览与成片渲染）；短片与 MV 是 `concept → produce` |
 | 画布式对话 | 左侧对话、右侧产物画布；每轮自动快照，可查看差异和回滚；阶段可定稿，上游变更后下游标记为 stale |
 | 回退建议 | 下游 agent 向直接上游提修改建议，在对话流里显示为卡片，阶段导航上有待处理角标，可「去处理」或忽略 |
 | 风格库 | 风格是 skill 形态的目录（`STYLE.md` + `references/` + `exemplars/`），创建项目时选一套，各阶段 agent 按需读取；支持从旧项目一次性导入 |
@@ -21,7 +21,7 @@ M1–M5 已完成，主流程可用：
 
 ## 快速开始
 
-前置依赖（macOS）：uv、Node 22+ 与 pnpm、cairo/pango/pkg-config、ffmpeg、LaTeX。完整说明见 [环境搭建](docs/runbooks/dev-setup.md)。
+前置依赖（macOS）：uv、Node 22+ 与 pnpm、ffmpeg（Chromium 由 `make setup` 通过 Playwright 安装）。完整说明见 [环境搭建](docs/runbooks/dev-setup.md)。
 
 ```bash
 make setup          # 安装依赖，启用 git hooks

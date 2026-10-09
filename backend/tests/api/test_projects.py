@@ -35,38 +35,49 @@ def _row_counts(api_env: ApiEnv) -> tuple[int, int, int]:
 
 
 class TestCreateProjectKinds:
-    async def test_default_kind_is_legacy_manim_explainer(self, api_env: ApiEnv) -> None:
+    async def test_default_kind_is_html_explainer(self, api_env: ApiEnv) -> None:
         body = await api_env.create_project()
 
         assert body["kind"] == {
-            "video_kind": "explainer_manim",
-            "engine": "manim",
+            "video_kind": "explainer_html",
+            "engine": "html",
             "narration": True,
             "music_source": "none",
-            "pipeline": ["topic", "narrative", "animation"],
+            "pipeline": ["topic", "narrative", "animation_html"],
         }
         stages = list_stages(api_env.app.state.engine, body["id"])
         assert [(s.stage, s.status) for s in stages] == [
             ("topic", "active"),
             ("narrative", "locked"),
-            ("animation", "locked"),
+            ("animation_html", "locked"),
         ]
 
     async def test_explicit_kind_writes_settings(self, api_env: ApiEnv) -> None:
         response = await api_env.client.post(
             "/api/projects",
-            json={"title": "t", "engine": "manim", "narration": True, "music_source": "none"},
+            json={"title": "t", "engine": "html", "narration": True, "music_source": "none"},
         )
 
         assert response.status_code == 201
         settings = response.json()["settings"]
-        assert settings["video_kind"] == "explainer_manim"
-        assert settings["engine"] == "manim"
+        assert settings["video_kind"] == "explainer_html"
+        assert settings["engine"] == "html"
         assert settings["narration"] is True
         assert settings["music_source"] == "none"
-        assert settings["pipeline"] == ["topic", "narrative", "animation"]
+        assert settings["pipeline"] == ["topic", "narrative", "animation_html"]
 
-    async def test_unregistered_stage_is_422_and_leaves_nothing(self, api_env: ApiEnv) -> None:
+    async def test_manim_is_retired_and_422(self, api_env: ApiEnv) -> None:
+        before = _row_counts(api_env)
+        response = await api_env.client.post(
+            "/api/projects",
+            json={"title": "t", "engine": "manim", "narration": True, "music_source": "none"},
+        )
+
+        assert response.status_code == 422
+        assert "Manim 动画已下线" in assert_detail(response)
+        assert _row_counts(api_env) == before
+
+    async def test_unavailable_kind_is_422_and_leaves_nothing(self, api_env: ApiEnv) -> None:
         before = _row_counts(api_env)
         workspaces_root = api_env.workdir("probe").parent
 
@@ -81,7 +92,7 @@ class TestCreateProjectKinds:
 
         response = await api_env.client.post(
             "/api/projects",
-            json={"title": "t", "engine": "manim", "narration": True, "music_source": "import"},
+            json={"title": "t", "engine": "html", "narration": True, "music_source": "import"},
         )
 
         assert response.status_code == 422
@@ -119,11 +130,11 @@ class TestCreateProjectKinds:
 
         assert response.status_code == 201
         body = response.json()
-        assert body["kind"]["video_kind"] == "explainer_manim"
-        assert body["kind"]["pipeline"] == ["topic", "narrative", "animation"]
-        assert body["settings"]["engine"] == "manim"
+        assert body["kind"]["video_kind"] == "explainer_html"
+        assert body["kind"]["pipeline"] == ["topic", "narrative", "animation_html"]
+        assert body["settings"]["engine"] == "html"
         stages = list_stages(api_env.app.state.engine, body["id"])
-        assert [s.stage for s in stages] == ["topic", "narrative", "animation"]
+        assert [s.stage for s in stages] == ["topic", "narrative", "animation_html"]
 
     async def test_html_explainer_is_creatable(self, api_env: ApiEnv) -> None:
         response = await api_env.client.post(
@@ -182,11 +193,11 @@ class TestCreateProjectKinds:
     async def test_patch_settings_cannot_change_kind(self, api_env: ApiEnv) -> None:
         body = await api_env.create_project()
 
-        await api_env.client.patch(f"/api/projects/{body['id']}/settings", json={"engine": "html"})
+        await api_env.client.patch(f"/api/projects/{body['id']}/settings", json={"engine": "manim"})
 
         detail = (await api_env.client.get(f"/api/projects/{body['id']}")).json()
         assert detail["kind"] == body["kind"]
-        assert detail["settings"]["pipeline"] == ["topic", "narrative", "animation"]
+        assert detail["settings"]["pipeline"] == ["topic", "narrative", "animation_html"]
 
 
 class TestCreateProject:
@@ -201,7 +212,7 @@ class TestCreateProject:
         assert style.is_file()
 
         stages = {s.stage: s.status for s in list_stages(api_env.app.state.engine, project_id)}
-        assert stages == {"topic": "active", "narrative": "locked", "animation": "locked"}
+        assert stages == {"topic": "active", "narrative": "locked", "animation_html": "locked"}
 
         snapshots = list_snapshots(api_env.app.state.engine, project_id)
         assert len(snapshots) == 1
@@ -215,7 +226,7 @@ class TestCreateProject:
         assert response.status_code == 201
         settings = response.json()["settings"]
         assert settings["aspect_ratio"] == "16:9"
-        assert settings["video_kind"] == "explainer_manim"
+        assert settings["video_kind"] == "explainer_html"
 
 
 class TestListAndGetProject:
@@ -237,7 +248,7 @@ class TestListAndGetProject:
         assert response.status_code == 200
         body = response.json()
         stages = {s["stage"]: s["status"] for s in body["stages"]}
-        assert stages == {"topic": "active", "narrative": "locked", "animation": "locked"}
+        assert stages == {"topic": "active", "narrative": "locked", "animation_html": "locked"}
 
     async def test_get_unknown_project_is_404(self, api_env: ApiEnv) -> None:
         response = await api_env.client.get("/api/projects/does-not-exist")

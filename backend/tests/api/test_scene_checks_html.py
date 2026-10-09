@@ -60,20 +60,22 @@ def _check(
     manifest: dict[str, str] = MANIFEST,
     images: list[str] | None = None,
     call_id: str = "c",
+    session_id: str | None = None,
 ) -> None:
-    turn = create_turn_if_session_idle(env.engine, env.session_id, "嗯")
+    session_id = session_id or env.session_id
+    turn = create_turn_if_session_idle(env.engine, session_id, "嗯")
     assert turn is not None
     append_event(
         env.engine,
         turn_id=turn.id,
-        session_id=env.session_id,
+        session_id=session_id,
         type="tool_call",
         payload={"turn_id": turn.id, "call_id": call_id, "name": name, "args": args},
     )
     append_event(
         env.engine,
         turn_id=turn.id,
-        session_id=env.session_id,
+        session_id=session_id,
         type="tool_result",
         payload={
             "turn_id": turn.id,
@@ -229,3 +231,56 @@ def test_scene_edited_after_the_check_is_stale(env: Env) -> None:
     result = _checks(env)
     assert result["s-hook"].validate_scenes.stale is True
     assert result["s-explain"].validate_scenes.stale is False
+
+
+def test_newer_full_pass_overrides_an_older_named_failure(env: Env) -> None:
+    _check(
+        env,
+        name="validate_scenes_html",
+        args={},
+        text="镜头 s-hook：draw 抛出异常",
+        is_error=True,
+    )
+    assert _checks(env)["s-hook"].validate_scenes.status == "failed"
+    _check(
+        env, name="validate_scenes_html", args={}, text="全部 2 个镜头校验通过。", is_error=False
+    )
+    assert [_checks(env)[s].validate_scenes.status for s in SCENES] == ["passed", "passed"]
+
+
+def test_failed_preview_is_reported_and_previews_without_images_have_none(env: Env) -> None:
+    _check(
+        env,
+        name="render_preview_html",
+        args={"scene_id": "s-explain"},
+        text="镜头 s-explain 预览失败：页面报错",
+        is_error=True,
+    )
+    preview = _checks(env)["s-explain"].render_preview
+    assert preview.status == "failed"
+    assert preview.images == ()
+
+
+def test_checks_across_sessions_are_merged_by_time(env: Env) -> None:
+    """换模型会新开会话：两个会话里的检查按时间合并，新的结论覆盖旧的。"""
+    _check(
+        env, name="validate_scenes_html", args={}, text="全部 2 个镜头校验通过。", is_error=False
+    )
+    second = create_session(
+        env.engine,
+        project_id=env.project_id,
+        stage="animation_html",
+        model_profile_id="fake-profile",
+        runtime="fake",
+    )
+    _check(
+        env,
+        name="validate_scenes_html",
+        args={"scene_id": "s-hook"},
+        text="镜头 s-hook：draw 抛出异常",
+        is_error=True,
+        session_id=second.id,
+    )
+    result = _checks(env)
+    assert result["s-hook"].validate_scenes.status == "failed"
+    assert result["s-explain"].validate_scenes.status == "passed"

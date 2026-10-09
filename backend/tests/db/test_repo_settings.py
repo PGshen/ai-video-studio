@@ -21,6 +21,16 @@ def _stored_keys(engine: Engine) -> set[str]:
         return {row.key for row in db.scalars(select(Setting))}
 
 
+def test_retired_stage_defaults_are_ignored_on_read(migrated_engine: Engine) -> None:
+    """Manim is retired (ADR 0027): a stored `animation` default must not reach readers."""
+    with session_scope(migrated_engine) as db:
+        db.add(Setting(key="stage_default_profile", value={"topic": "p1", "animation": "p2"}))
+
+    assert get_all_settings(migrated_engine).stage_default_profile == {"topic": "p1"}
+    with pytest.raises(SettingsValidationError):
+        update_settings(migrated_engine, {"stage_default_profile": {"animation": "p2"}})
+
+
 def test_defaults_when_nothing_is_stored(migrated_engine: Engine) -> None:
     value = get_all_settings(migrated_engine)
 
@@ -35,7 +45,7 @@ def test_each_key_round_trips(migrated_engine: Engine) -> None:
     update_settings(
         migrated_engine,
         {
-            "stage_default_profile": {"topic": "p1", "animation": "p2"},
+            "stage_default_profile": {"topic": "p1", "animation_html": "p2"},
             "web_mode": "native",
             "tts_default": {"voice": "xiaohe", "speech_rate": 1.25},
             "default_style_preset_id": "s1",
@@ -43,7 +53,7 @@ def test_each_key_round_trips(migrated_engine: Engine) -> None:
     )
 
     value = get_all_settings(migrated_engine)
-    assert value.stage_default_profile == {"topic": "p1", "animation": "p2"}
+    assert value.stage_default_profile == {"topic": "p1", "animation_html": "p2"}
     assert value.web_mode == "native"
     assert value.tts_voice == "xiaohe"
     assert value.tts_speech_rate == 1.25
@@ -71,7 +81,7 @@ def test_null_clears_a_key_and_its_row(migrated_engine: Engine) -> None:
     update_settings(
         migrated_engine,
         {
-            "stage_default_profile": {"topic": "p1", "animation": "p2"},
+            "stage_default_profile": {"topic": "p1", "animation_html": "p2"},
             "web_mode": "native",
             "tts_default": {"voice": "zizi"},
             "default_style_preset_id": "s1",
@@ -89,7 +99,7 @@ def test_null_clears_a_key_and_its_row(migrated_engine: Engine) -> None:
     )
 
     value = get_all_settings(migrated_engine)
-    assert value.stage_default_profile == {"animation": "p2"}
+    assert value.stage_default_profile == {"animation_html": "p2"}
     assert value.web_mode is None
     assert value.tts_voice is None
     assert value.default_style_preset_id is None

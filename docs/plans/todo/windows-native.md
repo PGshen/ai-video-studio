@@ -21,7 +21,7 @@
 
 **包含：** `.gitattributes` 与 UTF-8 规则；统一的模型路径校验；跨平台进程管理 `studio/proc.py`；执行策略 `agent/exec_policy.py` 与开关 `STUDIO_ALLOW_UNSANDBOXED_EXEC`（含设置页、轮次标记）；`scripts/tasks.py` 替代 bash 工具链（Makefile 改成薄壳）；测试的平台标记；Windows 上的实测、修复与安装文档；ADR 0024、0025；相关技术债登记。
 
-**不包含：** Linux 和 WSL 的正式支持；Windows 上自建的读隔离；安装器或打包成 exe；`export_legacy_styles.sh` 和 `build_fonts.sh` 的 Windows 版；CI；给 manim 执行 agent 代码加 sandbox（只登记技术债）。
+**不包含：** Linux 和 WSL 的正式支持；Windows 上自建的读隔离；安装器或打包成 exe；`export_legacy_styles.sh` 和 `build_fonts.sh` 的 Windows 版；CI。
 
 ## 全局约束
 
@@ -43,7 +43,7 @@
 1. **模型给出混合写法的路径**：`notes\..\..\x`、`C:/x`、`c:x`（盘符相对路径）、`\\?\C:\x`、`a/b:stream`、`CON.txt`、`aux`、`dir./x`、`x ` 结尾有空格。在两个平台上都要被拒绝；`narrative/./timing.json` 这类现有合法写法仍然通过（T3）。
 2. **pid 文件过期、pid 已被别的进程复用**：`tasks.py dev` 绝不能结束不属于本项目的进程。POSIX 上看命令行里有没有仓库路径；Windows 上用 `tasklist` 看映像名是不是 `python.exe`、`uv.exe`、`node.exe`，并且命令行里有仓库路径（T7）。
 3. **开关在一轮对话进行中被切换**：只从下一轮生效，本轮的工具集和沙箱不变；macOS 上切换开关不改变任何行为（T5）。
-4. **子进程输出中文**：在系统编码不是 UTF-8 的环境里，manim 的 dry-run 报错、配乐脚本读取中文 JSON、Shell 的 `echo 中文` 都不出乱码（T4 断言子进程环境里有 `PYTHONUTF8=1`；T10 在 Windows 上实测）。
+4. **子进程输出中文**：在系统编码不是 UTF-8 的环境里，配乐脚本读取中文 JSON、Shell 的 `echo 中文` 都不出乱码（T4 断言子进程环境里有 `PYTHONUTF8=1`；T10 在 Windows 上实测）。
 5. **`backend/.env` 的写法**：引号里有空格、`#` 注释、空行、`export KEY=...`、值里有 `=`，`tasks.py` 解析出的结果要和 `set -a; . backend/.env` 一致；遇到不支持的写法（变量展开 `$X`、命令替换）时明确报错，不静默错读（T6）。
 6. **Ctrl+C 时正在渲染**：worker 正在跑 ffmpeg 和 Chromium 时退出 `tasks.py dev`，不留下孤儿进程（T7 在 macOS 上测；T11 在 Windows 上测）。
 
@@ -53,7 +53,7 @@
 - [ ] AC2：Windows 上在开发者模式开启的情况下，`uv run --project backend python scripts/tasks.py check` 全绿，测试报告里符号链接相关的用例是执行了而不是被跳过；`git commit` 时 pre-commit hook 能运行。（验证：完整输出、`pytest -rs` 的跳过列表）
 - [ ] AC3：Windows 上 `tasks.py dev` 能启动三个进程；Ctrl+C 退出后任务管理器里没有残留的 python、node、ffmpeg 或 chromium 进程；再次启动不会报"端口被占用"。（验证：`tasklist` 输出）
 - [ ] AC4：Windows 上开关关闭时，Claude 和 OpenAI 两条路径都拿不到 Shell，`render_music` 返回的错误里提到设置页开关；打开开关后，下一轮能执行命令，界面显示"命令未隔离"，越界写入被 `guard` 还原。（验证：Fake 运行时的集成测试 + Windows 上用 `claude-login` 实测 + 截图）
-- [ ] AC5：Windows 上用 `claude-login` 完整做一个讲解类项目（manim）和一个短片（HTML 引擎 + 合成配乐，开关打开），成片能播放，中文显示正常。（验证：成片文件、关键帧截图）
+- [ ] AC5：Windows 上用 `claude-login` 完整做一个讲解类项目（HTML 引擎）和一个短片（HTML 引擎 + 合成配乐，开关打开），成片能播放，中文显示正常。（验证：成片文件、关键帧截图）
 - [ ] AC6：设计 §5 列出的恶意路径在 Windows 上全部被拒绝。（验证：T3 的测试在 Windows 上运行过）
 - [ ] AC7：ADR 0024 和 0025 已写；AGENTS.md、dev-setup（Windows 一节）、verification、ARCHITECTURE、references、tech-debt、QUALITY 已同步。
 
@@ -105,16 +105,16 @@
 ### T4：跨平台进程管理 `studio/proc.py`（待开始，机器：Windows，按基线对比）
 
 - **目标**：设计 §6——统一启动受控子进程的参数、结束整棵进程树的方式和 UTF-8 环境；替换所有 `killpg`、`start_new_session` 和只结束顶层进程的 `proc.kill()`。
-- **涉及文件**：新增 `backend/src/studio/proc.py`、`backend/tests/test_proc.py`；修改 `engines/audio/runner.py`（`limited_argv` 按平台分支，删除 `kill_group`）、`engines/audio/song_job.py`、`engines/audio/song.py`（同步的 `subprocess.run`）、`engines/audio/probe.py`、`engines/render/manim/process.py`、`engines/render/manim/engine.py`、`engines/render/manim/keyframes.py`、`engines/render/html/video.py`、`engines/render/mix.py`、`agent/shell.py`；`backend/pyproject.toml`（新增 import-linter 契约：`studio.proc` 不依赖任何其他 `studio` 模块）；`docs/ARCHITECTURE.md`。
+- **涉及文件**：新增 `backend/src/studio/proc.py`、`backend/tests/test_proc.py`；修改 `engines/audio/runner.py`（`limited_argv` 按平台分支，删除 `kill_group`）、`engines/audio/song_job.py`、`engines/audio/song.py`（同步的 `subprocess.run`）、`engines/audio/probe.py`、`engines/render/html/video.py`、`engines/render/mix.py`、`agent/shell.py`；`backend/pyproject.toml`（新增 import-linter 契约：`studio.proc` 不依赖任何其他 `studio` 模块）；`docs/ARCHITECTURE.md`。
 - **接口与要点**：
   - `spawn_kwargs(platform: str | None = None) -> dict[str, Any]`；`async kill_tree(proc: asyncio.subprocess.Process, *, platform: str | None = None) -> None`；`kill_tree_sync(pid: int, *, platform: str | None = None) -> None`（供 `subprocess.run` 超时的情况以及 T7 使用）；`child_env(base: Mapping[str, str]) -> dict[str, str]`（复制一份，并加上 `PYTHONUTF8=1`、`PYTHONIOENCODING=utf-8`）。
   - Windows 分支：`creationflags=CREATE_NEW_PROCESS_GROUP`；`taskkill /T /F /PID <pid>`，输出丢弃，失败时退回 `proc.kill()`。
   - `limited_argv(argv, cpu_seconds, *, platform=None)`：POSIX 保持现状；Windows 原样返回 `argv`。`run_compose` 结束后检查 `music.wav` 的大小，超过 `_MAX_FILE_BYTES` 就当作失败。这个检查两个平台都做。
   - 现在所有向子进程传 `env=` 的地方都改成经过 `child_env`；没有传 `env` 的地方（继承父进程的环境）保持继承，但也要加上 UTF-8 变量。逐处判断，写进决策记录。
   - 外部程序的输出统一用 `decode("utf-8", errors="replace")`。
-- **测试**：`spawn_kwargs`、`limited_argv` 用参数注入测两个分支；`kill_tree` 在 POSIX 上真实测试：启动一个会派生孙进程的 Python 子进程，`kill_tree` 之后孙进程也不在了；Windows 分支 mock `taskkill` 的调用，断言参数正确。已有的 `test_audio_runner.py`、`test_shell.py` 等对 `killpg` 的 mock 改为针对 `kill_tree`。审查重点 4：断言 manim dry-run、`run_compose`、Shell executor 收到的环境里有 `PYTHONUTF8=1`。
+- **测试**：`spawn_kwargs`、`limited_argv` 用参数注入测两个分支；`kill_tree` 在 POSIX 上真实测试：启动一个会派生孙进程的 Python 子进程，`kill_tree` 之后孙进程也不在了；Windows 分支 mock `taskkill` 的调用，断言参数正确。已有的 `test_audio_runner.py`、`test_shell.py` 等对 `killpg` 的 mock 改为针对 `kill_tree`。审查重点 4：断言 `run_compose`、Shell executor 收到的环境里有 `PYTHONUTF8=1`。
 - **完成标准**：`grep -rn "killpg\|start_new_session" backend/src` 只剩 `proc.py` 里的结果；质量关口满足 D1。
-- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；`cd backend && uv run pytest -m slow -k "manim or html_video or mix"`（真实子进程，确认没有倒退）。
+- **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）；`cd backend && uv run pytest -m slow -k "html_video or mix"`（真实子进程，确认没有倒退）。
 
 ### T5：执行策略与开关（待开始，机器：Windows，按基线对比）
 
@@ -179,7 +179,6 @@
   - 跑 `tasks.py check`，逐个修失败。原则：Windows 特有的问题修代码；确实是平台差异的，按 T8 的规则加标记，每加一处都写进决策记录。
   - **P13**：确认 uvicorn `--reload` 下 asyncio 子进程能用。写一条测试，或者启动后触发一次 ffprobe。有问题按设计 §12 处理。
   - **P14**：确认桌面版 `preview_start` 能启动 `launch.json` 里的 api 和 frontend；不能启动就调整 `launch.json`（例如改用 `pnpm.cmd`，或者改用 `uv run` 来启动），并确认 macOS 上还能用。
-  - 确认 manim 的安装情况（wheel 是否自带 cairo、pango；MiKTeX 能否找到 `ctex`），写进 `docs/references/manim.md`。
 - **测试**：Windows 上 `tasks.py check` 全绿；`uv run pytest -rs` 的跳过列表逐条都有理由；`uv run pytest -m slow` 也在 Windows 上跑一遍，失败的修掉或者登记。
 - **完成标准**：AC2；回到 macOS 后 `make check` 仍然全绿（如果这个任务改了代码，下一次在 macOS 上的会话先确认这一点）。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`；`cd backend; uv run pytest -m slow`。
@@ -203,7 +202,7 @@
 - **涉及文件**：按实测结果修改；`docs/runbooks/verification.md`（Windows 上怎么自验证）。
 - **接口与要点**：
   - `tasks.py dev` 启动，内置浏览器打开 `http://127.0.0.1:5173`。
-  - 讲解类：选题 → 叙事 → 动画（manim）→ 成片。短片：`concept → produce`（HTML 引擎 + 合成配乐，开关打开）。检查成片的中文显示和配乐。
+  - 讲解类：选题 → 叙事 → 动画（HTML 引擎）→ 成片。短片：`concept → produce`（HTML 引擎 + 合成配乐，开关打开）。检查成片的中文显示和配乐。
   - 渲染过程中按 Ctrl+C 退出，用 `tasklist` 确认没有残留的 python、node、ffmpeg 或 chromium；重新启动，确认 worker 能恢复或者把中断的任务标记为失败，和 macOS 上的行为一致（审查重点 6）。
 - **测试**：发现问题就先补测试再修。
 - **完成标准**：AC3、AC5，附截图和成片路径。
@@ -212,7 +211,7 @@
 ### T12：收尾：macOS 回归与文档（待开始，机器：macOS）
 
 - **目标**：AC1、AC7。
-- **涉及文件**：`docs/quality/tech-debt.md`（manim 执行 agent 代码没有 sandbox；Windows 上没有 CPU 时间和文件大小的硬限制；Windows 上 `upstream/` 的只读保护变弱）、`docs/quality/QUALITY.md`、`docs/ARCHITECTURE.md`、`AGENTS.md`、`docs/plans/TODO.md`。
+- **涉及文件**：`docs/quality/tech-debt.md`（Windows 上没有 CPU 时间和文件大小的硬限制；Windows 上 `upstream/` 的只读保护变弱）、`docs/quality/QUALITY.md`、`docs/ARCHITECTURE.md`、`AGENTS.md`、`docs/plans/TODO.md`。
 - **接口与要点**：在 macOS 上拉取 Windows 会话的全部改动；先确认 T1–T8 里在 Windows 上被跳过的 POSIX 测试在 macOS 上都执行了而且通过（`pytest -rs` 不应该有任何跳过），修掉 macOS 上的回归；然后跑 `make check`、`make dev`、`make smoke SMOKE_ARGS="-k claude_login"`；逐条核对 AC7 的文档清单；整理「意外与发现」，把应该改成机器检查的约定挑出来。
 - **完成标准**：AC1、AC7；计划状态改为"待验收"。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k claude_login"`。
@@ -229,7 +228,7 @@
 
 0. `git mv docs/plans/todo/windows-native.md docs/plans/active/`，状态改为「执行中」，同步 TODO.md 里的链接，commit。
 
-1. 按设计 §9.3 装好依赖（Git for Windows、uv、Node 22+ 和 pnpm、ffmpeg、MiKTeX、Claude Code），在 设置 → 系统 → 开发者选项 里打开开发者模式。
+1. 按设计 §9.3 装好依赖（Git for Windows、uv、Node 22+ 和 pnpm、ffmpeg、Claude Code），在 设置 → 系统 → 开发者选项 里打开开发者模式。
 2. `git config --global core.autocrlf false`，然后把仓库 clone 到短路径下（例如 `C:\dev\ai-video-studio`），`git checkout windows-native`（分支已在 `origin` 上）。
 3. 复制 `backend/.env`（从 Mac 上拷贝，不进仓库）。
 4. 先手动装依赖：`cd backend; uv sync; uv run playwright install chromium`，`cd ..\frontend; pnpm install`。
@@ -238,6 +237,7 @@
 
 ## 决策记录
 
+- 2026-10-09 — Manim 引擎下线（[ADR 0027](../../decisions/0027-下线Manim引擎.md)）后，删去本计划里 manim 相关的文件、验证项和 MiKTeX 依赖；讲解类验收改用 HTML 引擎。设计文档 §9.3 中的 MiKTeX 由该 ADR 取代，不再需要。
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
 - 2026-10-09 — **D1（负责人已决定：采用备选方案，T1–T11 全部在 Windows 上做，T12 回到 macOS）**。原推荐方案：T1–T8 的质量关口在 macOS 上跑。理由：T8 完成之前，Windows 上的 `tasks.py check` 必然大面积失败，在 Windows 上做 T1–T8 就没有可用的"绿色基线"来判断改动是否引入了回归。**备选**：T1–T8 也在 Windows 上做，开工前先记录一份 Windows 基线失败清单，每个任务的完成标准改为"没有新增失败，并且本任务负责修复的那些失败已经消失"。这样不用来回切换机器，但判断依据更弱，macOS 上的回归要等到 T12 才能发现。

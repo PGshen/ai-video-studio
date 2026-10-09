@@ -60,7 +60,7 @@ describe('CreateProjectDialog 视频类型', () => {
     submitButton().click()
     await flushPromises()
     expect(state.mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ engine: 'manim', narration: true, music_source: 'none', idea_id: 'i1' }),
+      expect.objectContaining({ engine: 'html', narration: true, music_source: 'none', idea_id: 'i1' }),
     )
     expect(state.push).toHaveBeenCalledWith('/projects/p9/concept')
     wrapper.unmount()
@@ -90,7 +90,7 @@ describe('CreateProjectDialog 视频类型', () => {
     wrapper.unmount()
   })
 
-  it('所选组合不可用（Manim 讲解 + 合成配乐）时提交按钮禁用', async () => {
+  it('所选组合不可用（HTML 讲解 + 合成配乐）时提交按钮禁用', async () => {
     const wrapper = await mountOpen()
     expect(submitButton().disabled).toBe(false)
     const select = document.body.querySelector('[data-testid="music-select"]') as HTMLSelectElement
@@ -106,7 +106,7 @@ describe('CreateProjectDialog 视频类型', () => {
     state.kindsErrorKeepsData = true
     const wrapper = await mountOpen()
     expect(document.body.textContent).toContain('视频类型加载失败')
-    expect(document.body.querySelector('[data-testid="kind-card-explainer_manim"]')).toBeNull()
+    expect(document.body.querySelector('[data-testid="kind-card-explainer_html"]')).toBeNull()
     expect(submitButton().disabled).toBe(true)
     wrapper.unmount()
   })

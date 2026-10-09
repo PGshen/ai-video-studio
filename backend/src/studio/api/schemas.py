@@ -25,7 +25,7 @@ class ProjectCreate(BaseModel):
     engine: Engine | None = None
     narration: bool | None = None
     music_source: MusicSource | None = None
-    """项目类型配置：三者都不给 = 老默认（Manim 讲解）；只给一部分 → 422。"""
+    """项目类型配置：三者都不给 = 默认（HTML 讲解）；只给一部分 → 422。"""
 
 
 class ProjectSettingsPatch(BaseModel):
@@ -75,7 +75,7 @@ class ProjectOut(BaseModel):
     status: Literal["active", "completed", "abandoned"]
     """由 `completed_at`/`abandoned_at` 推导的项目状态：进行中、已完成、已废弃。"""
     kind: ProjectKindOut
-    """项目类型与流水线；老项目（settings 里没有类型字段）视为 Manim 讲解。"""
+    """项目类型与流水线；老项目（settings 里没有类型字段）视为已下线的 Manim 讲解（只读）。"""
 
 
 class ProjectStatusPatch(BaseModel):

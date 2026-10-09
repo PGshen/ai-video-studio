@@ -13,8 +13,6 @@ dependencies = [
     "sse-starlette>=2.1,<3",
     "claude-agent-sdk>=0.2.160,<0.3",
     "openai-agents[litellm]>=0.22.3,<0.23",
-    "manim>=0.18,<1",
-    "pyflakes>=3.4,<4",
     "pillow>=11,<13",
     "numpy>=2,<3",
     "httpx>=0.27,<1",
@@ -65,7 +63,7 @@ testpaths = ["tests"]
 addopts = "-m 'not smoke and not slow'"
 markers = [
     "smoke: 需要真实 API key 的冒烟测试，默认从 `make check` 排除，由 `make smoke` 运行",
-    "slow: 需要实际起 manim/ffmpeg 子进程渲染的慢测试，默认从 `make check` 排除，用 `-m slow` 单独跑",
+    "slow: 需要实际起 Chromium/ffmpeg 子进程渲染的慢测试，默认从 `make check` 排除，用 `-m slow` 单独跑",
 ]
 
 [tool.importlinter]
@@ -134,7 +132,6 @@ modules = [
     "studio.stages.brainstorm",
     "studio.stages.topic",
     "studio.stages.narrative",
-    "studio.stages.animation",
     "studio.stages.animation_html",
     "studio.stages.concept",
     "studio.stages.music",
@@ -185,7 +182,6 @@ forbidden_modules = [
     "studio.stages.brainstorm",
     "studio.stages.topic",
     "studio.stages.narrative",
-    "studio.stages.animation",
     "studio.stages.animation_html",
     "studio.stages.concept",
     "studio.stages.music",

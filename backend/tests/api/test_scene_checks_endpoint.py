@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from fixtures.animation.seed import seed_legacy_manim_project
 from studio.db.repo.sessions import create_session
 from studio.db.repo.snapshots import insert_snapshot
 from studio.db.repo.turns import append_event, create_turn_if_session_idle, finish_turn
@@ -55,13 +56,13 @@ class TestGetSceneChecks:
         session = create_session(
             engine,
             project_id=pid,
-            stage="animation",
+            stage="animation_html",
             model_profile_id="fake-profile",
             runtime="fake",
         )
         turn = create_turn_if_session_idle(engine, session.id, "嗯")
         assert turn is not None
-        manifest = {"animation/scenes/s-hook.py": "sha-a"}
+        manifest = {"animation/scenes/s-hook.js": "sha-a"}
         append_event(
             engine,
             turn_id=turn.id,
@@ -70,7 +71,7 @@ class TestGetSceneChecks:
             payload={
                 "turn_id": turn.id,
                 "call_id": "c1",
-                "name": "render_preview",
+                "name": "render_preview_html",
                 "args": {"scene_id": "s-hook"},
             },
         )
@@ -109,3 +110,18 @@ class TestGetSceneChecks:
         assert preview["status"] == "passed"
         assert preview["stale"] is False
         assert preview["images"] == ["abc123"]
+
+
+async def test_legacy_manim_project_reports_every_scene_as_not_checked(api_env: ApiEnv) -> None:
+    pid = seed_legacy_manim_project(
+        api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
+    )
+
+    response = await api_env.client.get(
+        f"/api/projects/{pid}/animation/scene-checks", params={"scene_id": ["s-hook"]}
+    )
+
+    assert response.status_code == 200
+    checks = response.json()["scenes"]["s-hook"]
+    assert checks["validate_scenes"]["status"] == "not_checked"
+    assert checks["render_preview"]["status"] == "not_checked"

@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 
-from fixtures.animation.seed import seed_animation_project
+from fixtures.animation.seed import seed_legacy_manim_project
+from fixtures.animation_html.seed import seed_animation_html_project
 from studio.db.repo.snapshots import latest_snapshot
 from studio.workspace import create_snapshot
 
@@ -18,8 +19,8 @@ from .conftest import ApiEnv, assert_detail
 
 
 async def _animation_project(api_env: ApiEnv) -> str:
-    """叙事已定稿、动画阶段 `active` 的项目（复用 T4 的种子脚本，绕过 M3）。"""
-    return seed_animation_project(
+    """叙事已定稿、`animation_html` 阶段 `active` 的 HTML 讲解项目。"""
+    return seed_animation_html_project(
         api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
     )
 
@@ -108,9 +109,23 @@ class TestFinalizeRender:
         await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
         assert (await api_env.client.get(f"/api/projects/{pid}")).json()["completed_at"] is not None
 
-        response = await api_env.client.post(f"/api/projects/{pid}/stages/animation/reopen")
+        response = await api_env.client.post(f"/api/projects/{pid}/stages/animation_html/reopen")
 
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "active"
         project_response = await api_env.client.get(f"/api/projects/{pid}")
         assert project_response.json()["completed_at"] is None
+
+
+async def test_legacy_manim_project_cannot_finalize_render(api_env: ApiEnv) -> None:
+    pid = seed_legacy_manim_project(
+        api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
+    )
+    rendered = latest_snapshot(api_env.app.state.engine, pid)
+    assert rendered is not None
+    _write_final_json(api_env, pid, snapshot_id=rendered.id)
+
+    response = await api_env.client.post(f"/api/projects/{pid}/animation/finalize-render")
+
+    assert response.status_code == 409
+    assert "Manim 动画已下线" in assert_detail(response)

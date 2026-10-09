@@ -7,36 +7,24 @@
 
 ## 怎么判断"已过期"（stale）
 
-镜头代码文件（`animation/scenes/<scene_id>.py`）的内容哈希已经存在于快照
+镜头代码文件（`animation/scenes/<scene_id>.js`）的内容哈希已经存在于快照
 `manifest`（`{相对路径: sha256}`）里，不需要另外存一份：把"做这次检查的
 那一轮结束时的快照"（`turns.end_snapshot_id`）里这个路径的哈希，和"项目
 当前最新快照"里同一路径的哈希比较，不同（或那一轮还没有 `end_snapshot_id`，
 理论上只会发生在它还在运行的极窄窗口内）就认为"已过期"——保守地认为需要
 重新检查，而不是默认"还有效"。
 
-## `validate_scenes` 的镜头归属
+## 工具与镜头归属
 
-`validate_scenes` 一次校验全部镜头，不是逐镜头调用；持久化的 `tool_result.text`
-只有三种形状（`stages/animation/validate_scenes.py::_handler`）：
+讲解（`animation_html`）和短片/MV（`produce`）用同一组工具：`validate_scenes_html`、
+`render_preview_html`。阶段名由 `api.animation_stage` 按项目流水线解析；老 manim 项目
+（Manim 已下线，ADR 0027）的出片阶段不在其中，所有镜头都是"未检查"。
 
-- 全部通过：`"全部 N 个镜头静态校验通过。"`——这是一条"项目级"通过记录，
-  对所有镜头都成立，除非某个镜头有更新的失败记录。
-- 缺代码：`"以下镜头缺少代码或代码为空，需要先写好再校验：a、b"`。
-- 校验错误：`_relabel_scene_errors` 生成的 `"镜头 a（scene 0）: ..."`（可能
-  同时点名多个镜头）。
+`validate_scenes_html` 的归属规则（输出形状见该工具模块顶部文档）：调用参数带 `scene_id` →
+结果只属于该镜头；不带且成功 → 项目级通过；不带且失败 → 按行首 `镜头 <id>：` 点名失败镜头
+（`警告 镜头` 行不算），一个也没点名（页面级错误）→ 对所有镜头记为失败。
 
-后两种都点名了具体镜头 id，只标这些镜头"校验失败"；不点名的镜头仍然沿用
-"最近一次全部通过"的结果（按时间戳，谁新听谁的）。
-
-`render_preview` 每次只测一个镜头，`ToolCall.args["scene_id"]` 直接给出，
-不需要解析文本，精确到镜头。
-
-## HTML 引擎（`animation_html`）
-
-阶段名由 `api.animation_stage` 按项目流水线解析，两组工具各有一张"档案"（工具名、镜头文件
-路径模板）。`validate_scenes_html` 的归属规则（输出形状见该工具模块顶部文档）：调用参数带
-`scene_id` → 结果只属于该镜头；不带且成功 → 项目级通过；不带且失败 → 按行首 `镜头 <id>：`
-点名失败镜头（`警告 镜头` 行不算），一个也没点名（页面级错误）→ 对所有镜头记为失败。
+`render_preview_html` 每次只测一个镜头，`ToolCall.args["scene_id"]` 直接给出，精确到镜头。
 """
 
 from __future__ import annotations
@@ -53,40 +41,14 @@ from studio.db.repo.sessions import list_sessions
 from studio.db.repo.snapshots import get_snapshot, latest_snapshot
 from studio.db.repo.turns import TurnValue, get_turn, list_events
 
-_MISSING_RE = re.compile(r"以下镜头缺少代码或代码为空，需要先写好再(?:校验|预览)：(.+)")
-_SCENE_NAME_RE = re.compile(r"镜头 (\S+?)（scene \d+）")
 _HTML_SCENE_ERROR_RE = re.compile(r"^镜头 (\S+?)：", re.MULTILINE)
 
 
-@dataclass(frozen=True, slots=True)
-class _Profile:
-    stage: str
-    validate_tool: str
-    preview_tool: str
-    scene_path_template: str
-    html: bool
+_VALIDATE_TOOL = "validate_scenes_html"
+_PREVIEW_TOOL = "render_preview_html"
+_SCENE_PATH_TEMPLATE = "animation/scenes/{scene_id}.js"
+_CHECKED_STAGES = frozenset({"animation_html", "produce"})
 
-
-_PROFILES = {
-    "animation": _Profile(
-        "animation", "validate_scenes", "render_preview", "animation/scenes/{scene_id}.py", False
-    ),
-    "animation_html": _Profile(
-        "animation_html",
-        "validate_scenes_html",
-        "render_preview_html",
-        "animation/scenes/{scene_id}.js",
-        True,
-    ),
-    # `produce` (reel, MV) uses the same two tools and scene files as the HTML explainer.
-    "produce": _Profile(
-        "produce",
-        "validate_scenes_html",
-        "render_preview_html",
-        "animation/scenes/{scene_id}.js",
-        True,
-    ),
-}
 
 CheckOutcome = Literal["passed", "failed", "not_checked"]
 
@@ -107,14 +69,6 @@ class SceneChecks:
 
 
 _NOT_CHECKED = SceneCheck(status="not_checked", stale=False, checked_at=None)
-
-
-def _scene_ids_named_in_validate_failure(text: str) -> set[str]:
-    """从一次校验失败的 `tool_result.text` 里提取被点名的镜头 id。"""
-    missing_match = _MISSING_RE.search(text)
-    if missing_match:
-        return {sid.strip() for sid in missing_match.group(1).split("、") if sid.strip()}
-    return set(_SCENE_NAME_RE.findall(text))
 
 
 def _image_shas(raw: object) -> tuple[str, ...]:
@@ -159,14 +113,14 @@ def _html_validate_events(
     return [_RawEvent(when, "validate_failure", sid, False, turn_id) for sid in named]
 
 
-def _collect_raw_events(engine: Engine, project_id: str, profile: _Profile) -> list[_RawEvent]:
+def _collect_raw_events(engine: Engine, project_id: str, stage: str) -> list[_RawEvent]:
     events: list[_RawEvent] = []
-    for session in list_sessions(engine, project_id, profile.stage):
+    for session in list_sessions(engine, project_id, stage):
         pending_calls: dict[str, dict[str, object]] = {}
         for event in list_events(engine, session.id):
             if event.type == "tool_call" and event.payload.get("name") in (
-                profile.validate_tool,
-                profile.preview_tool,
+                _VALIDATE_TOOL,
+                _PREVIEW_TOOL,
             ):
                 pending_calls[str(event.payload["call_id"])] = event.payload
                 continue
@@ -177,7 +131,7 @@ def _collect_raw_events(engine: Engine, project_id: str, profile: _Profile) -> l
                 continue
             is_error = bool(event.payload["is_error"])
             turn_id = str(event.payload["turn_id"])
-            if call["name"] == profile.preview_tool:
+            if call["name"] == _PREVIEW_TOOL:
                 args = call.get("args")
                 scene_id = args.get("scene_id") if isinstance(args, dict) else None
                 if isinstance(scene_id, str):
@@ -191,7 +145,7 @@ def _collect_raw_events(engine: Engine, project_id: str, profile: _Profile) -> l
                             _image_shas(event.payload.get("images")),
                         )
                     )
-            elif profile.html:
+            else:
                 events += _html_validate_events(
                     event.created_at,
                     str(event.payload["text"]),
@@ -199,23 +153,19 @@ def _collect_raw_events(engine: Engine, project_id: str, profile: _Profile) -> l
                     is_error,
                     turn_id,
                 )
-            elif is_error:
-                for scene_id in _scene_ids_named_in_validate_failure(str(event.payload["text"])):
-                    events.append(
-                        _RawEvent(event.created_at, "validate_failure", scene_id, False, turn_id)
-                    )
-            else:
-                events.append(
-                    _RawEvent(event.created_at, "validate_all_passed", None, True, turn_id)
-                )
     return events
 
 
 def compute_scene_checks(
     engine: Engine, project_id: str, scene_ids: list[str]
 ) -> dict[str, SceneChecks]:
-    profile = _PROFILES[animation_stage(engine, project_id)]
-    events = sorted(_collect_raw_events(engine, project_id, profile), key=lambda e: e.checked_at)
+    stage = animation_stage(engine, project_id)
+    if stage not in _CHECKED_STAGES:
+        return {
+            scene_id: SceneChecks(validate_scenes=_NOT_CHECKED, render_preview=_NOT_CHECKED)
+            for scene_id in scene_ids
+        }
+    events = sorted(_collect_raw_events(engine, project_id, stage), key=lambda e: e.checked_at)
 
     latest_all_passed: tuple[datetime, str] | None = None
     latest_failure_all: tuple[datetime, str] | None = None
@@ -273,7 +223,7 @@ def compute_scene_checks(
         )
 
     def _validate_status(scene_id: str) -> SceneCheck:
-        path = profile.scene_path_template.format(scene_id=scene_id)
+        path = _SCENE_PATH_TEMPLATE.format(scene_id=scene_id)
         # (time, passed, turn): the newest verdict wins; on a tie a pass beats a failure.
         verdicts: list[tuple[datetime, bool, str]] = []
         failure = latest_validate_failure.get(scene_id)
@@ -296,7 +246,7 @@ def compute_scene_checks(
         if entry is None:
             return _NOT_CHECKED
         checked_at, passed, turn_id, images = entry
-        path = profile.scene_path_template.format(scene_id=scene_id)
+        path = _SCENE_PATH_TEMPLATE.format(scene_id=scene_id)
         return _check_at(path, checked_at, passed, turn_id, images)
 
     return {

@@ -70,7 +70,7 @@ async def test_narrative_and_animation_never_get_web(
     env: StudioEnv, mode: Literal["tools", "native"]
 ) -> None:
     h = _harness(env, mode)
-    for stage in ("narrative", "animation"):
+    for stage in ("narrative", "animation_html"):
         await h.run(h.session(stage=stage), [fake.say("x")])
         assert h.contexts[-1].allow_web is False
         assert not (WEB_TOOLS & _tool_names(h))
@@ -139,7 +139,7 @@ async def test_ui_tools_override_beats_native_env(env: StudioEnv) -> None:
 
 
 def test_stage_flags() -> None:
-    from studio.stages.animation import STAGE as ANIMATION
+    from studio.stages.animation_html import STAGE as ANIMATION
     from studio.stages.narrative import STAGE as NARRATIVE
     from studio.stages.topic import STAGE as TOPIC
 

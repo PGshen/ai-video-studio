@@ -19,9 +19,10 @@ from studio.agent.stage_flow import (
 )
 from studio.agent.tools import ToolSpec
 from studio.db.engine import _alembic_config
-from studio.db.repo.projects import create_project, get_project
+from studio.db.repo.projects import create_project, get_project, update_project_settings
 from studio.db.repo.snapshots import get_snapshot
 from studio.db.repo.stages import create_stage, get_stage
+from studio.stages.pipeline import KIND_SETTING_KEYS
 from studio.workspace import create_snapshot, project_dir
 from studio.workspace.scope import WriteScope
 
@@ -51,7 +52,7 @@ class TestFinalize:
         assert narrative.status == "active"
         assert narrative.based_on == {"topic": topic.finalized_snapshot_id}
         # animation is downstream of narrative, not topic
-        assert _stage(env, "animation").status == "locked"
+        assert _stage(env, "animation_html").status == "locked"
 
     def test_locked_stage_cannot_be_finalized(self, env: StudioEnv) -> None:
         with pytest.raises(StageFlowError):
@@ -152,7 +153,7 @@ class TestFinalize:
         assert narrative.status == "finalized"
         assert narrative.based_on == {"topic": _stage(env, "topic").finalized_snapshot_id}
         project = get_project(env.engine, env.project_id)
-        assert project is not None and project.current_stage == "animation"
+        assert project is not None and project.current_stage == "animation_html"
 
     def test_stale_reopened_stage_returns_to_active_when_upstream_reverts(
         self, env: StudioEnv
@@ -206,10 +207,10 @@ class TestCurrentStage:
         assert self._current(env) == "narrative"
 
         finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
-        assert self._current(env) == "animation"
+        assert self._current(env) == "animation_html"
 
-        finalize(env.engine, env.blobs, env.registry, env.project_id, "animation")
-        assert self._current(env) == "animation"
+        finalize(env.engine, env.blobs, env.registry, env.project_id, "animation_html")
+        assert self._current(env) == "animation_html"
 
     def test_reopen_moves_back_to_the_earliest_unfinalized_stage(self, env: StudioEnv) -> None:
         env.write("topic/brief.md", "v1")
@@ -271,23 +272,35 @@ class TestUpstreamSources:
 class TestLegacyProjectUpgrade:
     """评审重点 1：没有 `settings.pipeline` 的老项目，流水线取阶段行顺序，结论与改造前一致。"""
 
+    @staticmethod
+    def _without_pipeline(env: StudioEnv) -> None:
+        update_project_settings(
+            env.engine, env.project_id, {key: None for key in KIND_SETTING_KEYS}
+        )
+
     def test_pipeline_falls_back_to_stage_row_order(self, env: StudioEnv) -> None:
-        assert project_pipeline(env.engine, env.project_id) == ["topic", "narrative", "animation"]
+        self._without_pipeline(env)
+        assert project_pipeline(env.engine, env.project_id) == [
+            "topic",
+            "narrative",
+            "animation_html",
+        ]
 
     def test_refinalized_topic_stales_narrative_only_and_shows_in_preamble(
         self, env: StudioEnv
     ) -> None:
+        self._without_pipeline(env)
         env.write("topic/brief.md", "v1")
         finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
         finalize(env.engine, env.blobs, env.registry, env.project_id, "narrative")
-        assert _stage(env, "animation").status == "active"
+        assert _stage(env, "animation_html").status == "active"
 
         reopen(env.engine, env.project_id, "topic")
         env.write("topic/brief.md", "v2")
         finalize(env.engine, env.blobs, env.registry, env.project_id, "topic")
 
         assert _stage(env, "narrative").status == "stale"
-        animation = _stage(env, "animation")
+        animation = _stage(env, "animation_html")
         assert animation.status == "active"
         assert animation.based_on == {"narrative": _stage(env, "narrative").finalized_snapshot_id}
         changes = upstream_changes(
@@ -402,11 +415,11 @@ class TestInitialStatuses:
             ("animation_html", "locked"),
         ]
 
-    def test_legacy_pipeline(self, env: StudioEnv) -> None:
-        assert initial_statuses(["topic", "narrative", "animation"], env.registry) == [
+    def test_explainer_pipeline(self, env: StudioEnv) -> None:
+        assert initial_statuses(["topic", "narrative", "animation_html"], env.registry) == [
             ("topic", "active"),
             ("narrative", "locked"),
-            ("animation", "locked"),
+            ("animation_html", "locked"),
         ]
 
 

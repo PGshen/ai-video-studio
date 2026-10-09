@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * 项目工作台外壳（任务简报 T13/T14，控制者裁定 1；M2 T12 加了按阶段分派
- * 画布组件）：阶段导航 + 会话面板 | 画布 | 快照栏（后三者由 `WorkbenchSplit` 分栏，可拖宽）。`animation`
- * 阶段用专属的 `AnimationCanvas`（镜头列表 + 代码编辑器，见该目录），
+ * 画布组件）：阶段导航 + 会话面板 | 画布 | 快照栏（后三者由 `WorkbenchSplit` 分栏，可拖宽）。
+ * `animation_html`/`produce` 阶段用 `HtmlAnimationCanvas`（镜头列表 + 代码编辑器，见该目录）；
+ * 老 manim 项目的 `animation` 阶段只显示下线提示（Manim 已下线，ADR 0027，项目只读），
  * `narrative` 阶段用 `NarrativeCanvas`（镜头卡片 + 配音播放条 + JSON，M3），
  * 其它阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）。
  *
@@ -47,8 +48,8 @@ import { combineBusy } from '@/components/session/turnControls'
 import { useEnsureSession } from '@/components/session/useEnsureSession'
 import { projectScope } from '@/composables/sessionScope'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
-import AnimationCanvas from '@/features/canvas/animation/AnimationCanvas.vue'
 import HtmlAnimationCanvas from '@/features/canvas/animation/HtmlAnimationCanvas.vue'
+import ManimRetiredNotice from '@/features/canvas/animation/ManimRetiredNotice.vue'
 import { STAGES_WITH_OWN_ACTIONS } from '@/features/canvas/stageActions'
 import ImportMusicCanvas from '@/features/canvas/music/ImportMusicCanvas.vue'
 import MusicCanvas from '@/features/canvas/music/MusicCanvas.vue'
@@ -212,7 +213,7 @@ const canvasBusy = computed(() =>
           <template #canvas="{ railCollapsed: snapshotsHidden, toggleRail, narrow: stacked }">
             <Card class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4">
               <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative、music、produce、animation 阶段并进标签行（见画布的 actions 插槽）。动画阶段（`animation`/`animation_html`/`produce`）没有定稿按钮：只能在“成片”标签里渲染后定稿，否则可以绕过成片直接定稿。 -->
+                <!-- 快照栏默认隐藏，开关放在画布右上角；topic、narrative、music、produce、animation 阶段并进标签行（见画布的 actions 插槽）。动画阶段（`animation_html`/`produce`，以及已下线的 `animation`）没有定稿按钮：只能在“成片”标签里渲染后定稿，否则可以绕过成片直接定稿。 -->
                 <div
                   v-if="!STAGES_WITH_OWN_ACTIONS.includes(stage)"
                   class="flex shrink-0 items-center justify-end gap-2"
@@ -241,25 +242,15 @@ const canvasBusy = computed(() =>
                     compact
                   />
                 </div>
-                <AnimationCanvas
-                  v-if="stage === 'animation'"
-                  :project-id="projectId"
-                  :busy="canvasBusy"
-                >
+                <ManimRetiredNotice v-if="stage === 'animation'">
                   <template #actions>
-                    <StageFinalizeButton
-                      :project-id="projectId"
-                      :stages="project.stages"
-                      :current-stage="stage"
-                      reopen-only
-                    />
                     <RailToggleButton
                       v-if="!stacked"
                       :collapsed="snapshotsHidden"
                       @toggle="toggleRail"
                     />
                   </template>
-                </AnimationCanvas>
+                </ManimRetiredNotice>
                 <HtmlAnimationCanvas
                   v-else-if="stage === 'animation_html' || stage === 'produce'"
                   :project-id="projectId"

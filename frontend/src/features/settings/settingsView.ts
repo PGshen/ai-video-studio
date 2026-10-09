@@ -13,8 +13,7 @@ export const DEFAULT_PROFILE_STAGES = [
   { key: 'concept', label: '创意与要求' },
   { key: 'music', label: '配乐（讲解背景乐）' },
   { key: 'produce', label: '配乐与动画' },
-  { key: 'animation', label: '动画' },
-  { key: 'animation_html', label: '动画（HTML）' },
+  { key: 'animation_html', label: '动画' },
   { key: 'style', label: '风格对话' },
 ] as const
 

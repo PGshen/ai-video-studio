@@ -1,14 +1,15 @@
 """`/api/projects/{id}/render`、`.../jobs/{job_id}`、`.../output/final.mp4`（任务简报 T10）。
 
 创建渲染任务只检查动画阶段状态不是 `locked`（决策记录 D4），不重复跑
-`validate_scenes` 的校验逻辑；成片下载端点只看 `output/final.mp4` 是否存在，
+`validate_scenes_html` 的校验逻辑；成片下载端点只看 `output/final.mp4` 是否存在，
 不检查 job 状态（同样是"不重复一份判断逻辑"的思路，文件是否存在就是唯一
 事实来源）。
 """
 
 from __future__ import annotations
 
-from fixtures.animation.seed import seed_animation_project
+from fixtures.animation.seed import seed_legacy_manim_project
+from fixtures.animation_html.seed import seed_animation_html_project
 from studio.jobs import complete
 
 from .conftest import ApiEnv, assert_detail
@@ -21,13 +22,23 @@ async def _locked_project(api_env: ApiEnv) -> str:
 
 
 async def _animation_project(api_env: ApiEnv) -> str:
-    """叙事已定稿、动画阶段 `active` 的项目（复用 T4 的种子脚本，绕过 M3）。"""
-    return seed_animation_project(
+    """叙事已定稿、`animation_html` 阶段 `active` 的 HTML 讲解项目。"""
+    return seed_animation_html_project(
         api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
     )
 
 
 class TestCreateRenderJob:
+    async def test_legacy_manim_project_is_409(self, api_env: ApiEnv) -> None:
+        pid = seed_legacy_manim_project(
+            api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
+        )
+
+        response = await api_env.client.post(f"/api/projects/{pid}/render")
+
+        assert response.status_code == 409
+        assert "Manim 动画已下线" in assert_detail(response)
+
     async def test_creates_queued_job_for_active_animation_stage(self, api_env: ApiEnv) -> None:
         pid = await _animation_project(api_env)
 

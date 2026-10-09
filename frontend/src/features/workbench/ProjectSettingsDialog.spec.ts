@@ -30,7 +30,7 @@ describe('ProjectSettingsDialog 视频类型', () => {
     await w.setProps({ open: true })
     await flushPromises()
     const row = document.body.querySelector('[data-testid="project-kind"]')!
-    expect(row.textContent).toContain('知识讲解（Manim）· 有旁白 · 无配乐')
+    expect(row.textContent).toContain('知识讲解（Manim，已下线）· 有旁白 · 无配乐')
     expect(row.textContent).toContain('创建后不能修改，换类型请新建项目')
     expect(row.querySelector('input,select,button')).toBeNull()
     w.unmount()

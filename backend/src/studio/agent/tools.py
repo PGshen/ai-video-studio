@@ -57,7 +57,7 @@ class ToolContext:
     """
     engine: Engine | None = None
     """需要写数据库的工具（例如 `suggest_upstream_change` 写 `suggestions`
-    表）用它；大多数工具（文件读写、manim 校验/渲染）不需要，默认 `None`。
+    表）用它；大多数工具（文件读写、镜头校验/预览）不需要，默认 `None`。
     由 `TurnContext.tool_context()` 从 `TurnRunner` 持有的 `Engine` 传入
     （TD-32）。"""
     session_id: str | None = None

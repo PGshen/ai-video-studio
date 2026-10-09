@@ -1,4 +1,4 @@
-/** 测试用的 `GET /api/video-kinds` 响应：manim/true/none 与音乐视频（html/false/import）可用，其余按"阶段尚未实现"禁用。 */
+/** 测试用的 `GET /api/video-kinds` 响应：HTML 讲解（html/true/none）与音乐视频（html/false/import）可用，其余按"阶段尚未实现"禁用。 */
 import type { KindOptionOut, PresetOut, VideoKindsOut } from '@/types/api'
 
 const REASON = '该类型的阶段尚未实现'
@@ -27,13 +27,6 @@ const EXPLAINER = ['topic', 'narrative']
 export const VIDEO_KINDS_FIXTURE: VideoKindsOut = {
   presets: [
     {
-      video_kind: 'explainer_manim',
-      label: '知识讲解（Manim）',
-      description: '有旁白的知识讲解，Manim 动画',
-      music_choices: ['none', 'synth', 'import'],
-      default: { engine: 'manim', narration: true, music_source: 'none' },
-    },
-    {
       video_kind: 'explainer_html',
       label: '知识讲解（HTML）',
       description: '有旁白的知识讲解，HTML 动画',
@@ -56,10 +49,7 @@ export const VIDEO_KINDS_FIXTURE: VideoKindsOut = {
     },
   ] satisfies PresetOut[],
   kinds: [
-    kind('explainer_manim', 'manim', true, 'none', [...EXPLAINER, 'animation'], true),
-    kind('explainer_manim', 'manim', true, 'synth', [...EXPLAINER, 'music', 'animation']),
-    kind('explainer_manim', 'manim', true, 'import', [...EXPLAINER, 'music', 'animation']),
-    kind('explainer_html', 'html', true, 'none', [...EXPLAINER, 'animation_html']),
+    kind('explainer_html', 'html', true, 'none', [...EXPLAINER, 'animation_html'], true),
     kind('explainer_html', 'html', true, 'synth', [...EXPLAINER, 'music', 'animation_html']),
     kind('explainer_html', 'html', true, 'import', [...EXPLAINER, 'music', 'animation_html']),
     kind('motion_reel', 'html', false, 'synth', ['concept', 'produce']),

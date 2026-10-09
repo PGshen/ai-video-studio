@@ -16,7 +16,7 @@ import type {
 } from '@/types/api'
 
 const VIDEO_KIND_LABELS: Record<VideoKind, string> = {
-  explainer_manim: '知识讲解（Manim）',
+  explainer_manim: '知识讲解（Manim，已下线）',
   explainer_html: '知识讲解（HTML）',
   motion_reel: '动态图形短片',
   music_video: '音乐 MV',
@@ -67,10 +67,10 @@ export function pipelineText(pipeline: string[]): string {
   return pipeline.map((id) => STAGE_TITLES[id] ?? id).join(' → ')
 }
 
-/** 项目的类型摘要，例如"知识讲解（Manim）· 有旁白 · 无配乐"。 */
+/** 项目的类型摘要，例如"知识讲解（HTML）· 有旁白 · 无配乐"。 */
 export function KIND_SUMMARY(kind: ProjectKindOut): string {
   const label = VIDEO_KIND_LABELS[kind.video_kind] ?? kind.video_kind
-  // 全角右括号后不加空格（"知识讲解（Manim）· 有旁白"），其余用 " · " 分隔。
+  // 全角右括号后不加空格（"知识讲解（HTML）· 有旁白"），其余用 " · " 分隔。
   const sep = label.endsWith('）') ? '· ' : ' · '
   const rest = [kind.narration ? '有旁白' : '无旁白', MUSIC_LABELS[kind.music_source]].join(' · ')
   return `${label}${sep}${rest}`

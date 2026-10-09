@@ -1,5 +1,4 @@
-"""手工准备的"选题已定稿"种子脚本（M3 T4，对称于 M2 T4 的
-`fixtures/animation/seed.py`）。
+"""手工准备的"选题已定稿"种子脚本（M3 T4）；项目是 HTML 讲解（Manim 已下线，ADR 0027）。
 
 M4 的选题打磨 agent 还没实现，本计划（M3 叙事阶段）的其余任务需要一个从
 "选题已定稿"状态开始的项目才能测试。`seed_narrative_project` 绕过真正的
@@ -19,7 +18,7 @@ from studio.agent.stage import StageRegistry
 from studio.agent.stage_flow import finalize
 from studio.db.repo.projects import create_project
 from studio.db.repo.stages import create_stage
-from studio.stages.animation import STAGE as ANIMATION_STAGE
+from studio.stages.animation_html import STAGE as ANIMATION_HTML_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
 from studio.workspace import BlobStore, create_snapshot, init_workspace
@@ -29,8 +28,15 @@ _FIXTURE_DIR = Path(__file__).parent
 _INITIAL_STAGES: tuple[tuple[str, str], ...] = (
     ("topic", "active"),
     ("narrative", "locked"),
-    ("animation", "locked"),
+    ("animation_html", "locked"),
 )
+_KIND_SETTINGS = {
+    "video_kind": "explainer_html",
+    "engine": "html",
+    "narration": True,
+    "music_source": "none",
+    "pipeline": [stage for stage, _ in _INITIAL_STAGES],
+}
 
 
 def fixture_registry() -> StageRegistry:
@@ -38,7 +44,7 @@ def fixture_registry() -> StageRegistry:
     使用（和 `main.create_app` 组装出的 registry 里的 `STAGE` 是同一批单例）。
     """
     registry = StageRegistry()
-    for stage in (TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_STAGE):
+    for stage in (TOPIC_STAGE, NARRATIVE_STAGE, ANIMATION_HTML_STAGE):
         registry.register(stage)
     return registry
 
@@ -50,7 +56,9 @@ def seed_narrative_project(engine: Engine, blobs: BlobStore, *, data_dir: Path) 
     定稿 topic（narrative 因此从 `locked` 变 `active`）。
     """
     registry = fixture_registry()
-    project = create_project(engine, id=uuid4().hex, title="叙事阶段 fixture 项目")
+    project = create_project(
+        engine, id=uuid4().hex, title="叙事阶段 fixture 项目", settings=dict(_KIND_SETTINGS)
+    )
     project_id = project.id
 
     for stage, status in _INITIAL_STAGES:

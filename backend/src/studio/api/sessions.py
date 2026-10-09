@@ -58,6 +58,7 @@ from studio.agent.events import ImageData
 from studio.agent.runner import SessionBusyError, TurnRunner
 from studio.agent.runtime import RuntimeFactory, UserInput
 from studio.agent.stage import StageRegistry
+from studio.api.animation_stage import MANIM_RETIRED_DETAIL, RETIRED_MANIM_STAGE
 from studio.api.attachments import (
     MAX_FILE_BYTES,
     MAX_FILES,
@@ -186,12 +187,20 @@ def _require_project(engine: Engine, project_id: str) -> None:
 
 
 def _require_stage(stage: str, registry: StageRegistry) -> None:
+    if stage == RETIRED_MANIM_STAGE:
+        raise HTTPException(status_code=409, detail=MANIM_RETIRED_DETAIL)
     try:
         definition = registry.get(stage)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"未知阶段：{stage}") from exc
     if definition.workspaceless:  # 头脑风暴会话不属于项目，走 /api/brainstorm/sessions
         raise HTTPException(status_code=404, detail=f"未知阶段：{stage}")
+
+
+def _refuse_retired_stage(session: SessionValue) -> None:
+    """老 manim 项目的 `animation` 会话只能看，不能再开新一轮（Manim 已下线，ADR 0027）。"""
+    if session.stage == RETIRED_MANIM_STAGE:
+        raise HTTPException(status_code=409, detail=MANIM_RETIRED_DETAIL)
 
 
 def _require_session(engine: Engine, session_id: str) -> SessionValue:
@@ -366,6 +375,7 @@ async def send_message_endpoint(
 ) -> TurnAccepted:
     """JSON `{text}`，或 multipart：`text` 加若干 `files`（设计 2026-10-09 §4.1）。"""
     session = _require_session(engine, session_id)
+    _refuse_retired_stage(session)
     _refuse_during_upload(request, session)
     if not request.headers.get("content-type", "").startswith("multipart/form-data"):
         try:
@@ -495,6 +505,7 @@ async def continue_session_endpoint(
     blobs: BlobStore = Depends(get_blobs),
 ) -> TurnAccepted:
     session = _require_session(engine, session_id)
+    _refuse_retired_stage(session)
     _refuse_during_upload(request, session)
     turn = turns_repo.latest_turn(engine, session_id)
     if turn is None or turn.status not in _RESUMABLE_TURN_STATUSES:

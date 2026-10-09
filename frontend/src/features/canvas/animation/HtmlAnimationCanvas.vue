@@ -109,7 +109,7 @@ const filePaths = computed(() => fileTree.value?.files.map((f) => f.path) ?? [])
 const { data: sceneChecks } = useSceneChecksQuery(() => props.projectId, () => sceneIds.value)
 
 const scenes = computed(() =>
-  computeSceneStatuses(sceneIds.value, filePaths.value, sceneChecks.value?.scenes, 'js'),
+  computeSceneStatuses(sceneIds.value, filePaths.value, sceneChecks.value?.scenes),
 )
 
 // ---- 选中镜头 + 代码缓冲区 -----------------------------------------------------

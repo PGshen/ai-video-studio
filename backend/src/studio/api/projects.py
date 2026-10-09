@@ -36,7 +36,7 @@ from studio.agent.stage_flow import (
     project_pipeline,
     reopen,
 )
-from studio.api.animation_stage import animation_stage
+from studio.api.animation_stage import MANIM_RETIRED_DETAIL, RETIRED_MANIM_STAGE, animation_stage
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
 from studio.api.schemas import (
     ProjectCreate,
@@ -68,6 +68,7 @@ from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_
 from studio.db.repo.suggestions import delete_suggestions
 from studio.engines.tts.voice_map import voice_aliases
 from studio.stages.pipeline import (
+    DEFAULT_KIND,
     KIND_SETTING_KEYS,
     LEGACY_KIND,
     ProjectKind,
@@ -203,7 +204,7 @@ def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> Proje
     """请求里的类型配置 → 合法且阶段都已注册的 `ProjectKind`，否则 422（在建工作区之前）。"""
     given = (body.engine, body.narration, body.music_source)
     if all(value is None for value in given):
-        kind = LEGACY_KIND
+        kind = DEFAULT_KIND
     elif any(value is None for value in given) or body.engine is None:
         raise HTTPException(
             status_code=422, detail="类型配置需要同时提供 engine、narration、music_source"
@@ -379,6 +380,8 @@ async def delete_project_endpoint(
 
 
 def _require_stage_definition(stage: str, registry: StageRegistry) -> StageDefinition:
+    if stage == RETIRED_MANIM_STAGE:
+        raise HTTPException(status_code=409, detail=MANIM_RETIRED_DETAIL)
     try:
         return registry.get(stage)
     except KeyError as exc:
@@ -430,7 +433,7 @@ async def reopen_stage_endpoint(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if stage == animation_stage(engine, project_id):
         # `completed_at`（`api.animation.finalize_render_endpoint` 设置）代表
-        # "成片已经和工作区一致地定稿过"；重新打开出片阶段（Manim 动画、HTML 动画、配乐与动画）
+        # "成片已经和工作区一致地定稿过"；重新打开出片阶段（HTML 动画、配乐与动画）
         # 后工作区又能改，成片不再代表当前状态，这条"已完成"的标记要跟着撤销（评审发现）。
         clear_project_completed(engine, project_id)
     return _stage_out(value)

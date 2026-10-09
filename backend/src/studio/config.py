@@ -75,8 +75,6 @@ class Settings(BaseSettings):
     `web_search`/`fetch_url`（Tavily，带「URL 来源」限制）；`native`：用运行时原生的联网能力
     （Claude WebSearch/WebFetch、OpenAI 托管 `WebSearchTool`），没有 URL 来源保护，不需要
     Tavily key。两种模式互斥。"""
-    manim_timeout_seconds: float = 600.0
-    """manim 全画质渲染子进程的超时时间（`STUDIO_MANIM_TIMEOUT_SECONDS`）。"""
 
     @field_validator(
         "anthropic_base_url",

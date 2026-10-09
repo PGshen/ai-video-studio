@@ -765,9 +765,9 @@ _NARRATIVE_STYLE_PROMPT = (
     "写完用 validate_narrative 检查到没有错误。不要调用 synthesize_tts，不要写其他文件。"
 )
 _ANIMATION_STYLE_PROMPT = (
-    "这是自动化测试。只为第一个镜头（s-hook）写代码 animation/scenes/s-hook.py，保持简短"
-    "（不超过 40 行）；用 validate_scenes 检查，通过即可。不要调用 render_preview，"
-    "不要写其他镜头，不要改 style/。"
+    "这是自动化测试。只为第一个镜头（s-hook）写场景脚本 animation/scenes/s-hook.js，保持简短"
+    "（不超过 40 行）；用 validate_scenes_html 检查这个镜头，通过即可。不要调用 "
+    "render_preview_html，不要写其他镜头，不要改 style/。"
 )
 
 
@@ -868,7 +868,7 @@ async def test_style_claude_login(tmp_path: Path) -> None:
                 (_ANIMATION_FIXTURES / name).read_bytes()
             )
         finalize(harness.engine, harness.blobs, harness.registry, harness.project_id, "narrative")
-        animation_session = harness.session(profile, "claude", stage="animation")
+        animation_session = harness.session(profile, "claude", stage="animation_html")
         animation = await harness.turn(animation_session, _ANIMATION_STYLE_PROMPT)
         evidence["animation"] = {
             **outcome_summary(animation),
@@ -887,7 +887,7 @@ async def test_style_claude_login(tmp_path: Path) -> None:
             assert touched is not None, f"动画一轮没有读 {needle}：{animation.tool_names}"
             assert touched < first_write, f"{needle} 在写代码之后才读"
         assert _first_write(animation, "style/") is None, "动画阶段不该写 style/"
-        assert animation.used_tool("validate_scenes")
+        assert animation.used_tool("validate_scenes_html")
     finally:
         record_evidence("style-claude-login", evidence, M5_EVIDENCE_DIR)
         harness.engine.dispose()
@@ -1234,7 +1234,7 @@ async def test_animation_html_claude_login(tmp_path: Path) -> None:
     from .support import HTML_EVIDENCE_DIR
 
     _skip_unless_claude_login()
-    harness = build_harness(tmp_path, real_stages=True, html=True)
+    harness = build_harness(tmp_path, real_stages=True)
     evidence: dict[str, Any] = {}
     try:
         for name in ("narrative.json", "timing.json"):

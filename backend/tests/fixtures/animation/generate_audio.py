@@ -23,7 +23,7 @@ from pathlib import Path
 _FRAME_RATE = 24000
 _OUT_DIR = Path(__file__).parent / "audio"
 
-# (文件名, 时长秒, 频率 Hz) —— 时长必须 ≥ 1.0s（`docs/references/manim.md`：
+# (文件名, 时长秒, 频率 Hz) —— 时长 ≥ 1.0s 是 Manim 时期的约束（已下线，ADR 0027；
 # manim `add_sound()` 会给音轨套一层至少 1 秒的静音底轨，短于 1 秒的声明
 # 时长会被这个下限干扰，破坏 `render_preview` 的起始偏移计算）。
 _SCENES: tuple[tuple[str, float, float], ...] = (

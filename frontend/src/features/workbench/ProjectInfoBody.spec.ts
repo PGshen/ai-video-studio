@@ -27,6 +27,6 @@ import ProjectInfoBody from './ProjectInfoBody.vue'
 describe('ProjectInfoBody', () => {
   it('基本信息里显示视频类型摘要', () => {
     const w = mount(ProjectInfoBody, { props: { projectId: 'p1' } })
-    expect(w.get('[data-testid="project-info-kind"]').text()).toBe('知识讲解（Manim）· 有旁白 · 无配乐')
+    expect(w.get('[data-testid="project-info-kind"]').text()).toBe('知识讲解（Manim，已下线）· 有旁白 · 无配乐')
   })
 })

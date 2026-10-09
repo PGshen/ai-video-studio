@@ -1,7 +1,7 @@
 """`/api/projects/{id}/render`、`.../jobs/{job_id}`、`.../jobs/latest`、
 `.../output/final.mp4`（任务简报 T10；`.../jobs/latest` 是 TD-34 补的）。
 
-- **创建渲染任务**：只检查动画阶段状态不是 `locked`，不重复跑 `validate_scenes`
+- **创建渲染任务**：只检查动画阶段状态不是 `locked`，不重复跑 `validate_scenes_html`
   的校验逻辑（决策记录 D4：避免和 agent 工具的校验产生两份实现，未校验直接
   渲染的后果由 worker 渲染失败时的错误信息兜底）。`payload` 目前不需要放
   任何内容——worker 只靠 `JobValue.project_id` 定位项目（决策记录 D21），
@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
-from studio.api.animation_stage import animation_stage
+from studio.api.animation_stage import require_live_animation_stage
 from studio.api.deps import get_engine, get_settings, get_turn_runner
 from studio.api.schemas import JobOut
 from studio.config import Settings
@@ -77,7 +77,7 @@ def create_render_job_endpoint(
     _require_project(engine, project_id)
     if turn_runner.is_project_busy(project_id):
         raise HTTPException(status_code=409, detail="项目正在运行中的一轮，请等它结束再渲染成片")
-    stage = get_stage(engine, project_id, animation_stage(engine, project_id))
+    stage = get_stage(engine, project_id, require_live_animation_stage(engine, project_id))
     if stage is None:
         raise HTTPException(status_code=404, detail="项目没有动画阶段")
     if stage.status == "locked":

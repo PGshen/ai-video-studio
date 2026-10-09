@@ -29,7 +29,11 @@ class ProjectKind:
 
 
 # Projects created before kinds existed carry no kind fields in settings.
+# Manim is retired (ADR 0027): such projects stay readable but can no longer be created.
 LEGACY_KIND = ProjectKind(engine="manim", narration=True, music_source="none")
+
+# Kind for creation requests that give no kind fields.
+DEFAULT_KIND = ProjectKind(engine="html", narration=True, music_source="none")
 
 
 def kind_errors(kind: ProjectKind) -> list[str]:
@@ -62,12 +66,9 @@ def build_pipeline(kind: ProjectKind) -> list[str]:
 
 
 def valid_kinds() -> list[ProjectKind]:
-    kinds: list[ProjectKind] = []
-    engines: tuple[Engine, ...] = ("manim", "html")
+    """Creatable kinds; the retired Manim engine is not among them."""
     sources: tuple[MusicSource, ...] = ("none", "synth", "import")
-    for engine in engines:
-        for source in sources:
-            kinds.append(ProjectKind(engine, True, source))
+    kinds = [ProjectKind("html", True, source) for source in sources]
     kinds.append(ProjectKind("html", False, "synth"))
     kinds.append(ProjectKind("html", False, "import"))
     return kinds
@@ -83,13 +84,6 @@ class Preset:
 
 
 PRESETS: tuple[Preset, ...] = (
-    Preset(
-        video_kind="explainer_manim",
-        label="知识讲解（Manim）",
-        description="有旁白的知识讲解视频，用 Manim 代码生成数学与概念动画。",
-        music_choices=("none", "synth", "import"),
-        default=ProjectKind("manim", True, "none"),
-    ),
     Preset(
         video_kind="explainer_html",
         label="知识讲解（HTML）",

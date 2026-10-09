@@ -277,13 +277,13 @@ class TestDelete:
         created = create_model_profile(migrated_engine, **_fields())
         update_settings(
             migrated_engine,
-            {"stage_default_profile": {"topic": created.id, "animation": created.id}},
+            {"stage_default_profile": {"topic": created.id, "animation_html": created.id}},
         )
 
         with pytest.raises(ProfileInUseError) as info:
             delete_model_profile(migrated_engine, created.id)
 
-        assert info.value.stages == ["topic", "animation"]
+        assert info.value.stages == ["topic", "animation_html"]
         assert "topic" in str(info.value)
 
     def test_unknown_id(self, migrated_engine: Engine) -> None:

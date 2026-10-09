@@ -1,4 +1,4 @@
-"""三个阶段占位定义（设计 §4.3）：只验证可写范围、上游、产物目录这些
+"""阶段定义（设计 §4.3）：只验证可写范围、上游、产物目录这些
 `StageDefinition` 协议的关键值——业务工具、产物 schema 在各阶段任务里实现。
 """
 
@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from studio.stages.animation import STAGE as animation_stage
 from studio.stages.brainstorm import STAGE as brainstorm_stage
 from studio.stages.narrative import STAGE as narrative_stage
 from studio.stages.topic import STAGE as topic_stage
@@ -52,26 +51,6 @@ class TestNarrativeStage:
     def test_tools_are_validate_synthesize_and_suggest(self) -> None:
         names = {tool.name for tool in narrative_stage.tools()}
         assert names == {"validate_narrative", "synthesize_tts", "suggest_upstream_change"}
-
-
-class TestAnimationStage:
-    def test_write_scope_matches_design(self) -> None:
-        scope = animation_stage.write_scope()
-        assert is_writable(scope, "animation/scenes/s-hook.py") is True
-        assert is_writable(scope, "narrative/narrative.json") is False
-
-    def test_upstream_and_artifact_dirs(self) -> None:
-        assert animation_stage.reads() == ["narrative"]
-        assert animation_stage.artifact_dirs() == ["animation/scenes"]
-
-    def test_web_tools_not_allowed(self) -> None:
-        assert animation_stage.allow_web is False
-
-    def test_tools_include_suggest_upstream_change(self) -> None:
-        # TD-32: `suggest_upstream_change` 现在跟其它业务工具一起是模块级常量，
-        # 不再需要单独给阶段实例注入 Engine 才能出现在 tools() 里。
-        names = {tool.name for tool in animation_stage.tools()}
-        assert names == {"validate_scenes", "render_preview", "suggest_upstream_change"}
 
 
 class TestBrainstormStage:

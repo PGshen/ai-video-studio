@@ -6,13 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from studio.engines.render.base import (
-    PreviewRequest,
-    PreviewResult,
-    RenderRequest,
-    RenderResult,
-    SceneInput,
-)
 from studio.engines.render.html.assemble import AssembledPage
 from studio.engines.render.mix import AudioTrack, MusicMix
 from studio.worker_html import HtmlBackend
@@ -55,21 +48,3 @@ class FakeBackend:
 
     def as_backend(self) -> HtmlBackend:
         return HtmlBackend(render_video=self.render_video, mix=self.mix)
-
-
-class ExplodingManim:
-    """HTML 项目绝不能碰 Manim 引擎。"""
-
-    engine_name = "exploding"
-
-    async def validate_code(self, scenes: list[SceneInput]) -> tuple[bool, str]:
-        raise AssertionError("manim engine used for an html project")
-
-    async def render_preview(self, request: PreviewRequest) -> PreviewResult:
-        raise AssertionError("manim engine used for an html project")
-
-    async def health_check(self) -> bool:
-        raise AssertionError("manim engine used for an html project")
-
-    async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:
-        raise AssertionError("manim engine used for an html project")
