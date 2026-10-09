@@ -11,12 +11,12 @@ import asyncio
 import contextlib
 import os
 import re
-import signal
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from agents import ShellCallOutcome, ShellCommandOutput, ShellCommandRequest, ShellResult
 
+from studio import proc as procs
 from studio.agent.shell_sandbox import SANDBOX_EXEC, sandbox_tmpdir, seatbelt_profile
 
 SHELL_DEFAULT_TIMEOUT_S = 120.0
@@ -37,11 +37,6 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n…（输出过长，已截断，共 {len(text)} 字符）"
-
-
-def _kill_group(proc: asyncio.subprocess.Process) -> None:
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(proc.pid, signal.SIGKILL)
 
 
 async def _read_capped(
@@ -92,7 +87,7 @@ class LocalShellExecutor:
     越出阶段可写范围的改动仍由轮末 `guard` 还原（设计 §4.3 第 2 道防线）。调用方须
     先确认 `shell_sandbox.sandbox_available()`（运行时经 `native_shell_supported`）。
 
-    每条命令在自己的进程组里运行（`start_new_session`）；命令结束（无论退出码）、
+    每条命令在自己的进程组里运行（`studio.proc.spawn_kwargs`）；命令结束（无论退出码）、
     超时、输出超限或被取消时都杀掉整个进程组，所以 `nohup ... &` 之类的后台进程
     不会活过这次调用——否则它们可能在轮末 `guard` 和快照之后才改工作区，改动会
     进入下一轮的基线、永远不会被还原。用 `setsid` 等方式主动脱离进程组的进程
@@ -152,15 +147,15 @@ class LocalShellExecutor:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_shell_env(self._environ, self._tmpdir),
-            start_new_session=True,
+            env=procs.child_env(_shell_env(self._environ, self._tmpdir)),
+            **procs.spawn_kwargs(),
         )
         overflowed = False
 
         def on_overflow() -> None:
             nonlocal overflowed
             overflowed = True
-            _kill_group(proc)
+            procs.kill_proc_tree(proc)
 
         cap = limit * 4  # UTF-8 needs at most 4 bytes per character
         readers = [
@@ -171,7 +166,7 @@ class LocalShellExecutor:
             exited = await _wait_for_exit(proc, timeout)
             timed_out = not exited
             # Always kill the group: background children must not outlive the command.
-            _kill_group(proc)
+            procs.kill_proc_tree(proc)
             done, pending = await asyncio.wait(
                 [*readers, asyncio.ensure_future(proc.wait())], timeout=_READER_DRAIN_TIMEOUT_S
             )
@@ -185,7 +180,7 @@ class LocalShellExecutor:
             # TD-14: cancellation can land either while waiting for the process to exit or
             # while draining the readers above; either way, explicitly cancel the readers and
             # wait for them to actually finish instead of leaving them dangling.
-            _kill_group(proc)
+            procs.kill_proc_tree(proc)
             for reader in readers:
                 reader.cancel()
             with contextlib.suppress(TimeoutError):

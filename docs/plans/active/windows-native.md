@@ -102,7 +102,7 @@
 - **完成标准**：质量关口满足 D1，已有的路径相关测试不需要修改就能通过。如果需要修改，就停下来，在「意外与发现」里说明原因。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）。
 
-### T4：跨平台进程管理 `studio/proc.py`（待开始，机器：Windows，按基线对比）
+### T4：跨平台进程管理 `studio/proc.py`（完成，机器：Windows，按基线对比）
 
 - **目标**：设计 §6——统一启动受控子进程的参数、结束整棵进程树的方式和 UTF-8 环境；替换所有 `killpg`、`start_new_session` 和只结束顶层进程的 `proc.kill()`。
 - **涉及文件**：新增 `backend/src/studio/proc.py`、`backend/tests/test_proc.py`；修改 `engines/audio/runner.py`（`limited_argv` 按平台分支，删除 `kill_group`）、`engines/audio/song_job.py`、`engines/audio/song.py`（同步的 `subprocess.run`）、`engines/audio/probe.py`、`engines/render/html/video.py`、`engines/render/mix.py`、`agent/shell.py`；`backend/pyproject.toml`（新增 import-linter 契约：`studio.proc` 不依赖任何其他 `studio` 模块）；`docs/ARCHITECTURE.md`。
@@ -224,17 +224,17 @@
 - 2026-10-09 — T1 完成：`scripts/tasks.py`（除 `dev`）、Makefile 薄壳、`.gitattributes`、pre-commit 改调 `tasks.py check-fast`、ADR 0025。Windows 上 `tasks.py check` 能运行，按基线在 pyright 一步失败（8 个错误，和基线相同）；新增 `tests/scripts/test_tasks.py` 31 通过、1 跳过（与 bash 比较的用例，Windows 上另用 Git Bash 手动比过，一致）；pytest 其余部分不受影响（本任务没动 `backend/src`）。剩余失败数：pytest 113 失败 + 30 error + 1 挂住，pyright 8
 - 2026-10-09 — T2 完成：ruff 启用 `PLW1514`（预览规则，`explicit-preview-rules`），`scripts/` 纳入 ruff 检查，补一个 AST 测试覆盖 ruff 认不出的 `x.read_text()`；`tasks.py` 的所有步骤以 UTF-8 模式运行，Windows 上没开 UTF-8 模式时 pytest 直接报错提示。和基线比没有新增失败，12 个用例函数转为通过。剩余失败数：pytest 101 失败 + 30 error + 1 挂住，pyright 8
 - 2026-10-09 — T3 完成：`workspace.files.check_model_path`、`relpath_within`；`normalize_relpath`、`safe_path`、`apply_patch.to_workspace_relpath`、Claude 读写 hook（含 Glob 模式）改为共用它们；附件文件名去掉 Windows 不允许的字符和结尾的 `.`/空格。新增约 140 个用例（`tests/workspace/test_model_path.py`、hook 和 apply_patch 的 Windows 写法），已有的路径测试没有修改。和基线比没有新增失败，`apply_patch` 的 3 个基线失败转为通过。剩余失败数：pytest 98 失败 + 30 error + 1 挂住，pyright 8
+- 2026-10-10 — T4 完成：新模块 `studio.proc`（`spawn_kwargs`、`kill_tree`/`kill_proc_tree`/`kill_tree_sync`、`run_killing_tree`、`child_env`）及 import-linter 契约；配乐脚本、歌曲分析、ffprobe、ffmpeg 解码/出片/混音、Shell executor 全部改用它；Windows 上 `limited_argv` 原样返回，`run_compose` 事后检查 `music.wav` 大小（两个平台都查）。测试里的假 ffmpeg 改成 Python 脚本，挂住的取消用例随之修好；`os.kill(pid, 0)` 探活改为共用的 `fixtures.processes.pid_alive`。Windows 上 `tasks.py check` 第一次跑到 pytest：pyright 0 错误，pytest **6 失败**（3007 通过），全部属于 T8、T9。剩余失败数：pytest 6，pyright 0
 
 ## 下一步
 
-T1–T3 已完成（见「进度」），Windows 基线见「意外与发现」。接下来做 **T4：跨平台进程管理 `studio/proc.py`**——这是基线里失败最多的一类（`/bin/sh`、`os.killpg`、挂住的取消测试）：
+T1–T4 已完成（见「进度」）。Windows 上 `tasks.py check` 已能完整跑完，只剩 6 个失败（见 T4 的进度行）。接下来做 **T5：执行策略与开关**：
 
-1. 计划里 T4 状态改为「进行中」；先读 `engines/audio/runner.py`（`limited_argv`、`kill_group`、`run_compose`）、`engines/audio/song_job.py`、`engines/audio/song.py`、`engines/audio/probe.py`、`engines/render/html/video.py`、`engines/render/mix.py`、`agent/shell.py`，以及设计 §6。
-2. 先写 `backend/tests/test_proc.py`（`spawn_kwargs`、`kill_tree` 两个分支、`child_env`），再把 `test_audio_runner.py`、`test_shell.py` 等对 `killpg` 的 mock 改为针对 `kill_tree`；`tests/engines/test_html_video.py` 里 `#!/bin/sh` 写的假 ffmpeg 改用 Python 写（或者按 T8 规则标记，二选一写进决策记录）。
-3. 先查清 `test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file` 在 Windows 上挂住的原因（取消后 `proc.kill()` 只杀顶层、管道没关、还是 `wait()` 卡住），修好后去掉对比命令里的 `--deselect`。
-4. `tasks.py` 里的 `utf8_env` 注释已指向 `studio.proc.child_env`，`child_env` 的注释要反过来指向它。
-5. 完成标准：`grep -rn "killpg\|start_new_session" backend/src` 只剩 `proc.py`；pyright 在 `src` 里的 4 个错误消失（tests 里的 4 个由 T4 改 mock 或 T8 处理）；基线对比同 T3（`$env:PYTHONUTF8=1`，结果存 `.dev/t4-pytest.txt`，和 `.dev/base-ids.txt` 比较）。
-6. commit 并 push。
+1. 计划里 T5 状态改为「进行中」；先读设计 §4（尤其 §4.2 的表、§4.3），以及 `config.py`、`db/repo/settings.py`（照着 `effective_web_mode` 写）、`agent/runner.py`（`TurnContext` 的构造）、`agent/claude_runtime.py` 和 `claude_scope.py`（`allowed_tools`、`disallowed_tools`、`sandbox_settings`）、`agent/openai_runtime.py`（`native_shell_supported`）、`agent/shell.py`、`stages/common/score/tool.py`（`sandbox_wrapper`）、`agent/events.py`。
+2. 先写 `backend/tests/agent/test_exec_policy.py`（`exec_mode` 真值表）和三种模式下 Claude/OpenAI/`render_music` 的测试，再实现；ADR 0024 按设计 §10 写。
+3. Windows 上用 Fake 运行时跑的测试可以覆盖 `disabled`/`unsandboxed` 两种模式；`sandboxed` 的真实行为留到 T12 在 macOS 上确认。
+4. 验证：`uv run --project backend python scripts/tasks.py check`（PowerShell，已不需要 `--deselect`），和 T4 的 6 个失败比较。
+5. commit 并 push。
 
 ## 决策记录
 
@@ -261,6 +261,13 @@ T1–T3 已完成（见「进度」），Windows 基线见「意外与发现」�
 - 2026-10-09 — T3：Glob 模式不是路径（含 `*`、`{a,b}`），不整体套 `check_model_path`；在原有检查（`/`、`~`、`..`、首尾空白）上加拒绝 `\` 和 `:`，抽成 `claude_scope._bad_glob`。
 - 2026-10-09 — T3：**和现有行为的冲突**（设计 §5 要求发现冲突时记录）：对话附件的文件名（ADR 0026，`uploads/<前缀>-<原名>`）原来只去掉控制字符，原名里的 `:` 或结尾的 `.` 会让 agent 之后按路径读它时被新规则拒绝。改为在 `api.attachments.safe_name` 里把 `<>:"|?*` 换成 `_`、去掉结尾的 `.` 和空格；加了一条测试保证 `safe_name` 的结果总能通过 `check_model_path`。已有上传的文件不迁移（本机数据里没有这类文件名）。
 - 2026-10-09 — T3：`symlinks_supported` fixture 提前在 T3 加进 `conftest.py`（T3 的符号链接用例要用）；`test_windows_compares_case_insensitively` 暂时用 `os.name` 的 `skipif`，T8 统一换成 conftest 的标记。
+- 2026-10-10 — T4：`studio.proc` 的接口在计划之外多了三样：`kill_proc_tree(process)`（同步版，给不能 await 的回调和 `except BaseException` 分支用——取消已经发生时再 await 有可能被再次取消，杀不干净）、`run_killing_tree(argv, timeout=...)`（给 `song.decode_song` 这种同步调用用，超时杀整棵树）、`ProcessLike` 协议（`kill_tree` 只要 `pid`/`returncode`/`kill()`，测试里的假进程不需要 `type: ignore`）。
+- 2026-10-10 — T4：**Windows 上子进程退出后不再按 PID 结束进程树**：退出后 PID 可能已被别的进程复用，`taskkill /T` 会误杀别人的整棵树；而且父进程退出后 `/T` 也找不到它的后代。POSIX 上保持原样（退出后照样 `killpg`，清理留在进程组里的后台进程）。代价：Windows 上"脚本正常退出但留下后台子进程"的情况清理不到，T12 登记技术债（以后可以用 Job Object 解决）。
+- 2026-10-10 — T4：`child_env` 在 Windows 上还会补 `SYSTEMROOT`、`WINDIR`、`COMSPEC`、`PATHEXT`（从父进程环境取，基础环境里已有的不覆盖）：配乐脚本和歌曲分析用的是白名单环境，没有 `SYSTEMROOT` 的话 Windows 上的 Python 启动就会失败。这几个变量不含密钥。
+- 2026-10-10 — T4：子进程的 `env` 逐处判断（计划要求写进决策记录）：配乐脚本（`runner._SAFE_ENV` 白名单）、歌曲分析（`song_job._ENV_KEYS` 白名单）、Shell（去掉密钥名后的父进程环境）——原来就传 `env` 的，都改为经过 `child_env`；ffprobe、ffmpeg 解码/出片/混音原来继承父进程环境，改为传 `child_env(os.environ)`，内容仍是继承，只是多了 UTF-8 变量。没有哪一处从"继承"变成"白名单"或反过来。
+- 2026-10-10 — T4：测试里用 `#!/bin/sh` 写的假 ffmpeg 改成 Python 脚本，并通过替换 `video.build_encode_command` 接进去（保留真实参数、只换程序），两个平台都能跑；没有用 T8 的标记跳过。基线里"挂住"的取消用例就是因为假 ffmpeg 在 Windows 上起不来、`started` 事件永远不会被设置。
+- 2026-10-10 — T4：**`os.kill(pid, 0)` 在 Windows 上不是探活，而是结束进程**（除 CTRL_C/CTRL_BREAK 以外的信号都会变成 `TerminateProcess`），用它判断"孙进程是否已被杀掉"的测试在 Windows 上会自己把进程杀掉而虚假通过。新增 `tests/fixtures/processes.py`（`pid_alive`、`wait_gone`，Windows 上用 `tasklist`），`test_proc`、`test_audio_runner`、`test_audio_song_job` 改用它。只在 POSIX 上跑的用例（`_group_gone`、Seatbelt 相关）里的 `os.killpg`/`signal.SIGKILL` 前面加了 `sys.platform` 判断，pyright 在 Windows 上就不再报错，不用 `type: ignore`。
+- 2026-10-10 — T4：`test_audio_runner.py::test_a_script_cannot_fill_the_disk` 依赖 `ulimit -f`，Windows 上暂时用 `skipif(sys.platform == "win32")`（T8 换成 `posix_only`）；另加 `test_an_oversized_wav_is_refused` 覆盖两个平台都有的事后大小检查。`test_fake.py::TestFakeDelay::test_register_fake_passes_delay` 在 Windows 上偶发失败（50 ms 的 sleep 量出来 47 ms，Windows 计时器精度约 15.6 ms），断言放宽一个时钟刻度。
 
 ## 意外与发现
 

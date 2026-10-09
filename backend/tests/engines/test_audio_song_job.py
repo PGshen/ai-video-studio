@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
-import time
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +12,7 @@ from PIL import Image
 
 from engines.audio_fixtures import SAMPLE_RATE, click_track
 from fixtures.audio_engine import write_wav
+from fixtures.processes import wait_gone
 from studio.engines.audio import song_job
 from studio.engines.audio.runner import limited_argv
 from studio.engines.audio.song_job import SongJobError, run_song_analysis
@@ -68,14 +67,7 @@ async def test_timeout_kills_the_whole_process_group(
     with pytest.raises(SongJobError, match="超时"):
         await run_song_analysis(tmp_path / "x.wav", tmp_path / "out", timeout=1.5)
     grandchild = int(pid_file.read_text())
-    for _ in range(50):
-        try:
-            os.kill(grandchild, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(0.1)
-    else:
-        pytest.fail("grandchild process survived the timeout")
+    assert await wait_gone(grandchild, 5.0), "grandchild process survived the timeout"
 
 
 async def test_missing_artifact_is_an_error(

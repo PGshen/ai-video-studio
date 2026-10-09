@@ -8,10 +8,12 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from studio import proc
 
 _SAMPLE_RATE = 44100
 _STDERR_TAIL_LINES = 12
@@ -187,12 +189,13 @@ async def mix_final(
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
+        env=proc.child_env(os.environ),
+        **proc.spawn_kwargs(),
     )
     try:
         _, stderr = await process.communicate()
     except BaseException:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
+        proc.kill_proc_tree(process)  # sync: an await here could be cancelled again
         await process.wait()
         temp.unlink(missing_ok=True)
         raise

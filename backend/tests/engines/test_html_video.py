@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import stat
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +49,8 @@ def test_frame_time_is_the_start_of_the_frame() -> None:
 
 
 def test_encode_command_reads_jpeg_from_stdin_and_writes_yuv420p_h264() -> None:
-    cmd = build_encode_command(Path("/tmp/o.tmp.mp4"), 30)
+    output = Path("/tmp/o.tmp.mp4")
+    cmd = build_encode_command(output, 30)
     assert cmd[0] == video.FFMPEG
     assert cmd[cmd.index("-f") + 1] == "image2pipe"
     assert cmd[cmd.index("-i") + 1] == "-"
@@ -57,25 +58,42 @@ def test_encode_command_reads_jpeg_from_stdin_and_writes_yuv420p_h264() -> None:
     assert cmd[cmd.index("-vf") + 1].endswith("format=yuv420p")
     assert cmd[cmd.index("-crf") + 1] == "15"
     assert "-an" in cmd
-    assert cmd[-1] == "/tmp/o.tmp.mp4"
+    assert cmd[-1] == str(output)
 
 
 # ---- fake ffmpeg + fake page -----------------------------------------------------------
 
 
-def _fake_ffmpeg(tmp_path: Path, *, exit_code: int = 0, die_early: bool = False) -> str:
-    script = tmp_path / "fake-ffmpeg"
-    body = (
-        "#!/bin/sh\n"
-        "for last; do :; done\n"
-        + ("echo 'boom: bad frame' >&2\nexit 3\n" if die_early else "")
-        + "cat > /dev/null\n"
-        + (f"echo 'encoder said no' >&2\nexit {exit_code}\n" if exit_code else "")
-        + 'echo video > "$last"\n'
+_FAKE_FFMPEG = r"""
+import sys
+DIE_EARLY, EXIT_CODE = {die_early!r}, {exit_code!r}
+if DIE_EARLY:
+    sys.stderr.write("boom: bad frame\n")
+    sys.exit(3)
+sys.stdin.buffer.read()
+if EXIT_CODE:
+    sys.stderr.write("encoder said no\n")
+    sys.exit(EXIT_CODE)
+with open(sys.argv[-1], "w", encoding="utf-8") as out:
+    out.write("video\n")
+"""
+
+
+def _fake_ffmpeg(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, exit_code: int = 0, die_early: bool = False
+) -> None:
+    """A fake ffmpeg written in Python (runs on Windows too): consumes stdin, writes the last
+    argument. The real command line is kept, only the program is replaced."""
+    script = tmp_path / "fake_ffmpeg.py"
+    script.write_text(
+        _FAKE_FFMPEG.format(die_early=die_early, exit_code=exit_code), encoding="utf-8"
     )
-    script.write_text(body)
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    return str(script)
+    real = video.build_encode_command
+    monkeypatch.setattr(
+        video,
+        "build_encode_command",
+        lambda output, fps: [sys.executable, str(script), *real(output, fps)[1:]],
+    )
 
 
 class CountingPage:
@@ -105,7 +123,7 @@ class CountingPage:
 async def test_renders_every_frame_in_order_and_publishes_atomically(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path))
+    _fake_ffmpeg(monkeypatch, tmp_path)
     page = CountingPage()
     output = tmp_path / "silent.mp4"
     stats = await render_silent_video(page, 1.0, output, fps=30)
@@ -118,7 +136,7 @@ async def test_renders_every_frame_in_order_and_publishes_atomically(
 async def test_progress_is_monotonic_and_ends_at_the_total(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path))
+    _fake_ffmpeg(monkeypatch, tmp_path)
     seen: list[tuple[int, int]] = []
 
     async def on_progress(done: int, total: int) -> None:
@@ -134,7 +152,7 @@ async def test_progress_is_monotonic_and_ends_at_the_total(
 async def test_sync_progress_callback_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path))
+    _fake_ffmpeg(monkeypatch, tmp_path)
     seen: list[int] = []
     await render_silent_video(
         CountingPage(), 0.1, tmp_path / "o.mp4", fps=30, on_progress=lambda d, _t: seen.append(d)
@@ -145,7 +163,7 @@ async def test_sync_progress_callback_is_accepted(
 async def test_frame_failure_names_the_time_and_cleans_up(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path))
+    _fake_ffmpeg(monkeypatch, tmp_path)
     output = tmp_path / "o.mp4"
     with pytest.raises(VideoRenderError) as info:
         await render_silent_video(CountingPage(fail_at=7), 1.0, output, fps=30)
@@ -157,7 +175,7 @@ async def test_frame_failure_names_the_time_and_cleans_up(
 async def test_a_failed_render_keeps_the_previous_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path))
+    _fake_ffmpeg(monkeypatch, tmp_path)
     output = tmp_path / "o.mp4"
     output.write_text("previous")
     with pytest.raises(VideoRenderError):
@@ -168,7 +186,7 @@ async def test_a_failed_render_keeps_the_previous_output(
 async def test_ffmpeg_dying_early_reports_its_stderr(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path, die_early=True))
+    _fake_ffmpeg(monkeypatch, tmp_path, die_early=True)
     output = tmp_path / "o.mp4"
     with pytest.raises(VideoEncodeError) as info:
         await render_silent_video(CountingPage(), 3.0, output, fps=30)
@@ -180,7 +198,7 @@ async def test_ffmpeg_dying_early_reports_its_stderr(
 async def test_ffmpeg_nonzero_exit_after_all_frames_is_an_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path, exit_code=1))
+    _fake_ffmpeg(monkeypatch, tmp_path, exit_code=1)
     output = tmp_path / "o.mp4"
     with pytest.raises(VideoEncodeError) as info:
         await render_silent_video(CountingPage(), 0.1, output, fps=30)
@@ -191,7 +209,7 @@ async def test_ffmpeg_nonzero_exit_after_all_frames_is_an_error(
 async def test_cancellation_stops_ffmpeg_and_removes_the_temp_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(video, "FFMPEG", _fake_ffmpeg(tmp_path))
+    _fake_ffmpeg(monkeypatch, tmp_path)
     started = asyncio.Event()
 
     class SlowPage(CountingPage):

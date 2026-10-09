@@ -328,3 +328,24 @@ forbidden_modules = [
     "studio.config",
     "studio.worker",
 ]
+
+[[tool.importlinter.contracts]]
+name = "proc 是平台层（windows-native T4）：只依赖标准库，不 import 任何其他 studio 模块"
+type = "forbidden"
+source_modules = ["studio.proc"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.engines",
+    "studio.jobs",
+    "studio.search",
+    "studio.styles",
+    "studio.config",
+    "studio.timeline",
+    "studio.worker",
+    "studio.worker_html",
+]

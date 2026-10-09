@@ -1,6 +1,7 @@
 """Isolated song analysis (4A T3): decode, analyse and draw in a subprocess with a timeout.
 
-Parent side: `run_song_analysis` (async, process-group kill, CPU/file limits from `runner`).
+Parent side: `run_song_analysis` (async, process-tree kill via `studio.proc`, CPU/file limits
+from `runner` on POSIX).
 Child side: `python -m studio.engines.audio.song_job <source> <out_dir>` decodes once and shares the
 samples between the analysis and the picture. This is our own code, so no sandbox; the child only
 reads `source` and writes `analysis.json` / `analysis.png` into `out_dir`. The caller moves them
@@ -19,7 +20,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from studio.engines.audio.runner import drain, kill_group, limited_argv, tail_lines
+from studio import proc
+from studio.engines.audio.runner import drain, limited_argv, tail_lines
 from studio.engines.audio.wav import AudioError
 
 DEFAULT_TIMEOUT = 120.0
@@ -47,7 +49,7 @@ async def run_song_analysis(
     source: Path, out_dir: Path, *, timeout: float = DEFAULT_TIMEOUT
 ) -> SongJobResult:
     out_dir.mkdir(parents=True, exist_ok=True)
-    env = {key: os.environ[key] for key in _ENV_KEYS if key in os.environ}
+    env = proc.child_env({key: os.environ[key] for key in _ENV_KEYS if key in os.environ})
     env.update(TMPDIR=str(out_dir), PYTHONDONTWRITEBYTECODE="1")
     started = time.monotonic()
     process = await asyncio.create_subprocess_exec(
@@ -57,7 +59,7 @@ async def run_song_analysis(
         stderr=asyncio.subprocess.PIPE,
         cwd=out_dir,
         env=env,
-        start_new_session=True,
+        **proc.spawn_kwargs(),
     )
 
     def clean() -> None:
@@ -69,19 +71,19 @@ async def run_song_analysis(
             asyncio.gather(drain(process.stderr, 16000), process.wait()), timeout
         )
     except TimeoutError:
-        kill_group(process)
+        await proc.kill_tree(process)
         await process.wait()
         clean()
         raise SongJobError(
             f"歌曲分析超过 {timeout:g} 秒被终止（超时）；歌曲过长或机器过忙，可稍后重试"
         ) from None
     except BaseException:
-        kill_group(process)
+        proc.kill_proc_tree(process)  # sync: an await here could be cancelled again
         with contextlib.suppress(Exception):
             await process.wait()
         clean()
         raise
-    kill_group(process)  # leftover children of a job that exited normally
+    await proc.kill_tree(process)  # leftover children of a job that exited normally (POSIX)
     if process.returncode != 0:
         clean()
         raise SongJobError(f"歌曲分析失败（退出码 {process.returncode}）：\n{tail_lines(stderr)}")

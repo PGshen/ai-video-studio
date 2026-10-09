@@ -90,6 +90,8 @@ class TestShellExecutor:
 
 
 async def _group_gone(pgid: int) -> bool:
+    if sys.platform == "win32":
+        raise AssertionError("process groups are POSIX-only")
     for _ in range(100):
         try:
             os.killpg(pgid, 0)
