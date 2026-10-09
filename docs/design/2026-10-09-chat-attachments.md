@@ -28,7 +28,7 @@
 | 选题对话 | 只支持图片 | 负责人，2026-10-09 |
 | 接口形态 | 方案 A：一次 multipart 请求同时提交文字和附件 | 负责人，2026-10-09 |
 | 文件位置 | 工作区 `uploads/`；对 agent 只读；纳入快照 | 负责人，2026-10-09 |
-| 新依赖 | 不引入。FastAPI 解析 multipart 用到的 `python-multipart` 已经是现有依赖（`music_import` 在用） | 本文 |
+| 新依赖 | 不引入。FastAPI 解析 multipart 用到的 `python-multipart` 已经通过传递依赖装好，`music_import` 已经在用；它不是 `pyproject.toml` 里的直接依赖，计划阶段再决定要不要把它写成显式依赖 | 本文 |
 
 ## 3. 现状（2026-10-09 排查）
 
