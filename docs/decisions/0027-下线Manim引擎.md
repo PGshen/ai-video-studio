@@ -6,7 +6,7 @@
 |---|---|
 | 状态 | 已采纳 |
 | 日期 | 2026-10-09 |
-| 相关 | [remove-manim 计划](../plans/active/remove-manim.md)、[架构设计](../design/2026-09-26-architecture.md) §4–§5 的 `animation` 阶段与 manim 渲染、[ADR 0005](0005-渲染并入动画阶段.md)、[ADR 0015](0015-成片整体渲染.md)、[ADR 0020](0020-阶段流水线按项目配置派生.md)、[ADR 0021](0021-HTML引擎与配乐阶段.md) |
+| 相关 | [remove-manim 计划](../plans/completed/remove-manim.md)、[架构设计](../design/2026-09-26-architecture.md) §4–§5 的 `animation` 阶段与 manim 渲染、[ADR 0005](0005-渲染并入动画阶段.md)、[ADR 0015](0015-成片整体渲染.md)、[ADR 0020](0020-阶段流水线按项目配置派生.md)、[ADR 0021](0021-HTML引擎与配乐阶段.md) |
 
 ## 背景
 
