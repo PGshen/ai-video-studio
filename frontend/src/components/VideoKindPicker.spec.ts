@@ -4,7 +4,7 @@ import { VIDEO_KINDS_FIXTURE } from '@/test/videoKindsFixture'
 import type { MusicSource, VideoKind } from '@/types/api'
 import VideoKindPicker from './VideoKindPicker.vue'
 
-function mountPicker(videoKind: VideoKind = 'explainer_manim', music: MusicSource = 'none') {
+function mountPicker(videoKind: VideoKind = 'explainer_html', music: MusicSource = 'none') {
   const wrapper = mount(VideoKindPicker, {
     props: {
       data: VIDEO_KINDS_FIXTURE,
@@ -19,12 +19,13 @@ function mountPicker(videoKind: VideoKind = 'explainer_manim', music: MusicSourc
 let w: ReturnType<typeof mountPicker>
 
 describe('VideoKindPicker', () => {
-  it('渲染四张预设卡片，不可用的禁用并显示原因', () => {
+  it('渲染三张预设卡片，不可用的禁用并显示原因', () => {
     w = mountPicker()
-    for (const k of ['explainer_manim', 'explainer_html', 'motion_reel', 'music_video']) {
+    for (const k of ['explainer_html', 'motion_reel', 'music_video']) {
       expect(w.find(`[data-testid="kind-card-${k}"]`).exists()).toBe(true)
     }
-    expect(w.get('[data-testid="kind-card-explainer_manim"]').attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-testid="kind-card-explainer_manim"]').exists()).toBe(false)
+    expect(w.get('[data-testid="kind-card-explainer_html"]').attributes('disabled')).toBeUndefined()
     const reel = w.get('[data-testid="kind-card-motion_reel"]')
     expect(reel.attributes('disabled')).toBeDefined()
     expect(w.get('[data-testid="kind-reason-motion_reel"]').text()).toContain('尚未实现')
@@ -38,7 +39,7 @@ describe('VideoKindPicker', () => {
     expect(w.get('[data-testid="kind-pipeline"]').text()).toContain('创意与要求 → 配乐与动画')
   })
 
-  it('当前是 Manim 讲解时有配乐下拉，合成和导入禁用', () => {
+  it('当前是 HTML 讲解时有配乐下拉，合成和导入禁用', () => {
     w = mountPicker()
     const options = w.findAll('[data-testid="music-select"] option')
     expect(options.map((o) => o.attributes('value'))).toEqual(['none', 'synth', 'import'])

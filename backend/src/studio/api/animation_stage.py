@@ -19,7 +19,7 @@ RETIRED_MANIM_STAGE = "animation"
 """老 manim 项目的出片阶段：不再注册，不能渲染或定稿。"""
 HTML_STAGE = "animation_html"
 PRODUCE_STAGE = "produce"
-MANIM_RETIRED_DETAIL = "Manim 动画已下线，老项目只能查看，不能再渲染或定稿成片"
+MANIM_RETIRED_DETAIL = "Manim 动画已下线，老项目只能查看，不能再对话、渲染或定稿成片"
 
 
 def animation_stage_of(settings: Mapping[str, Any]) -> str:

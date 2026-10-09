@@ -11,12 +11,13 @@ export interface ProjectCreate {
   idea_id?: string | null
   /** 风格库里的风格 id；不给就用默认风格，没有默认风格时用占位 `STYLE.md`。 */
   style_preset_id?: string | null
-  /** 视频类型的三个配置字段：要么都给要么都不给（不给 = 知识讲解 Manim、有旁白、无配乐）。 */
+  /** 视频类型的三个配置字段：要么都给要么都不给（不给 = 知识讲解 HTML、有旁白、无配乐）。 */
   engine?: Engine
   narration?: boolean
   music_source?: MusicSource
 }
 
+/** `manim` 只出现在已下线的老项目上（只读，ADR 0027），新项目只能是 `html`。 */
 export type Engine = 'manim' | 'html'
 export type MusicSource = 'none' | 'synth' | 'import'
 export type VideoKind = 'explainer_manim' | 'explainer_html' | 'motion_reel' | 'music_video'

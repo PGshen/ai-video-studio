@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from httpx import Response
 
+from fixtures.animation.seed import seed_legacy_manim_project
 from studio.agent import register_fake
 from studio.agent.fake import FakeRuntime, sleep
 from studio.agent.runtime import UserInput
@@ -809,3 +810,41 @@ class TestModelTitle:
             await asyncio.sleep(0.05)
         assert title == "算法选题"
         assert calls == ["帮我想几个算法相关的选题"]
+
+
+class TestRetiredManimStage:
+    """Manim is retired (ADR 0027): old projects keep their `animation` history but cannot talk."""
+
+    def _legacy(self, api_env: ApiEnv) -> str:
+        return seed_legacy_manim_project(
+            api_env.app.state.engine, api_env.app.state.blobs, data_dir=api_env.data_dir
+        )
+
+    async def test_new_session_is_409(self, api_env: ApiEnv) -> None:
+        pid = self._legacy(api_env)
+
+        response = await api_env.client.post(
+            f"/api/projects/{pid}/stages/animation/sessions",
+            json={"model_profile_id": _fake_profile_id(api_env)},
+        )
+
+        assert response.status_code == 409
+        assert "Manim 动画已下线" in assert_detail(response)
+
+    async def test_old_session_is_readable_but_messages_are_409(self, api_env: ApiEnv) -> None:
+        pid = self._legacy(api_env)
+        session = create_session(
+            api_env.app.state.engine,
+            project_id=pid,
+            stage="animation",
+            model_profile_id=_fake_profile_id(api_env),
+            runtime="fake",
+        )
+
+        assert (await api_env.client.get(f"/api/sessions/{session.id}")).status_code == 200
+        response = await api_env.client.post(
+            f"/api/sessions/{session.id}/messages", json={"text": "继续写镜头"}
+        )
+
+        assert response.status_code == 409
+        assert "Manim 动画已下线" in assert_detail(response)

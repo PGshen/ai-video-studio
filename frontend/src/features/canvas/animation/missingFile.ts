@@ -1,7 +1,7 @@
 /**
  * 当前打开的镜头代码文件从工作区消失时的处理决策（任务 T12，决策记录
  * D36）：和 `features/canvas/generic/missingFile.ts`（追加修复 G1）逻辑
- * 完全一样——同样的道理，`animation/scenes/<id>.py` 也可能因为回滚/被
+ * 完全一样——同样的道理，`animation/scenes/<id>.js` 也可能因为回滚/被
  * agent 删除而消失，用户如果正编辑着它，不能让编辑器悄悄用旧内容覆盖式
  * 保存把文件重新创建出来。跨阶段画布不能互相 import（见
  * `composables/conflictState.ts` 顶部注释），复制一份。

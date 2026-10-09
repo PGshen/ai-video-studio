@@ -43,7 +43,7 @@ function settings(overrides: Partial<SettingsOut> = {}): SettingsOut {
 }
 
 describe('DEFAULT_PROFILE_STAGES', () => {
-  it('包含头脑风暴、各项目阶段（含创意与要求、配乐、配乐与动画和 HTML 动画）和风格对话，顺序与流水线一致（风格对话在最后）', () => {
+  it('包含头脑风暴、各项目阶段（含创意与要求、配乐、配乐与动画和动画；Manim 的 animation 已下线）和风格对话，顺序与流水线一致（风格对话在最后）', () => {
     expect(DEFAULT_PROFILE_STAGES.map((s) => s.key)).toEqual([
       'brainstorm',
       'topic',
@@ -51,7 +51,6 @@ describe('DEFAULT_PROFILE_STAGES', () => {
       'concept',
       'music',
       'produce',
-      'animation',
       'animation_html',
       'style',
     ])

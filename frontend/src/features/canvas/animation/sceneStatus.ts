@@ -14,7 +14,7 @@ export interface SceneStatus {
   id: string
   /** 该镜头代码在工作区里的路径。 */
   path: string
-  /** `animation/scenes/<id>.py` 当前是否已经存在。 */
+  /** `animation/scenes/<id>.js` 当前是否已经存在。 */
   exists: boolean
   /** 最近一次 `validate_scenes` 里这个镜头的状态；没检查过是 `null`。 */
   validateScenes: SceneCheckOut | null
@@ -22,9 +22,9 @@ export interface SceneStatus {
   renderPreview: SceneCheckOut | null
 }
 
-/** 镜头脚本路径；Manim 是 `.py`（默认），HTML 引擎是 `.js`。 */
-export function scenePath(sceneId: string, extension: 'py' | 'js' = 'py'): string {
-  return `animation/scenes/${sceneId}.${extension}`
+/** 镜头脚本路径（HTML 引擎的 Canvas 场景）。 */
+export function scenePath(sceneId: string): string {
+  return `animation/scenes/${sceneId}.js`
 }
 
 /**
@@ -32,17 +32,15 @@ export function scenePath(sceneId: string, extension: 'py' | 'js' = 'py'): strin
  * @param existingPaths 当前工作区文件树里的全部路径（`FileEntry.path`）。
  * @param checks `useSceneChecksQuery` 拉到的读模型；未传或还没拉到时全部
  *   镜头的 `validateScenes`/`renderPreview` 都是 `null`。
- * @param extension 镜头脚本扩展名，HTML 引擎传 `'js'`。
  */
 export function computeSceneStatuses(
   sceneIds: readonly string[],
   existingPaths: readonly string[],
   checks?: SceneChecksResponse['scenes'],
-  extension: 'py' | 'js' = 'py',
 ): SceneStatus[] {
   const known = new Set(existingPaths)
   return sceneIds.map((id) => {
-    const path = scenePath(id, extension)
+    const path = scenePath(id)
     const check: SceneChecksOut | undefined = checks?.[id]
     return {
       id,

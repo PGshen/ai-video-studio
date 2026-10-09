@@ -8,17 +8,12 @@ const PASSED: SceneChecksOut = {
 }
 
 describe('scenePath', () => {
-  it('拼出 animation/scenes/<id>.py', () => {
-    expect(scenePath('s-hook')).toBe('animation/scenes/s-hook.py')
+  it('拼出 animation/scenes/<id>.js', () => {
+    expect(scenePath('s-hook')).toBe('animation/scenes/s-hook.js')
   })
-})
 
-describe('HTML 引擎的镜头文件是 .js', () => {
-  it('scenePath 与 computeSceneStatuses 接受扩展名，默认仍是 .py', () => {
-    expect(scenePath('s-hook', 'js')).toBe('animation/scenes/s-hook.js')
-    const [status] = computeSceneStatuses(['s-hook'], ['animation/scenes/s-hook.js'], undefined, 'js')
-    expect(status).toMatchObject({ path: 'animation/scenes/s-hook.js', exists: true })
-    expect(computeSceneStatuses(['s-hook'], ['animation/scenes/s-hook.js'])[0]?.exists).toBe(false)
+  it('Manim 时期的 .py 不算镜头脚本', () => {
+    expect(computeSceneStatuses(['s-hook'], ['animation/scenes/s-hook.py'])[0]?.exists).toBe(false)
   })
 })
 
@@ -26,19 +21,19 @@ describe('computeSceneStatuses', () => {
   it('按叙事顺序标出每个镜头代码是否存在，没有检查数据时留 null（TD-33）', () => {
     const result = computeSceneStatuses(
       ['s-hook', 's-explain'],
-      ['animation/scenes/s-hook.py', 'upstream/narrative/narrative.json'],
+      ['animation/scenes/s-hook.js', 'upstream/narrative/narrative.json'],
     )
     expect(result).toEqual([
       {
         id: 's-hook',
-        path: 'animation/scenes/s-hook.py',
+        path: 'animation/scenes/s-hook.js',
         exists: true,
         validateScenes: null,
         renderPreview: null,
       },
       {
         id: 's-explain',
-        path: 'animation/scenes/s-explain.py',
+        path: 'animation/scenes/s-explain.js',
         exists: false,
         validateScenes: null,
         renderPreview: null,
@@ -47,7 +42,7 @@ describe('computeSceneStatuses', () => {
   })
 
   it('没有镜头时返回空数组', () => {
-    expect(computeSceneStatuses([], ['animation/scenes/s-hook.py'])).toEqual([])
+    expect(computeSceneStatuses([], ['animation/scenes/s-hook.js'])).toEqual([])
   })
 
   it('没有任何文件时全部标记为不存在', () => {
@@ -56,7 +51,7 @@ describe('computeSceneStatuses', () => {
   })
 
   it('按镜头 id 把检查结果合并进对应的 SceneStatus（TD-33）', () => {
-    const result = computeSceneStatuses(['s-hook', 's-explain'], ['animation/scenes/s-hook.py'], {
+    const result = computeSceneStatuses(['s-hook', 's-explain'], ['animation/scenes/s-hook.js'], {
       's-hook': PASSED,
     })
 

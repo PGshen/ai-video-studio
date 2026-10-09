@@ -69,7 +69,7 @@
 - **要点**：删 `manim`、`pyflakes`，`uv lock` 后确认被一并移除的传递依赖没有被 `studio` 直接 import（当前直接 import 的第三方包已核对：numpy、PIL、librosa 等均为显式依赖）。
 - **验证命令**：`cd backend && uv sync && make check`；`uv run pytest -m slow`
 
-### T4：前端（待开始）
+### T4：前端（完成）
 
 - **涉及文件**：`frontend/src/types/api.ts`、`composables/videoKindChoice.ts`、`features/ideas/CreateProjectDialog.vue`、`test/videoKindsFixture.ts`、`pages/ProjectWorkbenchPage.vue`、`features/canvas/animation/*`、`features/canvas/stageActions.ts`、`features/settings/settingsView.ts` 及相关 spec。
 - **要点**：类型保留 `'manim'`/`'explainer_manim'` 以显示老项目（标签"知识讲解（Manim，已下线）"）；创建默认 `explainer_html`；`stage === 'animation'` 显示下线提示，不再渲染 Manim 画布；去掉只服务 manim 的 `.py` 镜头路径逻辑。
@@ -86,10 +86,11 @@
 - 2026-10-09 — T2 — 删除 `stages/animation/`、`engines/render/manim/`、`engines/render/base.py`（只服务 manim）；worker 只走 HTML，老项目任务以"Manim 已下线"失败；渲染/定稿端点对老项目 409；镜头检查只认 HTML 工具；默认模型设置读时丢弃 `animation` 键。测试夹具迁到 `animation_html`，`make check` 绿
 
 - 2026-10-09 — T3 — 删 `manim`、`pyflakes`，`uv lock` 连带移除 25 个包（av、pycairo、manimpango、moderngl、pyglet、skia-pathops、pydub 等）；确认 `studio` 不直接 import 其中任何一个；`make check` 绿，`pytest -m slow` 66 passed
+- 2026-10-09 — T4 — 删除 `AnimationCanvas.vue`；新建对话框只剩 HTML 讲解/短片/MV，默认 HTML 讲解；老项目动画阶段显示下线提示；镜头脚本路径固定 `.js`；设置页默认模型去掉 `animation`。另补后端：老项目 `animation` 阶段新建会话、发消息返回 409。`make check` 绿，浏览器实测见验证记录
 
 ## 下一步
 
-- 从 T4 开始：前端。`frontend/src/types/api.ts`、`composables/videoKindChoice.ts`、`features/ideas/CreateProjectDialog.vue`（默认 `explainer_html`）、`test/videoKindsFixture.ts`、`pages/ProjectWorkbenchPage.vue`（`stage === 'animation'` 改为下线提示）、`features/settings/settingsView.ts`。
+- 从 T5 开始：写 ADR `docs/decisions/0027-下线Manim引擎.md`，更新 ARCHITECTURE、README、dev-setup、verification、QUALITY、tech-debt、TODO、references（README、manim.md）、`plans/todo/windows-native.md`；然后自验证、评审。
 
 ## 决策记录
 
@@ -103,7 +104,8 @@
 
 ## 意外与发现
 
-- 无
+- 2026-10-09 — 浏览器实测发现：老项目 `animation` 会话发消息时 `TurnRunner.start_turn` 的 `registry.get` 抛 KeyError → 500。已在 `api/sessions.py` 对该阶段的新建会话、发消息、继续返回 409（`test_sessions.py::TestRetiredManimStage`）。
+- 2026-10-09 — 验证时 `make dev` 的 uvicorn 热重载卡住：旧进程等浏览器里的 SSE 长连接关闭才退出，期间 8000 端口不响应；离开项目页后恢复。和本计划无关的既有现象，记一笔供参考。
 
 ## 阻塞
 
