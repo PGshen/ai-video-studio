@@ -1,10 +1,10 @@
 """`suggest_upstream_change` 工具（设计 §5.3/§5.4；计划 M5 T9，决策 D4）：向上游阶段提出回退建议。
 
 `Engine` 通过 `ToolContext.engine`（TD-32）传入 handler，不再需要工厂函数把它闭包进
-`ToolSpec.handler`——和 `validate_scenes`/`render_preview` 一样，`SUGGEST_UPSTREAM_CHANGE_TOOL`
-是模块加载时就能建好的常量，`AnimationStage.tools()` 和 `NarrativeStage.tools()` 直接放进列表即可。
+`ToolSpec.handler`——`SUGGEST_UPSTREAM_CHANGE_TOOL` 是模块加载时就能建好的常量，各阶段的
+`tools()` 直接放进列表即可。
 
-M5 T9：只允许向**直接上游**提（动画 → 叙事，叙事 → 选题；`ToolContext.upstream_stages`），
+M5 T9：只允许向**直接上游**提（例如动画 → 叙事，叙事 → 选题；`ToolContext.upstream_stages`），
 理由是直接上游的产物就是本阶段的输入，建议才有明确的处理对象；内容去空白后不能为空、
 不超过 `MAX_CONTENT_CHARS`；记录产生它的 `turn_id`。成功后 TurnRunner 会给会话发一条
 `suggestion` 事件（`agent/turn_events.py`）。

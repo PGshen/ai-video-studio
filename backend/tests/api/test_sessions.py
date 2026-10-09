@@ -848,3 +848,46 @@ class TestRetiredManimStage:
 
         assert response.status_code == 409
         assert "Manim 动画已下线" in assert_detail(response)
+
+    async def test_continue_is_409(self, api_env: ApiEnv) -> None:
+        pid = self._legacy(api_env)
+        engine = api_env.app.state.engine
+        session = create_session(
+            engine,
+            project_id=pid,
+            stage="animation",
+            model_profile_id=_fake_profile_id(api_env),
+            runtime="fake",
+        )
+        turn = create_turn_if_session_idle(engine, session.id, "写镜头")
+        assert turn is not None
+        finish_turn(
+            engine,
+            turn.id,
+            status="interrupted",
+            end_snapshot_id=None,
+            usage=None,
+            cost_usd=None,
+            error="进程重启",
+            resume_ref=None,
+        )
+
+        response = await api_env.client.post(f"/api/sessions/{session.id}/continue")
+
+        assert response.status_code == 409
+        assert "Manim 动画已下线" in assert_detail(response)
+
+    async def test_stage_reopen_and_file_writes_are_409(self, api_env: ApiEnv) -> None:
+        pid = self._legacy(api_env)
+
+        reopen = await api_env.client.post(f"/api/projects/{pid}/stages/animation/reopen")
+        write = await api_env.client.put(
+            f"/api/projects/{pid}/files/animation/scenes/s-hook.py",
+            params={"stage": "animation"},
+            json={"content": "x"},
+        )
+
+        assert reopen.status_code == 409
+        assert "Manim 动画已下线" in assert_detail(reopen)
+        assert write.status_code == 409
+        assert "Manim 动画已下线" in assert_detail(write)

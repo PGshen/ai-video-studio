@@ -1,7 +1,7 @@
 """`stages.common.suggest_upstream_change`（设计 §5.3/§5.4；计划 T6；TD-32）。
 
 `Engine` 通过 `ToolContext.engine`（TD-32）传入 handler，`suggest_upstream_change`
-因此和 `validate_scenes`/`render_preview` 一样是模块级 `ToolSpec` 常量
+因此是模块级 `ToolSpec` 常量
 （`SUGGEST_UPSTREAM_CHANGE_TOOL`），不再需要工厂函数或阶段实例化时单独注入。
 """
 

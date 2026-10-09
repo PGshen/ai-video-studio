@@ -36,7 +36,7 @@ from studio.agent.stage_flow import (
     project_pipeline,
     reopen,
 )
-from studio.api.animation_stage import animation_stage
+from studio.api.animation_stage import MANIM_RETIRED_DETAIL, RETIRED_MANIM_STAGE, animation_stage
 from studio.api.deps import get_blobs, get_engine, get_registry, get_settings, get_turn_runner
 from studio.api.schemas import (
     ProjectCreate,
@@ -380,6 +380,8 @@ async def delete_project_endpoint(
 
 
 def _require_stage_definition(stage: str, registry: StageRegistry) -> StageDefinition:
+    if stage == RETIRED_MANIM_STAGE:
+        raise HTTPException(status_code=409, detail=MANIM_RETIRED_DETAIL)
     try:
         return registry.get(stage)
     except KeyError as exc:

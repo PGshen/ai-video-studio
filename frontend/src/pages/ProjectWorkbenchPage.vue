@@ -49,6 +49,7 @@ import { useEnsureSession } from '@/components/session/useEnsureSession'
 import { projectScope } from '@/composables/sessionScope'
 import FileCanvas from '@/features/canvas/generic/FileCanvas.vue'
 import HtmlAnimationCanvas from '@/features/canvas/animation/HtmlAnimationCanvas.vue'
+import ManimRetiredNotice from '@/features/canvas/animation/ManimRetiredNotice.vue'
 import { STAGES_WITH_OWN_ACTIONS } from '@/features/canvas/stageActions'
 import ImportMusicCanvas from '@/features/canvas/music/ImportMusicCanvas.vue'
 import MusicCanvas from '@/features/canvas/music/MusicCanvas.vue'
@@ -241,13 +242,15 @@ const canvasBusy = computed(() =>
                     compact
                   />
                 </div>
-                <p
-                  v-if="stage === 'animation'"
-                  class="text-muted-foreground rounded border p-4 text-sm"
-                  data-testid="manim-retired"
-                >
-                  Manim 动画已下线：这个老项目的动画阶段不能再对话、预览或渲染成片；选题和叙事仍可在各自阶段查看。
-                </p>
+                <ManimRetiredNotice v-if="stage === 'animation'">
+                  <template #actions>
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </ManimRetiredNotice>
                 <HtmlAnimationCanvas
                   v-else-if="stage === 'animation_html' || stage === 'produce'"
                   :project-id="projectId"

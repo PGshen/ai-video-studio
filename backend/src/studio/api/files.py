@@ -31,6 +31,7 @@ from sqlalchemy import Engine
 
 from studio.agent.runner import TurnRunner
 from studio.agent.stage import StageRegistry
+from studio.api.animation_stage import MANIM_RETIRED_DETAIL, RETIRED_MANIM_STAGE
 from studio.api.deps import get_engine, get_registry, get_settings, get_turn_runner
 from studio.api.schemas import FileEntry, FileTreeOut, FileWriteRequest, FileWriteResult
 from studio.config import Settings
@@ -118,6 +119,8 @@ async def write_file_endpoint(
     turn_runner: TurnRunner = Depends(get_turn_runner),
 ) -> FileWriteResult:
     _require_project(engine, project_id)
+    if stage == RETIRED_MANIM_STAGE:
+        raise HTTPException(status_code=409, detail=MANIM_RETIRED_DETAIL)
     try:
         stage_definition = registry.get(stage)
     except KeyError as exc:

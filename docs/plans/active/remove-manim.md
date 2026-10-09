@@ -88,13 +88,16 @@
 - 2026-10-09 — T3 — 删 `manim`、`pyflakes`，`uv lock` 连带移除 25 个包（av、pycairo、manimpango、moderngl、pyglet、skia-pathops、pydub 等）；确认 `studio` 不直接 import 其中任何一个；`make check` 绿，`pytest -m slow` 66 passed
 - 2026-10-09 — T4 — 删除 `AnimationCanvas.vue`；新建对话框只剩 HTML 讲解/短片/MV，默认 HTML 讲解；老项目动画阶段显示下线提示；镜头脚本路径固定 `.js`；设置页默认模型去掉 `animation`。另补后端：老项目 `animation` 阶段新建会话、发消息返回 409。`make check` 绿，浏览器实测见验证记录
 - 2026-10-09 — T5 — ADR 0027；ARCHITECTURE、README、dev-setup、verification、QUALITY、references 更新；windows-native 计划去掉 manim/MiKTeX，讲解类验收改用 HTML。`make check` 绿
+- 2026-10-09 — 评审（独立 subagent，无 Critical）处理：I1 补多会话合并、新通过覆盖旧失败、失败预览三条 HTML 镜头检查测试；M1 老项目 `animation` 阶段的定稿/重开、手动写文件也返回 409；M2 补「继续」409 测试；M3 下线提示改成 `ManimRetiredNotice.vue`（带快照栏开关，有挂载测试）；M4 修过期的文档数字与注释。M3 中"在该阶段禁用输入框"未做（见决策记录）
 
 ## 下一步
 
-- 自验证（填「验证记录」），然后请评审者（新 subagent）评审整条分支，处理评审意见后请负责人验收。
+- 等负责人验收；验收后按 SOP §7 收尾（计划移到 `completed/`、TODO 已完成列表加一行）。
 
 ## 决策记录
 
+- 2026-10-09 — 评审 M3：老项目动画阶段的对话输入框不额外禁用 — 后端对发消息/新会话统一返回 409，输入框上方会显示「Manim 动画已下线…」；给 `SessionPanel` 加只读开关属于计划外的接口改动，只有两个老项目，不值得。
+- 2026-10-09 — 评审 M5：老项目的选题、叙事（以及配乐）阶段仍可对话和定稿，只读只落实到动画阶段 — 符合计划「选题和叙事能看能用」；如负责人要求整个项目只读，另开改动。
 - 2026-10-09 — 一并删除 `engines/render/base.py`（`RenderEngine` 协议等）— 只有 manim 引擎和 worker 的 manim 分支在用，HTML 引擎不依赖它。
 - 2026-10-09 — 渲染（`POST /render`）和成片定稿对老 manim 项目返回 409，worker 也兜底失败 — 阶段已不注册，提前给可读原因，避免任务排进队列后才失败。
 - 2026-10-09 — `stage_default_profile` 去掉 `animation` 后，库里已存的该键读时丢弃而不是迁移 — 不需要数据迁移，写入时照常校验。

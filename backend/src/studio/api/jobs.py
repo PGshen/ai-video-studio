@@ -1,7 +1,7 @@
 """`/api/projects/{id}/render`、`.../jobs/{job_id}`、`.../jobs/latest`、
 `.../output/final.mp4`（任务简报 T10；`.../jobs/latest` 是 TD-34 补的）。
 
-- **创建渲染任务**：只检查动画阶段状态不是 `locked`，不重复跑 `validate_scenes`
+- **创建渲染任务**：只检查动画阶段状态不是 `locked`，不重复跑 `validate_scenes_html`
   的校验逻辑（决策记录 D4：避免和 agent 工具的校验产生两份实现，未校验直接
   渲染的后果由 worker 渲染失败时的错误信息兜底）。`payload` 目前不需要放
   任何内容——worker 只靠 `JobValue.project_id` 定位项目（决策记录 D21），
