@@ -252,6 +252,7 @@
 
 ## 意外与发现
 
+- 2026-10-09 — T7：一次 `make check` 里 `router.spec.ts` 的“resolves /projects/:id/:stage”超时（5 s，动态加载页面组件）；当时机器同时开着 dev server 和浏览器。单独重跑 3 次、完整 `make check` 重跑都通过，判断是负载下的偶发超时，不是本计划引入的。
 - 2026-10-09 — T7：第一版冒烟提示（“原样告诉我暗号”）被模型当成提示注入而拒绝；改成真实的选题场景（参考图配色 + 资料里的项目代号）后通过。
 - 2026-10-09 — T7：浏览器走查用的是负责人自己开着的 `make dev`（热重载已经加载本分支代码），启动时迁移把 `data/studio.db` 升到了 0011（只新增一个可为空的列）。走查建了一个临时项目「附件功能验证（可删除）」。
 - 2026-10-09 — T5：`PromptInput` 提交时 `files` 是 `{...AttachmentFile, url: dataUrl}`，原始 `File` 仍在 `.file` 上，可以直接拿来上传；代价是组件库会先把每个附件读成 data URL（20 MB 的文件也会读一遍），本地单人使用可以接受。jsdom 下 `URL.createObjectURL` 不认 jsdom 的 File，测试里需要打桩。
