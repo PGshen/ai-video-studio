@@ -34,6 +34,20 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError(problem)
 
 
+@pytest.fixture
+def symlinks_supported(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Skip when this machine cannot create symlinks (Windows without Developer Mode).
+
+    Symlink tests guard the workspace against escapes, so a skip here should be rare:
+    turn on Developer Mode rather than accept it (windows-native plan, AC2).
+    """
+    probe = tmp_path_factory.mktemp("symlink-probe")
+    try:
+        (probe / "link").symlink_to(probe / "missing")
+    except OSError as exc:
+        pytest.skip(f"本机不能创建符号链接（Windows 请打开开发者模式）：{exc}")
+
+
 @pytest.fixture(autouse=True)
 def _clear_settings_cache() -> Iterator[None]:
     """每个测试前后清空 get_settings() 的缓存，避免用例间互相污染。"""

@@ -23,6 +23,7 @@ from studio.api.attachments import (
     sniff_image,
 )
 from studio.workspace import BlobStore
+from studio.workspace.files import check_model_path
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"png-body"
 JPEG = b"\xff\xd8\xff" + b"jpeg-body"
@@ -89,6 +90,24 @@ class TestSafeName:
     )
     def test_keeps_only_a_harmless_basename(self, raw: str, expected: str) -> None:
         assert safe_name(raw) == expected
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("a:b.png", "a_b.png"),
+            ('q"u<o>t|e?s*.txt', "q_u_o_t_e_s_.txt"),
+            ("notes.", "notes"),
+            ("notes. . ", "notes"),
+            ("CON.txt", "CON.txt"),
+        ],
+    )
+    def test_windows_unsafe_characters_are_replaced(self, raw: str, expected: str) -> None:
+        assert safe_name(raw) == expected
+
+    @pytest.mark.parametrize("raw", ["a:b.png", "x.", "CON", "aux.md", 'a"b', "...", "  "])
+    def test_upload_paths_pass_the_model_path_check(self, raw: str) -> None:
+        """The agent refers to uploads by path, so the name must pass design §5's rules."""
+        check_model_path(f"uploads/1a2b3c4d-{safe_name(raw)}")
 
     def test_truncates_long_names_to_100_chars_keeping_suffix(self) -> None:
         name = safe_name("x" * 300 + ".pdf")

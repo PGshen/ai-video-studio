@@ -35,7 +35,9 @@ MAX_FILES = 10
 MAX_NAME_CHARS = 100
 
 _PDF_AND_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"}
-_UNSAFE_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+# Control characters, plus what Windows forbids in names (`:` would also be an NTFS stream);
+# the agent refers to uploads by path, which must pass `check_model_path` (design §5).
+_UNSAFE_CHARS = re.compile(r'[\x00-\x1f\x7f<>:"|?*]')
 
 
 class AttachmentError(ValueError):
@@ -100,17 +102,18 @@ def sniff_image(data: bytes) -> str | None:
 
 
 def safe_name(name: str) -> str:
-    """只留文件名本身：去掉目录、控制字符和开头的 `.`，截到 100 个字符（保留后缀）。"""
+    """只留文件名本身：去掉目录、控制字符和 Windows 不允许的字符、开头的 `.` 和结尾的
+    `.`/空格（Windows 会悄悄去掉），截到 100 个字符（保留后缀）。"""
     base = re.split(r"[/\\]", name)[-1]
-    base = _UNSAFE_CHARS.sub("_", base).strip()
-    if base in ("", ".", ".."):
+    base = _UNSAFE_CHARS.sub("_", base).strip().rstrip(". ")
+    if not base:
         return "file"
     if base.startswith("."):
         base = "_" + base[1:]
     if len(base) > MAX_NAME_CHARS:
         stem, suffix = os.path.splitext(base)
         suffix = suffix[:20]
-        base = stem[: MAX_NAME_CHARS - len(suffix)] + suffix
+        base = (stem[: MAX_NAME_CHARS - len(suffix)] + suffix).rstrip(". ")
     return base
 
 

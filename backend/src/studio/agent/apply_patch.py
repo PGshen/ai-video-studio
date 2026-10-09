@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from agents import ApplyPatchOperation, ApplyPatchResult, apply_diff
 
@@ -23,12 +23,12 @@ def to_workspace_relpath(workdir: Path, raw: str) -> str:
 
     不安全（越出工作区、含 `..`、空）时抛出 `ScopeError`。
     """
-    if not PurePosixPath(raw).is_absolute():
+    if not Path(raw).is_absolute():
         return files.normalize_relpath(raw)
-    try:
-        return Path(raw).resolve().relative_to(workdir.resolve()).as_posix()
-    except ValueError as exc:
-        raise ScopeError(f"{raw} 在项目工作区之外") from exc
+    relpath = files.relpath_within(workdir, raw)
+    if not relpath:
+        raise ScopeError(f"{raw} 是工作区本身，不是文件")
+    return relpath
 
 
 class WorkspaceApplyPatchEditor:

@@ -6,7 +6,7 @@ import asyncio
 import dataclasses
 import json
 from collections.abc import AsyncIterable, AsyncIterator, Callable
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 import pytest
@@ -796,6 +796,55 @@ class TestWriteScopeHook:
         assert specific["hookEventName"] == "PreToolUse"
         assert specific["permissionDecision"] == "deny"
         assert specific["permissionDecisionReason"]
+
+
+_WINDOWS_STYLE_TARGETS = [
+    "topic\\brief.md",
+    "topic\\..\\..\\x",
+    "c:topic/brief.md",
+    str(PureWindowsPath("C:/Windows/win.ini")),
+    "C:/Windows/win.ini",
+    "\\\\?\\C:\\Windows\\win.ini",
+    "\\\\server\\share\\x",
+    "topic/brief.md:stream",
+    "topic/CON.md",
+    "topic/aux",
+    "topic/brief.md.",
+    "topic./brief.md",
+]
+
+
+class TestWindowsStylePathsInHooks:
+    """Design §5: the same rejection rules on both platforms, for read and write hooks."""
+
+    _decide = TestWriteScopeHook._decide
+
+    @pytest.mark.parametrize("raw", _WINDOWS_STYLE_TARGETS)
+    @pytest.mark.parametrize("tool_name", ["Write", "Read"])
+    async def test_denied(self, workdir: Path, data_dir: Path, tool_name: str, raw: str) -> None:
+        output = await self._decide(workdir, data_dir, tool_name, {"file_path": raw})
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    @pytest.mark.parametrize(
+        "tool_input",
+        [
+            {"pattern": "topic\\*.md"},
+            {"pattern": "C:/**/*.ini"},
+            {"pattern": "c:*"},
+            {"pattern": "**/*.md:$DATA"},
+            {"pattern": "*", "path": "C:\\Windows"},
+            {"pattern": "*", "path": "topic\\.."},
+        ],
+    )
+    async def test_glob_denied(
+        self, workdir: Path, data_dir: Path, tool_input: dict[str, Any]
+    ) -> None:
+        output = await self._decide(workdir, data_dir, "Glob", tool_input)
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    async def test_grep_glob_with_backslash_denied(self, workdir: Path, data_dir: Path) -> None:
+        output = await self._decide(workdir, data_dir, "Grep", {"pattern": "K", "glob": "..\\**"})
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 class TestWebHooks:

@@ -90,7 +90,7 @@
 - **完成标准**：质量关口满足 D1，`ruff check` 报告里有这条规则。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`（对照基线，见全局约束 D1）。
 
-### T3：统一的模型路径校验（待开始，机器：Windows，按基线对比）
+### T3：统一的模型路径校验（完成，机器：Windows，按基线对比）
 
 - **目标**：设计 §5——不管在哪个平台，盘符、反斜杠、UNC、保留名之类的路径都在第一道检查就被拒绝。
 - **涉及文件**：`backend/src/studio/workspace/files.py`（新增 `check_model_path`，`normalize_relpath` 和 `safe_path` 改成调用它）、`backend/src/studio/agent/apply_patch.py`（`to_workspace_relpath`）、`backend/src/studio/agent/claude_scope.py`（读写 hook、Glob 模式检查）、`backend/src/studio/agent/fallback_tools.py`（如果它有自己的路径判断，同样接入）；测试 `backend/tests/workspace/test_model_path.py`，以及 `test_files.py`、`test_apply_patch.py`、`test_claude_runtime.py` 里相关的用例。
@@ -223,16 +223,18 @@
 - 2026-10-09 — 开工准备：分支、计划移入 active、工作区刷成 LF、装依赖、记录 Windows 基线（见「意外与发现」）
 - 2026-10-09 — T1 完成：`scripts/tasks.py`（除 `dev`）、Makefile 薄壳、`.gitattributes`、pre-commit 改调 `tasks.py check-fast`、ADR 0025。Windows 上 `tasks.py check` 能运行，按基线在 pyright 一步失败（8 个错误，和基线相同）；新增 `tests/scripts/test_tasks.py` 31 通过、1 跳过（与 bash 比较的用例，Windows 上另用 Git Bash 手动比过，一致）；pytest 其余部分不受影响（本任务没动 `backend/src`）。剩余失败数：pytest 113 失败 + 30 error + 1 挂住，pyright 8
 - 2026-10-09 — T2 完成：ruff 启用 `PLW1514`（预览规则，`explicit-preview-rules`），`scripts/` 纳入 ruff 检查，补一个 AST 测试覆盖 ruff 认不出的 `x.read_text()`；`tasks.py` 的所有步骤以 UTF-8 模式运行，Windows 上没开 UTF-8 模式时 pytest 直接报错提示。和基线比没有新增失败，12 个用例函数转为通过。剩余失败数：pytest 101 失败 + 30 error + 1 挂住，pyright 8
+- 2026-10-09 — T3 完成：`workspace.files.check_model_path`、`relpath_within`；`normalize_relpath`、`safe_path`、`apply_patch.to_workspace_relpath`、Claude 读写 hook（含 Glob 模式）改为共用它们；附件文件名去掉 Windows 不允许的字符和结尾的 `.`/空格。新增约 140 个用例（`tests/workspace/test_model_path.py`、hook 和 apply_patch 的 Windows 写法），已有的路径测试没有修改。和基线比没有新增失败，`apply_patch` 的 3 个基线失败转为通过。剩余失败数：pytest 98 失败 + 30 error + 1 挂住，pyright 8
 
 ## 下一步
 
-T1、T2 已完成（见「进度」），Windows 基线见「意外与发现」。接下来做 **T3：统一的模型路径校验**：
+T1–T3 已完成（见「进度」），Windows 基线见「意外与发现」。接下来做 **T4：跨平台进程管理 `studio/proc.py`**——这是基线里失败最多的一类（`/bin/sh`、`os.killpg`、挂住的取消测试）：
 
-1. 计划里 T3 状态改为「进行中」；先读 `workspace/files.py`（`normalize_relpath`、`safe_path`）、`agent/apply_patch.py`（`to_workspace_relpath`）、`agent/claude_scope.py`（读写 hook、Glob 检查）、`agent/fallback_tools.py`，以及设计 §5 的拒绝清单。
-2. 先写 `backend/tests/workspace/test_model_path.py`：参数化覆盖设计 §5 和审查重点 1 的所有写法（断言 `ScopeError`），加一组现有合法写法（断言通过）；hook 测试用 `PureWindowsPath` 构造 Windows 绝对路径。基线里 `test_apply_patch.py::TestCreate::test_absolute_path_inside_workdir_is_accepted`、`TestNormalisedPaths::test_to_workspace_relpath`、`test_openai_runtime.py::TestReviewFixes::test_apply_patch_args_are_normalised_with_move_to` 应在 T3 后转为通过。
-3. 实现 `check_model_path` 和共用的 `relpath_within`，各入口改为调用它们。
-4. 基线对比（**测试必须在 UTF-8 模式下跑**，T2 起 conftest 会拒绝非 UTF-8 模式）：PowerShell 里 `$env:PYTHONUTF8=1; cd backend; uv run pytest -p no:cacheprovider -q -rfE --deselect tests/engines/test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file > ..\.dev\t3-pytest.txt`，再和 `.dev/base-ids.txt`（基线失败的用例函数列表）比较；`tasks.py check` 在 T4 修好 pyright 之前会停在 pyright 一步。
-5. commit 并 push（分支已跟踪 `origin/windows-native`）。
+1. 计划里 T4 状态改为「进行中」；先读 `engines/audio/runner.py`（`limited_argv`、`kill_group`、`run_compose`）、`engines/audio/song_job.py`、`engines/audio/song.py`、`engines/audio/probe.py`、`engines/render/html/video.py`、`engines/render/mix.py`、`agent/shell.py`，以及设计 §6。
+2. 先写 `backend/tests/test_proc.py`（`spawn_kwargs`、`kill_tree` 两个分支、`child_env`），再把 `test_audio_runner.py`、`test_shell.py` 等对 `killpg` 的 mock 改为针对 `kill_tree`；`tests/engines/test_html_video.py` 里 `#!/bin/sh` 写的假 ffmpeg 改用 Python 写（或者按 T8 规则标记，二选一写进决策记录）。
+3. 先查清 `test_html_video.py::test_cancellation_stops_ffmpeg_and_removes_the_temp_file` 在 Windows 上挂住的原因（取消后 `proc.kill()` 只杀顶层、管道没关、还是 `wait()` 卡住），修好后去掉对比命令里的 `--deselect`。
+4. `tasks.py` 里的 `utf8_env` 注释已指向 `studio.proc.child_env`，`child_env` 的注释要反过来指向它。
+5. 完成标准：`grep -rn "killpg\|start_new_session" backend/src` 只剩 `proc.py`；pyright 在 `src` 里的 4 个错误消失（tests 里的 4 个由 T4 改 mock 或 T8 处理）；基线对比同 T3（`$env:PYTHONUTF8=1`，结果存 `.dev/t4-pytest.txt`，和 `.dev/base-ids.txt` 比较）。
+6. commit 并 push。
 
 ## 决策记录
 
@@ -254,6 +256,11 @@ T1、T2 已完成（见「进度」），Windows 基线见「意外与发现」�
 - 2026-10-09 — T2：`PLW1514` 在 ruff 0.16.9 里还是**预览规则**，只写进 `select` 不生效。做法：`[tool.ruff.lint]` 加 `preview = true` 和 `explicit-preview-rules = true`，只有点名的预览规则生效；打开后除了 `PLW1514` 没有新增任何报错。预览模式下 `--output-format concise` 输出的是规则名（`unspecified-encoding`）而不是代码，测试按规则名断言。
 - 2026-10-09 — T2：`scripts/` 的 lint 选了"加一份配置"：`scripts/ruff.toml` 只写 `extend = "../backend/pyproject.toml"`，`tasks.py` 的 `check-backend` 对 `. ../scripts` 跑 `ruff check` 和 `ruff format --check`，`check-fast` 跑 `ruff check`。这样 scripts 和后端完全同一套规则（顺手修了 `check_docs.py` 一处超长行的格式）。
 - 2026-10-09 — T2：`PLW1514` 只认得出能推断为 `Path` 的值，`(workdir / "x").read_text()`、`Path` 参数上的调用都漏掉（`src` 里没有漏网的，`tests` 里约 220 处）。补救分两部分：① `tests/test_lint_rules.py` 用 AST 检查 `src`、`scripts` 里所有 `.read_text()`（无位置参数）和 `.write_text(x)`（一个位置参数）都带 `encoding`；② 测试代码不逐处改，改为要求测试在 UTF-8 模式下运行：`tasks.py` 给它启动的所有进程加 `PYTHONUTF8=1`、`PYTHONIOENCODING=utf-8`（设计 §7，`utf8_env`，T4 的 `studio.proc.child_env` 要在注释里互相指向），`tests/conftest.py` 在 Windows 上发现没有 UTF-8 模式时以 `UsageError` 退出并给出命令。理由：测试的职责是验证产品代码，产品代码的编码已经由 lint 保证；逐处改 220 处测试收益小、噪声大。代价：Windows 上直接 `uv run pytest` 要先设 `PYTHONUTF8=1`。
+- 2026-10-09 — T3：`check_model_path` 严格按设计 §5 的清单，另外两处补充：拒绝 NUL 字符（`Path` 操作遇到它会抛 `ValueError` 而不是 `ScopeError`）；保留设备名除了 `CON/PRN/AUX/NUL/COM0–9/LPT0–9`，还有 `CONIN$`、`CONOUT$` 和上标数字的 `COM¹` 等（Windows 文档列出的完整集合）。`console.md`、`COM10.txt` 这类只是前缀相同的名字不受影响。没有拒绝 `<>"|?*`：它们不改变路径指向哪里，Windows 上写入时会直接报 `OSError`。
+- 2026-10-09 — T3：`relpath_within(workdir, raw) -> str` 同时处理相对路径（先过 `check_model_path`，`.` 表示工作区本身，返回 `""`）和绝对路径（当前平台的 `Path.is_absolute()`）。解析符号链接和 `..` 之后用 `os.path.normcase` 比较前缀，得到的相对路径再过一次 `check_model_path`（拦下 `C:\ws\CON.txt` 这类绝对写法）。所以 Windows 上 `/etc/passwd` 不算绝对路径，按相对路径被拒；macOS 上 `C:\x` 同理。`apply_patch` 给出工作区本身（`""`）时按错误处理。
+- 2026-10-09 — T3：Glob 模式不是路径（含 `*`、`{a,b}`），不整体套 `check_model_path`；在原有检查（`/`、`~`、`..`、首尾空白）上加拒绝 `\` 和 `:`，抽成 `claude_scope._bad_glob`。
+- 2026-10-09 — T3：**和现有行为的冲突**（设计 §5 要求发现冲突时记录）：对话附件的文件名（ADR 0026，`uploads/<前缀>-<原名>`）原来只去掉控制字符，原名里的 `:` 或结尾的 `.` 会让 agent 之后按路径读它时被新规则拒绝。改为在 `api.attachments.safe_name` 里把 `<>:"|?*` 换成 `_`、去掉结尾的 `.` 和空格；加了一条测试保证 `safe_name` 的结果总能通过 `check_model_path`。已有上传的文件不迁移（本机数据里没有这类文件名）。
+- 2026-10-09 — T3：`symlinks_supported` fixture 提前在 T3 加进 `conftest.py`（T3 的符号链接用例要用）；`test_windows_compares_case_insensitively` 暂时用 `os.name` 的 `skipif`，T8 统一换成 conftest 的标记。
 
 ## 意外与发现
 
