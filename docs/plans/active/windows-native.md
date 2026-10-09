@@ -158,7 +158,7 @@
 - **完成标准**：Windows 上 `tasks.py dev` 能启动，Ctrl+C 后 `tasklist` 里没有本项目残留的进程；连续启动两次第二次能正常清理；质量关口满足 D1。macOS 上的 `make dev` 验证在 T12 做。
 - **验证命令**：`tasks.py check`；手动 `tasks.py dev` → Ctrl+C → `tasklist /FI "IMAGENAME eq python.exe"`、`tasklist /FI "IMAGENAME eq node.exe"`。
 
-### T8：测试的平台标记（待开始，机器：Windows，按基线对比）
+### T8：测试的平台标记（完成，机器：Windows，按基线对比）
 
 - **目标**：只适用于 POSIX 或 macOS 的测试在 Windows 上被有理由地跳过；需要符号链接的测试在没有权限时跳过并给出提示；其余测试在 Windows 上都应该能跑。
 - **涉及文件**：`backend/tests/conftest.py`（`posix_only`、`macos_only` 标记的注册和跳过逻辑，`symlinks_supported` fixture）、`backend/pyproject.toml`（`markers`）；设计 §3 P11 提到的约 28 个测试文件（用 `grep -rlE "killpg|sandbox-exec|/bin/sh|chmod|symlink_to|os\.symlink" backend/tests` 找出来）。
@@ -228,15 +228,16 @@
 - 2026-10-10 — T5 完成：`agent/exec_policy.py`（`exec_mode`、`claude_sandbox_available`、`host_exec_mode`）；开关 `STUDIO_ALLOW_UNSANDBOXED_EXEC` + 设置键 `allow_unsandboxed_exec`（`effective_allow_unsandboxed_exec`）；每轮开始读一次，经 `TurnContext`/`ToolContext` 传给 Claude（`disabled` 去掉 Bash、禁 Bash/PowerShell、不传 sandbox；`unsandboxed` 放行 Bash+PowerShell）、OpenAI Shell（`unsandboxed` 时交给 `/bin/sh` 或 Git Bash）和 `render_music`（`disabled` 的报错指向设置页）；`turns.usage.exec_mode` 记下本轮模式；ADR 0024、`.env.example`、ARCHITECTURE 同步。新增 54 个用例，Windows 上 `echo 中文` 经 Git Bash 实测无乱码。剩余失败数：pytest 6（同 T4），pyright 0
 - 2026-10-10 — T6 完成：`/api/settings` 返回并接受 `allow_unsandboxed_exec`（另有 `_source`、`_env`、`sandbox_available`、`exec_mode`），补丁用 `StrictBool`；设置 → 通用新增「命令执行」一节（只在没有沙箱时显示，带风险说明、来源文案、清除按钮）；回复操作栏对 `usage.exec_mode == "unsandboxed"` 的轮次显示「命令未隔离」。Windows 上用 Fake 运行时在内置浏览器里验证并截图（`data/evidence/windows-native/t6-*.jpg`，不入库），验证用的项目已删除、开关已恢复为环境变量。剩余失败数：pytest 6（同 T4），pyright 0；前端 lint、typecheck、vitest 全绿
 - 2026-10-10 — T7 完成：`tasks.py dev`（`Supervisor`、pid 文件 `.dev/pids.json`、`cleanup_stale`/`belongs_to_project`、`port_listeners`/`parse_netstat_listeners`），删除 `scripts/dev.sh`，Makefile 的 `dev` 改为一行；dev-setup、verification、AGENTS 同步。Windows 实测：启动两次、每次 `Ctrl+Break` 后约 10 个进程全部消失、pid 文件删除、第二次启动端口空闲；模拟 `dev` 自身崩溃（只杀 supervisor）后再启动，三个遗留服务被识别为本项目并清理。剩余失败数：pytest 6（同 T4），pyright 0
+- 2026-10-10 — T8 完成：`conftest.py` 的 `posix_only`/`macos_only`/`windows_only` 标记（必须写原因，否则 `UsageError`）和元测试；所有临时 `skipif` 换成标记；Seatbelt profile 的 3 个字符串用例标 `macos_only`、目录名带 `"` 的和 `chmod 0` 的标 `posix_only`；没有符号链接权限（`WinError 1314`）时由报告钩子转为带提示的跳过。Windows 上 `pytest -rs` 共 37 个跳过，逐条有理由（见「验证记录」）。剩余失败数：pytest 1（`TestPreambleAcrossTurns`，T9），pyright 0
 
 ## 下一步
 
-T1–T7 已完成（见「进度」）。接下来做 **T8：测试的平台标记**：
+T1–T8 已完成（见「进度」）。接下来做 **T9：Windows 首次跑通质量关口**：
 
-1. 计划里 T8 状态改为「进行中」；在 `backend/tests/conftest.py` 注册 `posix_only`、`macos_only` 标记（`pytest_configure` 里 `addinivalue_line` + `pytest_collection_modifyitems` 按 `sys.platform` 加 skip，跳过理由来自标记参数），`backend/pyproject.toml` 的 `markers` 同步；先写元测试（标记在 `win32` 上确实跳过，用 `pytester` 或直接调 hook）。
-2. 把已有的临时 `skipif` 换成标记，每处写明原因：`tests/workspace/test_model_path.py::test_windows_compares_case_insensitively`（Windows 专有，可能需要 `windows_only` 或保留 `skipif` 并写进决策记录）、`tests/engines/test_audio_runner.py::test_a_script_cannot_fill_the_disk`、`tests/scripts/test_tasks.py::test_parse_dotenv_matches_bash`、`tests/agent/test_shell.py` 和 `test_openai_runtime.py` 的 `darwin_only`、`test_audio_runner` 的 Seatbelt 用例等（`grep -rn "skipif" backend/tests`）。
-3. 修掉剩下 6 个失败里属于平台差异的 5 个：`test_shell_sandbox.py` 的 4 个 Seatbelt profile 用例（`macos_only`，或把路径断言改成平台无关——它们只拼字符串，也许能在 Windows 上跑通，先看能不能改测试而不是跳过）、`test_upstream.py::test_unreadable_file_counts_as_drift`（`chmod 000`，`posix_only`）。`test_runner.py::TestPreambleAcrossTurns::test_user_edit_snapshot_and_preamble_diff` 留给 T9。
-4. `cd backend; $env:PYTHONUTF8=1; uv run pytest -rs` 的跳过列表逐条有理由；`tasks.py check` 只剩 1 个失败（T9 处理）。
+1. 计划里 T9 状态改为「进行中」；查 `tests/agent/test_runner.py::TestPreambleAcrossTurns::test_user_edit_snapshot_and_preamble_diff` 在 Windows 上失败的原因（基线第 8 类"排序或时间相关"里唯一剩下的一个；`$env:PYTHONUTF8=1; cd backend; uv run pytest -p no:cacheprovider -q tests/agent/test_runner.py -k PreambleAcrossTurns`），先确认是代码问题还是平台差异，修好。
+2. 跑 `uv run --project backend python scripts/tasks.py check` 直到全绿（会第一次跑到前端三步）。
+3. `cd backend; uv run pytest -m slow` 在 Windows 上跑一遍（真实 Chromium/ffmpeg：HTML 成片、混音、配乐 Seatbelt 用例会被 `macos_only` 跳过），失败的修掉或登记；顺带确认 P13（uvicorn reload 下的真实子进程）。
+4. `docs/runbooks/dev-setup.md` 新增 Windows 一节，写成实测过的版本（设计 §9.3 的表去掉 LaTeX；本机的实际情况见决策记录 2026-10-09「开工时的环境调整」和「意外与发现」：开发者模式用 Python 验证、PowerShell 里跑、`core.autocrlf false`、npm 镜像 404 的处理、终端面板集成）；`docs/references/` 补 Windows 实测结论（例如新建 `references/windows.md`，注明 2026-10-10、Windows 11 实测）。
 5. commit 并 push。
 
 ## 决策记录
@@ -282,6 +283,9 @@ T1–T7 已完成（见「进度」）。接下来做 **T8：测试的平台标�
 - 2026-10-10 — T7：`dev` 在 Windows 上也处理 `SIGBREAK`（Ctrl+Break、关闭控制台窗口都会发它），和 Ctrl+C 一样收尾；信号处理在清理旧进程之前就装好。子进程放在新的进程组里，控制台的 Ctrl+C 只发给 `dev` 自己，由它负责结束三棵进程树。`dev` 自身的 stdout 改为行缓冲，输出被重定向时也能及时看到进度。
 - 2026-10-10 — T7：实测发现**输出转发线程会因为编码错误而退出**：`dev` 的 stdout 是 GBK（重定向到文件，或代码页是 936 的控制台）时，Vite 打印的 `➜` 抛 `UnicodeEncodeError`，线程退出后管道不再有人读，子进程写满管道就会卡住。改为遇到编码错误时用当前编码的 `replace` 写出，线程不退出；加了测试。
 - 2026-10-10 — T7：自动化实测用脚本代替终端里的 Ctrl+C：本机终端面板的 shell 集成加载失败（PowerShell 配置文件里的 `claude-desktop.ps1` 路径不存在），`run_in_terminal` 用不了；改为在新进程组里启动 `tasks.py dev`，再发 `CTRL_BREAK_EVENT`。真正的 Ctrl+C 在 T11 走完整流程时由负责人在终端里确认一次。
+- 2026-10-10 — T8：标记在计划的 `posix_only`、`macos_only` 之外加了 `windows_only`（`test_windows_compares_case_insensitively` 只在 NTFS 上成立）。三个标记都要求写原因：`@pytest.mark.posix_only("...")`，没写就在收集阶段报 `UsageError`，把"每处写明原因"变成机器检查。
+- 2026-10-10 — T8：Seatbelt profile 的用例里，只有 3 个按 POSIX 路径拼字符串断言、1 个要建名字带 `"` 的目录，标了平台标记；同一个类里其余能在 Windows 上跑的用例照常运行。`test_shell_sandbox.py`、`test_shell.py` 里真正执行 `sandbox-exec` 的用例原来就是 macOS 专用，换成 `macos_only` 后理由不变。
+- 2026-10-10 — T8：需要符号链接的用例约 25 个文件，没有逐个加 fixture，而是在 `conftest.py` 的 `pytest_runtest_makereport` 里把 `WinError 1314`（没有创建符号链接的特权）转成带提示的跳过；只认这一个错误码，其他 `OSError` 照常失败。本机开了开发者模式，这些用例全部执行（AC2）。`symlinks_supported` fixture 保留给需要提前判断的用例。
 
 ## 意外与发现
 
@@ -319,4 +323,4 @@ T1–T7 已完成（见「进度」）。接下来做 **T8：测试的平台标�
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 无
+- 2026-10-10 — Windows 11 上 `cd backend; $env:PYTHONUTF8=1; uv run pytest -rs` 的跳过列表（37 个，开发者模式已开，没有因符号链接权限跳过的）：`macos_only`——`test_shell_sandbox.py` 中真实执行 sandbox-exec 的 16 个和 Seatbelt profile 字符串断言 3 个、`test_shell.py` 10 个、`test_openai_runtime.py` 4 个（均为 sandbox-exec，Windows 上的无隔离 Shell 由 `test_shell_unsandboxed.py` 覆盖）；`posix_only`——目录名带 `"`（1）、`ulimit` 写满磁盘（1，Windows 的事后大小检查另有用例）、与 bash 比较 `.env` 解析（1）、`chmod 0` 不可读（1）。

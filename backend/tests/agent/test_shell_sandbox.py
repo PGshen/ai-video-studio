@@ -43,9 +43,9 @@ _OPENAI = ModelProfileValue(
     max_steps_per_turn=None,
 )
 
-darwin_only = pytest.mark.skipif(
-    sys.platform != "darwin",
-    reason="sandbox-exec 只存在于 macOS（计划 M1x T9 写明的 skipif 理由）",
+darwin_only = pytest.mark.macos_only("sandbox-exec 只存在于 macOS（计划 M1x T9）")
+seatbelt_profile_text = pytest.mark.macos_only(
+    "Seatbelt profile 只在 macOS 上生成和使用；断言按 POSIX 路径写，Windows 路径里的反斜杠会被转义"
 )
 
 
@@ -58,6 +58,7 @@ def _index(lines: list[str], prefix: str) -> int:
 
 
 class TestSeatbeltProfile:
+    @seatbelt_profile_text
     def test_policy_shape_and_order(self, tmp_path: Path) -> None:
         workdir = tmp_path / "repo" / "data" / "projects" / "p1"
         workdir.mkdir(parents=True)
@@ -88,6 +89,7 @@ class TestSeatbeltProfile:
         ):
             assert literal in lines[allow_write]
 
+    @seatbelt_profile_text
     def test_paths_are_realpaths(self, tmp_path: Path) -> None:
         real = tmp_path / "real"
         real.mkdir()
@@ -106,6 +108,7 @@ class TestSeatbeltProfile:
         assert "(deny network*)" in lines
         assert "(deny file-write*)" in lines
 
+    @pytest.mark.posix_only('目录名里的 `"` 在 Windows 上不合法')
     def test_quotes_and_backslashes_are_escaped(self, tmp_path: Path) -> None:
         odd = tmp_path / 'we"ird\\dir'
         odd.mkdir()
@@ -304,6 +307,7 @@ class TestSandboxedExecution:
 
 
 class TestSeatbeltProfileExtraReads:
+    @seatbelt_profile_text
     def test_extra_read_paths_are_allowed_after_the_deny(self, tmp_path: Path) -> None:
         workdir = tmp_path / "repo" / "data" / "projects" / "p1"
         workdir.mkdir(parents=True)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
+import pytest
+
 from studio.workspace.blobs import BlobStore
 from studio.workspace.snapshot import Manifest
 from studio.workspace.upstream import (
@@ -166,6 +168,7 @@ class TestUpstreamDrift:
             "upstream/topic/link",
         ]
 
+    @pytest.mark.posix_only("chmod 0 只在 POSIX 上让文件不可读；Windows 只有只读属性，照样能读")
     def test_unreadable_file_counts_as_drift(self, blobs: BlobStore, workdir: Path) -> None:
         sha = blobs.put(b"# brief")
         sources: dict[str, Manifest | None] = {"topic": {"topic/brief.md": sha}}

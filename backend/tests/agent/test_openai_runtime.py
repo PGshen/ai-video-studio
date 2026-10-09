@@ -176,9 +176,9 @@ def _yes() -> bool:
     return True
 
 
-darwin_only = pytest.mark.skipif(
-    sys.platform != "darwin",
-    reason="Shell 经 sandbox-exec 执行，只存在于 macOS（计划 M1x T9 写明的 skipif 理由）",
+darwin_only = pytest.mark.macos_only(
+    "Shell 经 sandbox-exec 执行，只存在于 macOS（计划 M1x T9）；Windows 上的无隔离 Shell 见 "
+    "test_shell_unsandboxed.py"
 )
 
 

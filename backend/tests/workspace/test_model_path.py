@@ -6,7 +6,6 @@ can name a different file (or a device) on the other.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
@@ -138,7 +137,7 @@ def test_symlink_escaping_the_workspace_is_rejected(
         relpath_within(work, "link/secret.md")
 
 
-@pytest.mark.skipif(os.name != "nt", reason="NTFS 不区分大小写；POSIX 上大小写不同就是不同的路径")
+@pytest.mark.windows_only("NTFS 不区分大小写；POSIX 上大小写不同就是不同的路径")
 def test_windows_compares_case_insensitively(tmp_path: Path) -> None:
     (tmp_path / "topic").mkdir()
     upper = str(tmp_path).upper() + "\\topic\\a.md"

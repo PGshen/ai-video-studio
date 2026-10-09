@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
@@ -152,7 +151,7 @@ async def test_unavailable_timeline_is_reported(
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(sys.platform != "darwin", reason="Seatbelt only exists on macOS")
+@pytest.mark.macos_only("Seatbelt only exists on macOS")
 async def test_the_real_sandbox_runs_the_reference_script(reel: Path) -> None:
     from studio.agent.shell_sandbox import sandbox_available
 

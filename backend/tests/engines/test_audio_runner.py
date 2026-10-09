@@ -160,7 +160,7 @@ async def test_cancellation_kills_the_script(tmp_path: Path) -> None:
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(sys.platform != "darwin", reason="Seatbelt only exists on macOS")
+@pytest.mark.macos_only("Seatbelt only exists on macOS")
 async def test_real_seatbelt_allows_the_run_but_not_reading_secrets_or_the_network(
     tmp_path: Path,
 ) -> None:
@@ -237,7 +237,7 @@ async def test_an_oversized_events_file_is_refused(tmp_path: Path) -> None:
         await run_compose(script, timeline, out_dir, timeout=30, wrap_command=identity)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows 没有 ulimit，写入大小只在事后检查产物")
+@pytest.mark.posix_only("Windows 没有 ulimit；那里的大小限制见 test_an_oversized_wav_is_refused")
 async def test_a_script_cannot_fill_the_disk(tmp_path: Path) -> None:
     body = (
         "import os\n"

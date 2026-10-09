@@ -105,7 +105,7 @@ EMPTY=
 """
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="比较对象是 POSIX 的 bash `set -a; . file`")
+@pytest.mark.posix_only("比较对象是 POSIX 的 bash `set -a; . file`；解析规则本身由上面的用例覆盖")
 def test_parse_dotenv_matches_bash(tmp_path: Path) -> None:
     env_file = tmp_path / "fixture.env"
     env_file.write_text(DOTENV_FIXTURE, encoding="utf-8")
