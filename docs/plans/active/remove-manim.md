@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 维护（系统瘦身） |
 | 设计依据 | [架构设计](../../design/2026-09-26-architecture.md)、[ADR 0020](../../decisions/0020-阶段流水线按项目配置派生.md)、[ADR 0021](../../decisions/0021-HTML引擎与配乐阶段.md)；本计划新增 ADR 0027 记录"Manim 引擎下线"，已批准的设计文档不改，由 ADR 说明取代关系 |
 | 分支 | `chore/remove-manim` |
@@ -114,4 +114,11 @@
 
 ## 验证记录
 
-- 无
+证据目录：`data/evidence/remove-manim/`（不进 git）。
+
+- AC1 ✅ — `tests/api/test_video_kinds.py`、`tests/api/test_projects.py::TestCreateProjectKinds`（三张预设、5 种配置全为 html；`engine=manim` 422；不带类型字段建出 `explainer_html`）。实际运行的 api 上 `GET /api/video-kinds` 返回 presets `[explainer_html, motion_reel, music_video]`。
+- AC2 ✅ — 测试：`test_worker.py::test_legacy_manim_project_job_fails_with_retired_reason`、`test_jobs.py::test_legacy_manim_project_is_409`、`test_animation_finalize.py::test_legacy_manim_project_cannot_finalize_render`、`test_html_render_flow.py::test_legacy_manim_project_can_neither_render_nor_finalize`、`test_scene_checks_endpoint.py::test_legacy_manim_project_reports_every_scene_as_not_checked`、`test_sessions.py::TestRetiredManimStage`、`test_repo_settings.py::test_retired_stage_defaults_are_ignored_on_read`。实测：本地老项目「一部剧前15集封神…」`GET /api/projects/{id}` 正常返回 `explainer_manim` 和三个阶段；`POST /render`、`POST /stages/animation/sessions` 都是 409「Manim 动画已下线…」；工作台动画阶段显示下线提示，历史会话可读（`legacy-animation-stage.jpg`）。
+- AC3 ✅ — `grep -rnE "^\s*(import|from) (manim|pyflakes)" backend/src backend/tests` 无输出；`studio.engines.render.manim`、`studio.stages.animation` 已不存在。
+- AC4 ✅ — `pyproject.toml` 与 `uv.lock` 中没有 `manim`/`pyflakes`/`pycairo`/`manimpango`；`uv lock` 移除 25 个包，`uv sync` 后 `make check` 绿。未在全新机器上验证"不装 cairo/pango/LaTeX 也能 `uv sync`"，依据是锁文件里已没有需要它们编译的包。
+- AC5 ✅ — vitest（`VideoKindPicker.spec.ts`、`CreateProjectDialog.spec.ts` 等）；浏览器实测新建对话框只有三种类型、默认 HTML 讲解、流水线「选题 → 叙事 → 动画」（`create-dialog.jpg`，未提交创建）。
+- AC6 ✅ — `make check` 全部通过（2026-10-09，T5 提交后）；`cd backend && uv run pytest -m slow`：66 passed。
