@@ -125,7 +125,7 @@
 - **完成标准**：旧数据库升级后，现有测试全部通过。
 - **验证命令**：`make check`。
 
-### T3：发消息接口与附件读取接口（待开始）
+### T3：发消息接口与附件读取接口（完成）
 
 - **目标**：用 multipart 发消息能跑通；可以读取附件里的图片。
 - **涉及文件**：
@@ -231,7 +231,7 @@
 
 ## 下一步
 
-- T3：发消息接口（multipart）与附件读取接口，从 `tests/api/test_sessions.py` 的新测试开始。
+- T4：`uploads/` 只读（`workspace/scope.py::is_writable`）与风格草稿 `prune_draft`/保存跳过 `uploads/`。
 
 ## 决策记录
 
@@ -239,6 +239,9 @@
 - 2026-10-09 — T1：`AttachmentRecord` 多一个 `binary` 字段（内容不是 UTF-8 文本），另加 `compose_text`（原文 + 文件说明）和 `discard(written)` — `file_note` 判断 OpenAI 下能否读取、"继续"重建说明都需要它，只能在上传时算出并持久化。
 - 2026-10-09 — T1：模型不支持图片时转存的图片记录为 `kind="image"`，同时有 `sha256`（缩略图）和 `path`（文件说明）— 与设计 §4.3 的 `path` 说明一致。
 - 2026-10-09 — T2：前端 `TurnOut.attachments` 定为可选（`attachments?:`），消费方用 `?? []` — 后端总会返回，但前端大量 spec 夹具手写 `TurnOut`；可选可以避免无关改动。
+- 2026-10-09 — T3：`TurnRunner.start_turn` 多一个 `user_message` 关键字参数 — `UserInput.text` 已经拼上文件说明，`turns.user_message` 要存原文（全局约束）。
+- 2026-10-09 — T3：会话的工作目录判断与 `TurnRunner._execute` 一致：有项目 → 项目工作区；无项目有 `subject_id` → 风格草稿；都没有 → 选题会话。风格阶段本身被标为 `workspaceless`，不能用阶段标记判断。
+- 2026-10-09 — T3：JSON 分支改为手动解析 `MessageCreate`，失败时 422 的 detail 是中文字符串（以前是 FastAPI 的校验列表）— 同一端点要同时接受 JSON 和 multipart。
 - 2026-10-09 — `python-multipart` 不写成显式依赖 — 它已经通过传递依赖装好，`music_import` 已经在用；遵守"不引入计划外依赖"这条约束。
 
 ## 意外与发现
