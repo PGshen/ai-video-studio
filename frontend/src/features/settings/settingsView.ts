@@ -3,7 +3,7 @@
  * 环境变量锁定字段、key 状态。组件只负责渲染。
  */
 
-import type { ModelProfileOut, SettingsOut, WebMode } from '@/types/api'
+import type { ModelProfileOut, ModelProfileTestOut, SettingsOut, WebMode } from '@/types/api'
 
 /** 「各阶段默认模型」要列出的阶段，顺序与流水线一致（头脑风暴在最前，风格对话在最后）。 */
 export const DEFAULT_PROFILE_STAGES = [
@@ -69,6 +69,15 @@ export function isFieldLocked(profile: ModelProfileOut, field: string): boolean 
 export function keyStatus(profile: ModelProfileOut): '本机登录' | '已配置' | '未配置' {
   if (profile.api_key_env === null) return '本机登录'
   return profile.key_configured ? '已配置' : '未配置'
+}
+
+/** 连通性测试结果的一行摘要：`连通 · 1.2s · ok`、`失败 · 0.8s · 401 …`；没有耗时（fake、没发请求）就省略。 */
+export function probeSummary(result: ModelProfileTestOut): string {
+  const parts = [result.ok ? '连通' : '失败']
+  if (result.latency_ms) parts.push(`${(result.latency_ms / 1000).toFixed(1)}s`)
+  const detail = result.ok ? result.reply : result.error
+  if (detail) parts.push(detail)
+  return parts.join(' · ')
 }
 
 /** 「无隔离执行」开关只在本机没有沙箱时出现（ADR 0024；macOS 上永远用沙箱，开关无效）。 */

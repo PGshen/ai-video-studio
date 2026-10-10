@@ -11,9 +11,11 @@ from typing import Any
 import pytest
 from sqlalchemy import update
 
+from studio.agent.probe import ProbeResult
+from studio.agent.runtime import RuntimeFactory
 from studio.db.engine import session_scope
 from studio.db.models import ModelProfile
-from studio.db.repo.profiles import get_model_profile
+from studio.db.repo.profiles import ModelProfileValue, get_model_profile
 from studio.db.repo.sessions import create_session
 from studio.db.repo.settings import update_settings
 
@@ -310,5 +312,64 @@ class TestDelete:
 
     async def test_unknown_id_is_404(self, api_env: ApiEnv) -> None:
         response = await api_env.client.delete("/api/model-profiles/nope")
+
+        assert response.status_code == 404
+
+
+async def _profile_id(api_env: ApiEnv, name: str) -> str:
+    profile = get_model_profile(api_env.app.state.engine, name)
+    assert profile is not None
+    return profile.id
+
+
+class TestProbe:
+    async def test_fake_profile_succeeds_with_the_real_probe(self, api_env: ApiEnv) -> None:
+        profile_id = await _profile_id(api_env, "fake")
+
+        response = await api_env.client.post(f"/api/model-profiles/{profile_id}/test")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ok"] is True
+        assert set(body) == {"ok", "latency_ms", "reply", "error"}
+
+    async def test_delegates_to_the_probe_with_the_saved_profile(self, api_env: ApiEnv) -> None:
+        seen: list[ModelProfileValue] = []
+
+        async def probe(profile: ModelProfileValue) -> ProbeResult:
+            seen.append(profile)
+            return ProbeResult(ok=False, latency_ms=812, reply=None, error="401 invalid key")
+
+        api_env.app.state.probe = probe
+        profile_id = await _profile_id(api_env, "claude-login")
+
+        response = await api_env.client.post(f"/api/model-profiles/{profile_id}/test")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "ok": False,
+            "latency_ms": 812,
+            "reply": None,
+            "error": "401 invalid key",
+        }
+        assert [p.name for p in seen] == ["claude-login"]
+
+    async def test_unregistered_runtime_fails_without_probing(self, api_env: ApiEnv) -> None:
+        async def probe(profile: ModelProfileValue) -> ProbeResult:
+            raise AssertionError("不应发请求")
+
+        api_env.app.state.probe = probe
+        api_env.app.state.runtime_factory = RuntimeFactory()  # 什么运行时都没启用
+        profile_id = await _profile_id(api_env, "fake")
+
+        response = await api_env.client.post(f"/api/model-profiles/{profile_id}/test")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ok"] is False
+        assert "运行时未启用" in body["error"]
+
+    async def test_unknown_profile_is_404(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post("/api/model-profiles/nope/test")
 
         assert response.status_code == 404

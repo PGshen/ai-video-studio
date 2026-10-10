@@ -3,8 +3,11 @@
  * 「模型配置」子页（计划 M5 T10）：列表、新增、编辑、删除。内置配置可以编辑但不能删除；
  * 被会话或阶段默认模型引用的配置删除时后端返回 409 和原因，原样显示。
  * 环境变量决定的字段在编辑对话框里只读并说明。
+ * 每行「测试」用已保存的配置真的发一次极小的请求（连通性测试），结果显示在该行名称下方；
+ * 各行状态独立，可以同时测几行。
  */
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { testModelProfile } from '@/api/endpoints'
 import { errorMessage } from '@/api/http'
 import {
   AlertDialog,
@@ -26,7 +29,7 @@ import {
 } from '@/composables/queries'
 import type { ModelProfileCreate, ModelProfileOut, ModelProfilePatch } from '@/types/api'
 import ModelProfileDialog from './ModelProfileDialog.vue'
-import { keyStatus } from './settingsView'
+import { keyStatus, probeSummary } from './settingsView'
 
 const { data: profiles, isPending, error: loadError } = useModelProfilesQuery()
 const createMutation = useCreateModelProfileMutation()
@@ -92,6 +95,25 @@ async function confirmDelete(event: Event): Promise<void> {
     deleteDialogOpen.value = false
   } catch (error) {
     deleteError.value = errorMessage(error)
+  }
+}
+
+interface ProbeState {
+  pending: boolean
+  ok?: boolean
+  text?: string
+}
+
+/** 连通性测试的状态，按配置 id 记。 */
+const probes = reactive<Record<string, ProbeState>>({})
+
+async function probe(profile: ModelProfileOut): Promise<void> {
+  probes[profile.id] = { pending: true }
+  try {
+    const result = await testModelProfile(profile.id)
+    probes[profile.id] = { pending: false, ok: result.ok, text: probeSummary(result) }
+  } catch (error) {
+    probes[profile.id] = { pending: false, ok: false, text: `测试请求失败：${errorMessage(error)}` }
   }
 }
 
@@ -183,6 +205,14 @@ function budget(profile: ModelProfileOut): string {
                   内置
                 </Badge>
               </div>
+              <div
+                v-if="probes[profile.id]?.text"
+                class="mt-1 max-w-xs text-xs break-words"
+                :class="probes[profile.id]?.ok ? 'text-emerald-600' : 'text-destructive'"
+                :data-testid="`probe-${profile.name}`"
+              >
+                {{ probes[profile.id]?.text }}
+              </div>
             </td>
             <td class="px-3 py-2">
               <div>{{ profile.provider }}</div>
@@ -223,6 +253,16 @@ function budget(profile: ModelProfileOut): string {
               {{ budget(profile) }}
             </td>
             <td class="px-3 py-2 text-right whitespace-nowrap">
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="probes[profile.id]?.pending"
+                title="用这份配置发一次极小的请求，检查能不能连通"
+                :data-testid="`test-${profile.name}`"
+                @click="probe(profile)"
+              >
+                {{ probes[profile.id]?.pending ? '测试中…' : '测试' }}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

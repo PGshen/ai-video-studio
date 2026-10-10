@@ -8,6 +8,7 @@ import {
   execSwitchVisible,
   isFieldLocked,
   keyStatus,
+  probeSummary,
   webModeNotes,
   webModeSourceText,
 } from './settingsView'
@@ -151,5 +152,31 @@ describe('无隔离执行开关（ADR 0024）', () => {
 
   it('来源文案：来自环境变量时点名变量', () => {
     expect(execSourceText(settings())).toContain('STUDIO_ALLOW_UNSANDBOXED_EXEC')
+  })
+})
+
+describe('probeSummary', () => {
+  it('成功：耗时（秒，一位小数）和回复', () => {
+    expect(probeSummary({ ok: true, latency_ms: 1234, reply: 'ok', error: null })).toBe(
+      '连通 · 1.2s · ok',
+    )
+  })
+
+  it('成功但没有耗时（fake）：只写回复', () => {
+    expect(probeSummary({ ok: true, latency_ms: 0, reply: 'fake 运行时不发请求', error: null })).toBe(
+      '连通 · fake 运行时不发请求',
+    )
+  })
+
+  it('失败：带上原因和耗时', () => {
+    expect(probeSummary({ ok: false, latency_ms: 812, reply: null, error: '401 invalid key' })).toBe(
+      '失败 · 0.8s · 401 invalid key',
+    )
+  })
+
+  it('失败且没有发出请求：只写原因', () => {
+    expect(
+      probeSummary({ ok: false, latency_ms: null, reply: null, error: '环境变量 K 未设置' }),
+    ).toBe('失败 · 环境变量 K 未设置')
   })
 })

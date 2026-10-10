@@ -6,6 +6,8 @@
 
 环境变量网关覆盖（`STUDIO_ANTHROPIC_BASE_URL` 等）仍然优先：`env_override` 列出被环境变量决定
 的字段，界面里不让改（改了下次启动也会被覆盖）。
+
+`POST /model-profiles/{id}/test`：用已保存的配置发一次极小的请求（`agent/probe.py`）。
 """
 
 from __future__ import annotations
@@ -16,9 +18,15 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import Engine
 
+from studio.agent.probe import Probe
 from studio.agent.runtime import RuntimeFactory
-from studio.api.deps import get_engine, get_runtime_factory, get_settings
-from studio.api.schemas import ModelProfileCreate, ModelProfileOut, ModelProfilePatch
+from studio.api.deps import get_engine, get_probe, get_runtime_factory, get_settings
+from studio.api.schemas import (
+    ModelProfileCreate,
+    ModelProfileOut,
+    ModelProfilePatch,
+    ModelProfileTestOut,
+)
 from studio.config import Settings
 from studio.db.repo import profiles as repo
 from studio.db.repo.profiles import ModelProfileValue
@@ -120,6 +128,26 @@ def update_model_profile_endpoint(
     except (repo.ProfileValidationError, repo.ProfileNotFoundError) as exc:
         raise _http_error(exc) from exc
     return _to_out(value, settings)
+
+
+@router.post("/model-profiles/{profile_id}/test", response_model=ModelProfileTestOut)
+async def probe_model_profile_endpoint(
+    profile_id: str,
+    engine: Engine = Depends(get_engine),
+    runtimes: RuntimeFactory = Depends(get_runtime_factory),
+    probe: Probe = Depends(get_probe),
+) -> ModelProfileTestOut:
+    profile = repo.get_model_profile_by_id(engine, profile_id)
+    if profile is None:
+        raise _http_error(repo.ProfileNotFoundError(profile_id))
+    if not runtimes.has(profile.runtime):
+        return ModelProfileTestOut(
+            ok=False, latency_ms=None, reply=None, error=f"运行时未启用：{profile.runtime}"
+        )
+    result = await probe(profile)
+    return ModelProfileTestOut(
+        ok=result.ok, latency_ms=result.latency_ms, reply=result.reply, error=result.error
+    )
 
 
 @router.delete("/model-profiles/{profile_id}", status_code=204)

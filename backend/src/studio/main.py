@@ -20,6 +20,7 @@ from studio.agent import register_fake
 from studio.agent.bus import SessionBus
 from studio.agent.claude_runtime import register_claude
 from studio.agent.openai_runtime import register_openai
+from studio.agent.probe import make_probe
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
@@ -106,6 +107,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.runtime_factory = runtime_factory
     app.state.bus = bus
     app.state.turn_runner = turn_runner
+    app.state.probe = make_probe(settings.data_dir)
     app.state.music_renders = set()  # 项目 id：正在手动渲染配乐的项目
     app.state.music_uploads = set()  # 项目 id：正在上传导入音乐的项目
 

@@ -11,6 +11,7 @@ from fastapi import Request
 from sqlalchemy import Engine
 
 from studio.agent.bus import SessionBus
+from studio.agent.probe import Probe
 from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory
 from studio.agent.stage import StageRegistry
@@ -44,3 +45,7 @@ def get_bus(request: Request) -> SessionBus:
 
 def get_turn_runner(request: Request) -> TurnRunner:
     return request.app.state.turn_runner
+
+
+def get_probe(request: Request) -> Probe:
+    return request.app.state.probe
