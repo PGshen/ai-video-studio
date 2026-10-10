@@ -389,6 +389,47 @@ def _kill_tree_sync(pid: int, platform: str | None = None) -> bool:
     return True
 
 
+def descendant_pids(roots: Sequence[int], table: Sequence[tuple[int, int]]) -> list[int]:
+    """Every process below `roots` in a `(pid, ppid)` table, roots excluded."""
+    children: dict[int, list[int]] = {}
+    for pid, ppid in table:
+        children.setdefault(ppid, []).append(pid)
+    found: list[int] = []
+    stack = list(roots)
+    while stack:
+        for pid in children.get(stack.pop(), []):
+            if pid not in found and pid not in roots:
+                found.append(pid)
+                stack.append(pid)
+    return found
+
+
+def _posix_process_table() -> list[tuple[int, int]]:
+    done = subprocess.run(
+        ["ps", "-axo", "pid=,ppid="], stdin=subprocess.DEVNULL, capture_output=True, check=False
+    )
+    table = []
+    for line in done.stdout.decode("ascii", errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            table.append((int(parts[0]), int(parts[1])))
+    return table
+
+
+def _kill_posix_stragglers(pids: Sequence[int]) -> None:
+    """Descendants a service put in their own session (the worker's ffmpeg, the music script)
+    are outside its group, so `killpg` on the service misses them. Kill each one, and its
+    group when it leads one."""
+    if sys.platform == "win32":
+        return
+    for pid in pids:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            if os.getpgid(pid) == pid:
+                os.killpg(pid, signal.SIGKILL)
+            else:
+                os.kill(pid, signal.SIGKILL)
+
+
 def read_pid_file(path: Path) -> list[dict[str, Any]]:
     """Entries `{"name", "pid", "cmd"}`; a missing or malformed file is empty (best effort)."""
     try:
@@ -571,12 +612,20 @@ class Supervisor:
             time.sleep(poll)
 
     def stop(self) -> None:
+        # Snapshot first: once a service dies its children are re-parented and lost.
+        # (Windows: `taskkill /T` already walks the tree.)
+        stragglers = (
+            descendant_pids([child.pid for _service, child in self._procs], _posix_process_table())
+            if sys.platform != "win32"
+            else []
+        )
         for _service, child in self._procs:
             # A child that already exited has no tree to find on Windows, and its PID may be
             # reused; POSIX still kills its group (leftovers keep the group alive).
             if child.poll() is None or sys.platform != "win32":
                 if not _kill_tree_sync(child.pid) and child.poll() is None:
                     child.kill()
+        _kill_posix_stragglers(stragglers)
         for _service, child in self._procs:
             with contextlib.suppress(subprocess.TimeoutExpired):
                 child.wait(timeout=10)

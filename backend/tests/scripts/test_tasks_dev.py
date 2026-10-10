@@ -167,11 +167,20 @@ def test_the_api_event_loop_can_start_subprocesses(tmp_path: Path) -> None:
         assert runner.run(child_output()).strip() == b"ok"
 
 
+def test_descendant_pids_walks_the_whole_tree() -> None:
+    table = [(10, 1), (11, 10), (12, 11), (13, 11), (20, 1), (21, 20), (30, 99)]
+    assert sorted(tasks.descendant_pids([10, 20], table)) == [11, 12, 13, 21]
+    assert tasks.descendant_pids([99], [(99, 99)]) == []  # self-parented entries do not loop
+
+
 # ---- supervisor: real processes ----
 
 _SERVICE = """
 import subprocess, sys, time
-child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+own_session = sys.argv[2] == "1"  # like ffmpeg under `studio.proc.spawn_kwargs()`
+child = subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=own_session
+)
 open(sys.argv[1], "w", encoding="utf-8").write(str(child.pid))
 print("ready 中文", flush=True)
 time.sleep(120)
@@ -195,12 +204,16 @@ def _gone(pid: int, timeout: float = 10) -> bool:
     return False
 
 
-def test_stop_kills_every_tree_and_removes_the_pid_file(tmp_path: Path) -> None:
-    """Review point 6 (process side): nothing survives the supervisor."""
+@pytest.mark.parametrize("own_session", [False, True], ids=["same-group", "own-session"])
+def test_stop_kills_every_tree_and_removes_the_pid_file(tmp_path: Path, own_session: bool) -> None:
+    """Review point 6 (process side): nothing survives the supervisor, including grandchildren
+    the services put in their own session (worker's ffmpeg is spawned that way)."""
     pid_file = tmp_path / ".dev" / "pids.json"
     services = [
         tasks.Service(
-            name, [sys.executable, "-c", _SERVICE, str(tmp_path / f"{name}.pid")], tmp_path
+            name,
+            [sys.executable, "-c", _SERVICE, str(tmp_path / f"{name}.pid"), str(int(own_session))],
+            tmp_path,
         )
         for name in ("api", "worker", "web")
     ]
