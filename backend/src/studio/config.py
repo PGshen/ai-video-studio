@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     `web_search`/`fetch_url`（Tavily，带「URL 来源」限制）；`native`：用运行时原生的联网能力
     （Claude WebSearch/WebFetch、OpenAI 托管 `WebSearchTool`），没有 URL 来源保护，不需要
     Tavily key。两种模式互斥。"""
+    allow_unsandboxed_exec: bool = False
+    """没有 sandbox 的平台（Windows）上是否允许 agent 无隔离地执行命令和配乐脚本
+    （`STUDIO_ALLOW_UNSANDBOXED_EXEC`，ADR 0024）。默认关：Claude 拿不到 Bash/PowerShell、
+    OpenAI 不提供 Shell、`render_music` 报错。macOS 上无效（永远用 Seatbelt）。设置页可以覆盖，
+    见 `db.repo.settings.effective_allow_unsandboxed_exec`。"""
 
     @field_validator(
         "anthropic_base_url",
@@ -97,6 +102,13 @@ class Settings(BaseSettings):
         # `.env` 里写了 `STUDIO_WEB_MODE=` 但没填值：当作没设置，用默认的 tools。
         if isinstance(value, str) and not value.strip():
             return "tools"
+        return value
+
+    @field_validator("allow_unsandboxed_exec", mode="before")
+    @classmethod
+    def _blank_switch_is_off(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return False
         return value
 
     @field_validator("data_dir")
@@ -126,7 +138,7 @@ def repo_root() -> Path:
 
 
 if __name__ == "__main__":
-    # `dev.sh` 用这一行的输出取真正生效的绑定地址（TD-2）：Settings.host/port
-    # 此前只是声明字段，没人读它们，改 STUDIO_PORT 不会影响 dev.sh 里写死的端口。
+    # `tasks.py dev` 用这一行的输出取真正生效的绑定地址（TD-2）：Settings.host/port
+    # 此前只是声明字段，没人读它们，改 STUDIO_PORT 不会影响原来 dev.sh 里写死的端口。
     _settings = Settings()
     print(f"{_settings.host} {_settings.port}")

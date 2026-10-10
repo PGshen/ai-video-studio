@@ -125,7 +125,7 @@ def convolve(x, h):
 
 
 # ---------- arrangement: every time comes from the timeline ----------
-timeline = json.load(open(os.environ["STUDIO_TIMELINE"]))
+timeline = json.load(open(os.environ["STUDIO_TIMELINE"], encoding="utf-8"))
 duration = timeline["duration"]
 N = int(round(duration * SR))
 out = np.zeros(N)
@@ -190,4 +190,4 @@ wav.close()
 doc = {"bpm": bpm, "duration": duration, "events": events}
 if not grid:
     doc["offset"] = offset  # the declared grid of a narration project
-json.dump(doc, open(os.environ["STUDIO_OUT_EVENTS"], "w"))
+json.dump(doc, open(os.environ["STUDIO_OUT_EVENTS"], "w", encoding="utf-8", newline=""))

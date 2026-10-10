@@ -18,6 +18,7 @@ import numpy as np
 
 from studio.engines.audio.analysis import ENERGY_HOP, energy_curve
 from studio.engines.audio.wav import AudioError, Samples
+from studio.proc import run_killing_tree
 
 # ---- 常量（调参集中在这里） ---------------------------------------------------------
 ANALYSIS_SAMPLE_RATE = 22050
@@ -76,13 +77,7 @@ def decode_song(path: Path, *, ffmpeg: str = "ffmpeg") -> Samples:
         "-ac", "1", "-ar", str(ANALYSIS_SAMPLE_RATE), "-f", "f32le", "-",
     ]  # fmt: skip
     try:
-        done = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=_DECODE_TIMEOUT,
-            check=False,
-        )
+        done = run_killing_tree(command, timeout=_DECODE_TIMEOUT)
     except FileNotFoundError:
         raise AudioError(f"找不到 ffmpeg（{ffmpeg}），无法解码 {path.name}") from None
     except subprocess.TimeoutExpired:

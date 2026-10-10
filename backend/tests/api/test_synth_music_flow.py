@@ -19,6 +19,7 @@ from fixtures.html_engine.fakes import Behaviour, ScriptedBrowser
 from fixtures.html_engine.fakes import digest as _digest
 from fixtures.html_engine.worker_fakes import FakeBackend
 from fixtures.synth_music import seed
+from studio.agent import exec_policy
 from studio.agent.fake import FakeRuntime, call_tool, write
 from studio.agent.runtime import UserInput
 from studio.agent.stage_flow import finalize
@@ -70,6 +71,14 @@ async def fake_pool() -> AsyncIterator[Behaviour]:
     yield behaviour
     set_browser_pool(None)
     await pool.close()
+
+
+@pytest.fixture
+def real_scripts(api_env: ApiEnv) -> None:
+    """Run synthesis scripts the real way for this machine: Seatbelt on macOS; where there is
+    no sandbox (Windows) the ADR 0024 unsandboxed path, i.e. the switch turned on."""
+    if not exec_policy.seatbelt_available():
+        api_env.app.state.settings.allow_unsandboxed_exec = True
 
 
 @pytest.fixture
@@ -255,7 +264,7 @@ def _bed_scene() -> str:
 
 @pytest.mark.slow
 async def test_motion_reel_pipeline_with_the_real_sandbox_and_chromium(
-    api_env: ApiEnv, real_pool: None
+    api_env: ApiEnv, real_pool: None, real_scripts: None
 ) -> None:
     pid = await _run_reel_through_produce(api_env)
     _check_reel_snapshot(api_env, pid)
@@ -263,7 +272,7 @@ async def test_motion_reel_pipeline_with_the_real_sandbox_and_chromium(
 
 @pytest.mark.slow
 async def test_events_json_reaches_the_scenes_through_the_timeline(
-    api_env: ApiEnv, real_pool: None, tmp_path: Path
+    api_env: ApiEnv, real_pool: None, real_scripts: None, tmp_path: Path
 ) -> None:
     """`events.json` → 时间轴 → `env.hit`：每个 kick 的起点上，包络恰好为 1。"""
     from studio.engines.render.html.assemble import assemble
@@ -415,7 +424,7 @@ def _audio_streams(path: Path) -> tuple[list[dict[str, Any]], float]:
 
 @pytest.mark.slow
 async def test_a_reel_final_has_the_score_as_its_only_audio_with_real_ffmpeg(
-    api_env: ApiEnv, real_pool: None
+    api_env: ApiEnv, real_pool: None, real_scripts: None
 ) -> None:
     pid = await _run_reel_through_produce(api_env)
     final = await _render_final(api_env, pid)
@@ -428,7 +437,7 @@ async def test_a_reel_final_has_the_score_as_its_only_audio_with_real_ffmpeg(
 
 @pytest.mark.slow
 async def test_an_explainer_bed_final_has_one_audio_track_with_real_ffmpeg(
-    api_env: ApiEnv, real_pool: None
+    api_env: ApiEnv, real_pool: None, real_scripts: None
 ) -> None:
     pid = await _bed_through_animation(api_env)
     final = await _render_final(api_env, pid)

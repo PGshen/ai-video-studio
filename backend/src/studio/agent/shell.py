@@ -2,7 +2,10 @@
 
 每条命令经 macOS `sandbox-exec` 运行（T9，TD-20，配置见 `shell_sandbox`）：只能写
 当前工作区和它的 `.cache/tmp`，读不到 `deny_read`（运行时传仓库根与 `data_dir`）中
-工作区以外的部分，没有网络。真正 spawn 子进程的调用集中在 `_run`。
+工作区以外的部分，没有网络。没有 sandbox 的平台上，只有打开「无隔离执行」开关时才会
+用 `sandboxed=False` 构造（ADR 0024）：命令直接交给 `/bin/sh`（Windows 上是 Git Bash），
+其余照旧——密钥变量过滤、超时、输出上限、结束时清理进程树。真正 spawn 子进程的调用
+集中在 `_run`。
 """
 
 from __future__ import annotations
@@ -11,12 +14,14 @@ import asyncio
 import contextlib
 import os
 import re
-import signal
+import shutil
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from agents import ShellCallOutcome, ShellCommandOutput, ShellCommandRequest, ShellResult
 
+from studio import proc as procs
 from studio.agent.shell_sandbox import SANDBOX_EXEC, sandbox_tmpdir, seatbelt_profile
 
 SHELL_DEFAULT_TIMEOUT_S = 120.0
@@ -33,15 +38,52 @@ def _shell_env(environ: Mapping[str, str], tmpdir: Path) -> dict[str, str]:
     return env
 
 
+class ShellUnavailable(RuntimeError):
+    """No shell to run commands with (Windows without Git Bash); the message is for the agent."""
+
+
+_GIT_BASH_ENV = "CLAUDE_CODE_GIT_BASH_PATH"
+"""Same variable Claude Code reads on Windows, so one setting serves both runtimes."""
+
+
+def _git_bash(environ: Mapping[str, str], which: Callable[[str], str | None]) -> str | None:
+    configured = environ.get(_GIT_BASH_ENV)
+    if configured and Path(configured).is_file():
+        return configured
+    git = which("git")
+    if git is None:
+        return None
+    # `<Git>/cmd/git.exe` (the installer's PATH entry) or `<Git>/mingw64/bin/git.exe`.
+    root = Path(git).resolve().parent.parent
+    for candidate in (root / "bin" / "bash.exe", root.parent / "bin" / "bash.exe"):
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def unsandboxed_shell_argv(
+    command: str,
+    *,
+    platform: str | None = None,
+    environ: Mapping[str, str] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> list[str]:
+    """argv for running `command` without a sandbox: `/bin/sh -c` on POSIX, Git Bash on Windows
+    (the shell syntax the model writes; never WSL's `bash.exe`, which sees another file system)."""
+    if (platform or sys.platform) != "win32":
+        return ["/bin/sh", "-c", command]
+    bash = _git_bash(os.environ if environ is None else environ, which)
+    if bash is None:
+        raise ShellUnavailable(
+            f"找不到 Git Bash，无法执行命令。请安装 Git for Windows，或设置 {_GIT_BASH_ENV}。"
+        )
+    return [bash, "-c", command]
+
+
 def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n…（输出过长，已截断，共 {len(text)} 字符）"
-
-
-def _kill_group(proc: asyncio.subprocess.Process) -> None:
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(proc.pid, signal.SIGKILL)
 
 
 async def _read_capped(
@@ -92,7 +134,7 @@ class LocalShellExecutor:
     越出阶段可写范围的改动仍由轮末 `guard` 还原（设计 §4.3 第 2 道防线）。调用方须
     先确认 `shell_sandbox.sandbox_available()`（运行时经 `native_shell_supported`）。
 
-    每条命令在自己的进程组里运行（`start_new_session`）；命令结束（无论退出码）、
+    每条命令在自己的进程组里运行（`studio.proc.spawn_kwargs`）；命令结束（无论退出码）、
     超时、输出超限或被取消时都杀掉整个进程组，所以 `nohup ... &` 之类的后台进程
     不会活过这次调用——否则它们可能在轮末 `guard` 和快照之后才改工作区，改动会
     进入下一轮的基线、永远不会被还原。用 `setsid` 等方式主动脱离进程组的进程
@@ -112,15 +154,27 @@ class LocalShellExecutor:
         environ: Mapping[str, str] | None = None,
         deny_read: Sequence[Path] = (),
         sandbox_exec: Path = SANDBOX_EXEC,
+        sandboxed: bool = True,
     ) -> None:
         self._workdir = workdir
         self._tmpdir = sandbox_tmpdir(workdir.resolve())
         self._profile = seatbelt_profile(workdir, deny_read)
         self._sandbox_exec = sandbox_exec
+        self._sandboxed = sandboxed
         self._environ = environ if environ is not None else os.environ
         self._failed = failed
         self._default_timeout_s = default_timeout_s
         self._max_output_chars = max_output_chars
+
+    @property
+    def sandboxed(self) -> bool:
+        """`False` only in the ADR 0024 `unsandboxed` mode."""
+        return self._sandboxed
+
+    def _argv(self, command: str) -> list[str]:
+        if self._sandboxed:
+            return [str(self._sandbox_exec), "-p", self._profile, "/bin/sh", "-c", command]
+        return unsandboxed_shell_argv(command, environ=self._environ)
 
     async def __call__(self, request: ShellCommandRequest) -> ShellResult:
         action = request.data.action
@@ -141,26 +195,30 @@ class LocalShellExecutor:
         self, command: str, timeout: float, limit: int
     ) -> tuple[ShellCommandOutput, bool]:
         self._tmpdir.mkdir(parents=True, exist_ok=True)
+        try:
+            argv = self._argv(command)
+        except ShellUnavailable as exc:
+            return ShellCommandOutput(
+                stdout="",
+                stderr=str(exc),
+                outcome=ShellCallOutcome(type="exit", exit_code=127),
+                command=command,
+            ), True
         proc = await asyncio.create_subprocess_exec(
-            str(self._sandbox_exec),
-            "-p",
-            self._profile,
-            "/bin/sh",
-            "-c",
-            command,
+            *argv,
             cwd=self._workdir,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_shell_env(self._environ, self._tmpdir),
-            start_new_session=True,
+            env=procs.child_env(_shell_env(self._environ, self._tmpdir)),
+            **procs.spawn_kwargs(),
         )
         overflowed = False
 
         def on_overflow() -> None:
             nonlocal overflowed
             overflowed = True
-            _kill_group(proc)
+            procs.kill_proc_tree(proc)
 
         cap = limit * 4  # UTF-8 needs at most 4 bytes per character
         readers = [
@@ -171,7 +229,7 @@ class LocalShellExecutor:
             exited = await _wait_for_exit(proc, timeout)
             timed_out = not exited
             # Always kill the group: background children must not outlive the command.
-            _kill_group(proc)
+            procs.kill_proc_tree(proc)
             done, pending = await asyncio.wait(
                 [*readers, asyncio.ensure_future(proc.wait())], timeout=_READER_DRAIN_TIMEOUT_S
             )
@@ -185,7 +243,7 @@ class LocalShellExecutor:
             # TD-14: cancellation can land either while waiting for the process to exit or
             # while draining the readers above; either way, explicitly cancel the readers and
             # wait for them to actually finish instead of leaving them dangling.
-            _kill_group(proc)
+            procs.kill_proc_tree(proc)
             for reader in readers:
                 reader.cancel()
             with contextlib.suppress(TimeoutError):

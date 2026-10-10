@@ -1,88 +1,46 @@
 # make check 是唯一的质量关口（docs/SOP.md）。
-# 后端和前端的检查会在对应目录出现后自动生效；M1 负责把具体命令接进来。
+# 所有逻辑都在 scripts/tasks.py（ADR 0025）；这里每个目标只是一行转调，macOS 上用法不变。
+# Windows 上不用 make，直接运行：uv run --project backend python scripts/tasks.py <目标>
 
-SHELL := /bin/bash
-
-# Claude Code 沙箱的 PATH 可能不包含 ~/.local/bin 和 nvm shims，这里主动定位。
-UV   ?= $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
-PNPM ?= $(shell command -v pnpm 2>/dev/null || ls -d $(HOME)/.nvm/versions/node/*/bin/pnpm 2>/dev/null | tail -1)
-PYTHON ?= python3
-
-HAS_BACKEND  := $(wildcard backend/pyproject.toml)
-HAS_FRONTEND := $(wildcard frontend/package.json)
+# Claude Code 沙箱的 PATH 可能不包含 ~/.local/bin，这里主动定位（调用 tasks.py 的前提）。
+UV ?= $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
+TASKS := $(UV) run --project backend python scripts/tasks.py
 
 .PHONY: setup check check-fast check-docs check-backend check-frontend dev smoke \
         export-legacy-styles import-legacy-styles
 
 setup:
-	git config core.hooksPath .githooks
-ifneq ($(HAS_BACKEND),)
-	cd backend && $(UV) sync
-	cd backend && $(UV) run playwright install chromium
-endif
-ifneq ($(HAS_FRONTEND),)
-	cd frontend && $(PNPM) install
-endif
+	@$(TASKS) setup
 
-check: check-docs check-backend check-frontend
-	@echo "make check 全部通过"
+check:
+	@$(TASKS) check
 
 # pre-commit 运行的快速子集。
-check-fast: check-docs
-ifneq ($(HAS_BACKEND),)
-	cd backend && $(UV) run ruff check .
-endif
-ifneq ($(HAS_FRONTEND),)
-	cd frontend && $(PNPM) run lint
-endif
+check-fast:
+	@$(TASKS) check-fast
 
 check-docs:
-	@$(PYTHON) scripts/check_docs.py
+	@$(TASKS) check-docs
 
 check-backend:
-ifneq ($(HAS_BACKEND),)
-	cd backend && $(UV) run ruff check .
-	cd backend && $(UV) run ruff format --check .
-	cd backend && $(UV) run pyright
-	cd backend && $(UV) run lint-imports
-	cd backend && $(UV) run pytest
-else
-	@echo "跳过后端检查：backend/ 尚未创建"
-endif
+	@$(TASKS) check-backend
 
 check-frontend:
-ifneq ($(HAS_FRONTEND),)
-	cd frontend && $(PNPM) run lint
-	cd frontend && $(PNPM) run typecheck
-	cd frontend && $(PNPM) exec vitest run
-else
-	@echo "跳过前端检查：frontend/ 尚未创建"
-endif
+	@$(TASKS) check-frontend
 
 dev:
-	@bash scripts/dev.sh
+	@$(TASKS) dev
+
+# 真实模型的冒烟测试：只带白名单变量运行 pytest -m smoke（见 tasks.py smoke_env）。
+smoke:
+	@$(TASKS) smoke $(SMOKE_ARGS)
 
 # 旧项目风格库的一次性迁移（计划 M5 T4）：先只读导出成 JSON（需要旧项目的 postgres 容器在
-# 运行），再导入新风格库。同名预设默认跳过，IMPORT_ARGS=--overwrite 才覆盖。
+# 运行，只有 bash 版，ADR 0025），再导入新风格库。同名预设默认跳过，IMPORT_ARGS=--overwrite 才覆盖。
 LEGACY_STYLES_FILE ?= data/legacy-export/styles.json
 
 export-legacy-styles:
 	@bash scripts/export_legacy_styles.sh $(LEGACY_STYLES_FILE)
 
 import-legacy-styles:
-	cd backend && $(UV) run python -m studio.db.legacy_styles import $(abspath $(LEGACY_STYLES_FILE)) $(IMPORT_ARGS)
-
-# 真实模型的冒烟测试（计划 T15）：先导出 backend/.env（同 scripts/dev.sh），再用 env -i
-# 只带白名单变量运行 pytest——在 Claude Code 等宿主里执行时，宿主注入的 CLAUDE_CODE_* /
-# ANTHROPIC_BASE_URL 等变量不会带进用例。缺 key 的用例自动跳过。默认 make check 不含它。
-SMOKE_KEYS := ANTHROPIC_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY VOLCENGINE_TTS_API_KEY TAVILY_API_KEY
-
-smoke:
-	@set -a; [ -f backend/.env ] && . backend/.env; set +a; \
-	args=(HOME="$$HOME" PATH="$$PATH" USER="$$USER" LANG="$${LANG:-en_US.UTF-8}" \
-	      TMPDIR="$${TMPDIR:-/tmp}" SHELL="$${SHELL:-/bin/bash}"); \
-	for v in $(SMOKE_KEYS) $$(compgen -e | grep '^STUDIO_'); do \
-	  [ -n "$${!v:-}" ] && args+=("$$v=$${!v}"); \
-	done; \
-	echo "make smoke: env -i + 白名单变量（$${#args[@]} 个）"; \
-	cd backend && env -i "$${args[@]}" $(UV) run pytest -m smoke -v -rs $(SMOKE_ARGS)
+	@$(TASKS) import-legacy-styles $(abspath $(LEGACY_STYLES_FILE)) $(IMPORT_ARGS)

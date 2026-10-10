@@ -4,7 +4,8 @@
 由调用方校验通过后再移走；运行器只负责"跑起来、限时、杀干净、报错带 stderr"。
 
 子进程的 `TMPDIR` 指向输出目录下（或输出目录本身，见 `song_job`），沙箱只需放开 `out_dir` 的写权限；
-`drain`、`kill_group`、`tail_lines`、`limited_argv` 是公开的辅助函数，`song_job` 复用它们。
+`drain`、`tail_lines`、`limited_argv` 是公开的辅助函数，`song_job` 复用它们；启动参数、
+结束进程树和子进程环境来自 `studio.proc`（Windows 上没有 `ulimit`，见 `limited_argv`）。
 """
 
 from __future__ import annotations
@@ -12,18 +13,19 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import signal
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from studio import proc
+
 _STDERR_TAIL_LINES = 30
 _STDERR_TAIL_CHARS = 4000
 _STDOUT_TAIL_CHARS = 4000
 MAX_EVENTS_BYTES = 5_000_000
-_MAX_FILE_BYTES = 256_000_000  # RLIMIT_FSIZE: one script cannot fill the disk
+_MAX_FILE_BYTES = 256_000_000  # RLIMIT_FSIZE: one script cannot fill the disk (POSIX)
 _SAFE_ENV = ("PATH", "LANG", "LC_ALL", "HOME")
 
 WrapCommand = Callable[[list[str], dict[str, str]], list[str]]
@@ -59,17 +61,18 @@ async def drain(stream: asyncio.StreamReader | None, keep: int) -> bytes:
     return tail
 
 
-def limited_argv(argv: list[str], cpu_seconds: int) -> list[str]:
+def limited_argv(argv: list[str], cpu_seconds: int, *, platform: str | None = None) -> list[str]:
     """Apply resource limits with `ulimit` in a shell, not `preexec_fn` (unsafe in threaded
     processes). `ulimit -f` counts KiB on macOS (512-byte blocks in strict POSIX shells, where the
-    effective cap is half of `_MAX_FILE_BYTES` — still above the 100 MB WAV limit)."""
+    effective cap is half of `_MAX_FILE_BYTES` — still above the 100 MB WAV limit).
+
+    Windows has no `ulimit`: the command runs as is, CPU is bounded only by the wall-clock
+    timeout plus `kill_tree`, and output size only by the check after the run (design §6.2,
+    tech debt; a Job Object would give hard limits)."""
+    if (platform or sys.platform) == "win32":
+        return list(argv)
     prelude = f'ulimit -t {cpu_seconds}; ulimit -f {_MAX_FILE_BYTES // 1024}; exec "$@"'
     return ["/bin/sh", "-c", prelude, "sh", *argv]
-
-
-def kill_group(process: asyncio.subprocess.Process) -> None:
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(process.pid, signal.SIGKILL)
 
 
 async def run_compose(
@@ -84,7 +87,7 @@ async def run_compose(
     tmpdir = out_dir / "tmp"
     tmpdir.mkdir(exist_ok=True)
     wav_path, events_path = out_dir / "music.wav", out_dir / "events.json"
-    env = {key: os.environ[key] for key in _SAFE_ENV if key in os.environ}
+    env = proc.child_env({key: os.environ[key] for key in _SAFE_ENV if key in os.environ})
     if timeline_path is not None:  # `produce` scripts decide tempo and length themselves
         env["STUDIO_TIMELINE"] = str(timeline_path)
     env.update(
@@ -102,7 +105,7 @@ async def run_compose(
         stderr=asyncio.subprocess.PIPE,
         cwd=out_dir,
         env=env,
-        start_new_session=True,
+        **proc.spawn_kwargs(),
     )
     try:
         stdout, stderr, _ = await asyncio.wait_for(
@@ -114,23 +117,28 @@ async def run_compose(
             timeout,
         )
     except TimeoutError as exc:
-        kill_group(process)
+        await proc.kill_tree(process)
         await process.wait()
         raise ComposeError(
             f"合成脚本运行超过 {timeout:g} 秒被终止（超时）；检查是否有死循环或过重的计算"
         ) from exc
     except BaseException:
-        kill_group(process)
+        proc.kill_proc_tree(process)  # sync: an await here could be cancelled again
         with contextlib.suppress(Exception):
             await process.wait()
         raise
-    kill_group(process)  # leftover children of a script that exited normally
+    await proc.kill_tree(process)  # leftover children of a script that exited normally (POSIX)
     if process.returncode != 0:
         raise ComposeError(f"合成脚本失败（退出码 {process.returncode}）：\n{tail_lines(stderr)}")
     if not wav_path.is_file():
         raise ComposeError("脚本没有写出 STUDIO_OUT_WAV 指定的 WAV 文件")
     if not events_path.is_file():
         raise ComposeError("脚本没有写出 STUDIO_OUT_EVENTS 指定的事件文件")
+    if wav_path.stat().st_size > _MAX_FILE_BYTES:
+        raise ComposeError(
+            f"music.wav 过大（{wav_path.stat().st_size / 1e6:.1f} MB，"
+            f"上限 {_MAX_FILE_BYTES / 1e6:.0f} MB）；检查时长和采样率"
+        )
     if events_path.stat().st_size > MAX_EVENTS_BYTES:
         raise ComposeError(
             f"events.json 过大（{events_path.stat().st_size / 1e6:.1f} MB，"

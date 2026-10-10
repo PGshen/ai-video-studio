@@ -1,4 +1,6 @@
-#!/usr/bin/env bash
-# 由 make setup 启用（git config core.hooksPath .githooks）。
-set -euo pipefail
-make --no-print-directory check-fast
+#!/usr/bin/env sh
+# 由 tasks.py setup 启用（git config core.hooksPath .githooks）。
+# 保持 sh 语法：Git for Windows 用自带的 sh 执行 hook（设计 §8.1）。
+set -eu
+UV="$(command -v uv 2>/dev/null || echo "$HOME/.local/bin/uv")"
+exec "$UV" run --project backend python scripts/tasks.py check-fast

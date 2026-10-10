@@ -28,6 +28,7 @@ from studio.api.music_import_meta import build_import_meta, shot_sections
 from studio.api.schemas import MusicEventOut, MusicMetaOut, MusicRenderOut, MusicSectionOut
 from studio.config import Settings
 from studio.db.repo.projects import get_project
+from studio.db.repo.settings import effective_allow_unsandboxed_exec
 from studio.stages.common.music_source import find_source
 from studio.stages.common.score import tool as music_tool
 from studio.stages.common.score.render import metrics_of, render_music_core
@@ -190,9 +191,10 @@ async def music_render_endpoint(
     if project_id in running:
         raise HTTPException(status_code=409, detail="这个项目的配乐正在渲染，请稍后再试")
     workdir = project_dir(settings.data_dir, project_id)
-    wrap = music_tool.sandbox_wrapper(workdir)
+    allow = effective_allow_unsandboxed_exec(engine, settings.allow_unsandboxed_exec)
+    wrap = music_tool.exec_wrapper(workdir, allow_unsandboxed=allow)
     if wrap is None:
-        raise HTTPException(status_code=409, detail="当前平台没有沙箱，不能运行合成脚本")
+        raise HTTPException(status_code=409, detail=music_tool.NO_SANDBOX_MESSAGE)
     loaded: LoadedTimeline | None = None
     if narration:
         try:

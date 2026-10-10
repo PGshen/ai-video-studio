@@ -1,6 +1,6 @@
 /**
- * 回复操作栏和用户气泡用的 turn 元信息：用量缩写、用时、时钟。数据来自 `TurnOut`
- * （`usage`、`created_at`、`updated_at`），不需要后端新字段。
+ * 回复操作栏和用户气泡用的 turn 元信息：用量缩写、用时、时钟，以及「命令未隔离」标记。数据来自
+ * `TurnOut`（`usage`、`created_at`、`updated_at`；`usage.exec_mode` 见 ADR 0024）。
  */
 import type { TurnOut } from '@/types/api'
 
@@ -16,6 +16,8 @@ export interface TurnMeta {
   duration?: string
   /** 创建时间的本地 `HH:mm`。 */
   time: string
+  /** 这一轮的命令没有经过沙箱（`usage.exec_mode === 'unsandboxed'`，ADR 0024）。 */
+  unsandboxed?: boolean
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -87,5 +89,6 @@ export function formatTurnMeta(turn: TurnOut | undefined): TurnMeta | null {
     parseServerTime(turn.updated_at).getTime() - parseServerTime(turn.created_at).getTime(),
   )
   if (duration !== undefined) meta.duration = duration
+  if (turn.usage?.exec_mode === 'unsandboxed') meta.unsandboxed = true
   return meta
 }

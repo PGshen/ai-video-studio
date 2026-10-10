@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import os
 import shutil
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from studio import fsretry
 from studio.workspace.layout import (
     HIDDEN_TOP_DIRS,
     PathEscapesWorkdir,
@@ -24,6 +25,65 @@ from studio.workspace.scope import WriteScope, is_writable
 
 class ScopeError(Exception):
     """路径不安全（绝对路径、`..`、越出工作区、经过符号链接），或不在可写范围内。"""
+
+
+# Device names Windows resolves in any directory, with or without an extension.
+_WINDOWS_RESERVED = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    | {f"{dev}{n}" for dev in ("COM", "LPT") for n in [*"0123456789", "¹", "²", "³"]}
+)
+
+
+def check_model_path(relpath: str) -> PurePosixPath:
+    """校验并规范化模型给出的工作区相对路径（设计 §5），两个平台用同一套规则。
+
+    拒绝：空路径；含反斜杠（统一用 `/`）、`:`（盘符、NTFS 备用数据流）或 NUL；以 `/` 开头
+    或按 Windows 规则带盘符/根；任何一段是 `..`；任何一段以空格或 `.` 结尾（Windows 会
+    悄悄去掉，变成另一个文件）；任何一段是 Windows 保留设备名（`CON`、`aux.txt`……）。
+    `.` 段和重复的 `/` 被去掉（`narrative/./timing.json` → `narrative/timing.json`）。
+    """
+    if not relpath or "\0" in relpath:
+        raise ScopeError(f"路径不合法：{relpath!r}")
+    if "\\" in relpath:
+        raise ScopeError(f"路径只能用 / 分隔：{relpath}")
+    if ":" in relpath:
+        raise ScopeError(f"路径不能包含冒号：{relpath}")
+    windows = PureWindowsPath(relpath)
+    rel = PurePosixPath(relpath)
+    if rel.is_absolute() or windows.drive or windows.root or not rel.parts:
+        raise ScopeError(f"路径不合法：{relpath}")
+    for part in rel.parts:
+        if part == "..":
+            raise ScopeError(f"路径不能包含 ..：{relpath}")
+        if part.endswith((" ", ".")):
+            raise ScopeError(f"路径的每一段不能以空格或 . 结尾：{relpath}")
+        if part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_RESERVED:
+            raise ScopeError(f"路径里有 Windows 保留的设备名：{relpath}")
+    return rel
+
+
+def relpath_within(workdir: Path | str, raw: str) -> str:
+    """模型给出的路径（相对路径，或 Claude 工具给的绝对路径）→ 工作区相对路径。
+
+    相对路径先过 `check_model_path`（`.` 表示工作区本身）；然后解析符号链接和 `..`，
+    确认结果在工作区内，按 `os.path.normcase` 比较（NTFS 不区分大小写）。工作区本身返回
+    `""`；越界或不合法时抛出 `ScopeError`。读写 hook 和 `apply_patch` 共用这一个判断。
+    """
+    root = Path(workdir).resolve()
+    target = Path(raw)
+    if not target.is_absolute():
+        target = root if raw in (".", "./") else root / check_model_path(raw)
+    resolved = target.resolve()
+    root_key = os.path.normcase(str(root))
+    key = os.path.normcase(str(resolved))
+    if key == root_key:
+        return ""
+    prefix = root_key.rstrip(os.sep) + os.sep
+    if not key.startswith(prefix):
+        raise ScopeError(f"{raw} 在项目工作区之外")
+    relpath = Path(str(resolved)[len(prefix) :]).as_posix()
+    check_model_path(relpath)
+    return relpath
 
 
 def _is_hidden_top_dir(relpath: str) -> bool:
@@ -39,12 +99,7 @@ def normalize_relpath(relpath: str) -> str:
     写入/删除前的范围检查必须用规范化后的路径，否则 `narrative//timing.json`
     这类写法能绕过 `tool_managed` 的 glob 匹配（`safe_path` 仍会解析到同一个文件）。
     """
-    rel = PurePosixPath(relpath)
-    if rel.is_absolute() or not rel.parts:
-        raise ScopeError(f"路径不合法：{relpath}")
-    if ".." in rel.parts:
-        raise ScopeError(f"路径不能包含 ..：{relpath}")
-    return rel.as_posix()
+    return check_model_path(relpath).as_posix()
 
 
 def safe_path(workdir: Path | str, relpath: str) -> Path:
@@ -54,11 +109,7 @@ def safe_path(workdir: Path | str, relpath: str) -> Path:
     符号链接、解析后越出工作区。
     """
     workdir = Path(workdir)
-    rel = PurePosixPath(relpath)
-    if rel.is_absolute() or not rel.parts:
-        raise ScopeError(f"路径不合法：{relpath}")
-    if ".." in rel.parts:
-        raise ScopeError(f"路径不能包含 ..：{relpath}")
+    rel = check_model_path(relpath)
 
     current = workdir
     for part in rel.parts:
@@ -131,7 +182,7 @@ def write_text(workdir: Path | str, relpath: str, content: str, scope: WriteScop
         raise ScopeError(f"不在可写范围内：{relpath}")
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="")
 
 
 def delete_file(workdir: Path | str, relpath: str, scope: WriteScope) -> None:
@@ -146,7 +197,7 @@ def delete_file(workdir: Path | str, relpath: str, scope: WriteScope) -> None:
         raise ScopeError(f"不在可写范围内：{relpath}")
     if path.is_dir():
         raise IsADirectoryError(f"是目录，不能删除：{relpath}")
-    path.unlink()
+    fsretry.unlink(path)
 
 
 def write_text_unscoped(workdir: Path | str, relpath: str, content: str) -> None:
@@ -161,7 +212,7 @@ def write_text_unscoped(workdir: Path | str, relpath: str, content: str) -> None
     """
     path = safe_path(workdir, relpath)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="")
 
 
 def init_workspace(data_dir: Path | str, project_id: str, initial_files: dict[str, str]) -> Path:

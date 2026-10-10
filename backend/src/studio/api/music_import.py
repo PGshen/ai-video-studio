@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -27,6 +26,7 @@ from python_multipart.multipart import MultipartParser, parse_options_header
 from sqlalchemy import Engine
 from starlette.datastructures import UploadFile
 
+from studio import fsretry
 from studio.agent.runner import TurnRunner
 from studio.api.deps import get_engine, get_settings, get_turn_runner
 from studio.api.music import require_music_project
@@ -217,7 +217,7 @@ async def upload_music_source_endpoint(
         music = workdir / "music"
         music.mkdir(exist_ok=True)
         final = music / f"source.{receiver.ext}"
-        os.replace(receiver.path, final)
+        fsretry.replace(receiver.path, final)
         for other in SOURCE_EXTENSIONS:
             if other != receiver.ext:
                 (music / f"source.{other}").unlink(missing_ok=True)
@@ -283,7 +283,7 @@ async def upload_music_lyrics_endpoint(
         staged.write_bytes(stored)
         final = workdir / LYRICS_PATH
         final.parent.mkdir(exist_ok=True)
-        os.replace(staged, final)
+        fsretry.replace(staged, final)
         return MusicLyricsOut(lines=len(lines), sha256=hashlib.sha256(stored).hexdigest())
     finally:
         uploading.discard(project_id)

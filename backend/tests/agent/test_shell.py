@@ -18,9 +18,9 @@ from agents.tool import ShellActionRequest
 from studio.agent import shell as shell_module
 from studio.agent.shell import LocalShellExecutor
 
-pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin",
-    reason="Shell 经 sandbox-exec 执行，只存在于 macOS（计划 M1x T9 写明的 skipif 理由）",
+pytestmark = pytest.mark.macos_only(
+    "Shell 经 sandbox-exec 执行，只存在于 macOS（计划 M1x T9）；"
+    "无隔离模式见 test_shell_unsandboxed.py"
 )
 
 
@@ -90,6 +90,8 @@ class TestShellExecutor:
 
 
 async def _group_gone(pgid: int) -> bool:
+    if sys.platform == "win32":
+        raise AssertionError("process groups are POSIX-only")
     for _ in range(100):
         try:
             os.killpg(pgid, 0)

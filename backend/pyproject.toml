@@ -44,7 +44,11 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# PLW1514：文本 IO 必须显式写 encoding（Windows 默认是本地代码页，设计 §7）。它还是 ruff 的
+# 预览规则：打开 lint 的 preview，但 explicit-preview-rules 只让点名的预览规则生效。
+select = ["E", "F", "I", "UP", "B", "PLW1514"]
+preview = true
+explicit-preview-rules = true
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI 的依赖注入约定就是在参数默认值里调用 `Depends()`/`Query()`（结果
@@ -64,6 +68,9 @@ addopts = "-m 'not smoke and not slow'"
 markers = [
     "smoke: 需要真实 API key 的冒烟测试，默认从 `make check` 排除，由 `make smoke` 运行",
     "slow: 需要实际起 Chromium/ffmpeg 子进程渲染的慢测试，默认从 `make check` 排除，用 `-m slow` 单独跑",
+    "posix_only(reason): 只在 POSIX（macOS、Linux）上运行，必须写明原因（tests/conftest.py）",
+    "macos_only(reason): 只在 macOS 上运行（Seatbelt 等），必须写明原因",
+    "windows_only(reason): 只在 Windows 上运行，必须写明原因",
 ]
 
 [tool.importlinter]
@@ -323,4 +330,47 @@ forbidden_modules = [
     "studio.styles",
     "studio.config",
     "studio.worker",
+]
+
+[[tool.importlinter.contracts]]
+name = "proc 是平台层（windows-native T4）：只依赖标准库，不 import 任何其他 studio 模块"
+type = "forbidden"
+source_modules = ["studio.proc"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.engines",
+    "studio.jobs",
+    "studio.search",
+    "studio.styles",
+    "studio.config",
+    "studio.timeline",
+    "studio.worker",
+    "studio.worker_html",
+]
+
+[[tool.importlinter.contracts]]
+name = "fsretry 是平台层（windows-native T10）：只依赖标准库，不 import 任何其他 studio 模块"
+type = "forbidden"
+source_modules = ["studio.fsretry"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.engines",
+    "studio.jobs",
+    "studio.search",
+    "studio.styles",
+    "studio.config",
+    "studio.timeline",
+    "studio.proc",
+    "studio.worker",
+    "studio.worker_html",
 ]

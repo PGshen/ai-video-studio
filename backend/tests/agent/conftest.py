@@ -52,7 +52,7 @@ class StudioEnv:
         """Simulate a user edit (or any out-of-band change) to the workspace."""
         path = self.workdir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        path.write_text(content, encoding="utf-8", newline="")  # exact bytes on every platform
 
     def new_project(self, title: str = "另一个项目") -> str:
         project = create_project(self.engine, title=title, settings=dict(EXPLAINER_SETTINGS))

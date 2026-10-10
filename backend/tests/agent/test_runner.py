@@ -12,7 +12,7 @@ import pytest
 from pydantic import BaseModel
 
 from event_asserts import assert_in_order, type_counts
-from studio.agent import events, fake
+from studio.agent import events, exec_policy, fake
 from studio.agent.bus import BusEvent, SessionBus
 from studio.agent.fake import FakeRuntime, FakeStep
 from studio.agent.preamble import GUARD_RESTORED_NOTICE
@@ -32,6 +32,7 @@ from studio.db.models import ModelProfile
 from studio.db.repo.profiles import get_model_profile, seed_model_profiles
 from studio.db.repo.projects import update_project_settings
 from studio.db.repo.sessions import create_session, get_session
+from studio.db.repo.settings import update_settings
 from studio.db.repo.snapshots import get_snapshot, latest_snapshot, list_snapshots
 from studio.db.repo.stages import create_stage, get_stage
 from studio.db.repo.turns import (
@@ -95,7 +96,11 @@ class Harness:
 
 
 def _make_harness(
-    env: StudioEnv, *, max_concurrent_turns: int = 2, web_mode: Literal["tools", "native"] = "tools"
+    env: StudioEnv,
+    *,
+    max_concurrent_turns: int = 2,
+    web_mode: Literal["tools", "native"] = "tools",
+    allow_unsandboxed_exec: bool = False,
 ) -> Harness:
     seed_model_profiles(env.engine, enable_fake_runtime=True)
     scripts: deque[Script] = deque()
@@ -111,7 +116,10 @@ def _make_harness(
     factory.register("fake", construct)
     bus = SessionBus()
     settings = Settings(
-        data_dir=env.data_dir, max_concurrent_turns=max_concurrent_turns, web_mode=web_mode
+        data_dir=env.data_dir,
+        max_concurrent_turns=max_concurrent_turns,
+        web_mode=web_mode,
+        allow_unsandboxed_exec=allow_unsandboxed_exec,
     )
     runner = TurnRunner(env.engine, env.blobs, env.registry, factory, bus, settings)
     return Harness(env, runner, bus, scripts, contexts)
@@ -534,6 +542,82 @@ class TestAllowWeb:
         await h.run(h.session(stage="narrative"), [fake.say("b")])
 
         assert [ctx.allow_web for ctx in h.contexts] == [True, False]
+
+
+class TestExecSwitch:
+    """ADR 0024: the unsandboxed-exec switch is read once when a turn starts."""
+
+    async def test_env_default_reaches_turn_and_tool_context(self, env: StudioEnv) -> None:
+        h = _make_harness(env, allow_unsandboxed_exec=True)
+        await h.run(h.session(), [fake.say("a")])
+        (ctx,) = h.contexts
+        assert ctx.allow_unsandboxed_exec is True
+        assert ctx.tool_context().allow_unsandboxed_exec is True
+
+    async def test_ui_setting_overrides_env(self, env: StudioEnv) -> None:
+        h = _make_harness(env, allow_unsandboxed_exec=True)
+        update_settings(env.engine, {"allow_unsandboxed_exec": False})
+        await h.run(h.session(), [fake.say("a")])
+        assert h.contexts[0].allow_unsandboxed_exec is False
+
+    async def test_switching_mid_turn_only_affects_the_next_turn(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+        seen: list[bool] = []
+
+        class FlipsTheSwitch:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                update_settings(env.engine, {"allow_unsandboxed_exec": True})
+                seen.append(ctx.tool_context().allow_unsandboxed_exec)
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        await h.run(session_id, FlipsTheSwitch)
+        await h.run(session_id, [fake.say("b")])
+
+        assert seen == [False]
+        assert h.contexts[-1].allow_unsandboxed_exec is True
+
+    async def test_failing_switch_read_fails_the_turn_and_frees_the_session(
+        self, env: StudioEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # e.g. SQLite "database is locked" while the worker writes a heartbeat
+        h = _make_harness(env)
+        calls = 0
+
+        def flaky(*_args: object) -> bool:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("database is locked")
+            return False
+
+        monkeypatch.setattr("studio.agent.runner.effective_allow_unsandboxed_exec", flaky)
+        session_id = h.session()
+        first = await h.run(session_id, [fake.say("a")])
+        second = await h.run(session_id, [fake.say("b")])
+
+        assert first.status == "failed"
+        assert first.error is not None and "database is locked" in first.error
+        assert second.status == "done"
+
+    @pytest.mark.parametrize(
+        ("seatbelt", "allow", "expected"),
+        [(True, True, "sandboxed"), (False, False, "disabled"), (False, True, "unsandboxed")],
+    )
+    async def test_the_turn_records_its_exec_mode(
+        self,
+        env: StudioEnv,
+        monkeypatch: pytest.MonkeyPatch,
+        seatbelt: bool,
+        allow: bool,
+        expected: str,
+    ) -> None:
+        monkeypatch.setattr(exec_policy, "seatbelt_available", lambda: seatbelt)
+        monkeypatch.setattr(exec_policy.sys, "platform", "darwin" if seatbelt else "win32")
+        h = _make_harness(env, allow_unsandboxed_exec=allow)
+        turn = await h.run(h.session(), [fake.say("a")])
+        assert turn.usage is not None
+        assert turn.usage["exec_mode"] == expected
 
 
 class TestEffort:

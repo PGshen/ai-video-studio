@@ -175,7 +175,9 @@ async def test_explainer_bed_declares_its_own_grid_and_is_retimed_by_duration(
     seen: list[float] = []
 
     def spy(argv: list[str], env: dict[str, str]) -> list[str]:
-        seen.append(json.loads(Path(env["STUDIO_TIMELINE"]).read_text())["duration"])
+        seen.append(
+            json.loads(Path(env["STUDIO_TIMELINE"]).read_text(encoding="utf-8"))["duration"]
+        )
         return argv
 
     outcome = await _render(explainer, spy)

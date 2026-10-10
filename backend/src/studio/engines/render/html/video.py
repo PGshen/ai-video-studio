@@ -12,11 +12,13 @@ import asyncio
 import contextlib
 import inspect
 import math
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from studio import fsretry, proc
 from studio.engines.render.html.browser import PageLike
 
 FFMPEG = "ffmpeg"
@@ -110,6 +112,8 @@ async def render_silent_video(
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
+        env=proc.child_env(os.environ),
+        **proc.spawn_kwargs(),
     )
     assert process.stdin is not None and process.stderr is not None
     stderr_reader = asyncio.ensure_future(process.stderr.read())
@@ -136,10 +140,9 @@ async def render_silent_video(
             raise VideoEncodeError(
                 f"ffmpeg 编码失败（退出码 {process.returncode}）：{_tail(stderr)}"
             )
-        temp.replace(output)
+        fsretry.replace(temp, output)  # the player may still be reading the old file
     except BaseException:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
+        proc.kill_proc_tree(process)  # sync: an await here could be cancelled again
         with contextlib.suppress(Exception):
             await process.wait()
         stderr_reader.cancel()

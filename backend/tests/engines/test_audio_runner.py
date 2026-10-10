@@ -7,14 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 import textwrap
 from pathlib import Path
 
 import pytest
 
-from studio.engines.audio.runner import ComposeError, run_compose
+from fixtures.processes import pid_alive
+from studio.engines.audio import runner
+from studio.engines.audio.runner import ComposeError, limited_argv, run_compose
 
 
 def identity(argv: list[str], env: dict[str, str]) -> list[str]:
@@ -78,12 +79,14 @@ async def test_the_wrapper_sees_the_command_and_environment(tmp_path: Path) -> N
     await run_compose(script, timeline, out_dir, timeout=30, wrap_command=spy)
     argv = seen["argv"]
     assert isinstance(argv, list) and argv[-2:] == [sys.executable, str(script)]
-    assert argv[0] == "/bin/sh"  # resource limits are applied by `ulimit` here, not `preexec_fn`
+    assert argv == limited_argv([sys.executable, str(script)], 40)  # timeout + 10 s of CPU
     env = seen["env"]
     assert isinstance(env, dict)
     assert env["STUDIO_TIMELINE"] == str(timeline)
     assert env["STUDIO_OUT_WAV"] == str(out_dir / "music.wav")
     assert env["STUDIO_OUT_EVENTS"] == str(out_dir / "events.json")
+    assert env["PYTHONUTF8"] == "1"  # design §7: scripts read Chinese JSON on a GBK system
+    assert env["PYTHONIOENCODING"] == "utf-8"
 
 
 async def test_secrets_in_the_parent_environment_do_not_reach_the_script(
@@ -121,14 +124,6 @@ async def test_missing_products_are_named(tmp_path: Path) -> None:
     assert "STUDIO_OUT_WAV" in str(info2.value)
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    return True
-
-
 async def test_timeout_kills_the_whole_process_group(tmp_path: Path) -> None:
     body = """
     import os, subprocess, sys, time
@@ -142,10 +137,10 @@ async def test_timeout_kills_the_whole_process_group(tmp_path: Path) -> None:
     assert "超时" in str(info.value) or "超过" in str(info.value)
     pid = int((out_dir / "child.pid").read_text())
     for _ in range(40):
-        if not _alive(pid):
+        if not pid_alive(pid):
             break
         await asyncio.sleep(0.1)
-    assert not _alive(pid)
+    assert not pid_alive(pid)
 
 
 async def test_cancellation_kills_the_script(tmp_path: Path) -> None:
@@ -165,7 +160,7 @@ async def test_cancellation_kills_the_script(tmp_path: Path) -> None:
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(sys.platform != "darwin", reason="Seatbelt only exists on macOS")
+@pytest.mark.macos_only("Seatbelt only exists on macOS")
 async def test_real_seatbelt_allows_the_run_but_not_reading_secrets_or_the_network(
     tmp_path: Path,
 ) -> None:
@@ -242,6 +237,7 @@ async def test_an_oversized_events_file_is_refused(tmp_path: Path) -> None:
         await run_compose(script, timeline, out_dir, timeout=30, wrap_command=identity)
 
 
+@pytest.mark.posix_only("Windows 没有 ulimit；那里的大小限制见 test_an_oversized_wav_is_refused")
 async def test_a_script_cannot_fill_the_disk(tmp_path: Path) -> None:
     body = (
         "import os\n"
@@ -253,3 +249,23 @@ async def test_a_script_cannot_fill_the_disk(tmp_path: Path) -> None:
     with pytest.raises(ComposeError):
         await run_compose(script, timeline, out_dir, timeout=60, wrap_command=identity)
     assert sum(p.stat().st_size for p in out_dir.rglob("*") if p.is_file()) < 260_000_000
+
+
+def test_limited_argv_posix_wraps_in_ulimit() -> None:
+    argv = limited_argv(["python", "x.py"], 40, platform="darwin")
+    assert argv[:2] == ["/bin/sh", "-c"]
+    assert "ulimit -t 40" in argv[2]
+    assert argv[-2:] == ["python", "x.py"]
+
+
+def test_limited_argv_windows_runs_the_command_as_is() -> None:
+    """No `ulimit` on Windows: wall-clock timeout + kill_tree, and the size check below."""
+    assert limited_argv(["python", "x.py"], 40, platform="win32") == ["python", "x.py"]
+
+
+async def test_an_oversized_wav_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checked after the run on both platforms (the only size limit on Windows)."""
+    monkeypatch.setattr(runner, "_MAX_FILE_BYTES", 20_000)
+    script, timeline, out_dir = _script(tmp_path, GOOD.replace("* 441", "* 20_000"))
+    with pytest.raises(ComposeError):
+        await run_compose(script, timeline, out_dir, timeout=30, wrap_command=identity)

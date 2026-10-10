@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
 import stat
 from pathlib import Path
 
+from studio import fsretry
 from studio.workspace.blobs import BlobStore
 from studio.workspace.snapshot import Manifest
 
@@ -53,12 +53,12 @@ def _make_tree_writable(path: Path) -> None:
 def _clear_dir(path: Path) -> None:
     """删除 `path`：符号链接或文件只 unlink（不跟随、不改链接目标权限），目录整棵删除。"""
     if path.is_symlink() or path.is_file():
-        path.unlink()
+        fsretry.unlink(path)
         return
     if not path.exists():
         return
     _make_tree_writable(path)
-    shutil.rmtree(path)
+    fsretry.rmtree(path)
 
 
 def materialize_upstream(

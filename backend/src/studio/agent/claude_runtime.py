@@ -45,6 +45,7 @@ import json
 import logging
 import os
 import re
+import sys
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,6 +84,7 @@ from studio.agent.claude_web import (
     web_fetch_hook,
     web_search_collect_hook,
 )
+from studio.agent.exec_policy import ExecMode, claude_sandbox_available, exec_mode
 from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext
 from studio.config import Settings
 from studio.config import repo_root as default_repo_root
@@ -96,6 +98,18 @@ MAX_BUFFER_BYTES = 8 * 1024 * 1024
 
 BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 WEB_TOOLS = ["WebSearch", "WebFetch"]
+EXEC_TOOLS = ("Bash", "PowerShell")
+"""The CLI's command tools; `PowerShell` exists on Windows only (ADR 0024)."""
+
+
+def builtin_tools(mode: ExecMode, platform: str) -> tuple[list[str], list[str]]:
+    """`(tools, disallowed_tools)` for an exec mode (design §4.3): `disabled` drops `Bash` and
+    disallows both command tools; `unsandboxed` adds `PowerShell` on Windows."""
+    if mode == "disabled":
+        return [t for t in BUILTIN_TOOLS if t not in EXEC_TOOLS], list(EXEC_TOOLS)
+    if mode == "unsandboxed" and platform == "win32":
+        return [*BUILTIN_TOOLS, "PowerShell"], []
+    return list(BUILTIN_TOOLS), []
 
 
 class SdkClient(Protocol):
@@ -173,7 +187,7 @@ class CostLedger:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         payload = {"total_cost_usd": entry.total, "unsettled": entry.unsettled}
-        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.write_text(json.dumps(payload), encoding="utf-8", newline="")
         tmp.replace(path)
 
 
@@ -223,6 +237,7 @@ class ClaudeRuntime:
         repo_root: Path | None = None,
         client_factory: ClientFactory = _default_client,
         environ: Mapping[str, str] | None = None,
+        platform: str | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._repo_root = repo_root if repo_root is not None else default_repo_root()
@@ -230,11 +245,18 @@ class ClaudeRuntime:
         self._ledger = CostLedger(self._claude_dir / "studio-cost-ledger")
         self._client_factory = client_factory
         self._environ = environ if environ is not None else os.environ
+        self._platform = platform or sys.platform
 
     def _options(
         self, ctx: TurnContext, auth: events.AuthMode, env: dict[str, str]
     ) -> ClaudeAgentOptions:
-        tools = BUILTIN_TOOLS + (WEB_TOOLS if ctx.allow_web else [])
+        mode = exec_mode(
+            platform=self._platform,
+            sandbox_available=claude_sandbox_available(self._platform),
+            allow_unsandboxed=ctx.allow_unsandboxed_exec,
+        )
+        builtin, disallowed = builtin_tools(mode, self._platform)
+        tools = builtin + (WEB_TOOLS if ctx.allow_web else [])
         mcp_servers: dict[str, McpServerConfig] = {}
         mcp_tool_names: list[str] = []
         if ctx.tools:
@@ -271,6 +293,7 @@ class ClaudeRuntime:
             system_prompt=ctx.system_prompt,
             tools=tools,
             allowed_tools=tools + mcp_tool_names,
+            disallowed_tools=disallowed,
             mcp_servers=mcp_servers,
             strict_mcp_config=True,
             setting_sources=[],
@@ -278,7 +301,13 @@ class ClaudeRuntime:
             resume=ctx.resume_ref,
             env=env,
             hooks=hooks,
-            sandbox=sandbox_settings(workdir, self._repo_root, self._data_dir),
+            # Only the sandboxed mode passes `sandbox`: on Windows `enabled` + `failIfUnavailable`
+            # would make the CLI refuse to start (design §4.3).
+            sandbox=(
+                sandbox_settings(workdir, self._repo_root, self._data_dir)
+                if mode == "sandboxed"
+                else None
+            ),
             include_partial_messages=True,
             # Best effort: models that think return summarized text, others return none.
             thinking={"type": "adaptive", "display": "summarized"},

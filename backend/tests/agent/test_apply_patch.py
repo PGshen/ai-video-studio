@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from agents import ApplyPatchOperation, ApplyPatchResult
 from agents.editor import ApplyPatchOperationType
 
 from studio.agent.apply_patch import WorkspaceApplyPatchEditor, to_workspace_relpath
+from studio.workspace.files import ScopeError
 from studio.workspace.scope import WriteScope
 
 SCOPE = WriteScope(writable=["topic/**"], tool_managed=["topic/managed.json"])
@@ -171,3 +173,33 @@ class TestNormalisedPaths:
     def test_to_workspace_relpath(self, workdir: Path) -> None:
         assert to_workspace_relpath(workdir, "./topic//a.md") == "topic/a.md"
         assert to_workspace_relpath(workdir, str(workdir / "topic" / "b.md")) == "topic/b.md"
+
+
+class TestWindowsStylePaths:
+    """Design §5: apply_patch shares the model path rules with the hooks and files API."""
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "topic\\a.md",
+            "c:topic/a.md",
+            "C:/Windows/win.ini",
+            "topic/a.md:stream",
+            "topic/CON.md",
+            "topic/a.md.",
+            "/etc/passwd",
+            "",
+        ],
+    )
+    def test_rejected(self, workdir: Path, raw: str) -> None:
+        with pytest.raises(ScopeError):
+            to_workspace_relpath(workdir, raw)
+
+    def test_workspace_itself_is_not_a_file(self, workdir: Path) -> None:
+        with pytest.raises(ScopeError):
+            to_workspace_relpath(workdir, str(workdir))
+
+    def test_create_with_a_backslash_path_fails_without_writing(self, workdir: Path) -> None:
+        result = _editor(workdir).create_file(_op("create_file", "topic\\a.md", "+x"))
+        assert result.status == "failed"
+        assert list(workdir.rglob("*a.md")) == []

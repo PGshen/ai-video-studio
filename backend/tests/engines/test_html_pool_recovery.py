@@ -8,12 +8,13 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from fixtures.html_engine import projects as fx
+from fixtures.processes import descendants
 from studio.engines.render.html.assemble import assemble
 from studio.engines.render.html.browser import BrowserClosed
 from studio.engines.render.html.pool import BrowserPool
@@ -22,23 +23,7 @@ pytestmark = pytest.mark.slow
 
 
 def _descendants() -> list[tuple[int, str]]:
-    out = subprocess.run(
-        ["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, check=True
-    ).stdout.splitlines()
-    rows = []
-    for line in out:
-        parts = line.split(None, 2)
-        if len(parts) == 3:
-            rows.append((int(parts[0]), int(parts[1]), parts[2]))
-    mine = {os.getpid()}
-    grew = True
-    while grew:
-        grew = False
-        for pid, ppid, _ in rows:
-            if ppid in mine and pid not in mine:
-                mine.add(pid)
-                grew = True
-    return [(pid, command) for pid, _, command in rows if pid in mine and pid != os.getpid()]
+    return descendants(os.getpid())
 
 
 def _browser_main_pids() -> list[int]:
@@ -58,13 +43,20 @@ def page(tmp_path: Path):
     return assemble(tmp_path, fx.TIMELINE)
 
 
+def _hard_kill(pid: int) -> None:
+    if sys.platform == "win32":
+        os.kill(pid, signal.SIGTERM)  # TerminateProcess: as abrupt as SIGKILL
+    else:
+        os.kill(pid, signal.SIGKILL)
+
+
 async def test_pool_recovers_after_the_browser_process_is_sigkilled(page) -> None:
     pool = BrowserPool()
     try:
         async with pool.acquire(page) as first:
             assert len(await first.render_jpeg(0.5)) > 1000
         (pid,) = _browser_main_pids()
-        os.kill(pid, signal.SIGKILL)
+        _hard_kill(pid)
         await asyncio.sleep(0.5)
         async with pool.acquire(page) as second:  # next call rebuilds the browser
             assert len(await second.render_jpeg(0.5)) > 1000
@@ -79,7 +71,7 @@ async def test_killing_the_browser_mid_session_surfaces_browser_closed(page) -> 
         async with pool.acquire(page) as live:
             await live.render_jpeg(0.5)
             for pid in _browser_main_pids():
-                os.kill(pid, signal.SIGKILL)
+                _hard_kill(pid)
             await asyncio.sleep(0.5)
             with pytest.raises(BrowserClosed):
                 await live.render_jpeg(0.6)

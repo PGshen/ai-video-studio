@@ -65,7 +65,7 @@ with wave.open(os.environ["STUDIO_OUT_WAV"], "wb") as handle:
     handle.setsampwidth(2)
     handle.setframerate(SR)
     handle.writeframes(pcm.tobytes())
-with open(os.environ["STUDIO_OUT_EVENTS"], "w") as handle:
+with open(os.environ["STUDIO_OUT_EVENTS"], "w", encoding="utf-8") as handle:
     document = {"duration": duration, "events": events}
     document["bpm"] = BPM
     json.dump(document, handle)

@@ -8,8 +8,11 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from studio.proc import child_env, kill_tree, spawn_kwargs
 
 
 class AudioProbeError(ValueError):
@@ -34,13 +37,15 @@ async def probe_audio(path: Path, *, timeout: float = 15.0) -> AudioProbe:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=child_env(os.environ),
+            **spawn_kwargs(),
         )
     except OSError as exc:
         raise AudioProbeError(f"无法运行 ffprobe：{exc}") from exc
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
     except TimeoutError as exc:
-        proc.kill()
+        await kill_tree(proc)
         await proc.wait()
         raise AudioProbeError(f"音频探测超时（{timeout:g} 秒）") from exc
     if proc.returncode != 0:

@@ -12,7 +12,7 @@ import wave
 import numpy as np
 
 SR = 44100
-timeline = json.load(open(os.environ["STUDIO_TIMELINE"]))
+timeline = json.load(open(os.environ["STUDIO_TIMELINE"], encoding="utf-8"))
 duration = timeline["duration"]
 n = int(round(duration * SR))
 out = np.zeros(n)
@@ -75,4 +75,4 @@ wav.close()
 doc = {"bpm": bpm, "duration": duration, "events": events}
 if not grid:
     doc["offset"] = offset
-json.dump(doc, open(os.environ["STUDIO_OUT_EVENTS"], "w"))
+json.dump(doc, open(os.environ["STUDIO_OUT_EVENTS"], "w", encoding="utf-8"))

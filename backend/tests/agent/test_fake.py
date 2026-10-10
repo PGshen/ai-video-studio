@@ -575,7 +575,8 @@ class TestFakeDelay:
         started = time.monotonic()
         result = await _run(runtime, _make_ctx(workdir, write_scope=scope))
 
-        assert time.monotonic() - started >= 0.05
+        # One tick of slack: Windows timers run at ~15.6 ms, so a 50 ms sleep can measure 47 ms.
+        assert time.monotonic() - started >= 0.05 - 0.016
         assert result[-1] == events.TurnEnd(resume_ref=None, status="done")
 
     def test_settings_default_delay_is_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:

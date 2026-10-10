@@ -108,6 +108,9 @@ class TurnContext:
     """透传给 `ToolContext.upstream_stages`（M5 T9）：当前阶段的直接上游。"""
     effort: Effort | None = None
     """思考强度；`None` 表示不指定，用 SDK 默认（测试和无项目会话）。"""
+    allow_unsandboxed_exec: bool = False
+    """本轮开始时读到的「无隔离执行」开关（ADR 0024）：各执行点据此和自己有没有 sandbox
+    问 `exec_policy.exec_mode`。本轮之内不变。"""
 
     def tool_context(self) -> ToolContext:
         """业务工具 handler 的上下文；三个运行时都从这里取，不各自构造（TD-17）。"""
@@ -120,6 +123,7 @@ class TurnContext:
             session_id=self.session_id,
             turn_id=self.turn_id,
             upstream_stages=self.upstream_stages,
+            allow_unsandboxed_exec=self.allow_unsandboxed_exec,
         )
 
 

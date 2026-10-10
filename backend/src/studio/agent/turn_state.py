@@ -11,6 +11,7 @@ import asyncio
 from dataclasses import dataclass, field
 
 from studio.agent import events
+from studio.agent.exec_policy import ExecMode
 from studio.agent.runtime import CancelToken, UserInput
 from studio.agent.stage import StageDefinition
 from studio.db.repo.profiles import ModelProfileValue
@@ -32,6 +33,10 @@ class _Job:
     task: asyncio.Task[None] | None = None
     shutdown: bool = False
     """进程关闭时被停下：`cancelled` 记为 `interrupted`（可以"继续"），快照记 `partial`。"""
+    allow_unsandboxed_exec: bool = False
+    """本轮开始时读一次的「无隔离执行」开关（ADR 0024），本轮之内不变。"""
+    exec_mode: ExecMode = "disabled"
+    """本轮最弱执行点的模式（`exec_policy.host_exec_mode`），记进 `turns.usage.exec_mode`。"""
 
     @property
     def busy_key(self) -> str:

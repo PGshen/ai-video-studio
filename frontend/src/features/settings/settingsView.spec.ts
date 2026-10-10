@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { ModelProfileOut, SettingsOut } from '@/types/api'
 import {
   DEFAULT_PROFILE_STAGES,
+  EXEC_SWITCH_RISKS,
   defaultProfileChoices,
+  execSourceText,
+  execSwitchVisible,
   isFieldLocked,
   keyStatus,
   webModeNotes,
@@ -38,6 +41,11 @@ function settings(overrides: Partial<SettingsOut> = {}): SettingsOut {
     web_mode_env: 'tools',
     tts_default: { voice: 'zizi', speech_rate: 1 },
     default_style_preset_id: null,
+    allow_unsandboxed_exec: false,
+    allow_unsandboxed_exec_source: 'env',
+    allow_unsandboxed_exec_env: false,
+    sandbox_available: false,
+    exec_mode: 'disabled',
     ...overrides,
   }
 }
@@ -115,5 +123,33 @@ describe('isFieldLocked / keyStatus', () => {
     expect(keyStatus(profile({ api_key_env: null }))).toBe('本机登录')
     expect(keyStatus(profile({ api_key_env: 'K', key_configured: true }))).toBe('已配置')
     expect(keyStatus(profile({ api_key_env: 'K', key_configured: false }))).toBe('未配置')
+  })
+})
+
+describe('无隔离执行开关（ADR 0024）', () => {
+  it('只在本机没有沙箱时显示', () => {
+    expect(execSwitchVisible(settings({ sandbox_available: false }))).toBe(true)
+    expect(execSwitchVisible(settings({ sandbox_available: true, exec_mode: 'sandboxed' }))).toBe(
+      false,
+    )
+  })
+
+  it('风险说明提到能读本机文件、能联网，以及下一轮起生效', () => {
+    const text = EXEC_SWITCH_RISKS.join('\n')
+    expect(text).toContain('读')
+    expect(text).toContain('联网')
+    expect(text).toContain('下一轮')
+  })
+
+  it('来源文案：界面覆盖时说明可以清除并回到环境变量的值', () => {
+    const text = execSourceText(
+      settings({ allow_unsandboxed_exec_source: 'ui', allow_unsandboxed_exec_env: false }),
+    )
+    expect(text).toContain('界面')
+    expect(text).toContain('关')
+  })
+
+  it('来源文案：来自环境变量时点名变量', () => {
+    expect(execSourceText(settings())).toContain('STUDIO_ALLOW_UNSANDBOXED_EXEC')
   })
 })

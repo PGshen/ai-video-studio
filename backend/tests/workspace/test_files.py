@@ -122,6 +122,16 @@ class TestReadText:
 
 
 class TestWriteText:
+    def test_newlines_are_stored_as_given_on_every_platform(self, workdir: Path) -> None:
+        """windows-native T9: text mode would store "\\r\\n" on Windows (other bytes, other
+        snapshot hashes than macOS for the same edit)."""
+        scope = WriteScope(writable=["topic/**"], tool_managed=[])
+        write_text(workdir, "topic/brief.md", "第一行\n第二行\r\n", scope)
+        write_text_unscoped(workdir, "topic/raw.md", "a\nb")
+
+        assert (workdir / "topic" / "brief.md").read_bytes() == "第一行\n第二行\r\n".encode()
+        assert (workdir / "topic" / "raw.md").read_bytes() == b"a\nb"
+
     def test_writes_within_scope(self, workdir: Path) -> None:
         scope = WriteScope(writable=["topic/**"], tool_managed=[])
 

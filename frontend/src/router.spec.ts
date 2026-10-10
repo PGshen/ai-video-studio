@@ -6,7 +6,9 @@ function makeRouter() {
   return createRouter({ history: createMemoryHistory(), routes })
 }
 
-describe('router', () => {
+// Each push lazily imports page components; the first transforms took over the default 5 s on
+// Windows right after the backend suite (windows-native T9, T11), so the whole file gets 30 s.
+describe('router', { timeout: 30_000 }, () => {
   it('redirects / to /projects', async () => {
     const router = makeRouter()
     await router.push('/')

@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Required, TypedDict
 
 from claude_agent_sdk.types import (
@@ -19,6 +19,7 @@ from claude_agent_sdk.types import (
 )
 
 from studio.agent.sandbox_paths import sensitive_home_dirs
+from studio.workspace.files import ScopeError, relpath_within
 from studio.workspace.scope import WriteScope, is_writable
 
 GUARDED_WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
@@ -93,13 +94,10 @@ def write_denial_reason(workdir: Path, scope: WriteScope, tool_input: dict[str, 
         return f"路径 {raw!r} 首尾带空白，已拒绝。本阶段可写：{allowed}"
     if raw.startswith("~"):
         return f"{raw} 在项目工作区之外，已拒绝。本阶段可写：{allowed}"
-    target = Path(raw)
-    if not target.is_absolute():
-        target = workdir / target
     try:
-        relpath = target.resolve().relative_to(workdir).as_posix()
-    except ValueError:
-        return f"{raw} 在项目工作区之外，已拒绝。本阶段可写：{allowed}"
+        relpath = relpath_within(workdir, raw)
+    except ScopeError as exc:
+        return f"{exc}，已拒绝。本阶段可写：{allowed}"
     if not is_writable(scope, relpath):
         return f"{relpath} 不在本阶段可写范围内，已拒绝。本阶段可写：{allowed}"
     return None
@@ -114,11 +112,24 @@ def _escapes(workdir: Path, raw: str) -> bool:
     """
     if _padded(raw) or raw.startswith("~"):
         return True
-    target = Path(raw)
-    if not target.is_absolute():
-        target = workdir / target
-    resolved = target.resolve()
-    return resolved != workdir and workdir not in resolved.parents
+    try:
+        relpath_within(workdir, raw)
+    except ScopeError:
+        return True
+    return False
+
+
+def _bad_glob(pattern: str) -> bool:
+    """Glob patterns are not paths (`*`, `**`, `{a,b}`), so `check_model_path` does not apply
+    as a whole; they still may not be absolute, start at `~`, climb with `..`, or use the
+    Windows-only forms design §5 rejects everywhere (`\\`, drive letters, `:` streams)."""
+    return (
+        _padded(pattern)
+        or pattern.startswith(("/", "~"))
+        or "\\" in pattern
+        or ":" in pattern
+        or ".." in PurePosixPath(pattern).parts
+    )
 
 
 MAX_READ_IMAGE_BYTES = 300_000
@@ -165,9 +176,7 @@ def read_denial_reason(workdir: Path, tool_name: str, tool_input: dict[str, Any]
     if raw_path is not None and (not isinstance(raw_path, str) or _escapes(workdir, raw_path)):
         return refuse.format(raw_path)
     pattern = tool_input.get("pattern" if tool_name == "Glob" else "glob")
-    if isinstance(pattern, str) and (
-        _padded(pattern) or pattern.startswith(("/", "~")) or ".." in Path(pattern).parts
-    ):
+    if isinstance(pattern, str) and _bad_glob(pattern):
         return refuse.format(pattern)
     return None
 

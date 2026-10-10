@@ -66,6 +66,8 @@ def finish(runner: TurnRunner, job: _Job, state: _State) -> None:
         # M5 T7: 会话可以中途换模型，所以每一轮记下实际用的配置；下一轮据此判断要不要提示。
         "model": job.profile.model,
         "profile_name": job.profile.name,
+        # ADR 0024: `unsandboxed` turns are marked "命令未隔离" in the UI.
+        "exec_mode": job.exec_mode,
     }
     finish_turn_row(
         runner,

@@ -8,10 +8,12 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from studio import fsretry, proc
 
 _SAMPLE_RATE = 44100
 _STDERR_TAIL_LINES = 12
@@ -187,12 +189,13 @@ async def mix_final(
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
+        env=proc.child_env(os.environ),
+        **proc.spawn_kwargs(),
     )
     try:
         _, stderr = await process.communicate()
     except BaseException:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
+        proc.kill_proc_tree(process)  # sync: an await here could be cancelled again
         await process.wait()
         temp.unlink(missing_ok=True)
         raise
@@ -200,4 +203,4 @@ async def mix_final(
         temp.unlink(missing_ok=True)
         tail = "\n".join(stderr.decode(errors="replace").strip().splitlines()[-_STDERR_TAIL_LINES:])
         raise MixError(f"混音失败（ffmpeg 退出码 {process.returncode}）：{tail}")
-    temp.replace(output)
+    fsretry.replace(temp, output)  # the player may still be reading the old file

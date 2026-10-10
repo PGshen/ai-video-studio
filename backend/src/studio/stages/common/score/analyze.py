@@ -9,7 +9,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -17,6 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from studio import fsretry
 from studio.agent.events import ImageData
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.engines.audio.song import CONFIDENCE_WARN
@@ -41,7 +41,7 @@ def _install(temp_dir: Path, music_dir: Path) -> None:
             shutil.copyfile(temp_dir / name, hidden)
             staged.append((hidden, music_dir / name))
         for hidden, final in staged:
-            os.replace(hidden, final)
+            fsretry.replace(hidden, final)
     finally:
         for hidden, _ in staged:
             hidden.unlink(missing_ok=True)
