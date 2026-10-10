@@ -47,3 +47,20 @@
 - 项目倍速 0.5–2.0（对应火山引擎相对值 -50 至 100，`engines/tts/volcengine.py`）两端都被供应商接受，并且真实生效：同一段话 0.5 倍速约是 1.0 倍速的 1.8 倍长，2.0 倍速约一半。`db/repo/settings.py` 的 `SPEECH_RATE_MIN/MAX` 就是这个范围。
 - `xiaohe`、`yunzhou` 和之前验证过的 `zizi` 都能合成；`xiaozhupeiqi`、`xiaoxinjiejie` 没有实际合成过（旧库里 `xiaozhupeiqi`（小猪佩奇）标为未启用）。
 - 音色的中文名和性别取自旧项目 dev DB 的 `tts_voices` 表（2026-09-30 只读查证，`speaker_id` 与 `engines/tts/voice_map.py` 一一对应）。
+
+## ✅ 已验证：豆包 v1 / v2 按音色区分，v1 逐字时间戳与 v2 同形
+
+日期：2026-10-10（tts-voice-management T5）。来源：实测，`make smoke SMOKE_ARGS="-k tts_voice_versions_real"`
+（`backend/tests/smoke/test_smoke.py::test_tts_voice_versions_real`），证据
+`data/evidence/m5-polish/smoke/20261010T144735Z-tts-voice-versions-real.json` 和同目录的两个 mp3。
+
+| 版本 | 资源 id（`X-Api-Resource-Id`） | 时间戳参数 | 音色 id 特征 | 实测 |
+|---|---|---|---|---|
+| v1（`doubao_1.0`） | `seed-tts-1.0` | `enable_timestamp` | `*_moon_bigtts` | `sisi`（思思）试听成功，6.46 秒；直接合成 10 个汉字返回 10 条逐字时间戳 |
+| v2（`doubao_2.0`） | `seed-tts-2.0` | `enable_subtitle` | `*_uranus_bigtts` | 经 `POST /api/tts/voices` 新增的 v2 音色试听成功，5.64 秒 |
+
+**含义**：
+
+- 版本是**音色**的属性，不是整个引擎的：两种音色可以在同一个进程里混用，引擎按音色选资源 id 和参数（`engines/tts/volcengine.py::RESOURCE_ID_BY_ENGINE`）。选错版本（比如 v2 的音色 id 配 v1 资源）会合成失败，所以新增音色时要选对版本。
+- v1 的逐字时间戳字段（`word`/`startTime`/`endTime`）与 v2 同形，现有解析不用改。
+- **没验证**：v1 音色在 `beat_aligner` 上的对齐覆盖率（只看了时间戳形状，没喂进对齐）；`sisi` 的语速两端。

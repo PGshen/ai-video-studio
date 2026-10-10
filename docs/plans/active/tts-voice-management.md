@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 无（设置页功能迭代） |
 | 设计依据 | [架构设计 §6.2 设置页「TTS 音色」](../../design/2026-09-26-architecture.md)；旧项目做法见 `../ai-video/backend/app/models/tts_config.py`、`engines/tts/volcengine.py` |
 | 分支 | `tts-voice-management` |
@@ -32,13 +32,13 @@
 
 ## 验收标准
 
-- [ ] AC1：新增音色后立即出现在「默认音色」下拉、项目设置的音色下拉和列表里，并可试听（验证方式：API 测试 + 前端测试 + 真实试听冒烟）
-- [ ] AC2：别名重复、别名格式非法、speaker id 为空、版本不是 v1/v2 时拒绝，返回 422/409 和中文原因（API 测试）
-- [ ] AC3：删除被项目引用的音色，或当前全局默认音色，或最后一个音色，返回 409 并说明原因（项目数、默认）；其余可删（API 测试）
-- [ ] AC4：v1 音色合成走 `seed-tts-1.0` + `enable_timestamp`，v2 走 `seed-tts-2.0` + `enable_subtitle`，同一次运行里两个版本可混用（引擎单测，断言请求头和请求体）
-- [ ] AC5：迁移后现有数据库的行为不变：默认 `zizi`、已有项目的 `voice` 值仍然有效；音色删除后重启不会被种子加回来（迁移测试）
-- [ ] AC6：真实 v1 音色（`sisi`）试听成功，并记录逐字时间戳的形态（冒烟，写进 `docs/references/volcengine-tts.md`）
-- [ ] AC7：`make check` 为绿；在浏览器里走一遍新增 → 试听 → 删除，附截图
+- [x] AC1：新增音色后立即出现在「默认音色」下拉、项目设置的音色下拉和列表里，并可试听（验证方式：API 测试 + 前端测试 + 真实试听冒烟）
+- [x] AC2：别名重复、别名格式非法、speaker id 为空、版本不是 v1/v2 时拒绝，返回 422/409 和中文原因（API 测试）
+- [x] AC3：删除被项目引用的音色，或当前全局默认音色，或最后一个音色，返回 409 并说明原因（项目数、默认）；其余可删（API 测试）
+- [x] AC4：v1 音色合成走 `seed-tts-1.0` + `enable_timestamp`，v2 走 `seed-tts-2.0` + `enable_subtitle`，同一次运行里两个版本可混用（引擎单测，断言请求头和请求体）
+- [x] AC5：迁移后现有数据库的行为不变：默认 `zizi`、已有项目的 `voice` 值仍然有效；音色删除后重启不会被种子加回来（迁移测试）
+- [x] AC6：真实 v1 音色（`sisi`）试听成功，并记录逐字时间戳的形态（冒烟，写进 `docs/references/volcengine-tts.md`）
+- [x] AC7：`make check` 为绿；在浏览器里走一遍新增 → 试听 → 删除，附截图
 
 ## 任务
 
@@ -69,7 +69,7 @@
 - **完成标准**：AC1–AC3 的后端部分通过。
 - **验证命令**：同上
 
-### T4：前端「语音」页（待开始）
+### T4：前端「语音」页（完成）
 
 - **目标**：新增对话框、删除、版本徽标。
 - **涉及文件**：`frontend/src/features/settings/VoicePanel.vue`、`VoiceDialog.vue`（新）、`voiceForm.ts`（新，校验）、`composables/queries.ts`、`api/` 对应客户端、`*.spec.ts`
@@ -78,7 +78,7 @@
 - **完成标准**：AC1、AC3 的前端部分通过。
 - **验证命令**：同上
 
-### T5：真实验证与文档（待开始）
+### T5：真实验证与文档（完成）
 
 - **目标**：真实试听 v1 音色并记录；更新文档。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`、`docs/references/volcengine-tts.md`、`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`、`docs/plans/TODO.md`
@@ -92,11 +92,11 @@
 
 ## 下一步
 
-- 从 T4 开始（前端）：`frontend/src/features/settings/VoicePanel.vue` 加新增对话框、删除、版本徽标。后端接口：`POST /api/tts/voices {alias,label,gender,speaker_id,engine}`、`DELETE /api/tts/voices/{alias}`（409 的 detail 是中文原因），`GET` 返回含 `speaker_id`。先写 spec。
-- 之后 T5：`make smoke SMOKE_ARGS="-k tts_voice_versions_real"`（已获批准的真实调用），把结果写进 `docs/references/volcengine-tts.md`。
+- 等负责人验收（在设置页「语音」里新增一个音色、试听、删除；注意 8000/5173 上正在跑的旧开发服务器需要重启才会应用迁移 0012 和新接口）。验收后按 SOP §7 收尾：合并到 main（rebase、完整 `make check`）、计划移到 `completed/`、TODO 移到已完成。
 
 ## 决策记录
 
+- 2026-10-10 — 删除确认用普通 `Button` 而不是 `AlertDialogAction` — 后者点击即关闭对话框，409 的原因看不到（`VoicePanel.spec.ts` 的用例暴露）；模型配置面板有同样问题，登记到 TODO，不在本计划内改。
 - 2026-10-10 — 音色别名全局唯一，而不是「引擎 + 别名」唯一 — 项目设置里只存别名（`projects.settings.voice`），保持现有数据格式不变。
 - 2026-10-10 — 种子只在迁移里写入，不在启动时补 — 否则删除的内置音色重启后会复活。
 - 2026-10-10 — 不做编辑 — 需求只要新增和删除；改 speaker id 会让已合成的配音与音色脱钩，删了重建更直白。
@@ -116,4 +116,11 @@
 
 ## 验证记录
 
-- 无
+- AC1：`tests/api/test_tts.py::TestVoices::test_a_new_voice_is_listed_usable_for_projects_defaults_and_preview`（新增后可设为项目音色、全局默认并试听）；浏览器里新增 `demo_xiaohe` 后立即出现在列表末尾（`data/evidence/tts-voice-management/voice-list-after-add.jpg`）；真实试听见 AC6。
+- AC2：`tests/db/test_repo_voices.py`（别名/名称/speaker id/性别/版本非法各一例，一次列全部问题）、`tests/api/test_tts.py`（重复 409、非法 422、多余字段 422）；前端 `voiceForm.spec.ts`。
+- AC3：`test_repo_voices.py`（被项目用、默认、没存默认时的回落默认、最后一个）、`test_tts.py`（删除 409 带「1 个项目」「默认」）；浏览器里删默认音色 zizi：对话框保持打开并显示"音色 zizi 是新项目的默认音色（请先在上方改默认值），不能删除"（`data/evidence/tts-voice-management/delete-default-409.jpg`）；删未被使用的音色返回 204 并从列表消失。
+- AC4：`tests/engines/test_tts_engine.py`：v2 → `seed-tts-2.0` + `enable_subtitle`，v1 → `seed-tts-1.0` + `enable_timestamp`，同一实例混用，未知版本报错。
+- AC5：`test_repo_voices.py::test_migration_seeds_the_six_known_voices`、`test_deleted_seed_does_not_come_back_on_migrate`；`FALLBACK_DEFAULT_VOICE == DEFAULT_VOICE`；`test_migrate.py` 通过；已有项目的 `voice` 值沿用别名，格式不变。
+- AC6：`make smoke SMOKE_ARGS="-k tts_voice_versions_real"` 通过（2026-10-10，约 16 秒）：`sisi`（v1）试听 6.46 秒，新增的 v2 音色 5.64 秒，v1 直接合成返回 10 条逐字时间戳；同批 `volcengine_tts` 也通过。记录在 `docs/references/volcengine-tts.md`，证据 `data/evidence/m5-polish/smoke/20261010T144735Z-tts-voice-versions-real.json`。
+- AC7：后端 `check-backend`：3176 通过，仅 1 个在 main 上就失败的无关用例（`test_tasks_dev.py::test_belongs_to_project[darwin]`，已登记 TODO）；前端 `check-frontend`：lint、类型检查、1273 个 vitest 通过；文档检查通过。
+
