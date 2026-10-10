@@ -9,6 +9,7 @@ import {
   createSession,
   deleteIdea,
   deleteModelProfile,
+  testModelProfile,
   deleteProject,
   finalizeRender,
   finalVideoUrl,
@@ -259,6 +260,21 @@ describe('endpoints：动态路径段会被正确编码', () => {
     expect(String(fetchMock.mock.calls[2]![0])).toBe('/api/model-profiles/p%231')
     expect(fetchMock.mock.calls[2]![1]).toMatchObject({ method: 'DELETE' })
     expect(deleted).toBeUndefined()
+  })
+
+  it('模型配置连通性测试：POST 到 /test，对 id 编码', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response('{"ok":true,"latency_ms":5,"reply":"ok","error":null}', { status: 200 }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await testModelProfile('p#1')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/model-profiles/p%231/test')
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' })
+    expect(result.ok).toBe(true)
   })
 
   it('设置：GET /settings，PATCH 把 null 原样发出去（清除）', async () => {

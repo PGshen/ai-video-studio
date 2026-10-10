@@ -69,7 +69,7 @@ POST /api/model-profiles/{id}/test   → 200
 - **涉及文件**：`agent/probe.py`（新）、`api/profiles.py`、`api/schemas.py`、`api/deps.py`、`main.py`、`backend/tests/agent/test_probe.py`、`backend/tests/api/test_profiles.py`。
 - **测试**：AC1 列出的各情况；404；错误文本里的 key、base_url 账号密码被去掉。
 
-### T3：前端「测试」按钮与结果展示（待开始）
+### T3：前端「测试」按钮与结果展示（完成）
 
 - **目标**：类型（`types/api`）、mutation（`composables/queries`）、`ModelProfilesPanel.vue` 每行「测试」按钮；结果显示在该行名称下方：成功"✓ 1.2s · ok"，失败红字原因；按行独立维护状态。
 - **涉及文件**：`frontend/src/types/api.ts`、`frontend/src/api/*`、`frontend/src/composables/queries.ts`、`frontend/src/features/settings/ModelProfilesPanel.vue`、`settingsView.ts`（结果格式化纯函数）及其 spec。
@@ -82,14 +82,16 @@ POST /api/model-profiles/{id}/test   → 200
 ## 进度
 
 - 2026-10-10 — T1 — `ask_once` 抽出，titler 改用它，`test_titler.py` 原样通过（dbad7f5）
-- 2026-10-10 — T2 — `agent/probe.py` + `POST /api/model-profiles/{id}/test`，`app.state.probe` 注入（见 commit）
+- 2026-10-10 — T2 — `agent/probe.py` + `POST /api/model-profiles/{id}/test`，`app.state.probe` 注入（f8cec87）
+- 2026-10-10 — T3 — 列表每行「测试」按钮，结果显示在名称下方（见 commit）
 
 ## 下一步
 
-- 从 T3 开始：前端类型、mutation、`ModelProfilesPanel.vue` 每行「测试」按钮。
+- T4：`make dev`（或 `preview_start`），在设置页用 `claude-login` 点「测试」截图；临时把一个自建配置的 model 改成不存在的名字再测，截图；填「验证记录」，更新 QUALITY.md。
 
 ## 决策记录
 
+- 2026-10-10 — 前端不用 vue-query 的 mutation，面板里按配置 id 记一个 `reactive` 状态表，直接调 `testModelProfile` — 一个 mutation 只有一份 pending/结果，做不到各行独立、同时测；测试结果也不需要进缓存。
 - 2026-10-10 — 运行时未启用（`runtimes.has` 为假）时端点返回 200、`ok=false`，不发请求 — 和其它失败一样在行内显示，不弹错误。
 - 2026-10-10 — 错误打码在 `agent/probe.py` 里自己做（去掉密钥值、base_url 的账号与密码，前后各试一次 URL 解码），不复用 `api/profiles._mask_base_url` — agent 层不能 import api。
 - 2026-10-10 — 用真实的最小请求而不是只查 `/models` 之类的接口 — 只有真实请求能同时验证 base_url、密钥、模型名和运行时（尤其 Claude 走 CLI）这一整条链路。

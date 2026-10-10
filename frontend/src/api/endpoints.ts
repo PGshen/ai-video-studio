@@ -27,6 +27,7 @@ import type {
   ModelProfileCreate,
   ModelProfileOut,
   ModelProfilePatch,
+  ModelProfileTestOut,
   ProjectCreate,
   ProjectDetailOut,
   ProjectOut,
@@ -249,6 +250,11 @@ export function updateModelProfile(
 
 export function deleteModelProfile(profileId: string): Promise<void> {
   return request(`/model-profiles/${encodePathSegment(profileId)}`, { method: 'DELETE' })
+}
+
+/** 用已保存的配置真的发一次极小的请求；失败也是 200，看 `ok`。 */
+export function testModelProfile(profileId: string): Promise<ModelProfileTestOut> {
+  return request(`/model-profiles/${encodePathSegment(profileId)}/test`, { method: 'POST' })
 }
 
 // ---- 回退建议（M5，对应 `api/suggestions.py`）---------------------------

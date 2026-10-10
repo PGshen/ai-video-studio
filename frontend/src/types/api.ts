@@ -302,6 +302,15 @@ export interface ModelProfileOut {
   env_override: string[]
 }
 
+/** 连通性测试结果（`POST /api/model-profiles/{id}/test`）；`error` 已去掉密钥并截断。 */
+export interface ModelProfileTestOut {
+  ok: boolean
+  /** 没有发出请求（密钥未配置、运行时未启用）时为 `null`；fake 为 0。 */
+  latency_ms: number | null
+  reply: string | null
+  error: string | null
+}
+
 export interface ModelProfileCreate {
   name: string
   provider: string
