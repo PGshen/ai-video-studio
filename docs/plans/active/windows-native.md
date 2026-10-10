@@ -51,9 +51,9 @@
 
 - [ ] AC1：macOS 不倒退。`make check` 全绿；`make dev` 启动、退出后没有孤儿进程；`make smoke SMOKE_ARGS="-k claude_login"` 通过；Seatbelt 下 OpenAI Shell 和 `render_music` 的已有测试通过。（验证：命令输出、`ps` 检查）
 - [x] AC2：Windows 上在开发者模式开启的情况下，`uv run --project backend python scripts/tasks.py check` 全绿，测试报告里符号链接相关的用例是执行了而不是被跳过；`git commit` 时 pre-commit hook 能运行。（验证：完整输出、`pytest -rs` 的跳过列表）
-- [ ] AC3：Windows 上 `tasks.py dev` 能启动三个进程；Ctrl+C 退出后任务管理器里没有残留的 python、node、ffmpeg 或 chromium 进程；再次启动不会报"端口被占用"。（验证：`tasklist` 输出）
+- [x] AC3：Windows 上 `tasks.py dev` 能启动三个进程；Ctrl+C 退出后任务管理器里没有残留的 python、node、ffmpeg 或 chromium 进程；再次启动不会报"端口被占用"。（验证：`tasklist` 输出）
 - [x] AC4：Windows 上开关关闭时，Claude 和 OpenAI 两条路径都拿不到 Shell，`render_music` 返回的错误里提到设置页开关；打开开关后，下一轮能执行命令，界面显示"命令未隔离"，越界写入被 `guard` 还原。（验证：Fake 运行时的集成测试 + Windows 上用 `claude-login` 实测 + 截图）
-- [ ] AC5：Windows 上用 `claude-login` 完整做一个讲解类项目（HTML 引擎）和一个短片（HTML 引擎 + 合成配乐，开关打开），成片能播放，中文显示正常。（验证：成片文件、关键帧截图）
+- [x] AC5：Windows 上用 `claude-login` 完整做一个讲解类项目（HTML 引擎）和一个短片（HTML 引擎 + 合成配乐，开关打开），成片能播放，中文显示正常。（验证：成片文件、关键帧截图）
 - [ ] AC6：设计 §5 列出的恶意路径在 Windows 上全部被拒绝。（验证：T3 的测试在 Windows 上运行过）
 - [ ] AC7：ADR 0024 和 0025 已写；AGENTS.md、dev-setup（Windows 一节）、verification、ARCHITECTURE、references、tech-debt、QUALITY 已同步。
 
@@ -196,7 +196,7 @@
 - **完成标准**：AC4。
 - **验证命令**：`tasks.py check`；实测截图。
 
-### T11：Windows 上完整走一遍（待开始，机器：Windows）
+### T11：Windows 上完整走一遍（完成，机器：Windows）
 
 - **目标**：AC3、AC5——在 Windows 上用 `tasks.py dev` 启动，完整做出讲解类和短片两条成片。
 - **涉及文件**：按实测结果修改；`docs/runbooks/verification.md`（Windows 上怎么自验证）。
@@ -231,17 +231,18 @@
 - 2026-10-10 — T8 完成：`conftest.py` 的 `posix_only`/`macos_only`/`windows_only` 标记（必须写原因，否则 `UsageError`）和元测试；所有临时 `skipif` 换成标记；Seatbelt profile 的 3 个字符串用例标 `macos_only`、目录名带 `"` 的和 `chmod 0` 的标 `posix_only`；没有符号链接权限（`WinError 1314`）时由报告钩子转为带提示的跳过。Windows 上 `pytest -rs` 共 37 个跳过，逐条有理由（见「验证记录」）。剩余失败数：pytest 1（`TestPreambleAcrossTurns`，T9），pyright 0
 - 2026-10-10 — T9 完成：**Windows 上 `tasks.py check` 全绿**（pytest 3104 通过、37 个有理由的跳过；vitest 1248 通过；lint、format、pyright、import 契约、文档检查全过）。最后一个失败查明是文本模式把 `\n` 写成 `\r\n`：`src` 里 13 处文本写入加 `newline=""` 并用 AST 测试守住。`pytest -m slow` 在 Windows 上 64 通过、2 个 Seatbelt 专用跳过（假 ffmpeg 之外，真实 Chromium 崩溃恢复、短片全流程经无隔离路径 + Chromium + ffmpeg 都通过）。dev-setup 新增 Windows 一节，新增 `references/windows.md`。剩余失败数：0
 - 2026-10-10 — T10 完成：真实 Windows CLI（`claude-login`）上验证了 ADR 0024：开关关闭时 CLI 不传 sandbox 也正常启动，模型拿不到 Bash/PowerShell；打开后工具名就是 `PowerShell` 和 `Bash`（Git Bash），`echo 中文` 两边都无乱码，Bash 写进工作区的是 UTF-8。新增登录冒烟 `test_claude_login_unsandboxed_exec`（`windows_only`）；修了 `tasks.py smoke -k ...` 传参的 bug、冒烟里 `claude.exe` 的查找和一条过时断言。P12：实测别的句柄开着文件时覆盖/删除会失败，新增平台层 `studio.fsretry`（Windows 上对 `PermissionError` 重试约 1 秒）用在成片、混音、配乐、工作区还原/回滚/删除。另修 Windows 时钟精度导致的 `created_at` 相同（`models._utcnow` 改为进程内严格递增）。`tasks.py check` 全绿（3118 + 1248）
+- 2026-10-10 — T11 完成：Windows 上用 `tasks.py dev` + 真实 `claude-login` 做出讲解类成片（选题 → 叙事 → HTML 动画 → 成片，46.2 秒；旁白按负责人决定用静音代替）和短片成片（`concept → produce`，开关打开，合成配乐 + HTML 动画，12.0 秒），中文显示正常；渲染进行到一半时停止 `dev`，没有残留进程，重启后端口空闲、被中断的任务按心跳超时标为失败、重新渲染成功。**P13 实测出问题并修复**：`--reload` 下 api 起不了子进程，`tasks.py dev` 在 Windows 上改为不带 `--reload`（`api_argv`，2 条新测试）。verification 加了 Windows 一节，dev-setup、references/windows 同步。质量关口第一次跑时前端有 2 个负载下的偶发超时（首次懒加载），`router.spec.ts` 整个文件放宽到 30 秒、Markdown 用例改用 `vi.waitFor`。`tasks.py check` 全绿（3120 + 1248）
 
 ## 下一步
 
-T1–T10 已完成（见「进度」）。接下来做 **T11：Windows 上完整走一遍**（AC3、AC5），用真实的 `claude-login`，会消耗订阅额度、耗时较长：
+T1–T11 已完成（见「进度」）。接下来做 **T12：回到 macOS 收尾**（AC1、AC6、AC7），按计划 T12 一节：
 
-1. 计划里 T11 状态改为「进行中」。在 PowerShell 终端里 `uv run --project backend python scripts/tasks.py dev`（负责人的终端，或者用脚本在新进程组里启动，见 T7 的做法），内置浏览器打开 `http://127.0.0.1:5173`。
-2. 讲解类（HTML 引擎）：新建项目 → 选题 → 叙事（含 TTS，需要 `VOLCENGINE_TTS_API_KEY`，本机 `.env` 只有 `TAVILY_API_KEY` 时先问负责人）→ 动画 → 成片；检查成片能播放、中文字幕/画面字体正常。没有 TTS key 时讲解类做不了旁白，按 SOP §6 第 6 条和负责人确认怎么验收。
-3. 短片：新建短片项目 → `concept → produce`（HTML 引擎 + 合成配乐），设置页打开「无隔离执行」开关；检查成片和配乐，轮次上有「命令未隔离」标记并截图。
-4. 渲染进行中按 Ctrl+C 退出 `dev`：`tasklist` 确认没有残留的 python、node、ffmpeg、chrome-headless-shell；重新启动，确认 worker 把中断的任务标记为失败或能恢复（和 macOS 一致）。这一步顺带由负责人在真实终端里确认一次 Ctrl+C（T7 只用 Ctrl+Break 实测过）。
-5. `docs/runbooks/verification.md` 加"Windows 上怎么自验证"；成片路径、关键帧截图写进「验证记录」（文件放 `data/evidence/windows-native/`，不入库）。
-6. `tasks.py check` 保持全绿；commit 并 push。T12 回到 macOS。
+1. macOS 上 `git pull`，先跑 `make check`。重点看 T1–T11 在 Windows 上被跳过的 POSIX/macOS 用例（`pytest -rs` 不应该有任何跳过），以及 Windows 上改过的代码在 macOS 上有没有回归：`studio.proc`、`studio.fsretry`、`models._utcnow`、`newline=""`、`tasks.py`（含 T11 新增的 `api_argv`：macOS 上 api 仍然带 `--reload`）。
+2. `make dev` 启动、Ctrl+C 退出后 `ps` 确认没有孤儿进程；`make smoke SMOKE_ARGS="-k claude_login"`；Seatbelt 下 OpenAI Shell 与 `render_music` 的已有测试通过（AC1）。
+3. AC6：确认 T3 的恶意路径用例在 Windows 上执行过（已执行，见「验证记录」AC2 的 pytest 结果），在计划里勾上。
+4. 文档收尾（AC7）：`docs/quality/tech-debt.md` 登记 Windows 上没有 CPU 时间/文件大小硬限制、`upstream/` 只读保护变弱、**Windows 上 api 不热重载**（P13，见决策记录）；QUALITY、ARCHITECTURE、AGENTS、TODO 逐条核对；整理「意外与发现」，把应该改成机器检查的约定挑出来。
+5. 负责人在自己的 PowerShell 终端里按一次真正的 `Ctrl+C` 结束 `tasks.py dev`，确认三个进程都退出（T7、T11 都只用 `CTRL_BREAK_EVENT` 实测过，见「验证记录」AC3）。可以留到下次在 Windows 上使用时顺便确认。
+6. 计划状态改为「待验收」。
 
 ## 决策记录
 
@@ -295,6 +296,10 @@ T1–T10 已完成（见「进度」）。接下来做 **T11：Windows 上完整
 - 2026-10-10 — T10：AC4 的"越界写入被 `guard` 还原"没有在真实模型上复现：claude-sonnet-5 三次都拒绝写 `topic/` 之外的文件（用户明确要求时拒绝；让它运行一个会越界写的脚本时，它先读脚本再拒绝）。没有进一步设法骗过模型。`guard` 在轮末按工作区差异还原，和运行时、执行模式无关，`test_runner.py::TestGuard::test_shell_out_of_scope_restored_and_reported_next_turn`（模拟原生命令越界写）在 Windows 上通过；冒烟改为验证范围内的 Bash 写入落盘且不触发还原。
 - 2026-10-10 — T10：P12 按设计 §12 处理：新增平台层 `studio.fsretry`（`replace`、`unlink`、`rmtree`，只在 Windows 上、只对 `PermissionError` 重试，约 1 秒，`import-linter` 契约同 `proc`），用在别的读者可能开着文件的地方：成片和混音的最终改名、配乐和分析产物的改名、导入歌曲/歌词的改名、`guard` 还原和回滚时的删除、文件接口的删除、`upstream/` 的清理。其余改名（blob、TTS 缓存、风格库目录）的目标文件不会被别的读者长时间打开，没有改。重试是阻塞的，只在出错时最多占用事件循环约 1 秒。
 - 2026-10-10 — T10：**`created_at` 相同导致"最新"不确定**：Python 3.12 在 Windows 上读的是 `GetSystemTimeAsFileTime`，实测 20 万次调用只有 31 个不同的值，连续创建的快照、轮次时间戳相同，`latest_snapshot`、`previous_turn` 这类按时间排序或比较的查询会取到任意一行（`test_scene_checks_html.py` 偶发失败、基线第 8 类）。改 `db.models._utcnow`：同一进程内严格递增（相同就加 1 微秒），一处修好所有按 `created_at` 排序和比较的查询；跨进程（api 与 worker）同时写同一张表的情况不受影响，也没有依赖它的查询。
+- 2026-10-10 — T11：**P13 按设计 §12 处理（调整启动方式，不改业务代码）**：Windows 上 `tasks.py dev` 起 api 时不带 `--reload`。实测：带 `--reload` 时 uvicorn 0.54 在 Windows 上用 `SelectorEventLoop`，api 进程里起 Claude CLI 报 `NotImplementedError`（讲解类第一轮直接失败）；试过 `--loop asyncio:ProactorEventLoop`，子进程能起，但重载照样卡住：Windows 上 uvicorn 重载靠 `os.kill(pid, CTRL_C_EVENT)`，服务进程在 `dev` 建的新进程组里收不到 Ctrl+C，日志只有 `Reloading...`，旧进程继续用旧代码。不用新进程组又会让这个 Ctrl+C 打到同一控制台的 `dev` 自己身上。所以选"Windows 上不热重载"：单进程、Proactor 循环，改了后端代码要重启 `dev`（启动时打印提示）。macOS 不变。`.claude/launch.json` 跨平台共用，没有改；在 dev-setup 和 verification 里写明 Windows 上 `preview_start` 的 api 只适合 Fake 运行时。T12 登记到 tech-debt。
+- 2026-10-10 — T11：讲解类没有 TTS（本机 `.env` 没有 `VOLCENGINE_TTS_API_KEY`；负责人决定跳过旁白，讲解类走到动画，短片完整做）。做法：叙事阶段让模型写 `narrative.json` 并通过 `validate_narrative`，明确不调 `synthesize_tts`；再由脚本按旁白字数（4.5 字/秒）估时长，写 `timing.json` 和等长的静音 wav，然后定稿叙事。动画和成片照常走真实流程。AC5 因此是"旁白为静音"的通过，TTS 在 Windows 上没有验证（它是纯 HTTP 调用，和平台关系不大）。
+- 2026-10-10 — T11：负责人不在场，"在真实终端里按一次 Ctrl+C"没有做；`dev` 的停止用脚本发 `CTRL_BREAK_EVENT`（`tasks.py dev` 对 Ctrl+C 和 Ctrl+Break 走同一个处理函数，`SIGBREAK` → `KeyboardInterrupt`）。留给负责人顺便确认，写进「下一步」。
+
 
 ## 意外与发现
 
@@ -321,6 +326,11 @@ T1–T10 已完成（见「进度」）。接下来做 **T11：Windows 上完整
 - 2026-10-10 — **P14 结论**：Claude 桌面版的 `preview_start` 在 Windows 上能直接用 `.claude/launch.json` 起 api（`uv run uvicorn ... --reload`）和 frontend（`pnpm run dev`），不需要改 `launch.json`；`preview_stop` 之后没有残留的 python/node/uv 进程。uvicorn `--reload` 下 asyncio 子进程也正常（Fake 运行时的一轮跑完，P13 的一部分，ffprobe 等真实子进程留到 T9/T11 确认）。
 - 2026-10-10 — 内置浏览器面板隐藏时，坐标点击和截图会因"页面没有绘制"超时；`form_input`、`javascript_tool`、`get_page_text` 不受影响，截图重试一两次通常能成功。
 - 2026-10-10 — 一次 `ruff check --fix` 改写测试文件时报 `os error 1224`（"请求的操作无法在使用用户映射区域打开的文件上执行"），重试即成功：文件当时被别的进程（编辑器或索引）映射着。这是 Windows 文件占用（P12）的一个实例，T10 处理 `PermissionError` 重试时一并考虑。
+- 2026-10-10 — **T11：P13 是真问题**：之前（T9）只用 Fake 运行时在 `--reload` 下跑过一轮，没有子进程，所以没发现；真实 `claude-login` 第一轮就报 `CLIConnectionError: Failed to start Claude Code:`（原因 `NotImplementedError` 只在 api 日志里，界面上的错误信息冒号后面是空的）。修法见决策记录。
+- 2026-10-10 — T11：被中断的成片任务重启后约 2 分钟才被标为失败（心跳超时），期间界面上任务仍显示"进行中"；和 macOS 一致，不是 Windows 特有的。
+- 2026-10-10 — T11：走查时 vite 日志里出现过一次前端 `Unhandled rejection: TypeError: Cannot read properties of undefined (reading 'find')`（10:10:23，正在选题页建卡片/建项目），界面没有可见异常，没有复现；和 Windows 无关的可能性大，记进 TODO。
+- 2026-10-10 — T11：这台机器上的模型配置里有 `fake` 并且被标为"默认"（之前用 `preview_start` 起过开了 Fake 运行时的 api，种子里写进去的）；`tasks.py dev` 没开 Fake 时新建会话的下拉框默认仍选 `fake`。不影响验收（选了 `claude-login`），记进 TODO 看是否需要在 Fake 关闭时换默认。
+
 
 ## 阻塞
 
@@ -332,6 +342,8 @@ T1–T10 已完成（见「进度」）。接下来做 **T11：Windows 上完整
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
+- 2026-10-10 — **AC5**：Windows 11 + `tasks.py dev`（修复 P13 之后）+ 真实 `claude-login`（claude-sonnet-5），操作经内置浏览器和 API。**讲解类**「为什么天空是蓝色的」（项目 `221971b8…`，HTML 引擎、无配乐）：选题一轮写出 `topic/brief.md`，`check_brief` 无错误 → 定稿；叙事一轮写出 3 个镜头的 `narrative.json` → 按负责人决定用静音旁白（见决策记录）→ 定稿；动画一轮写出 3 个镜头脚本和 2 个共享 lib，`validate_scenes_html` 全部通过，`render_preview_html` 调用 4 次都成功（Chromium 在 api 进程里启动）；成片 `data/projects/221971b8fa4a479e8d28674cc8266130/output/final.mp4`：46.2 秒、1920×1080 H.264 + AAC，耗时约 30 秒。**短片**「秒针与心跳」（项目 `4a3b3015…`，`concept → produce`，开关打开）：概念一轮写出含「硬性要求」的简报 → 定稿；制作一轮 `render_music` 在无隔离模式下渲染出 `music.wav` 和分析图，模型还用 Bash（Git Bash）建了目录，写了 4 个镜头，`validate_scenes_html` 通过、4 次预览成功 → 定稿；成片 `data/projects/4a3b3015055944d1a746dff69087a7d7/output/final.mp4`：12.0 秒、1920×1080 H.264 + AAC 44.1 kHz，音量平均 -15.9 dB、峰值 -4.0 dB（配乐确实在），耗时约 11 秒。关键帧 `data/evidence/windows-native/t11-explainer-{3,15,33,44}.jpg`、`t11-reel-{1,6,11.5}.jpg`：中文标题、标注和字幕「每一秒都算数」显示正常。两个项目的动画/制作轮次 `usage.exec_mode == "unsandboxed"`，界面显示「命令未隔离」（`t11-explainer-animation-turn.jpg`）。结论：通过（讲解类旁白为静音，TTS 未在 Windows 上验证）。
+- 2026-10-10 — **AC3**：`tasks.py dev` 由脚本在新进程组里启动、发 `CTRL_BREAK_EVENT` 停止，共 4 次（日志 `data/evidence/windows-native/t11-logs/`）。每次停止后按命令行筛 `python`/`uv`/`node`/`cmd`（含仓库路径）、`ffmpeg`、`chrome-headless-shell`：**都没有残留**，pid 文件已删除，退出码 0xC000013A（控制台中断）。其中一次是渲染进行中（任务 `84b8567c…` 进度 10%，当时有 4 个 `chrome-headless-shell` 和 2 个 `ffmpeg`）；再次启动时没有"端口被占用"，该任务约 2 分钟后被标为失败（"worker 心跳超时（可能是进程崩溃）"，和 macOS 一致），随后重新渲染成功（46.2 秒）。结论：通过；负责人在真实终端里按 Ctrl+C 的确认留到下一步（见决策记录）。
 - 2026-10-10 — **AC4**：Windows 11 + 真实 `claude-login`：开关关闭时（默认）`test_claude_login` 第 2、3 轮 `usage.exec_mode == "disabled"`，模型列出的工具没有 Bash/PowerShell，要求执行命令时说明没有命令工具；OpenAI 路径没有官方 key，用 `test_openai_runtime.py::TestShellExecModes`（`disabled` 不提供 Shell）代替；`render_music` 在 `disabled` 时的报错指向设置页开关（`test_music_tool.py::TestExecModes`、`test_music.py::test_render_without_a_sandbox_follows_the_settings_switch`）。打开开关后 `test_claude_login_unsandboxed_exec`：下一轮 `exec_mode == "unsandboxed"`，Bash 输出 `中文-bash-ok`、PowerShell 输出 `中文-ps-ok`，Bash 写入工作区的中文是 UTF-8；界面上的「命令未隔离」标记见 T6 截图 `data/evidence/windows-native/t6-turn-marker.jpg`。越界写入的还原见 T10 决策记录（真实模型拒绝越界写，由 `TestGuard` 在 Windows 上覆盖）。证据 JSON：`data/evidence/m1/smoke/*-claude-login.json`、`data/evidence/windows-native/*-claude-login-unsandboxed.json`。
 - 2026-10-10 — **AC2**：Windows 11 Pro（开发者模式已开）上 `uv run --project backend python scripts/tasks.py check` 退出码 0：pytest 3104 通过、37 跳过（逐条理由见下一条，没有因符号链接权限跳过的；符号链接相关用例如 `test_model_path.py::test_symlink_escaping_the_workspace_is_rejected`、`test_claude_runtime.py::TestReadScopeHook::test_symlink_escaping_workspace_denied` 都执行并通过）；vitest 1248 通过。`git commit` 时 pre-commit hook（`tasks.py check-fast`）在 Git for Windows 的 sh 下运行通过（T1 起每次提交）。`pytest -m slow`：64 通过、2 跳过（Seatbelt）。
 - 2026-10-10 — Windows 11 上 `cd backend; $env:PYTHONUTF8=1; uv run pytest -rs` 的跳过列表（37 个，开发者模式已开，没有因符号链接权限跳过的）：`macos_only`——`test_shell_sandbox.py` 中真实执行 sandbox-exec 的 16 个和 Seatbelt profile 字符串断言 3 个、`test_shell.py` 10 个、`test_openai_runtime.py` 4 个（均为 sandbox-exec，Windows 上的无隔离 Shell 由 `test_shell_unsandboxed.py` 覆盖）；`posix_only`——目录名带 `"`（1）、`ulimit` 写满磁盘（1，Windows 的事后大小检查另有用例）、与 bash 比较 `.env` 解析（1）、`chmod 0` 不可读（1）。

@@ -39,9 +39,10 @@ windows-native 计划在负责人的 Windows 11 Pro（10.0.26200，中文系统�
 
 | 状态 | 结论 | 来源 |
 |---|---|---|
-| ✅ 已验证（2026-10-10） | Claude 桌面版的 `preview_start` 能直接按 `.claude/launch.json` 起 `uv run uvicorn --reload` 和 `pnpm run dev`；`preview_stop` 后没有残留进程 | T6 实测 |
+| ✅ 已验证（2026-10-10） | Claude 桌面版的 `preview_start` 能直接按 `.claude/launch.json` 起 `uv run uvicorn --reload` 和 `pnpm run dev`；`preview_stop` 后没有残留进程。但 `--reload` 下 api 起不了子进程（见下一行），只适合 Fake 运行时 | T6 实测；T11 补充 |
+| ✅ 已验证（2026-10-10） | **P13**：uvicorn 0.54 带 `--reload`（或 `--workers`）时在 Windows 上用 `SelectorEventLoop`，`asyncio.create_subprocess_exec` 抛 `NotImplementedError`，api 进程里的 Claude CLI、Chromium、ffmpeg、配乐脚本全部失败；不带 `--reload` 时用 `ProactorEventLoop`，正常。另外 Windows 上的重载靠 `os.kill(pid, CTRL_C_EVENT)`，服务进程在新进程组里（或宿主没有控制台）时收不到，日志只有 `Reloading...`，旧进程继续用旧代码响应。`tasks.py dev` 在 Windows 上不带 `--reload`（`api_argv`） | `uvicorn/loops/asyncio.py`、`supervisors/basereload.py`；T11 实测（换 Proactor 后重载照样卡住） |
 | ✅ 已验证（2026-10-10） | 内置浏览器面板隐藏时，坐标点击和截图会因"页面没有绘制"超时；`form_input`、`javascript_tool`、`get_page_text` 不受影响 | T6 实测 |
 | ✅ 已验证（2026-10-09） | 本机的 Git Bash 里 nvm4w 的 `pnpm` sh 启动脚本解析错路径（指向 Anaconda 目录），PowerShell 里正常 | 本机实测（和 Anaconda 的 PATH 顺序有关，不是通用结论） |
-| ✅ 已验证（2026-10-10） | vitest 首次转换整个工作台页面依赖图要 5 秒以上（紧接后端测试之后更慢），`router.spec.ts` 的这个用例单独放宽了超时 | T9 实测 |
+| ✅ 已验证（2026-10-10） | vitest 首次转换整个工作台页面依赖图要 5 秒以上（紧接后端测试之后更慢）：`router.spec.ts` 整个文件放宽到 30 秒；首次加载 Markdown 渲染器也会超过固定等待的 50 毫秒，`SessionTimelineItem.spec.ts` 的第一个 Markdown 用例改用 `vi.waitFor` | T9、T11 实测 |
 | ✅ 已验证（2026-10-10） | Windows 版 Claude CLI：命令工具名是 `PowerShell` 和 `Bash`（Git Bash），`disallowed_tools` 生效，不传 sandbox 时正常启动；详见 [claude-agent-sdk.md](claude-agent-sdk.md) 末节 | T10 登录冒烟 |
 | ✅ 已验证（2026-10-10） | 别的句柄开着文件时，`os.replace` 覆盖它报 `WinError 5`、删除它报 `WinError 32`；读者关闭后立即成功。产品代码里成片、配乐、工作区还原和删除改用 `studio.fsretry`（只在 Windows 上对 `PermissionError` 重试约 1 秒） | P12 实验、`tests/test_fsretry.py` |

@@ -131,6 +131,41 @@ def test_netstat_listeners() -> None:
     assert tasks.parse_netstat_listeners(NETSTAT, 9999) == []
 
 
+# ---- api command (P13) ----
+
+
+def test_api_reloads_on_posix_only(tmp_path: Path) -> None:
+    posix = tasks.api_argv("uv", tmp_path, "127.0.0.1", "8000", platform="darwin")
+    assert posix[posix.index("--reload-dir") + 1] == str(tmp_path / "src")
+    assert "--reload" in posix and posix[-4:] == ["--host", "127.0.0.1", "--port", "8000"]
+    # Windows: `--reload` makes uvicorn pick a SelectorEventLoop (no subprocesses) and its
+    # CTRL_C_EVENT restart never reaches a server in our own process group (windows-native T11).
+    windows = tasks.api_argv("uv", tmp_path, "127.0.0.1", "8000", platform="win32")
+    assert not any(arg.startswith("--reload") for arg in windows)
+    assert windows[:5] == ["uv", "run", "--project", str(tmp_path), "uvicorn"]
+
+
+def test_the_api_event_loop_can_start_subprocesses(tmp_path: Path) -> None:
+    """The loop uvicorn builds for our api command must support `create_subprocess_exec`:
+    the Claude CLI, Chromium, ffmpeg and the score script all start from the api process."""
+    import asyncio
+
+    from uvicorn.loops.asyncio import asyncio_loop_factory
+
+    argv = tasks.api_argv("uv", tmp_path, "127.0.0.1", "8000", platform=sys.platform)
+    factory = asyncio_loop_factory(use_subprocess="--reload" in argv)
+
+    async def child_output() -> bytes:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", "print('ok')", stdout=asyncio.subprocess.PIPE
+        )
+        out, _ = await proc.communicate()
+        return out
+
+    with asyncio.Runner(loop_factory=factory) as runner:
+        assert runner.run(child_output()).strip() == b"ok"
+
+
 # ---- supervisor: real processes ----
 
 _SERVICE = """

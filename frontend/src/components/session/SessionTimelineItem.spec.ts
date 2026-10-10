@@ -48,7 +48,9 @@ describe('助手文本', () => {
   it('渲染 Markdown：表格和行内代码', async () => {
     const w = await render(assistant('| a | b |\n|---|---|\n| 1 | 2 |\n\n用 `ls` 查看'))
 
-    expect(w.find('table').exists()).toBe(true)
+    // The first render in this file loads the markdown renderer; under load (right after the
+    // backend suite on Windows) that took longer than `render`'s fixed pause (windows-native T11).
+    await vi.waitFor(() => expect(w.find('table').exists()).toBe(true))
     expect(w.find('code').text()).toBe('ls')
   })
 

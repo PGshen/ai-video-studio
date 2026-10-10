@@ -603,6 +603,24 @@ def _bind_address(uv: str, env: Mapping[str, str]) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+def api_argv(
+    uv: str, backend: Path, host: str, port: str, *, platform: str | None = None
+) -> list[str]:
+    """The api's uvicorn command; hot reload on POSIX only.
+
+    On Windows `--reload` breaks the api (windows-native T11, P13): uvicorn then builds a
+    SelectorEventLoop, which cannot start subprocesses (the Claude CLI, Chromium, ffmpeg and
+    the score script all fail with NotImplementedError), and its restart sends CTRL_C_EVENT,
+    which never reaches a server inside our own process group, so a reload hangs on the old
+    code. Without `--reload` uvicorn runs one ProactorEventLoop process.
+    """
+    argv = [uv, "run", "--project", str(backend), "uvicorn", "studio.main:app"]
+    if (platform or sys.platform) != "win32":
+        # Only backend/src is watched: the workspace (data/) must never trigger a reload.
+        argv += ["--reload", "--reload-dir", str(backend / "src")]
+    return [*argv, "--host", host, "--port", port]
+
+
 def _require_free(port: int, label: str) -> None:
     owners = port_listeners(port)
     if owners:
@@ -613,7 +631,8 @@ def _require_free(port: int, label: str) -> None:
 
 
 def cmd_dev(_args: argparse.Namespace) -> None:
-    """Start api (uvicorn --reload), worker and the frontend; Ctrl+C stops all three."""
+    """Start api (uvicorn, hot reload on POSIX), worker and the frontend; Ctrl+C stops all
+    three."""
     if sys.platform == "win32":
         signal.signal(signal.SIGBREAK, _interrupt)  # Ctrl+Break / closing the console window
     else:
@@ -638,13 +657,7 @@ def cmd_dev(_args: argparse.Namespace) -> None:
     _require_free(FRONTEND_PORT, "frontend")
     project = ["--project", str(BACKEND)]  # absolute paths: `belongs_to_project` looks for them
     services = [
-        # Only backend/src is watched: the workspace (data/) must never trigger a reload.
-        Service(
-            "api",
-            [uv, "run", *project, "uvicorn", "studio.main:app", "--reload"]
-            + ["--reload-dir", str(BACKEND / "src"), "--host", host, "--port", port],
-            BACKEND,
-        ),
+        Service("api", api_argv(uv, BACKEND, host, port), BACKEND),
         Service("worker", [uv, "run", *project, "python", "-m", "studio.worker"], BACKEND),
         Service("web", [pnpm, "--dir", str(FRONTEND), "run", "dev"], FRONTEND),
     ]
@@ -652,6 +665,8 @@ def cmd_dev(_args: argparse.Namespace) -> None:
     try:
         supervisor.start()
         print(f"api: http://{host}:{port}（OpenAPI：/docs）")
+        if sys.platform == "win32":
+            print("api: Windows 上不热重载，改了 backend/src 要重启 dev")
         print(f"frontend: http://127.0.0.1:{FRONTEND_PORT}")
         print("worker: 已启动；按 Ctrl+C 退出")
         name, code = supervisor.wait()

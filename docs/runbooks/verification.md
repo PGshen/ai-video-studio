@@ -78,3 +78,12 @@ cd backend && uv run pytest -m slow tests/engines/test_html_video.py tests/engin
 ### 配乐画布与成片的 L4（子项目 3B）
 
 隔离实例（api 8010、前端 5174、临时数据目录，假运行时）。种子：用 `tests/fixtures/synth_music/seed.py` 的 `seed_reel_project`/`seed_bed_project` 建项目，写入镜头（`animation/shots.json`），再用 `fixtures.synth_music.products.render_products` 渲染出配乐产物并定稿各阶段。走查：配乐阶段（讲解类的 `/music`；短片、MV 在 `produce` 的「配乐」标签）——播放器能放、点波形跳转、播放位置跟着走、事件标签点行回到播放；脚本标签改一个字后"渲染"被禁用并说明"先保存"，保存后渲染得到报告和分析图；动画阶段的"实时预览"有静音按钮、播放时配乐在放且时钟跟着配乐；配乐过期（改旁白）时预览出现"配乐还没渲染…"提示。注意 jsdom 看不出布局问题——3B 的 L4 在这里发现过两处（播放器被压成 0 高、渲染报告压住编辑器），改版后要在浏览器里看一遍。
+
+## Windows 上怎么自验证（windows-native T11）
+
+- 命令都在 PowerShell 里、仓库根目录下运行：`uv run --project backend python scripts/tasks.py check`（L1），`... tasks.py smoke -k claude_login`（L5）。直接跑 pytest 要先 `$env:PYTHONUTF8=1`。环境与已知差异见 [dev-setup](dev-setup.md) 的 Windows 一节和 [references/windows.md](../references/windows.md)。
+- **用真实模型走流程（L4/L5）必须用 `tasks.py dev`**，不能用 `preview_start` 起的 api：`launch.json` 带 `--reload`，Windows 上那样起的 api 不能启动子进程（Claude CLI、Chromium、ffmpeg 都会失败）。内置浏览器用 `preview_start` 的 `url` 参数直接打开 `http://127.0.0.1:5173`。
+- Claude Code 代为启动 `dev` 时：本机终端面板的 shell 集成可能用不了（`run_in_terminal` 报错），改为用 Python 在新进程组里启动（`creationflags=CREATE_NEW_PROCESS_GROUP`，stdout 写到文件），结束时对它发 `CTRL_BREAK_EVENT`（和用户按 `Ctrl+Break` 等价；`CTRL_C_EVENT` 发不进新进程组）。
+- 结束后检查残留：`Get-CimInstance Win32_Process` 按 `CommandLine` 含仓库路径的 `python`/`uv`/`node`/`cmd`，以及 `ffmpeg.exe`、`chrome-headless-shell.exe` 筛一遍；`tasklist` 拿不到命令行。注意自己用来检查的 shell 的命令行里也有仓库路径，要排除；`chrome.exe` 是用户自己的浏览器，不算。
+- "渲染中途退出"要先让缓存失效（例如给一个镜头脚本加一行注释）再发起成片，否则命中缓存几秒就完成；等任务 `progress` 过 0.1、能看到 `chrome-headless-shell` 和 `ffmpeg` 时再停 `dev`。重启后被中断的任务会在心跳超时后标成失败（"worker 心跳超时"），和 macOS 一致。
+- 没有火山引擎 TTS key 时，讲解类可以走到动画和成片：叙事阶段不调 `synthesize_tts`，按旁白字数估算时长，写 `narrative/timing.json` 和等长的静音 wav（同 `test_animation_html_claude_login` 的做法），再定稿叙事。证据里要写明旁白是静音。

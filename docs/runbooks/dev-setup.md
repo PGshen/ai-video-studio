@@ -37,7 +37,7 @@ Manim 引擎已下线（ADR 0027），不再需要 cairo、pango、LaTeX。
 3. 复制 `backend/.env`（不入库）。`tasks.py` 只支持字面量写法，见下面「配置」。
 4. 初始化：`uv run --project backend python scripts/tasks.py setup`。如果 `pnpm install` 因为 npm 镜像源缺包报 404，可以临时换源：`cd frontend; pnpm install --registry=https://registry.npmmirror.com/`（不改全局配置，lockfile 不变）。
 5. 质量关口：`uv run --project backend python scripts/tasks.py check`。直接跑 pytest 时先 `$env:PYTHONUTF8=1`（Windows 默认按 GBK 读写文本，`conftest.py` 发现没开 UTF-8 模式会直接报错）。
-6. 启动：`uv run --project backend python scripts/tasks.py dev`；`Ctrl+C`（或 `Ctrl+Break`、关闭窗口）结束三个进程。
+6. 启动：`uv run --project backend python scripts/tasks.py dev`；`Ctrl+C`（或 `Ctrl+Break`、关闭窗口）结束三个进程。**Windows 上 api 不热重载**：改了 `backend/src` 要重启 `dev`（原因见下面「启动」）。
 
 Windows 上没有沙箱：默认 agent 拿不到命令工具，合成配乐会报错；需要时在 设置 → 通用 里打开「允许在无隔离环境执行 agent 命令」，先读那里的风险说明（ADR 0024）。没有 `ulimit`，配乐脚本的 CPU 只受超时限制，产物大小在运行后检查。
 
@@ -46,6 +46,8 @@ Windows 上没有沙箱：默认 agent 拿不到命令工具，合成配乐会�
 所有命令的逻辑都在 `scripts/tasks.py`，Makefile 每个目标只是一行转调（ADR 0025）；Windows 上不用 make，在仓库根目录运行 `uv run --project backend python scripts/tasks.py <目标>`。Claude Code 沙箱中的 `PATH` 可能不包含 `~/.local/bin` 和 nvm 的 shims：Makefile 自己定位 `uv`，`tasks.py` 再定位 `uv` 和 `pnpm`（先找 `PATH`，再找常见安装位置），不依赖调用方的 `PATH`。在 Makefile 之外手动执行时，使用绝对路径，例如 `~/.local/bin/uv run pytest`（在 `backend/` 目录下）。
 
 `.claude/launch.json`（Claude 桌面版 `preview_start` 用）不写本机绝对路径：`runtimeExecutable` 直接是 `uv`、`pnpm`，要求启动 Claude 桌面版的环境 `PATH` 里能找到这两个命令（例如 `~/.local/bin` 与 nvm 的 `bin` 目录已加入登录 shell 的 `PATH`）；找不到时改用 `make dev`。数据目录不在 launch.json 里指定，用默认的 `<仓库或 worktree 根>/data/`（`config.py` 按源码位置推算）；它只开 Fake 运行时（`STUDIO_ENABLE_FAKE_RUNTIME=true`），不导出 `backend/.env`，真实模型的 key 和 `TAVILY_API_KEY` 读不到（此时选题/头脑风暴的 `web_search` 会返回「TAVILY_API_KEY 未设置」）；要用真实模型和联网，用 `make dev`，或者先 `set -a; . backend/.env; set +a` 再手动起 uvicorn。
+
+Windows 上 `launch.json` 的 api（`uvicorn --reload`）只适合用 Fake 运行时看界面：`--reload` 下 api 进程起不了任何子进程（Claude CLI、Chromium、ffmpeg、配乐脚本都会失败），用真实模型走流程必须用 `tasks.py dev`（见下面「启动」）。
 
 Fake 运行时可以用 `STUDIO_FAKE_DELAY_SECONDS=<秒>` 让默认脚本在回显和写文件之间停一会儿（可被取消），便于观察"运行中"状态、做重启中断验证；默认 0。
 
@@ -113,7 +115,9 @@ make setup
 make dev
 ```
 
-Windows（PowerShell）上运行 `uv run --project backend python scripts/tasks.py dev`。两者都由 `tasks.py dev` 实现（ADR 0025）：同时启动 api（`uv run --project <仓库>/backend uvicorn studio.main:app --reload --reload-dir <仓库>/backend/src`，绑定地址读自 `python -m studio.config`）、worker（不 reload）和前端（`pnpm --dir <仓库>/frontend run dev`，导出 `STUDIO_BIND_PORT` 给 vite 的代理），三路输出加 `[api]`、`[worker]`、`[web]` 前缀。`Ctrl+C`（Windows 上 `Ctrl+Break` 或关闭终端窗口同样有效；POSIX 上 `kill` 发 SIGTERM 也一样）会结束三棵进程树（POSIX 进程组 `killpg`，Windows `taskkill /T /F`）。
+Windows（PowerShell）上运行 `uv run --project backend python scripts/tasks.py dev`。两者都由 `tasks.py dev` 实现（ADR 0025）：同时启动 api（`uv run --project <仓库>/backend uvicorn studio.main:app --reload --reload-dir <仓库>/backend/src`，绑定地址读自 `python -m studio.config`；**Windows 上不带 `--reload`**，见下一段）、worker（不 reload）和前端（`pnpm --dir <仓库>/frontend run dev`，导出 `STUDIO_BIND_PORT` 给 vite 的代理），三路输出加 `[api]`、`[worker]`、`[web]` 前缀。`Ctrl+C`（Windows 上 `Ctrl+Break` 或关闭终端窗口同样有效；POSIX 上 `kill` 发 SIGTERM 也一样）会结束三棵进程树（POSIX 进程组 `killpg`，Windows `taskkill /T /F`）。
+
+**Windows 上 api 不热重载**（windows-native T11 实测）：带 `--reload` 时 uvicorn 在 Windows 上改用 `SelectorEventLoop`，它不支持子进程，api 进程里启动 Claude CLI、Chromium、ffmpeg、配乐脚本全部报 `NotImplementedError`；而且重载器靠向服务进程发 `CTRL_C_EVENT` 来重启，服务进程在 `dev` 建的独立进程组里收不到，重载会一直卡在旧代码上。不带 `--reload` 时 uvicorn 是单进程、`ProactorEventLoop`，子进程正常。所以 Windows 上改了 `backend/src` 要重启 `dev`；`tasks.py` 的 `api_argv` 和 `tests/scripts/test_tasks_dev.py` 守住这一点。
 
 启动记录写在 `<仓库>/.dev/pids.json`（不在 `data/` 下，已 gitignore）。下次启动前先按它清理上一次遗留的进程：**只结束命令行里带本仓库路径的进程**（Windows 上还要求映像名是 `python.exe`、`uv.exe`、`node.exe` 或 `cmd.exe`），PID 已被别的程序复用时跳过并提示。清理之后端口仍被占用（例如别的程序占着 8000），就报出占用者的 PID 后退出，不去结束它（POSIX 用 `lsof`，Windows 用 `netstat -ano`）。三个进程的 stdin 一律是 `DEVNULL`：读终端的子进程（ffmpeg 默认会读 stdin）在 POSIX 上会被 SIGTTIN 停住；后端代码里所有子进程同样要显式设 `stdin`（由 `backend/tests/test_subprocess_stdin.py` 守住）。
 

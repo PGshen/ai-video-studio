@@ -6,7 +6,9 @@ function makeRouter() {
   return createRouter({ history: createMemoryHistory(), routes })
 }
 
-describe('router', () => {
+// Each push lazily imports page components; the first transforms took over the default 5 s on
+// Windows right after the backend suite (windows-native T9, T11), so the whole file gets 30 s.
+describe('router', { timeout: 30_000 }, () => {
   it('redirects / to /projects', async () => {
     const router = makeRouter()
     await router.push('/')
@@ -21,9 +23,7 @@ describe('router', () => {
     expect(matched[0]?.name).toBe('projects')
   })
 
-  // The push lazily imports the whole workbench page graph; its first transform took over the
-  // default 5 s on Windows right after the backend suite (windows-native T9).
-  it('resolves /projects/:id/:stage with route params', { timeout: 30_000 }, async () => {
+  it('resolves /projects/:id/:stage with route params', async () => {
     const router = makeRouter()
     await router.push('/projects/proj-1/topic')
     const route = router.currentRoute.value

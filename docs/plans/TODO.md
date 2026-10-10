@@ -24,6 +24,9 @@
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
 | P2 | 真实模型对 `animation/assets/*` 用法的验证 | 同上 | 子项目 2 的小试未覆盖 |
+| P3 | 运行时启动失败时界面上的错误信息是空的（`CLIConnectionError: Failed to start Claude Code:` 后面没有原因，原因只在 api 日志里） | windows-native T11，2026-10-10 | 把底层异常（如 `NotImplementedError`、找不到 CLI）带进 turn 的 `error` |
+| P3 | 前端偶发 `Unhandled rejection: TypeError: Cannot read properties of undefined (reading 'find')` | windows-native T11，2026-10-10 | 在选题页建卡片/建项目时 vite 日志里出现一次，界面无可见异常，未复现 |
+| P3 | Fake 运行时关闭时，新建会话的模型下拉框仍把 `fake` 标为默认 | windows-native T11，2026-10-10 | 本机曾用开了 Fake 的 `preview_start` 起过 api，种子里写进了 `fake`；`tasks.py dev`（不开 Fake）下默认仍选它，选了会失败 |
 
 ## 已完成
 
