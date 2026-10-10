@@ -33,6 +33,7 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-10 | 模型配置连通性测试：设置页每行「测试」，真实发一次极小请求，显示耗时/回复或失败原因 | [model-connectivity-test.md](completed/model-connectivity-test.md) |
 | 2026-10-09 | 下线 Manim 引擎：删除 manim 阶段、渲染引擎与依赖（少 25 个包），老 manim 项目只读（ADR 0027） | [remove-manim.md](completed/remove-manim.md) |
 | 2026-10-07 | 音乐 MV 的歌词联动（上传 LRC、歌词意象、`env.lyric`） | [mv-lyrics.md](completed/mv-lyrics.md) |
 | 2026-10-07 | 配乐与动画合并阶段 `produce`（短片、MV 改为 `concept → produce`）+ 修复 1 MiB 消息缓冲区问题 | [produce-stage.md](completed/produce-stage.md) |
