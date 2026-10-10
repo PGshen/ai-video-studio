@@ -20,6 +20,7 @@
 | P1 | 原生支持 Windows（Windows 上能用也能开发） | 负责人，2026-10-08 | 设计已批准：[windows-native-support](../design/2026-10-09-windows-native-support.md)；计划待验收：[windows-native.md](active/windows-native.md)（2026-10-10 T1–T12 完成；剩负责人在 Windows 真实终端里按一次 Ctrl+C 确认） |
 | P1 | TTS 音色管理：设置页可新增/删除音色，区分豆包 v1/v2 | 负责人，2026-10-10 | 计划草稿待批准：[tts-voice-management.md](active/tts-voice-management.md) |
 | P3 | `tests/scripts/test_tasks_dev.py::test_belongs_to_project[darwin]` 在 Windows 上失败 | tts-voice-management T1，2026-10-10 | 用例把 `/Users/me/...` 当 `Path` 传，Windows 上变成 `WindowsPath`；main 上同样失败 |
+| P3 | 模型配置面板删除失败（409）时看不到原因：`ModelProfilesPanel.vue` 的「确认删除」用 `AlertDialogAction`，它点击即关闭对话框，`preventDefault` 拦不住 | tts-voice-management T4，2026-10-10 | 音色面板已改用普通 `Button` 并有测试（`VoicePanel.spec.ts`）；模型配置面板同样改法，并补一个 409 用例 |
 | P2 | 音乐 MV 的画面质量：让用户通过对话与风格库控制要生成什么样的动画 | 负责人试看 4B 冒烟成片的反馈，2026-10-06 | 4B 冒烟成片（agent 自主写的画面）效果一般；方向是让对话与风格库更强地约束画面（风格、母题、镜头语言），而不是让 agent 自由发挥。负责人系统使用后再提具体需求；强拍相位/BPM/淡出的试听核对也一并在那时做（见 [import-music-mv.md](../references/import-music-mv.md)） |
 | P2 | 讲解类（`explainer`）是否也取消阶段拆分（`topic → narrative → music → animation_html`） | produce 阶段设计，2026-10-06 | 短片、MV 合并配乐与动画后效果是否更好，负责人试用后再决定；讲解类有旁白与时间戳，耦合方式不同，不一并改 |
 | P2 | 能量曲线叠加歌词刻度 | mv-lyrics T6，2026-10-07 | 歌词列表已能点击跳转；刻度要改 `EnergyView` 的坐标层，用过之后再决定要不要 |

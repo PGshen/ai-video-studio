@@ -19,6 +19,7 @@ import type {
   JobOut,
   MessageCreate,
   ModelProfileCreate,
+  VoiceCreate,
   ModelProfilePatch,
   ProjectCreate,
   ProjectOut,
@@ -446,6 +447,26 @@ export function useSwitchSessionModelMutation(scope: MaybeRefOrGetter<SessionSco
 
 export function useVoicesQuery() {
   return useQuery({ queryKey: queryKeys.voices(), queryFn: api.listVoices, staleTime: Infinity })
+}
+
+export function useCreateVoiceMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: VoiceCreate) => api.createVoice(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.voices() })
+    },
+  })
+}
+
+export function useDeleteVoiceMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (alias: string) => api.deleteVoice(alias),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.voices() })
+    },
+  })
 }
 
 /** 改音色/语速：项目里的设置变了，配音是否过期由叙事画布按 timing 里记录的音色/语速比较。 */

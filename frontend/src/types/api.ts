@@ -211,8 +211,14 @@ export interface VoiceOut {
   /** 中文名，取自旧项目的音色表。 */
   label: string
   gender: string
+  /** 供应商那边的音色 id。 */
+  speaker_id: string
+  /** 豆包版本：`doubao_1.0` 或 `doubao_2.0`。 */
   engine: string
 }
+
+/** `POST /api/tts/voices`（后端 `api/tts.py::VoiceCreate`）。 */
+export type VoiceCreate = VoiceOut
 
 /** `PATCH /api/projects/{id}/settings`：只放行 `voice`/`speech_rate`，`null` 清除该键。 */
 export interface ProjectSettingsPatch {
