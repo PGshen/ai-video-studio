@@ -256,6 +256,15 @@ class ModelProfileOut(BaseModel):
     """当前由环境变量（`STUDIO_*`）决定的字段；启动时会覆盖库里的值，所以界面不让改。"""
 
 
+class ModelProfileTestOut(BaseModel):
+    """连通性测试结果（`POST /api/model-profiles/{id}/test`）。`error` 已去掉密钥并截断。"""
+
+    ok: bool
+    latency_ms: int | None
+    reply: str | None
+    error: str | None
+
+
 class ModelProfileCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -63,7 +63,7 @@ POST /api/model-profiles/{id}/test   → 200
 - **涉及文件**：`backend/src/studio/agent/oneshot.py`（新）、`agent/titler.py`、`backend/tests/agent/test_oneshot.py`（新）。
 - **测试**：替身 `query`/`Runner.run` 下的成功、空文本、`is_error`、未知运行时；`test_titler.py` 不改。
 
-### T2：连通性测试端点（待开始）
+### T2：连通性测试端点（完成）
 
 - **目标**：`agent/probe.py` 的 `probe_profile(...) -> ProbeResult`（计时、超时、错误规整与打码）+ `api/profiles.py` 新端点 + `schemas.py` 的 `ModelProfileTestOut`。probe 函数通过依赖注入，接口测试用替身。
 - **涉及文件**：`agent/probe.py`（新）、`api/profiles.py`、`api/schemas.py`、`api/deps.py`、`main.py`、`backend/tests/agent/test_probe.py`、`backend/tests/api/test_profiles.py`。
@@ -81,14 +81,17 @@ POST /api/model-profiles/{id}/test   → 200
 
 ## 进度
 
-- 2026-10-10 — T1 — `ask_once` 抽出，titler 改用它，`test_titler.py` 原样通过（见 commit）
+- 2026-10-10 — T1 — `ask_once` 抽出，titler 改用它，`test_titler.py` 原样通过（dbad7f5）
+- 2026-10-10 — T2 — `agent/probe.py` + `POST /api/model-profiles/{id}/test`，`app.state.probe` 注入（见 commit）
 
 ## 下一步
 
-- 从 T2 开始：先写 `backend/tests/agent/test_probe.py` 和 `tests/api/test_profiles.py` 里的端点用例。
+- 从 T3 开始：前端类型、mutation、`ModelProfilesPanel.vue` 每行「测试」按钮。
 
 ## 决策记录
 
+- 2026-10-10 — 运行时未启用（`runtimes.has` 为假）时端点返回 200、`ok=false`，不发请求 — 和其它失败一样在行内显示，不弹错误。
+- 2026-10-10 — 错误打码在 `agent/probe.py` 里自己做（去掉密钥值、base_url 的账号与密码，前后各试一次 URL 解码），不复用 `api/profiles._mask_base_url` — agent 层不能 import api。
 - 2026-10-10 — 用真实的最小请求而不是只查 `/models` 之类的接口 — 只有真实请求能同时验证 base_url、密钥、模型名和运行时（尤其 Claude 走 CLI）这一整条链路。
 
 ## 意外与发现
