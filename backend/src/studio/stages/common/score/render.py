@@ -10,7 +10,6 @@ import asyncio
 import copy
 import hashlib
 import json
-import os
 import shutil
 import uuid
 from collections.abc import Mapping
@@ -19,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from studio import fsretry
 from studio.engines.audio.analysis import DURATION_TOLERANCE, MusicReport, analyze, validate_events
 from studio.engines.audio.picture import render_analysis_png
 from studio.engines.audio.runner import ComposeError, WrapCommand, run_compose
@@ -235,7 +235,7 @@ def _publish(music_dir: Path, files: dict[str, bytes]) -> None:
             temp.write_bytes(data)
             temps[name] = temp
         for name, temp in temps.items():
-            os.replace(temp, music_dir / name)
+            fsretry.replace(temp, music_dir / name)
     finally:
         for temp in temps.values():
             temp.unlink(missing_ok=True)

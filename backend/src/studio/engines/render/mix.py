@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from studio import proc
+from studio import fsretry, proc
 
 _SAMPLE_RATE = 44100
 _STDERR_TAIL_LINES = 12
@@ -203,4 +203,4 @@ async def mix_final(
         temp.unlink(missing_ok=True)
         tail = "\n".join(stderr.decode(errors="replace").strip().splitlines()[-_STDERR_TAIL_LINES:])
         raise MixError(f"混音失败（ffmpeg 退出码 {process.returncode}）：{tail}")
-    temp.replace(output)
+    fsretry.replace(temp, output)  # the player may still be reading the old file

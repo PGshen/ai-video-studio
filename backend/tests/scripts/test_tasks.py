@@ -317,3 +317,27 @@ def test_an_explicit_env_is_also_utf8(tmp_path: Path) -> None:
     env = {k: v for k, v in os.environ.items() if k.upper() not in ("PYTHONUTF8",)}
     tasks.run_step("probe", [sys.executable, "-c", code, str(out)], cwd=tmp_path, env=env)
     assert out.read_text(encoding="utf-8") == "1"
+
+
+@pytest.mark.parametrize(
+    ("argv", "rest"),
+    [
+        (["smoke", "-k", "claude_login"], ["-k", "claude_login"]),
+        (["smoke"], []),
+        (["smoke", "tests/smoke/test_smoke.py", "-x"], ["tests/smoke/test_smoke.py", "-x"]),
+        (["import-legacy-styles", "--overwrite"], ["--overwrite"]),
+    ],
+)
+def test_passthrough_arguments_reach_the_command(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], rest: list[str]
+) -> None:
+    """`make smoke SMOKE_ARGS="-k claude_login"` ends up as `tasks.py smoke -k claude_login`."""
+    seen: list[list[str]] = []
+    monkeypatch.setitem(tasks.COMMANDS, argv[0], lambda args: seen.append(list(args.rest)))
+    assert tasks.main(argv) == 0
+    assert seen == [rest]
+
+
+def test_other_commands_reject_unknown_arguments() -> None:
+    with pytest.raises(SystemExit):
+        tasks.main(["check", "-k", "x"])

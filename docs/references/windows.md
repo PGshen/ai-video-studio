@@ -43,4 +43,5 @@ windows-native 计划在负责人的 Windows 11 Pro（10.0.26200，中文系统�
 | ✅ 已验证（2026-10-10） | 内置浏览器面板隐藏时，坐标点击和截图会因"页面没有绘制"超时；`form_input`、`javascript_tool`、`get_page_text` 不受影响 | T6 实测 |
 | ✅ 已验证（2026-10-09） | 本机的 Git Bash 里 nvm4w 的 `pnpm` sh 启动脚本解析错路径（指向 Anaconda 目录），PowerShell 里正常 | 本机实测（和 Anaconda 的 PATH 顺序有关，不是通用结论） |
 | ✅ 已验证（2026-10-10） | vitest 首次转换整个工作台页面依赖图要 5 秒以上（紧接后端测试之后更慢），`router.spec.ts` 的这个用例单独放宽了超时 | T9 实测 |
-| ⚠️ 待验证 | Windows 版 Claude CLI 的命令工具名（`PowerShell`）、`disallowed_tools` 是否生效、不传 sandbox 时的行为 | 计划 T10 |
+| ✅ 已验证（2026-10-10） | Windows 版 Claude CLI：命令工具名是 `PowerShell` 和 `Bash`（Git Bash），`disallowed_tools` 生效，不传 sandbox 时正常启动；详见 [claude-agent-sdk.md](claude-agent-sdk.md) 末节 | T10 登录冒烟 |
+| ✅ 已验证（2026-10-10） | 别的句柄开着文件时，`os.replace` 覆盖它报 `WinError 5`、删除它报 `WinError 32`；读者关闭后立即成功。产品代码里成片、配乐、工作区还原和删除改用 `studio.fsretry`（只在 Windows 上对 `PermissionError` 重试约 1 秒） | P12 实验、`tests/test_fsretry.py` |

@@ -352,3 +352,25 @@ forbidden_modules = [
     "studio.worker",
     "studio.worker_html",
 ]
+
+[[tool.importlinter.contracts]]
+name = "fsretry 是平台层（windows-native T10）：只依赖标准库，不 import 任何其他 studio 模块"
+type = "forbidden"
+source_modules = ["studio.fsretry"]
+forbidden_modules = [
+    "studio.main",
+    "studio.api",
+    "studio.stages",
+    "studio.agent",
+    "studio.workspace",
+    "studio.db",
+    "studio.engines",
+    "studio.jobs",
+    "studio.search",
+    "studio.styles",
+    "studio.config",
+    "studio.timeline",
+    "studio.proc",
+    "studio.worker",
+    "studio.worker_html",
+]

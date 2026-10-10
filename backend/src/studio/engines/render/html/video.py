@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from studio import proc
+from studio import fsretry, proc
 from studio.engines.render.html.browser import PageLike
 
 FFMPEG = "ffmpeg"
@@ -140,7 +140,7 @@ async def render_silent_video(
             raise VideoEncodeError(
                 f"ffmpeg 编码失败（退出码 {process.returncode}）：{_tail(stderr)}"
             )
-        temp.replace(output)
+        fsretry.replace(temp, output)  # the player may still be reading the old file
     except BaseException:
         proc.kill_proc_tree(process)  # sync: an await here could be cancelled again
         with contextlib.suppress(Exception):

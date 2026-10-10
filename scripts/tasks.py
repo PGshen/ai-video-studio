@@ -684,8 +684,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         doc_lines = (func.__doc__ or "").strip().splitlines()
         p = sub.add_parser(name, help=doc_lines[0] if doc_lines else None)
         if name in _PASSTHROUGH:
-            p.add_argument("rest", nargs=argparse.REMAINDER, help="原样传给底层命令")
-    args = parser.parse_args(argv)
+            p.add_argument("rest", nargs="*", help="原样传给底层命令（可以以 - 开头）")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in _PASSTHROUGH:
+        # argparse cannot take a leading `-k ...` as positional input (REMAINDER in a
+        # subcommand rejects it), so everything after the command name is passed on as is.
+        args = argparse.Namespace(command=argv[0], rest=argv[1:])
+    else:
+        args = parser.parse_args(argv)
     try:
         COMMANDS[args.command](args)
     except StepFailed as exc:

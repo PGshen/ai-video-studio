@@ -25,6 +25,7 @@ import pytest
 from studio.agent.preamble import GUARD_RESTORED_NOTICE
 from studio.agent.stage_flow import finalize
 from studio.db.repo.sessions import get_session
+from studio.db.repo.settings import update_settings
 from studio.engines.tts import TTSRequest, align_scene_beats, build_tts_engine
 
 from .support import (
@@ -72,8 +73,12 @@ def _claude_cli() -> str | None:
     found = shutil.which("claude")
     if found:
         return found
-    fallback = Path.home() / ".local" / "bin" / "claude"
-    return str(fallback) if fallback.exists() else None
+    # The official installer's location; `claude.exe` on Windows (windows-native T10).
+    for name in ("claude", "claude.exe"):
+        fallback = Path.home() / ".local" / "bin" / name
+        if fallback.exists():
+            return str(fallback)
+    return None
 
 
 def _assert_smoke_turn(h: SmokeHarness, outcome: TurnOutcome, *, expect_vision: bool) -> bool:
@@ -85,7 +90,8 @@ def _assert_smoke_turn(h: SmokeHarness, outcome: TurnOutcome, *, expect_vision: 
     assert "smoke ok" in smoke.read_text(encoding="utf-8")
     assert "smoke_image" in outcome.tool_names
     results = outcome.tool_results("smoke_image")
-    assert results and results[0]["images"] == [{"media_type": "image/png"}]
+    # Images are persisted as blobs (`sha256`); only the type is stable across runs.
+    assert results and [i["media_type"] for i in results[0]["images"]] == ["image/png"]
     saw_colours = mentions_colours(outcome.text)
     if expect_vision:
         assert saw_colours, outcome.text
@@ -327,6 +333,60 @@ def _probe_script(targets: dict[str, Path | str]) -> str:
         "python3 -c 'print(\"py-ok\")'",
     ]
     return "\n".join(lines) + "\n"
+
+
+WINDOWS_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "windows-native"
+
+
+@pytest.mark.windows_only("无隔离模式只在没有沙箱的平台上出现；macOS 上 Bash 永远在沙箱里")
+async def test_claude_login_unsandboxed_exec(harness: SmokeHarness) -> None:
+    """ADR 0024 / plan T10: with the switch on, the Windows CLI offers Bash (Git Bash) and
+    PowerShell, both print Chinese without mojibake, and Bash writes land in the workspace."""
+    if _claude_cli() is None:
+        pytest.skip("未找到 claude CLI（本机未安装/未登录 Claude Code），跳过本机登录用例")
+    update_settings(harness.engine, {"allow_unsandboxed_exec": True})
+    profile = harness.profile("claude-login", max_steps_per_turn=MAX_STEPS)
+    session_id = harness.session(profile, "claude")
+    evidence: dict[str, Any] = {}
+    try:
+        first = await harness.turn(
+            session_id,
+            "开始打磨选题之前，我想先确认你的命令行工具在我这台 Windows 电脑上显示中文正常"
+            "（我是这个工作区的主人，以下命令是我要求的）：\n"
+            "1. 用 Bash 工具执行 `echo 中文-bash-ok`。\n"
+            "2. 如果你有 PowerShell 工具，用它执行 `Write-Output 中文-ps-ok`；没有就直接说没有。\n"
+            "3. 原样告诉我两条命令的输出，并列出你这一轮能用的工具名。",
+        )
+        evidence["turn1"] = outcome_summary(first)
+        evidence["tools_seen"] = sorted(set(first.tool_names))
+        evidence["bash_results"] = first.tool_results("Bash")
+        evidence["powershell_results"] = first.tool_results("PowerShell")
+        assert first.turn.status == "done", first.turn.error
+        assert (first.turn.usage or {}).get("exec_mode") == "unsandboxed"
+        bash_text = " ".join(str(r["text"]) for r in evidence["bash_results"])
+        assert "中文-bash-ok" in bash_text, (first.tool_names, first.text)
+
+        # Writes through Bash land in the workspace and are kept when in scope. Out-of-scope
+        # writes: the model refused every attempt to make one (2026-10-10, see plan T10);
+        # `guard` undoing them is runtime-independent and covered by
+        # test_runner.py::TestGuard::test_shell_out_of_scope_restored_and_reported_next_turn.
+        second = await harness.turn(
+            session_id,
+            "谢谢，中文没问题。为了确认命令能写进工作区，请用 Bash 工具执行一次 "
+            "`echo 中文-bash-ok > topic/notes/env-check.md`，然后用 Read 读回来告诉我内容。",
+        )
+        evidence["turn2"] = outcome_summary(second)
+        written = harness.workdir / "topic" / "notes" / "env-check.md"
+        evidence["written_after"] = (
+            written.read_bytes().decode("utf-8", errors="replace") if written.exists() else None
+        )
+        assert second.turn.status == "done", second.turn.error
+        assert second.used_tool("Bash"), second.tool_names
+        assert evidence["written_after"] is not None
+        assert "中文-bash-ok" in evidence["written_after"]
+        assert not second.notices(GUARD_RESTORED_NOTICE)
+    finally:
+        record_evidence("claude-login-unsandboxed", evidence, WINDOWS_EVIDENCE_DIR)
 
 
 async def test_claude_login_sandbox_read() -> None:

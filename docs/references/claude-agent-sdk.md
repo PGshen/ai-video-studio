@@ -61,3 +61,15 @@ T9（2026-09-27）核实时安装的版本：`claude-agent-sdk 0.2.160`，内置
 - ✅ 已处理（2026-10-05）：共用 `stages/common/picture.py`（`compress_png`、`limit_for`）；manim `render_preview` 的关键帧也压成 JPEG，一条结果里所有图共用 600 kB 预算（单张 ≤ 400 kB），测试 `test_noisy_keyframes_stay_well_under_the_sdk_message_limit`。
 - ✅ 已验证（2026-10-06，produce-stage T1，现场会话记录实测）：**CLI 把同一条工具结果写两份进一行 JSON**——`message.content[].content[]` 与顶层 `toolUseResult[]`。`render_music` 的 394 kB JPEG（525 324 字节 base64）因此成了一行 1 054 050 字节，刚好超过缓冲区默认的 1 048 576；上面"单张 ≤ 400 kB"的预算只按一份算，所以挡不住。证据：项目 `f67bd800…` 的 CLI 会话记录里两行 1 054 051 / 1 054 379 字节，两处 `data` 都是 525 324 字符。
 - ✅ 已处理（2026-10-06）：预算按两份折算——一条结果里全部图片的 base64 总长 ≤ 400 kB（`agent/tools.py::MAX_IMAGE_BASE64_BYTES`，折合原始字节 300 kB，`stages/common/picture.py` 与 `probe.py` 同步），文本 ≤ 60 000 字节（`MAX_TEXT_BYTES`）；`invoke_tool` 对超预算的结果兜底（截断文本、丢弃整组图片并写明）；`ClaudeAgentOptions.max_buffer_size = 8 MiB`（`claude_runtime.MAX_BUFFER_BYTES`）兜底，已经带着超限消息的历史会话也能继续（追加轮会重放这行）。测试 `tests/stages/test_picture_budget.py`、`tests/agent/test_claude_runtime.py::TestMessageBuffer`。
+
+## 原生 Windows 上的 CLI（windows-native T10）
+
+2026-10-10，Windows 11 Pro，本机登录模式（`claude-login`，SDK 自带 CLI；独立安装的 `claude.exe` 在 `~/.local/bin`，两者共用 `~/.claude` 的登录凭据）。证据：`data/evidence/m1/smoke/*-claude-login.json`、`data/evidence/windows-native/*-claude-login-unsandboxed.json`（不入库）。
+
+| 状态 | 结论 | 来源 |
+|---|---|---|
+| ✅ 已验证（2026-10-10） | 不传 `sandbox` 设置时，Windows 上的 CLI 正常启动、正常完成多轮对话（含恢复会话）；没有出现"沙箱不可用"的提示或拒绝启动（ADR 0024 的假设成立：不能传 `enabled` + `failIfUnavailable`，不传就行） | `test_claude_login`（Windows 上通过） |
+| ✅ 已验证（2026-10-10） | Windows 上 CLI 的命令工具名就是 `PowerShell`（另有 `Bash`）。把它们放进 `tools`/`allowed_tools` 后模型能调用，输出中文无乱码（`echo 中文-bash-ok`、`Write-Output 中文-ps-ok`） | `test_claude_login_unsandboxed_exec` |
+| ✅ 已验证（2026-10-10） | `tools` 里去掉 `Bash`、`disallowed_tools` 放 `Bash` 和 `PowerShell` 时，模型看到的工具只有 Read/Write/Edit/Glob/Grep 和业务工具，没有任何命令工具（模型自己在 thinking 里列出了工具清单） | `test_claude_login` 第 2、3 轮 |
+| ✅ 已验证（2026-10-10） | `Bash` 在 Windows 上经 Git Bash 执行：`ls topic/ 2>/dev/null` 这类 POSIX 写法可用，写进工作区的中文是 UTF-8 | 同上 |
+| ✅ 已验证（2026-10-10） | 模型（claude-sonnet-5）在选题阶段拒绝把文件写到 `topic/` 之外：用户明确要求、或者让它运行一个会越界写的脚本（它会先 Read 脚本），都拒绝了。越界写入由轮末 `guard` 兜底这件事与运行时无关，由 `test_runner.py::TestGuard` 覆盖 | 同上（三次尝试） |

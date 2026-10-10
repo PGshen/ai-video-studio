@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import fnmatch
 import os
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from studio import fsretry
 from studio.workspace.blobs import BlobStore
 from studio.workspace.layout import EXCLUDED_TOP_DIRS
 from studio.workspace.snapshot import Manifest
@@ -64,9 +64,9 @@ class GuardReport:
 def _clear_obstacle(path: Path) -> None:
     """删掉挡在还原路径上的东西：符号链接或文件只 unlink（不跟随），目录整棵删除。"""
     if path.is_symlink() or path.is_file():
-        path.unlink()
+        fsretry.unlink(path)
     elif path.is_dir():
-        shutil.rmtree(path)
+        fsretry.rmtree(path)
 
 
 def _restore_bytes(workdir: Path, relpath: str, data: bytes) -> None:
@@ -98,7 +98,7 @@ def _remove_file(workdir: Path, relpath: str) -> None:
         if current.is_symlink():
             return
     if current.is_file():
-        current.unlink()
+        fsretry.unlink(current)
 
 
 def _find_symlinks(workdir: Path) -> list[Path]:

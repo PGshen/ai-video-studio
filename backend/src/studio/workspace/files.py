@@ -12,6 +12,7 @@ import os
 import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from studio import fsretry
 from studio.workspace.layout import (
     HIDDEN_TOP_DIRS,
     PathEscapesWorkdir,
@@ -196,7 +197,7 @@ def delete_file(workdir: Path | str, relpath: str, scope: WriteScope) -> None:
         raise ScopeError(f"不在可写范围内：{relpath}")
     if path.is_dir():
         raise IsADirectoryError(f"是目录，不能删除：{relpath}")
-    path.unlink()
+    fsretry.unlink(path)
 
 
 def write_text_unscoped(workdir: Path | str, relpath: str, content: str) -> None:

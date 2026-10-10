@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import threading
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -18,8 +19,24 @@ def _new_id() -> str:
     return uuid4().hex
 
 
+_last_now = datetime.min.replace(tzinfo=UTC)
+_now_lock = threading.Lock()
+
+
 def _utcnow() -> datetime:
-    return datetime.now(UTC)
+    """`created_at`/`updated_at` default, strictly increasing within this process.
+
+    Python 3.12 on Windows reads a coarse wall clock (`GetSystemTimeAsFileTime`, ~1–16 ms), so
+    rows created back to back shared a timestamp and "latest"/"before this one" queries picked
+    an arbitrary row (windows-native T10). A tie is bumped by one microsecond.
+    """
+    global _last_now
+    with _now_lock:
+        now = datetime.now(UTC)
+        if now <= _last_now:
+            now = _last_now + timedelta(microseconds=1)
+        _last_now = now
+        return now
 
 
 class Base(DeclarativeBase):

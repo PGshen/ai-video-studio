@@ -16,6 +16,7 @@ from pathlib import Path
 
 from sqlalchemy import Engine
 
+from studio import fsretry
 from studio.db.repo.snapshots import (
     SnapshotValue,
     get_snapshot,
@@ -245,7 +246,7 @@ def rollback(
     current = scan(workdir)
     for rel_path in current:
         if rel_path not in target.manifest:
-            _safe_dest(workdir, rel_path).unlink()
+            fsretry.unlink(_safe_dest(workdir, rel_path))
 
     prune_empty_dirs(workdir)
 
