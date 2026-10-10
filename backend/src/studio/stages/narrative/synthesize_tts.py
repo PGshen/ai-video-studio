@@ -1,7 +1,8 @@
 """`synthesize_tts` 工具（设计 §5.2；计划 M3 T6）：对镜头配音并对齐 beat。
 
 `_ENGINE_FACTORY` 是模块级的可替换"缝"：默认是真实的
-`engines.tts.factory.build_tts_engine`，测试用 `monkeypatch.setattr` 换成
+`engines.tts.factory.build_tts_engine`（参数是 `tts_voices` 表里的音色），测试用
+`monkeypatch.setattr` 换成
 假引擎，不需要改 `ToolContext`/`ToolSpec` 的签名。
 """
 
@@ -9,13 +10,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from pydantic import BaseModel
 
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.db.repo.projects import get_project
+from studio.db.repo.voices import VoiceValue, list_voices
 from studio.engines.tts import TTSEngine, TTSRequest, align_scene_beats, build_tts_engine
 from studio.engines.tts.voice_map import DEFAULT_SPEED, DEFAULT_VOICE
 from studio.stages.narrative.schema import NarrativeValidationError, validate_and_normalize
@@ -24,7 +26,7 @@ from studio.workspace import files
 _NARRATIVE_PATH = "narrative/narrative.json"
 _TIMING_PATH = "narrative/timing.json"
 
-_ENGINE_FACTORY: Callable[[], TTSEngine] = build_tts_engine
+_ENGINE_FACTORY: Callable[[Sequence[VoiceValue]], TTSEngine] = build_tts_engine
 
 
 class SynthesizeTtsArgs(BaseModel):
@@ -94,7 +96,7 @@ async def _handler(ctx: ToolContext, args: SynthesizeTtsArgs) -> ToolResult:
         target_ids = list(args.scene_ids)
 
     voice, speed = _project_voice_and_speed(ctx)
-    engine = _ENGINE_FACTORY()
+    engine = _ENGINE_FACTORY(list_voices(ctx.engine) if ctx.engine is not None else [])
 
     timing_doc = _read_timing_doc(ctx)
     timing_by_id = {scene["id"]: scene for scene in timing_doc.get("scenes", [])}

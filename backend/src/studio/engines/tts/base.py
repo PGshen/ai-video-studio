@@ -16,6 +16,14 @@ class TTSRequest:
     speed: float = 1.0
 
 
+@dataclass(frozen=True, slots=True)
+class TTSVoiceSpec:
+    """一个音色在供应商那边的身份：speaker id 与豆包版本（`doubao_1.0`/`doubao_2.0`）。"""
+
+    speaker_id: str
+    engine: str
+
+
 @dataclass
 class WordTimestamp:
     word: str

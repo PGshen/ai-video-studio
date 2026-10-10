@@ -134,7 +134,9 @@ class TestNarrativeEndToEndFlow:
     async def test_narrative_turn_finalize_and_animation_reads_it(
         self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(synthesize_tts_module, "_ENGINE_FACTORY", _CharTimestampTTSEngine)
+        monkeypatch.setattr(
+            synthesize_tts_module, "_ENGINE_FACTORY", lambda _voices: _CharTimestampTTSEngine()
+        )
         engine = api_env.app.state.engine
         blobs = api_env.app.state.blobs
         pid = seed_narrative_project(engine, blobs, data_dir=api_env.data_dir)
