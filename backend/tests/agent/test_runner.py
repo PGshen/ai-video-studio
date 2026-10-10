@@ -577,6 +577,29 @@ class TestExecSwitch:
         assert seen == [False]
         assert h.contexts[-1].allow_unsandboxed_exec is True
 
+    async def test_failing_switch_read_fails_the_turn_and_frees_the_session(
+        self, env: StudioEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # e.g. SQLite "database is locked" while the worker writes a heartbeat
+        h = _make_harness(env)
+        calls = 0
+
+        def flaky(*_args: object) -> bool:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("database is locked")
+            return False
+
+        monkeypatch.setattr("studio.agent.runner.effective_allow_unsandboxed_exec", flaky)
+        session_id = h.session()
+        first = await h.run(session_id, [fake.say("a")])
+        second = await h.run(session_id, [fake.say("b")])
+
+        assert first.status == "failed"
+        assert first.error is not None and "database is locked" in first.error
+        assert second.status == "done"
+
     @pytest.mark.parametrize(
         ("seatbelt", "allow", "expected"),
         [(True, True, "sandboxed"), (False, False, "disabled"), (False, True, "unsandboxed")],

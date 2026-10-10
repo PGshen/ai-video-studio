@@ -326,12 +326,13 @@ class TurnRunner:
 
     async def _run(self, job: _Job) -> None:
         state = _State()
-        # ADR 0024: read the switch once per turn; a change made mid-turn applies to the next.
-        job.allow_unsandboxed_exec = effective_allow_unsandboxed_exec(
-            self._engine, self._settings.allow_unsandboxed_exec
-        )
-        job.exec_mode = exec_policy.host_exec_mode(job.allow_unsandboxed_exec)
         try:
+            # ADR 0024: read the switch once per turn; a change made mid-turn applies to the
+            # next. Inside `try` so a failed read still finishes the turn and frees the session.
+            job.allow_unsandboxed_exec = effective_allow_unsandboxed_exec(
+                self._engine, self._settings.allow_unsandboxed_exec
+            )
+            job.exec_mode = exec_policy.host_exec_mode(job.allow_unsandboxed_exec)
             await self._execute(job, state)
         except asyncio.CancelledError:
             state.status = "cancelled"
