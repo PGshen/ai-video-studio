@@ -46,6 +46,7 @@ def test_unreadable_pid_file_is_empty(tmp_path: Path, content: str | None) -> No
 # ---- is this process ours? (review point 2) ----
 
 ROOT = "C:\\dev\\ai-video-studio"
+POSIX_ROOT = "/Users/me/ai-video-studio"
 
 
 @pytest.mark.parametrize(
@@ -73,7 +74,7 @@ ROOT = "C:\\dev\\ai-video-studio"
         (("explorer.exe", f"explorer.exe {ROOT}"), "win32", False),
         (None, "win32", False),
         (
-            ("python3", f"/usr/bin/python3 -m uvicorn --reload-dir {ROOT}/backend/src"),
+            ("python3", f"/usr/bin/python3 -m uvicorn --reload-dir {POSIX_ROOT}/backend/src"),
             "darwin",
             True,
         ),
@@ -81,7 +82,7 @@ ROOT = "C:\\dev\\ai-video-studio"
     ],
 )
 def test_belongs_to_project(info: tuple[str, str] | None, platform: str, expected: bool) -> None:
-    root = ROOT if platform == "win32" else ROOT.replace("\\", "/")
+    root = ROOT if platform == "win32" else POSIX_ROOT
     assert tasks.belongs_to_project(info, Path(root), platform=platform) is expected
 
 
