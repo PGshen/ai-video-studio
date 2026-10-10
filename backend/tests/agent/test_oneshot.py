@@ -126,3 +126,24 @@ async def test_openai_runs_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 async def test_unsupported_runtime_raises(tmp_path: Path) -> None:
     with pytest.raises(OneShotError, match="fake"):
         await ask_once(_profile("fake"), "s", "m", data_dir=tmp_path, environ={}, workdir="w")
+
+
+async def test_claude_stream_is_closed_when_raising_early(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `async for` 循环体抛错时不会关闭迭代器；不显式关闭的话 CLI 子进程要等 GC 才收尾。
+    closed: list[bool] = []
+
+    async def query(*, prompt: str, options: Any) -> AsyncIterator[Any]:
+        try:
+            yield _result(is_error=True, errors=["boom"])
+            yield _result(is_error=False)
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(oneshot, "query", query)
+
+    with pytest.raises(OneShotError):
+        await ask_once(_profile("claude"), "s", "m", data_dir=tmp_path, environ={}, workdir="w")
+
+    assert closed == [True]

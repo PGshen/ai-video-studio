@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import aclosing
 from pathlib import Path
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock, query
@@ -47,14 +48,17 @@ async def _claude(
         verbatim_prompts=True,
     )
     parts: list[str] = []
-    async for item in query(prompt=message, options=options):
-        if isinstance(item, AssistantMessage):
-            text = "".join(block.text for block in item.content if isinstance(block, TextBlock))
-            if item.error:
-                raise OneShotError(f"{item.error}: {text}" if text else item.error)
-            parts.append(text)
-        elif isinstance(item, ResultMessage) and item.is_error:
-            raise OneShotError("; ".join(item.errors or []) or item.result or item.subtype)
+    # `async for` does not close the generator when the body raises; close it here so the
+    # CLI subprocess is shut down in this task rather than whenever GC gets to it.
+    async with aclosing(query(prompt=message, options=options)) as stream:
+        async for item in stream:
+            if isinstance(item, AssistantMessage):
+                text = "".join(b.text for b in item.content if isinstance(b, TextBlock))
+                if item.error:
+                    raise OneShotError(f"{item.error}: {text}" if text else item.error)
+                parts.append(text)
+            elif isinstance(item, ResultMessage) and item.is_error:
+                raise OneShotError("; ".join(item.errors or []) or item.result or item.subtype)
     return "".join(parts)
 
 

@@ -71,8 +71,8 @@ POST /api/model-profiles/{id}/test   → 200
 
 ### T3：前端「测试」按钮与结果展示（完成）
 
-- **目标**：类型（`types/api`）、mutation（`composables/queries`）、`ModelProfilesPanel.vue` 每行「测试」按钮；结果显示在该行名称下方：成功"✓ 1.2s · ok"，失败红字原因；按行独立维护状态。
-- **涉及文件**：`frontend/src/types/api.ts`、`frontend/src/api/*`、`frontend/src/composables/queries.ts`、`frontend/src/features/settings/ModelProfilesPanel.vue`、`settingsView.ts`（结果格式化纯函数）及其 spec。
+- **目标**：类型（`types/api`）、`testModelProfile`（见决策记录：不用 mutation）、`ModelProfilesPanel.vue` 每行「测试」按钮；结果显示在该行名称下方：成功"✓ 1.2s · ok"，失败红字原因；按行独立维护状态。
+- **涉及文件**：`frontend/src/types/api.ts`、`frontend/src/api/*`、`frontend/src/features/settings/ModelProfilesPanel.vue`、`settingsView.ts`（结果格式化纯函数）及其 spec。
 - **测试**：`settingsView.spec.ts` 覆盖格式化；组件测试覆盖点击 → 转圈 → 显示结果。
 
 ### T4：实测与收尾（完成）
@@ -84,11 +84,12 @@ POST /api/model-profiles/{id}/test   → 200
 - 2026-10-10 — T1 — `ask_once` 抽出，titler 改用它，`test_titler.py` 原样通过（dbad7f5）
 - 2026-10-10 — T2 — `agent/probe.py` + `POST /api/model-profiles/{id}/test`，`app.state.probe` 注入（f8cec87）
 - 2026-10-10 — T3 — 列表每行「测试」按钮，结果显示在名称下方（ca90104）
-- 2026-10-10 — T4 — 本机实测四种结果并截图；references、QUALITY 已更新（见 commit）
+- 2026-10-10 — T4 — 本机实测四种结果并截图；references、QUALITY 已更新（0e7fb1e）
+- 2026-10-10 — 评审 — 1 条 Important（生成器未关闭）已修，Minor 已记录（见 commit）
 
 ## 下一步
 
-- 独立评审整个分支（`git diff main...model-connectivity-test`），处理评审意见；然后请负责人验收，按 SOP §7 收尾（计划移到 `completed/`、rebase 到 main、`make check`、`--no-ff` 合并）。
+- 评审已完成并处理。请负责人验收，按 SOP §7 收尾（计划移到 `completed/`、rebase 到 main、`make check`、`--no-ff` 合并）。
 
 ## 决策记录
 
@@ -99,6 +100,8 @@ POST /api/model-profiles/{id}/test   → 200
 
 ## 意外与发现
 
+- 2026-10-10 — 独立评审：`oneshot._claude` 在 `async for` 里提前 raise 时 `query()` 生成器不会被关闭（SDK `_internal/client.py` 注释也写明），CLI 子进程要等 GC 才收尾；改为 `contextlib.aclosing`，补测试 `test_claude_stream_is_closed_when_raising_early`。
+- 2026-10-10 — 评审备注：AC2「命名行为不变」严格说有一处变化——以前助手消息带 `error` 时错误正文会被当成标题，现在抛错、titler 返回 `None`（保留截取的临时标题），属于改进。
 - 2026-10-10 — Claude CLI 对不存在的模型返回 `AssistantMessage.error="model_not_found"`，不在 SDK 的 `AssistantMessageError` 类型里；`oneshot` 只把它当字符串拼进原因，不受影响。已写进 references/claude-agent-sdk.md。
 - 2026-10-10 — 本机登录的单轮极小请求约 12–14 秒（主要是 CLI 启动），所以超时设 30 秒；界面上测试中按钮显示「测试中…」。
 
