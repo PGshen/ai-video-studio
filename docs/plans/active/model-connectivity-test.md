@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 零散需求（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | 负责人 2026-10-10 在对话中提出"模型配置，支持测试连通性"；沿用 [架构设计](../../design/2026-09-26-architecture.md) 的运行时分层，不需要新设计 |
 | 分支 | `model-connectivity-test` |
@@ -50,10 +50,10 @@ POST /api/model-profiles/{id}/test   → 200
 
 ## 验收标准
 
-- [ ] AC1：`fake`、密钥未配置、超时、SDK 抛错、模型返回空文本、Claude 返回 `is_error` 的 result 这几种情况都有单元/接口测试，返回值符合上面的约定；任何情况下响应里都不含 key 的值。（验证：`make check`）
-- [ ] AC2：会话自动命名的行为不变（`test_titler.py` 原样通过）。
-- [ ] AC3：本机用 `claude-login` 点「测试」成功，显示耗时和回复；把一个配置的 `model` 改成不存在的名字，点「测试」显示失败原因。（验证：浏览器截图；用本机登录，不产生 API 费用）
-- [ ] AC4：`make check` 全绿。
+- [x] AC1：`fake`、密钥未配置、超时、SDK 抛错、模型返回空文本、Claude 返回 `is_error` 的 result 这几种情况都有单元/接口测试，返回值符合上面的约定；任何情况下响应里都不含 key 的值。（验证：`make check`）
+- [x] AC2：会话自动命名的行为不变（`test_titler.py` 原样通过）。
+- [x] AC3：本机用 `claude-login` 点「测试」成功，显示耗时和回复；把一个配置的 `model` 改成不存在的名字，点「测试」显示失败原因。（验证：浏览器截图；用本机登录，不产生 API 费用）
+- [x] AC4：`make check` 全绿。
 
 ## 任务
 
@@ -75,7 +75,7 @@ POST /api/model-profiles/{id}/test   → 200
 - **涉及文件**：`frontend/src/types/api.ts`、`frontend/src/api/*`、`frontend/src/composables/queries.ts`、`frontend/src/features/settings/ModelProfilesPanel.vue`、`settingsView.ts`（结果格式化纯函数）及其 spec。
 - **测试**：`settingsView.spec.ts` 覆盖格式化；组件测试覆盖点击 → 转圈 → 显示结果。
 
-### T4：实测与收尾（待开始）
+### T4：实测与收尾（完成）
 
 - `make dev` + 浏览器按 AC3 实测并截图；把新发现的 SDK 行为写进 references；更新 QUALITY.md；填「验证记录」。
 
@@ -83,11 +83,12 @@ POST /api/model-profiles/{id}/test   → 200
 
 - 2026-10-10 — T1 — `ask_once` 抽出，titler 改用它，`test_titler.py` 原样通过（dbad7f5）
 - 2026-10-10 — T2 — `agent/probe.py` + `POST /api/model-profiles/{id}/test`，`app.state.probe` 注入（f8cec87）
-- 2026-10-10 — T3 — 列表每行「测试」按钮，结果显示在名称下方（见 commit）
+- 2026-10-10 — T3 — 列表每行「测试」按钮，结果显示在名称下方（ca90104）
+- 2026-10-10 — T4 — 本机实测四种结果并截图；references、QUALITY 已更新（见 commit）
 
 ## 下一步
 
-- T4：`make dev`（或 `preview_start`），在设置页用 `claude-login` 点「测试」截图；临时把一个自建配置的 model 改成不存在的名字再测，截图；填「验证记录」，更新 QUALITY.md。
+- 独立评审整个分支（`git diff main...model-connectivity-test`），处理评审意见；然后请负责人验收，按 SOP §7 收尾（计划移到 `completed/`、rebase 到 main、`make check`、`--no-ff` 合并）。
 
 ## 决策记录
 
@@ -98,7 +99,8 @@ POST /api/model-profiles/{id}/test   → 200
 
 ## 意外与发现
 
-- 无
+- 2026-10-10 — Claude CLI 对不存在的模型返回 `AssistantMessage.error="model_not_found"`，不在 SDK 的 `AssistantMessageError` 类型里；`oneshot` 只把它当字符串拼进原因，不受影响。已写进 references/claude-agent-sdk.md。
+- 2026-10-10 — 本机登录的单轮极小请求约 12–14 秒（主要是 CLI 启动），所以超时设 30 秒；界面上测试中按钮显示「测试中…」。
 
 ## 阻塞
 
@@ -106,4 +108,10 @@ POST /api/model-profiles/{id}/test   → 200
 
 ## 验证记录
 
-- 无
+- AC1、AC2、AC4：`make check` 全绿（T1–T3 每次提交前各跑一次；后端新增 `tests/agent/test_oneshot.py` 5 个、`test_probe.py` 9 个、`tests/api/test_profiles.py::TestProbe` 4 个；前端 `ModelProfilesPanel.spec.ts` 2 个、`probeSummary` 4 个、endpoints 1 个；`test_titler.py` 未改动并通过）。
+- AC3：在 worktree 上用 8010/5183 端口另起 api（开 Fake，未加载 `backend/.env`）和前端，设置页逐行点「测试」，结果：
+  - `fake` → `连通 · fake 运行时不发请求`
+  - `claude-sonnet`（进程里没有 `ANTHROPIC_API_KEY`）→ `失败 · 环境变量 ANTHROPIC_API_KEY 未设置（写在 backend/.env 后重启）`，未发请求
+  - `claude-login` → `连通 · 13.9s · ok`
+  - 临时新建的 `broken-login`（本机登录，`model=claude-no-such-model`）→ `失败 · 11.9s · model_not_found: There's an issue with the selected model (claude-no-such-model). …`；验证完已删除
+  - 截图见本会话（内置浏览器）；`gpt`、`deepseek` 走付费 key，未实测。
