@@ -165,3 +165,60 @@ def test_production_text_writes_keep_newlines() -> None:
         for line in _translating_writes(ast.parse(path.read_text(encoding="utf-8")))
     ]
     assert offenders == []
+
+
+# ---- child processes go through `studio.proc` (windows-native T4) ----
+#
+# Without `spawn_kwargs()` a child shares our process group (POSIX) or console group
+# (Windows), so `kill_tree` cannot reach its descendants and a console Ctrl+C hits it too.
+# `studio/proc.py` is the one place allowed to spawn without it.
+
+_SPAWNERS = {
+    "asyncio": {"create_subprocess_exec", "create_subprocess_shell"},
+    "subprocess": {"Popen", "run", "call", "check_call", "check_output"},
+}
+
+
+def _passes_spawn_kwargs(call: ast.Call) -> bool:
+    for kw in call.keywords:
+        if kw.arg is None and isinstance(kw.value, ast.Call):
+            func = kw.value.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name == "spawn_kwargs":
+                return True
+    return False
+
+
+def _spawns_without_proc(tree: ast.AST) -> list[int]:
+    return sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.attr in _SPAWNERS.get(node.func.value.id, ())
+        and not _passes_spawn_kwargs(node)
+    )
+
+
+def test_the_spawn_check_catches_bare_child_processes() -> None:
+    tree = ast.parse(
+        "async def f(argv):\n"
+        "    await asyncio.create_subprocess_exec(*argv)\n"
+        "    await asyncio.create_subprocess_exec(*argv, **proc.spawn_kwargs())\n"
+        "    subprocess.Popen(argv, env=env)\n"
+        "    subprocess.run(argv, **spawn_kwargs())\n"
+        "    runner.run(job)\n"
+        "    asyncio.run(main())\n"
+    )
+    assert _spawns_without_proc(tree) == [2, 4]
+
+
+def test_production_child_processes_use_spawn_kwargs() -> None:
+    offenders = [
+        f"{path.relative_to(REPO_ROOT).as_posix()}:{line}"
+        for path in sorted((BACKEND / "src").rglob("*.py"))
+        if path.name != "proc.py" or path.parent.name != "studio"
+        for line in _spawns_without_proc(ast.parse(path.read_text(encoding="utf-8")))
+    ]
+    assert offenders == []
