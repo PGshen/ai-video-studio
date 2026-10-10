@@ -85,7 +85,7 @@ POST /api/model-profiles/{id}/test   → 200
 - 2026-10-10 — T2 — `agent/probe.py` + `POST /api/model-profiles/{id}/test`，`app.state.probe` 注入（f8cec87）
 - 2026-10-10 — T3 — 列表每行「测试」按钮，结果显示在名称下方（ca90104）
 - 2026-10-10 — T4 — 本机实测四种结果并截图；references、QUALITY 已更新（0e7fb1e）
-- 2026-10-10 — 评审 — 1 条 Important（生成器未关闭）已修，Minor 已记录（见 commit）
+- 2026-10-10 — 评审 — 1 条 Important（生成器未关闭）已修，Minor 已记录（de984c4 提交时 pyright 未过，下一个 commit 补上 `cast` 后 `make check` 全绿）
 
 ## 下一步
 

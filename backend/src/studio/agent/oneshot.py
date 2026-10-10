@@ -8,9 +8,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import aclosing
 from pathlib import Path
+from typing import Any, cast
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock, query
 
@@ -50,7 +51,9 @@ async def _claude(
     parts: list[str] = []
     # `async for` does not close the generator when the body raises; close it here so the
     # CLI subprocess is shut down in this task rather than whenever GC gets to it.
-    async with aclosing(query(prompt=message, options=options)) as stream:
+    # `query()` is annotated as AsyncIterator but is an async generator at runtime.
+    stream = cast(AsyncGenerator[Any, None], query(prompt=message, options=options))
+    async with aclosing(stream):
         async for item in stream:
             if isinstance(item, AssistantMessage):
                 text = "".join(b.text for b in item.content if isinstance(b, TextBlock))
