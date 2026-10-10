@@ -10,13 +10,15 @@ import httpx
 import pytest
 import respx
 
-from studio.engines.tts.base import TTSRequest, TTSResult, WordTimestamp
+from studio.engines.tts.base import TTSRequest, TTSResult, TTSVoiceSpec, WordTimestamp
 from studio.engines.tts.factory import build_tts_engine
-from studio.engines.tts.voice_map import resolve_speaker
 from studio.engines.tts.volcengine import VolcengineTTSEngine
 
 _TINY_MP3 = (Path(__file__).parents[1] / "fixtures" / "tts" / "tiny.mp3").read_bytes()
 _ENDPOINT = "https://tts.test/synthesize"
+_V2 = TTSVoiceSpec(speaker_id="zh_female_qingchezizi_uranus_bigtts", engine="doubao_2.0")
+_V1 = TTSVoiceSpec(speaker_id="zh_female_shuangkuaisisi_moon_bigtts", engine="doubao_1.0")
+_VOICES = {"zizi": _V2, "sisi": _V1}
 
 
 def _sse_body(*chunks: dict) -> bytes:
@@ -61,7 +63,7 @@ async def test_synthesize_success_concatenates_audio_and_collects_timestamps() -
         ),
     )
     respx.post(_ENDPOINT).mock(return_value=httpx.Response(200, content=body))
-    engine = VolcengineTTSEngine(api_key="k", endpoint=_ENDPOINT, max_retries=0)
+    engine = VolcengineTTSEngine(api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=0)
 
     result = await engine.synthesize(TTSRequest(text="你好世界", voice="zizi"))
 
@@ -84,7 +86,7 @@ async def test_synthesize_retries_on_5xx_then_succeeds() -> None:
         httpx.Response(200, content=_sse_body(_audio_chunk(_TINY_MP3))),
     ]
     engine = VolcengineTTSEngine(
-        api_key="k", endpoint=_ENDPOINT, max_retries=1, retry_base_delay_seconds=0.0
+        api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=1, retry_base_delay_seconds=0.0
     )
 
     result = await engine.synthesize(TTSRequest(text="你好", voice="zizi"))
@@ -98,7 +100,7 @@ async def test_synthesize_retries_on_5xx_then_succeeds() -> None:
 async def test_synthesize_exhausts_retries_and_fails() -> None:
     respx.post(_ENDPOINT).mock(return_value=httpx.Response(500))
     engine = VolcengineTTSEngine(
-        api_key="k", endpoint=_ENDPOINT, max_retries=2, retry_base_delay_seconds=0.0
+        api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=2, retry_base_delay_seconds=0.0
     )
 
     result = await engine.synthesize(TTSRequest(text="你好", voice="zizi"))
@@ -117,7 +119,7 @@ async def test_synthesize_does_not_retry_non_retryable_api_error() -> None:
         )
     )
     engine = VolcengineTTSEngine(
-        api_key="k", endpoint=_ENDPOINT, max_retries=2, retry_base_delay_seconds=0.0
+        api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=2, retry_base_delay_seconds=0.0
     )
 
     result = await engine.synthesize(TTSRequest(text="你好", voice="zizi"))
@@ -127,65 +129,106 @@ async def test_synthesize_does_not_retry_non_retryable_api_error() -> None:
     assert route.call_count == 1
 
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_synthesize_uses_voices_override_when_provided() -> None:
+def _capturing_route() -> dict:
     captured: dict = {}
 
     def _capture(request: httpx.Request) -> httpx.Response:
         captured["body"] = json.loads(request.content)
+        captured["headers"] = request.headers
         return httpx.Response(200, content=_sse_body(_audio_chunk(_TINY_MP3)))
 
     respx.post(_ENDPOINT).mock(side_effect=_capture)
-    engine = VolcengineTTSEngine(
-        api_key="k",
-        endpoint=_ENDPOINT,
-        max_retries=0,
-        voices={"my-alias": "custom_speaker_id"},
-    )
-
-    result = await engine.synthesize(TTSRequest(text="你好", voice="my-alias"))
-
-    assert result.success
-    assert captured["body"]["req_params"]["speaker"] == "custom_speaker_id"
+    return captured
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_synthesize_unknown_voice_without_override_raises() -> None:
-    engine = VolcengineTTSEngine(api_key="k", endpoint=_ENDPOINT, max_retries=0)
+async def test_v2_voice_uses_seed_tts_2_resource_and_subtitle_flag() -> None:
+    captured = _capturing_route()
+    engine = VolcengineTTSEngine(api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=0)
+
+    result = await engine.synthesize(TTSRequest(text="你好", voice="zizi", speed=1.2))
+
+    assert result.success
+    assert captured["headers"]["x-api-resource-id"] == "seed-tts-2.0"
+    params = captured["body"]["req_params"]
+    assert params["speaker"] == "zh_female_qingchezizi_uranus_bigtts"
+    assert params["audio_params"]["enable_subtitle"] is True
+    assert "enable_timestamp" not in params["audio_params"]
+    assert params["audio_params"]["speech_rate"] == 20
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_v1_voice_uses_seed_tts_1_resource_and_timestamp_flag() -> None:
+    captured = _capturing_route()
+    engine = VolcengineTTSEngine(api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=0)
+
+    result = await engine.synthesize(TTSRequest(text="你好", voice="sisi"))
+
+    assert result.success
+    assert captured["headers"]["x-api-resource-id"] == "seed-tts-1.0"
+    params = captured["body"]["req_params"]
+    assert params["speaker"] == "zh_female_shuangkuaisisi_moon_bigtts"
+    assert params["audio_params"]["enable_timestamp"] is True
+    assert "enable_subtitle" not in params["audio_params"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_one_engine_instance_can_mix_both_versions() -> None:
+    captured = _capturing_route()
+    engine = VolcengineTTSEngine(api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=0)
+
+    await engine.synthesize(TTSRequest(text="你好", voice="sisi"))
+    assert captured["headers"]["x-api-resource-id"] == "seed-tts-1.0"
+    await engine.synthesize(TTSRequest(text="你好", voice="zizi"))
+    assert captured["headers"]["x-api-resource-id"] == "seed-tts-2.0"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_unsupported_engine_version_raises() -> None:
+    bad = {"x": TTSVoiceSpec(speaker_id="s", engine="doubao_9.9")}
+    engine = VolcengineTTSEngine(api_key="k", voices=bad, endpoint=_ENDPOINT, max_retries=0)
+
+    with pytest.raises(ValueError, match="doubao_9.9"):
+        await engine.synthesize(TTSRequest(text="你好", voice="x"))
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_synthesize_unknown_voice_raises() -> None:
+    engine = VolcengineTTSEngine(api_key="k", voices=_VOICES, endpoint=_ENDPOINT, max_retries=0)
 
     with pytest.raises(ValueError, match="zzz"):
         await engine.synthesize(TTSRequest(text="你好", voice="zzz"))
 
 
-def test_build_tts_engine_reads_key_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+class _Voice:
+    def __init__(self, alias: str, speaker_id: str, engine: str) -> None:
+        self.alias, self.speaker_id, self.engine = alias, speaker_id, engine
+
+
+def test_build_tts_engine_reads_key_from_env_and_maps_voices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("VOLCENGINE_TTS_API_KEY", "real-key")
 
-    engine = build_tts_engine()
+    engine = build_tts_engine([_Voice("zizi", "spk", "doubao_2.0")])
 
     assert isinstance(engine, VolcengineTTSEngine)
     assert engine._api_key == "real-key"
-    assert engine._resource_id == "seed-tts-2.0"
-    assert engine._engine == "doubao_2.0"
+    assert engine._voices == {"zizi": TTSVoiceSpec(speaker_id="spk", engine="doubao_2.0")}
 
 
 def test_build_tts_engine_missing_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VOLCENGINE_TTS_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="VOLCENGINE_TTS_API_KEY"):
-        build_tts_engine()
+        build_tts_engine([])
 
 
-def test_resolve_speaker_known_alias() -> None:
-    assert resolve_speaker("zizi", "doubao_2.0") == "zh_female_qingchezizi_uranus_bigtts"
-
-
-def test_resolve_speaker_unknown_alias() -> None:
-    with pytest.raises(ValueError, match="zzz"):
-        resolve_speaker("zzz", "doubao_2.0")
-
-
-def test_resolve_speaker_unknown_engine() -> None:
-    with pytest.raises(ValueError, match="engine-x"):
-        resolve_speaker("zizi", "engine-x")
+@pytest.mark.asyncio
+async def test_health_check_without_voices_is_false() -> None:
+    assert await VolcengineTTSEngine(api_key="k", voices={}).health_check() is False

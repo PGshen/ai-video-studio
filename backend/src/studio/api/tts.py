@@ -1,4 +1,5 @@
-"""`/api/tts/voices`、`/api/tts/preview`（设计 §6.2 设置页「TTS 音色」；计划 M5 T8）。
+"""`/api/tts/voices`（列出、新增、删除）、`/api/tts/preview`（设计 §6.2 设置页「TTS 音色」；
+计划 M5 T8、tts-voice-management T3）。
 
 试听会**真实调用** TTS（可能产生费用），所以：
 
@@ -6,6 +7,7 @@
 - 结果按（引擎、音色、语速、文本）缓存到 `data/tts-preview/<sha256>.mp3`（数据目录内，不在
   uvicorn 监听范围），同一组合只合成一次，重启后仍然有效；
 - 同一个组合的并发请求合并成一次合成（`app.state.tts_preview_inflight`）；
+- 缓存键含音色的 speaker id 与豆包版本：同一别名删掉重建成别的 speaker 后不会读到旧音频；
 - 失败不缓存；缺 `VOLCENGINE_TTS_API_KEY` 返回 503（指向 `backend/.env`），供应商报错或引擎异常
   返回 502（异常细节只进日志，不进响应）。
 """
@@ -15,17 +17,28 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import Engine
 
-from studio.api.deps import get_settings
+from studio.api.deps import get_engine, get_settings
 from studio.config import Settings
 from studio.db.repo.settings import SPEECH_RATE_MAX, SPEECH_RATE_MIN
+from studio.db.repo.voices import (
+    DuplicateVoiceError,
+    VoiceInUseError,
+    VoiceNotFoundError,
+    VoiceValidationError,
+    VoiceValue,
+    create_voice,
+    delete_voice,
+    get_voice,
+    list_voices,
+)
 from studio.engines.tts import TTSEngine, TTSRequest, build_tts_engine
-from studio.engines.tts.voice_map import DEFAULT_ENGINE, list_voices, voice_aliases
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +47,7 @@ router = APIRouter(prefix="/api", tags=["tts"])
 PREVIEW_TEXT = "你好，这是一段音色试听。同一句话，换一个声音来说，感觉会很不一样。"
 """固定的试听文本（约 30 个字，费用极小）。"""
 
-_ENGINE_FACTORY: Callable[[], TTSEngine] = build_tts_engine
+_ENGINE_FACTORY: Callable[[Sequence[VoiceValue]], TTSEngine] = build_tts_engine
 """测试里替换成假引擎；默认按环境变量里的 key 建真实引擎。"""
 
 
@@ -42,7 +55,19 @@ class VoiceOut(BaseModel):
     alias: str
     label: str
     gender: str
+    speaker_id: str
     engine: str
+
+
+class VoiceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    alias: str
+    label: str
+    gender: str
+    speaker_id: str
+    engine: str
+    """`doubao_1.0` 或 `doubao_2.0`。"""
 
 
 class PreviewRequest(BaseModel):
@@ -52,28 +77,67 @@ class PreviewRequest(BaseModel):
     speed: float = Field(ge=SPEECH_RATE_MIN, le=SPEECH_RATE_MAX)
 
 
+def _out(voice: VoiceValue) -> VoiceOut:
+    return VoiceOut(
+        alias=voice.alias,
+        label=voice.label,
+        gender=voice.gender,
+        speaker_id=voice.speaker_id,
+        engine=voice.engine,
+    )
+
+
 @router.get("/tts/voices", response_model=list[VoiceOut])
-def list_voices_endpoint() -> list[VoiceOut]:
-    return [
-        VoiceOut(alias=v.alias, label=v.label, gender=v.gender, engine=v.engine)
-        for v in list_voices()
-    ]
+def list_voices_endpoint(engine: Engine = Depends(get_engine)) -> list[VoiceOut]:
+    return [_out(v) for v in list_voices(engine)]
 
 
-def _cache_path(data_dir: Path, voice: str, speed: float) -> Path:
+@router.post("/tts/voices", response_model=VoiceOut, status_code=201)
+def create_voice_endpoint(body: VoiceCreate, engine: Engine = Depends(get_engine)) -> VoiceOut:
+    try:
+        return _out(
+            create_voice(
+                engine,
+                alias=body.alias,
+                label=body.label,
+                gender=body.gender,
+                speaker_id=body.speaker_id,
+                engine_version=body.engine,
+            )
+        )
+    except VoiceValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DuplicateVoiceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/tts/voices/{alias}", status_code=204)
+def delete_voice_endpoint(alias: str, engine: Engine = Depends(get_engine)) -> Response:
+    try:
+        delete_voice(engine, alias)
+    except VoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"音色不存在：{alias}") from exc
+    except VoiceInUseError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(status_code=204)
+
+
+def _cache_path(data_dir: Path, voice: VoiceValue, speed: float) -> Path:
     key = hashlib.sha256(
-        f"{DEFAULT_ENGINE}|{voice}|{speed:.2f}|{PREVIEW_TEXT}".encode()
+        f"{voice.engine}|{voice.speaker_id}|{speed:.2f}|{PREVIEW_TEXT}".encode()
     ).hexdigest()
     return data_dir / "tts-preview" / f"{key[:32]}.mp3"
 
 
-async def _synthesize(voice: str, speed: float) -> bytes:
+async def _synthesize(voice: VoiceValue, speed: float) -> bytes:
     try:
-        engine = _ENGINE_FACTORY()
+        engine = _ENGINE_FACTORY([voice])
     except RuntimeError as exc:  # 缺 key：消息本身就指向 backend/.env，不含密钥
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        result = await engine.synthesize(TTSRequest(text=PREVIEW_TEXT, voice=voice, speed=speed))
+        result = await engine.synthesize(
+            TTSRequest(text=PREVIEW_TEXT, voice=voice.alias, speed=speed)
+        )
     except Exception:
         logger.exception("TTS 试听合成出错")
         raise HTTPException(status_code=502, detail="语音合成出错，请稍后再试") from None
@@ -86,12 +150,16 @@ async def _synthesize(voice: str, speed: float) -> bytes:
 
 @router.post("/tts/preview")
 async def preview_endpoint(
-    body: PreviewRequest, request: Request, settings: Settings = Depends(get_settings)
+    body: PreviewRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    engine: Engine = Depends(get_engine),
 ) -> Response:
-    if body.voice not in voice_aliases():
+    voice = get_voice(engine, body.voice)
+    if voice is None:
         raise HTTPException(status_code=422, detail=f"音色不可用：{body.voice}")
     speed = round(body.speed, 2)
-    path = _cache_path(settings.data_dir, body.voice, speed)
+    path = _cache_path(settings.data_dir, voice, speed)
     if path.is_file():
         return Response(content=path.read_bytes(), media_type="audio/mpeg")
 
@@ -102,7 +170,7 @@ async def preview_endpoint(
         inflight = request.app.state.tts_preview_inflight = {}
     task = inflight.get(path)
     if task is None:
-        task = asyncio.ensure_future(_synthesize(body.voice, speed))
+        task = asyncio.ensure_future(_synthesize(voice, speed))
         inflight[path] = task
         task.add_done_callback(lambda _t: inflight.pop(path, None))
     # shield：某个请求的客户端断开时，不要取消其他等着同一次合成的请求。

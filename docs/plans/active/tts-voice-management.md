@@ -51,7 +51,7 @@
 - **完成标准**：仓储测试通过。
 - **验证命令**：`uv run --project backend python scripts/tasks.py check`
 
-### T2：引擎按音色区分版本（待开始）
+### T2：引擎按音色区分版本（完成）
 
 - **目标**：`VolcengineTTSEngine` 按请求的音色取 `speaker_id` 与版本，生成对应的资源 id 和字幕参数；去掉静态 `voice_map` 的音色数据（保留 `DEFAULT_VOICE`/`DEFAULT_SPEED` 常量）。
 - **涉及文件**：`engines/tts/volcengine.py`、`engines/tts/factory.py`、`engines/tts/voice_map.py`、`engines/tts/__init__.py`、`backend/tests/engines/test_tts_engine.py`、`test_voice_list.py`
@@ -60,7 +60,7 @@
 - **完成标准**：AC4 通过。
 - **验证命令**：同上
 
-### T3：API 与引用校验（待开始）
+### T3：API 与引用校验（完成）
 
 - **目标**：新增/删除接口；项目设置、全局默认、试听、`synthesize_tts` 改为查库。
 - **涉及文件**：`api/tts.py`、`api/projects.py`、`api/settings.py`、`stages/narrative/synthesize_tts.py`、`api/schemas.py`、对应测试
@@ -88,10 +88,12 @@
 ## 进度
 
 - 2026-10-10 — T1 完成：`tts_voices` 表、迁移 0012（种子 6 个）、`db/repo/voices.py`；仓储测试 24 个通过，全量 3165 通过
+- 2026-10-10 — T2+T3 完成（合并成一个 commit：T2 删掉了静态音色映射，调用方必须同时改成查库，否则中间状态不绿）：引擎按音色取 speaker 与版本、`TTSVoiceSpec`、`build_tts_engine(voices)`；API 新增/删除；校验与试听缓存改查库；新增冒烟 `test_tts_voice_versions_real`（待跑）。全量 3176 通过
 
 ## 下一步
 
-- 从 T2 开始：`engines/tts/volcengine.py` 按音色取 `speaker_id` 与版本。先改 `backend/tests/engines/test_tts_engine.py`，加 v1/v2 请求头与 `audio_params` 断言。仓储已有 `list_voices(engine)`、`get_voice`（`db/repo/voices.py`）。
+- 从 T4 开始（前端）：`frontend/src/features/settings/VoicePanel.vue` 加新增对话框、删除、版本徽标。后端接口：`POST /api/tts/voices {alias,label,gender,speaker_id,engine}`、`DELETE /api/tts/voices/{alias}`（409 的 detail 是中文原因），`GET` 返回含 `speaker_id`。先写 spec。
+- 之后 T5：`make smoke SMOKE_ARGS="-k tts_voice_versions_real"`（已获批准的真实调用），把结果写进 `docs/references/volcengine-tts.md`。
 
 ## 决策记录
 
