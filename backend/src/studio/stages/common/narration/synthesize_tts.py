@@ -175,6 +175,6 @@ SYNTHESIZE_TTS_TOOL = ToolSpec(
         "对指定镜头（或全部）配音并对齐 beat，写 narrative/audio/*.mp3 和 narrative/timing.json。"
     ),
     input_model=SynthesizeTtsArgs,
-    stages={"narrative"},
+    stages={"narrative", "free_explainer"},
     handler=_handler,
 )

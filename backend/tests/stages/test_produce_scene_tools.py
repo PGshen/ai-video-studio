@@ -114,8 +114,18 @@ def _follows_the_music(t: float, tl: Mapping[str, Any]) -> str:
 
 
 def test_both_tools_belong_to_the_produce_stage_too() -> None:
-    assert VALIDATE_SCENES_HTML_TOOL.stages == {"animation_html", "produce"}
-    assert RENDER_PREVIEW_HTML_TOOL.stages == {"animation_html", "produce"}
+    assert VALIDATE_SCENES_HTML_TOOL.stages == {
+        "animation_html",
+        "produce",
+        "free_explainer",
+        "free_produce",
+    }
+    assert RENDER_PREVIEW_HTML_TOOL.stages == {
+        "animation_html",
+        "produce",
+        "free_explainer",
+        "free_produce",
+    }
 
 
 async def test_the_timeline_is_built_on_the_fly_from_shots_and_music(

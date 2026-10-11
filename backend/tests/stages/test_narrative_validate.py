@@ -63,7 +63,7 @@ def _ctx(env: NarrativeProjectEnv) -> ToolContext:
 
 
 def test_tool_is_scoped_to_narrative_stage() -> None:
-    assert VALIDATE_NARRATIVE_TOOL.stages == {"narrative"}
+    assert VALIDATE_NARRATIVE_TOOL.stages == {"narrative", "free_explainer"}
 
 
 async def test_missing_file_reports_error(narrative_project: NarrativeProjectEnv) -> None:

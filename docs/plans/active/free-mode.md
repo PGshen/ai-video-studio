@@ -92,7 +92,7 @@
 - **完成标准**：`grep -rn "stages.narrative.schema\|stages.narrative.synthesize_tts\|stages.narrative.validate_narrative"` 没有结果。
 - **验证命令**：`make check`
 
-### T3：时间轴来源表与工具的阶段归属（待开始）
+### T3：时间轴来源表与工具的阶段归属（完成）
 
 - **目标**：工具按"来源方式"取时间轴，不再写死 `ctx.stage == "produce"`；为两个自由阶段开放工具。
 - **涉及文件**：`backend/src/studio/stages/common/timeline_source.py`（新）、`stages/common/scenes/helpers.py`、`stages/common/score/tool.py`、`stages/common/scenes/validate_scenes_html.py`、`stages/common/scenes/render_preview_html.py`、`stages/common/score/analyze.py`、`stages/common/narration/*.py`、`stages/common/web_tools.py`（工具的 `stages` 集合）、`backend/tests/stages/test_timeline_source.py`（新）、`test_produce_scene_tools.py`、`test_produce_music_tools.py`、`test_animation_html_tools.py`、`test_music_tool.py`。
@@ -199,11 +199,12 @@
 ## 进度
 
 - 2026-10-12 — T1 — `mode` 进入项目类型，自由形态流水线与预设，创建接口与 video-kinds 输出 `mode`（`21f1651`）
-- 2026-10-12 — T2 — `schema`/`synthesize_tts`/`validate_narrative` 移到 `stages.common.narration`，行为不变
+- 2026-10-12 — T2 — `schema`/`synthesize_tts`/`validate_narrative` 移到 `stages.common.narration`，行为不变（`a8bb821`）
+- 2026-10-12 — T3 — `stages.common.timeline_source`：来源表与 `load_live_narrated`；场景工具与 `render_music` 按来源分派；工具的 `stages` 加入两个自由阶段
 
 ## 下一步
 
-- 从 T3 开始（时间轴来源表与工具的阶段归属）。
+- 从 T4 开始（共享提示词片段）。
 
 ## 决策记录
 

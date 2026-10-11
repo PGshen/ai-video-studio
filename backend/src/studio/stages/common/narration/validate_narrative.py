@@ -40,6 +40,6 @@ VALIDATE_NARRATIVE_TOOL = ToolSpec(
     name="validate_narrative",
     description="校验 narrative.json：cue_text 是否覆盖 narration、transition 是否合法。",
     input_model=ValidateNarrativeArgs,
-    stages={"narrative"},
+    stages={"narrative", "free_explainer"},
     handler=_handler,
 )

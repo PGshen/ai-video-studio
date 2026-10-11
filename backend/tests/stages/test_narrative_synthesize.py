@@ -126,7 +126,7 @@ def _read_timing(env: NarrativeProjectEnv) -> dict:
 
 
 def test_tool_is_scoped_to_narrative_stage() -> None:
-    assert SYNTHESIZE_TTS_TOOL.stages == {"narrative"}
+    assert SYNTHESIZE_TTS_TOOL.stages == {"narrative", "free_explainer"}
 
 
 async def test_synthesizes_all_scenes_and_writes_timing_json(

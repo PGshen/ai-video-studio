@@ -20,6 +20,7 @@ from studio.engines.audio.runner import WrapCommand
 from studio.stages.common.picture import compress_png
 from studio.stages.common.score.render import RenderOutcome, render_music_core
 from studio.stages.common.score.sources import import_source, infer_sources
+from studio.stages.common.timeline_source import load_live_narrated, timeline_source
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 
@@ -146,18 +147,21 @@ class RenderMusicArgs(BaseModel):
 
 
 async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
-    produce = ctx.stage == "produce"
+    source = timeline_source(ctx.stage)
     if import_source(ctx.workdir) is not None:
         return ToolResult(text=PRODUCE_IMPORT_MESSAGE, is_error=True)
     wrap = exec_wrapper(ctx.workdir, allow_unsandboxed=ctx.allow_unsandboxed_exec)
     if wrap is None:
         return ToolResult(text=NO_SANDBOX_MESSAGE, is_error=True)
-    if produce:
+    if source == "live_silent":
         # The script picks tempo, length and structure itself: no timeline in, no retime check.
         outcome = await render_music_core(ctx.workdir, wrap_command=wrap)
     else:
         try:
-            loaded = load_timeline(infer_sources(ctx.workdir, "upstream/", with_music=False))
+            if source == "live_narrated":
+                loaded = load_live_narrated(ctx.workdir, with_music=False)
+            else:
+                loaded = load_timeline(infer_sources(ctx.workdir, "upstream/", with_music=False))
         except TimelineError as exc:
             return ToolResult(text=f"时间轴不可用：{exc}", is_error=True)
         outcome = await render_music_core(
@@ -192,6 +196,6 @@ RENDER_MUSIC_TOOL = ToolSpec(
         "只用于合成形态；导入形态（有 music/source.*）会报错。"
     ),
     input_model=RenderMusicArgs,
-    stages={"music", "produce"},
+    stages={"music", "produce", "free_explainer", "free_produce"},
     handler=_handler,
 )

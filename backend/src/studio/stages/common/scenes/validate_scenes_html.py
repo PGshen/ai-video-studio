@@ -370,6 +370,6 @@ VALIDATE_SCENES_HTML_TOOL = ToolSpec(
         "不传 scene_id 校验全部镜头。"
     ),
     input_model=ValidateScenesHtmlArgs,
-    stages={"animation_html", "produce"},
+    stages={"animation_html", "produce", "free_explainer", "free_produce"},
     handler=_handler,
 )
