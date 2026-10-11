@@ -85,7 +85,7 @@
 - **完成标准**：测试通过，现有 HTML 引擎测试不倒退。
 - **验证命令**：`make check`；`cd backend && uv run pytest -m slow tests/engines`
 
-### T3：共享 WebGL 上下文 `env.gl()` / `env.three()`（待开始）
+### T3：共享 WebGL 上下文 `env.gl()` / `env.three()`（完成）
 
 - **目标**：镜头通过 `env` 拿到全页共享的 WebGL2 画布和 three.js 渲染器。
 - **涉及文件**：`runtime.js`、`tests/engines/test_html_browser.py`（或新文件 `test_html_webgl.py`）。
@@ -151,10 +151,11 @@
 
 - 2026-10-11 — T1 — three.js 0.186.1 打成 IIFE 放进 `vendor/three.iife.js`（736 KB），`vendor/__init__.py` 提供 `three_script()`/`three_version()`；测试 4 个通过
 - 2026-10-11 — T2 — `determinism.js` 作为第一段系统脚本（种子随机数每次 `renderAt` 重置、时间冻结为 0、定时器不执行），预览改用 `__RAF__`；`THREE` 出现在 agent 脚本（剥注释后）时装配 three.js，`page_hash` 跟随；assemble 新增 7 个用例、浏览器慢测试 2 个，`pytest -m slow tests/engines` 55 个全绿
+- 2026-10-11 — T3 — `runtime.js` 加 `env.gl()`/`env.three()`（懒创建、全页共享；每个镜头第一次取用时清空画布并复位渲染器状态）；`browser.py` 过滤 Chromium 的 WebGL 驱动性能提示；新文件 `test_html_webgl.py`（9 个，含 5 个慢测试），`pytest -m slow tests/engines` 60 个全绿
 
 ## 下一步
 
-- 做 T3：先在新文件 `tests/engines/test_html_webgl.py`（`slow`）写共享上下文的用例：两个镜头共用 `env.three()`、30 个时刻来回切换帧哈希确定；没有 THREE 时 `env.three()` 的报错；纯 2D 页面不建 WebGL 上下文。再改 `runtime.js` 的 `makeEnv`。
+- 做 T4：先写测试——`config.Settings.render_gpu`（默认 true、`false`、空值）、`worker_html._cache_key` 对不同渲染器签名得到不同键、`pool._launch_default` 按设置传 `gpu`；再改 `browser.HtmlBrowser`（`gpu` 参数、`channel="chromium"`、`renderer_signature`）。
 - windows-native 仍在 active 等验收（负责人 2026-10-11 同意本计划并行开工）。
 
 ## 决策记录
@@ -164,11 +165,14 @@
 - 2026-10-11 — three.js 用 0.186.1（2026-09-24 发布，已满两周）。
 - 2026-10-11 — 用前端已有的 vite（库模式、`iife` 格式、压缩）把 `build/three.module.js` 打成经典脚本，产物定义全局 `var THREE`；不需要 CommonJS 包装，也没有引入 esbuild。产物文件名 `three.iife.js`（计划原写 `three.cjs`）。
 - 2026-10-11 — `Date` 换成冻结版构造函数（无参数时是 1970-01-01，带参数照常），不带 `new` 调用返回固定字符串；agent 脚本仍被静态检查禁用 `Date`。
+- 2026-10-11 — 共享上下文的"复位"：每个镜头（以及 `global.js`）第一次调用 `env.gl()`/`env.three()` 时把 WebGL 画布清成全透明，three 渲染器的清屏色、tone mapping、输出色彩空间、阴影、裁剪、渲染目标等复位为默认值；镜头需要的设置要在 `draw` 里每次重新设。这样镜头渲染顺序不影响画面（`test_renderer_state_does_not_leak_between_scenes`）。
+- 2026-10-11 — 上下文丢失时 `env.gl()` 抛出带说明的错误（`SceneRenderError`），不毒化页面；验证时会换新页面，所以没有额外的池重建逻辑。
 - 2026-10-11 — three.js 按需装配（脚本里出现 `THREE` 标识符才装）— 纯 2D 项目的预览页不变大。
 
 ## 意外与发现
 
 - 2026-10-11 — three r186 的 `build/three.cjs` 只是转发壳（`process.emitWarning` 加 `require('./three.module.js')`），three 已改为只提供 ES module，所以改走计划里的备选：打包成 IIFE。打包产物里有 21 处 `Math.random`、5 处 `performance.now`、2 处 `requestAnimationFrame`，T2 的确定性兜底确实需要。
+- 2026-10-11 — 读回 WebGL 画布（`toDataURL`、`getImageData`）时 Chromium 会输出 `GL Driver Message (OpenGL, Performance, …): GPU stall due to ReadPixels` 的 console 警告，SwiftShader 下也有；原来会被当成页面错误。现在用 `browser.is_driver_performance_note` 过滤。
 
 ## 阻塞
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import re
 from collections.abc import Mapping
 from typing import Any, Protocol
 
@@ -72,6 +73,15 @@ class BrowserLike(Protocol):
     async def open_page(self, page: AssembledPage) -> PageLike: ...
 
     async def close(self) -> None: ...
+
+
+_DRIVER_PERFORMANCE_NOTE = re.compile(r"^\[\.WebGL-[^\]]*\]GL Driver Message \([^,]*, Performance,")
+
+
+def is_driver_performance_note(text: str) -> bool:
+    """Chromium's own WebGL driver hints (e.g. "GPU stall due to ReadPixels", emitted when a frame
+    is read back for encoding) are console warnings, not scene problems (ADR 0028)."""
+    return bool(_DRIVER_PERFORMANCE_NOTE.match(text))
 
 
 def _clean(exc: PlaywrightError) -> str:
@@ -226,7 +236,7 @@ class HtmlBrowser:
             "console",
             lambda m: (
                 errors.append(f"console.{m.type}: {m.text}")
-                if m.type in ("error", "warning")
+                if m.type in ("error", "warning") and not is_driver_performance_note(m.text)
                 else None
             ),
         )
