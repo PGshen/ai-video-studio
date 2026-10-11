@@ -99,6 +99,7 @@ def _project_kind_out(engine: Engine, value: ProjectValue) -> ProjectKindOut:
         engine=kind.engine,
         narration=kind.narration,
         music_source=kind.music_source,
+        mode=kind.mode,
         pipeline=project_pipeline(engine, value.id),
     )
 
@@ -203,7 +204,7 @@ def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str)
 def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> ProjectKind:
     """请求里的类型配置 → 合法且阶段都已注册的 `ProjectKind`，否则 422（在建工作区之前）。"""
     given = (body.engine, body.narration, body.music_source)
-    if all(value is None for value in given):
+    if all(value is None for value in given) and body.mode == "staged":
         kind = DEFAULT_KIND
     elif any(value is None for value in given) or body.engine is None:
         raise HTTPException(
@@ -212,7 +213,10 @@ def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> Proje
     else:
         assert body.narration is not None and body.music_source is not None
         kind = ProjectKind(
-            engine=body.engine, narration=body.narration, music_source=body.music_source
+            engine=body.engine,
+            narration=body.narration,
+            music_source=body.music_source,
+            mode=body.mode,
         )
     errors = kind_errors(kind)
     if errors:

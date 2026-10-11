@@ -23,7 +23,7 @@ from studio.styles import store as style_store
 from studio.styles.layout import style_dir
 from studio.workspace import files
 
-from .conftest import ApiEnv, assert_detail
+from .conftest import ApiEnv, assert_detail, register_free_stages
 
 
 def _row_counts(api_env: ApiEnv) -> tuple[int, int, int]:
@@ -43,6 +43,7 @@ class TestCreateProjectKinds:
             "engine": "html",
             "narration": True,
             "music_source": "none",
+            "mode": "staged",
             "pipeline": ["topic", "narrative", "animation_html"],
         }
         stages = list_stages(api_env.app.state.engine, body["id"])
@@ -189,6 +190,12 @@ class TestCreateProjectKinds:
         stored = get_project(api_env.app.state.engine, body["id"])
         assert stored is not None
         assert stored.current_stage == "concept"
+
+    async def test_mode_alone_is_not_a_partial_kind(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post("/api/projects", json={"title": "t", "mode": "staged"})
+
+        assert response.status_code == 201
+        assert response.json()["kind"]["mode"] == "staged"
 
     async def test_patch_settings_cannot_change_kind(self, api_env: ApiEnv) -> None:
         body = await api_env.create_project()
@@ -990,3 +997,77 @@ class TestDelete:
 
         response = await api_env.client.delete(f"/api/projects/{pid}")
         assert response.status_code == 204
+
+
+class TestCreateFreeProjects:
+    async def _create(self, api_env: ApiEnv, **body: object) -> Response:
+        register_free_stages(api_env.app.state.registry)
+        return await api_env.client.post(
+            "/api/projects", json={"title": "自由", "mode": "free", "engine": "html", **body}
+        )
+
+    async def test_free_explainer_has_a_single_active_stage(self, api_env: ApiEnv) -> None:
+        response = await self._create(api_env, narration=True, music_source="synth")
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["current_stage"] == "free_explainer"
+        assert body["kind"] == {
+            "video_kind": "explainer_html",
+            "engine": "html",
+            "narration": True,
+            "music_source": "synth",
+            "mode": "free",
+            "pipeline": ["free_explainer"],
+        }
+        assert body["settings"]["mode"] == "free"
+        stages = list_stages(api_env.app.state.engine, body["id"])
+        assert [(s.stage, s.status) for s in stages] == [("free_explainer", "active")]
+
+    @pytest.mark.parametrize("music_source", ["synth", "import"])
+    async def test_free_silent_kinds_use_free_produce(
+        self, api_env: ApiEnv, music_source: str
+    ) -> None:
+        response = await self._create(api_env, narration=False, music_source=music_source)
+
+        assert response.status_code == 201, response.text
+        assert response.json()["kind"]["pipeline"] == ["free_produce"]
+
+    async def test_free_explainer_with_imported_music_is_422(self, api_env: ApiEnv) -> None:
+        before = _row_counts(api_env)
+
+        response = await self._create(api_env, narration=True, music_source="import")
+
+        assert response.status_code == 422
+        assert "自由讲解不支持导入音乐" in assert_detail(response)
+        assert _row_counts(api_env) == before
+
+    async def test_idea_card_lands_in_the_free_stage_notes(self, api_env: ApiEnv) -> None:
+        from studio.db.repo.ideas import create_idea, get_idea
+
+        idea = create_idea(api_env.app.state.engine, title="想法", pitch="p")
+
+        response = await self._create(
+            api_env, narration=False, music_source="synth", idea_id=idea.id
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["idea_id"] == idea.id
+        workdir = api_env.workdir(body["id"])
+        assert (workdir / "free_produce/notes/idea-card.md").is_file()
+        stored_idea = get_idea(api_env.app.state.engine, idea.id)
+        assert stored_idea is not None and stored_idea.status == "idea"
+
+    async def test_client_settings_cannot_smuggle_mode(self, api_env: ApiEnv) -> None:
+        register_free_stages(api_env.app.state.registry)
+
+        response = await api_env.client.post(
+            "/api/projects",
+            json={"title": "t", "settings": {"mode": "free", "pipeline": ["free_produce"]}},
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["kind"]["mode"] == "staged"
+        assert body["settings"]["pipeline"] == ["topic", "narrative", "animation_html"]

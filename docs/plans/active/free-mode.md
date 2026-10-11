@@ -6,12 +6,12 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 执行中 |
 | 里程碑 | 自由模式（非编号） |
 | 设计依据 | [自由模式设计](../../design/2026-10-12-free-mode.md) |
 | 分支 | `feat/free-mode`（从 `main` 的 `1850787` 切出，设计文档已在其上） |
-| 批准记录 | 待负责人批准 |
-| 执行方式 | 待负责人选择 |
+| 批准记录 | 2026-10-12：负责人批准计划，同意 D1 |
+| 执行方式 | 本会话内联（Native），完成后一个独立评审检查整个分支 |
 
 ## 目标
 
@@ -68,7 +68,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：项目模型与创建接口（待开始）
+### T1：项目模型与创建接口（完成）
 
 - **目标**：`mode` 进入项目类型；能创建自由项目（这时阶段还没注册，`video-kinds` 显示为不可用，创建返回 422。这是现有"未注册阶段"的逻辑，T5、T6 注册后自动变为可用）。
 - **涉及文件**：`backend/src/studio/stages/pipeline.py`、`backend/src/studio/api/schemas.py`（`ProjectCreate.mode`、`ProjectKindOut.mode`、`ProjectKindConfig.mode`）、`backend/src/studio/api/projects.py`、`backend/src/studio/api/video_kinds.py`（`STAGE_TITLES` 加两项、预设与配置列表输出 `mode`）、`backend/tests/stages/test_pipeline.py`、`backend/tests/api/test_projects.py`、`backend/tests/api/test_video_kinds.py`。
@@ -198,15 +198,16 @@
 
 ## 进度
 
-- 无
+- 2026-10-12 — T1 — `mode` 进入项目类型，自由形态流水线与预设，创建接口与 video-kinds 输出 `mode`
 
 ## 下一步
 
-- 负责人批准计划并选择执行方式后，从 `main` 切 `feat/free-mode`，从 T1 开始。
+- 从 T2 开始（配音工具迁到 `stages.common.narration`）。
 
 ## 决策记录
 
-- 2026-10-12 — **D1（草案，待负责人确认）**：设计 §4.2 写的是 `free_explainer` 的 `finalize_blockers`"组合叙事与场景检查"，但现有 `narrative` 和 `animation_html` 的 `finalize_blockers` 都返回 `[]`，成片的正确性由 worker 前置检查和 `finalize-render` 的快照核对保证。建议 `free_explainer` 同样返回 `[]`，配音和配乐是否最新通过 `status_summary` 告诉 agent。理由：没有现成的检查可以组合；成片定稿本来就要求先渲染成功，再加一层是重复检查。`free_produce` 照设计复用 `produce` 的检查。
+- 2026-10-12 — **D1（负责人 2026-10-12 同意）**：设计 §4.2 写的是 `free_explainer` 的 `finalize_blockers`"组合叙事与场景检查"，但现有 `narrative` 和 `animation_html` 的 `finalize_blockers` 都返回 `[]`，成片的正确性由 worker 前置检查和 `finalize-render` 的快照核对保证。建议 `free_explainer` 同样返回 `[]`，配音和配乐是否最新通过 `status_summary` 告诉 agent。理由：没有现成的检查可以组合；成片定稿本来就要求先渲染成功，再加一层是重复检查。`free_produce` 照设计复用 `produce` 的检查。
+- 2026-10-12 — **D3**（T1）：T1 原计划的"自由阶段未注册时创建返回 422"测试没写：红线不允许 `skip`，而 T5、T6 注册真实阶段后这条测试就不成立了；未注册阶段返回 422 的逻辑已有通用测试 `test_unavailable_kind_is_422_and_leaves_nothing`。改为用 `register_free_stages`（假阶段）测成功路径。
 - 2026-10-12 — **D2**：`produce` 的 `blockers.py`、`prepare.py` 挪到 `stages/common/produce_flow/`（T5）。设计 §4.2 写的是"复用"，但阶段之间不能互相 import，只能先挪到 `common`。
 
 ## 意外与发现
