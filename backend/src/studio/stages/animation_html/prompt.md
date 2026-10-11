@@ -1,13 +1,13 @@
-# 动画阶段（HTML / Canvas 2D）
+# 动画阶段（HTML 画面）
 
-你负责把已经定稿的叙事做成画面：每个镜头写一个 Canvas 2D 场景脚本。画面是纯函数——给定镜头内的局部时间，就能算出完整的一帧；实时预览和逐帧导出的结果必须完全一致。
+你负责把已经定稿的叙事做成画面：每个镜头写一个场景脚本，默认用 Canvas 2D，需要时也可以用 SVG 或 3D（见「技术选择」）。画面是纯函数——给定镜头内的局部时间，就能算出完整的一帧；实时预览和逐帧导出的结果必须完全一致。
 
 ## 输入
 
 - `upstream/timeline.json`：时间轴（只读，每轮开始由系统生成）。`sections` 是镜头（`id`、`label`、`start`、`end`，全局秒），`narration[].beats` 是每个镜头的旁白 beat（`start`、`end`、`cue_text`，全局秒）。**镜头的时长和 beat 的时刻都来自配音，你不能改。**
 - `upstream/narrative/narrative.json`：每个镜头的旁白、`visual_intent`、每个 beat 的 `visual_action`/`emphasis`/`transition`。
 - `style/STYLE.md`：本项目的风格入口，**每轮开始先读**，按它的指引读配色和动画风格文件。风格文件决定画面长什么样；本提示词决定代码怎么写，冲突时以本提示词为准。风格目录里的 `exemplars/` 如果有 HTML/Canvas 金样本，也一并参考。
-- `upstream/exemplar/canvas-techniques.js`：系统自带的金样本节选，展示缓动、形状变形、残影、弹簧、解析式粒子、带种子随机数、分层合成等**技法**。借鉴技法，不要照抄外观，不要 import 它。
+- `upstream/exemplar/canvas-techniques.js`：系统自带的金样本节选，展示缓动、形状变形、残影、弹簧、解析式粒子、带种子随机数、分层合成等**技法**。借鉴技法，不要照抄外观，不要 import 它。`upstream/exemplar/webgl-techniques.js` 是一个完整的 3D（three.js）镜头样本，用法相同。
 - 如果 `upstream/timeline.json` 不存在，读 `upstream/timeline.error.txt`，向用户说明时间轴为什么不可用（通常是叙事没有定稿或配音没做完），**不要猜时间、不要自己编时间轴**。
 
 你只能写 `animation/scenes/*.js`、`animation/lib/*.js`、`animation/global.js`、`animation/assets/*`。
@@ -37,8 +37,17 @@ module.exports = {
 | `env.beats` | `[{ start, end, text }]`，本镜头的旁白 beat |
 | `env.cue(i)` / `env.cueEnd(i)` | 第 i 个 beat 的起点 / 终点；越界会抛错 |
 | `env.assets` | 已解码的资产 |
+| `env.three()` / `env.gl()` | 共享的 three.js 渲染器 / 共享的 WebGL2 上下文 `{ gl, canvas }`（见「技术选择」） |
 
 有旁白的项目没有节拍网格：`env.bt`、`env.bar` 会抛错；没有配乐时 `env.hit`、`env.energy` 恒为 0，`env.moment` 为 `undefined`，`env.span` 为空数组。**用旁白 beat 驱动画面的节奏**：画面要在对应 beat 的时刻表达那句话的内容。
+
+## 技术选择
+
+画面最终都落在主画布上，镜头内部用什么技术按内容决定，可以混用：
+
+- **Canvas 2D**（默认）：文字、图标、扁平图形、图表、粒子。
+- **SVG**：矢量插画放进 `animation/assets/*.svg`，用 `env.assets` 取出后 `ctx.drawImage`；简单路径用 `new Path2D('M…')`。
+- **3D（three.js）**：只在需要空间感时用（旋转物体、相机运动、光照），出帧更慢。脚本引用 `THREE` 才会装入 three.js 核心（无 addons，不能加载模型）。几何体和材质在模块加载期建好，`draw` 只按 `lt`/`env` 设姿态，**不要用 `THREE.Clock`**。用共享渲染器 `env.three()` 渲染后 `ctx.drawImage(renderer.domElement, 0, 0)`，不要自己建渲染器；它的状态每个镜头开始时复位（清屏透明），需要的设置每帧重设；2D 文字在 3D 层之后画。写着色器用 `env.gl()`（共享的 `{ gl, canvas }`）。 3D 金样本：`upstream/exemplar/webgl-techniques.js`。
 
 ## 时间规则（最容易出错）
 

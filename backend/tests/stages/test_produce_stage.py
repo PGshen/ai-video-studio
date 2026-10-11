@@ -136,6 +136,7 @@ class TestPrepareTurn:
         exemplars = tmp_path / "upstream" / "exemplar"
         assert (exemplars / "audio-techniques.py").is_file()
         assert (exemplars / "canvas-techniques.js").is_file()
+        assert (exemplars / "webgl-techniques.js").is_file()
         assert not (tmp_path / "upstream" / "timeline.json").exists()
         assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
 

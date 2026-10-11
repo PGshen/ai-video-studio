@@ -34,6 +34,11 @@ _REQUIRED = [
     ("回退建议工具", "suggest_upstream_change"),
     ("不要反复全量预览", "不要反复"),
     ("画面不重叠", "不重叠"),
+    ("3D 金样本", "upstream/exemplar/webgl-techniques.js"),
+    ("技术选择", "技术选择"),
+    ("共享渲染器", "env.three()"),
+    ("原始 WebGL", "env.gl()"),
+    ("不用 THREE.Clock", "THREE.Clock"),
 ]
 
 

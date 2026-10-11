@@ -109,6 +109,14 @@ module.exports = {
 
 本项目**没有节拍网格**：`env.bt`、`env.bar` 不可用，`env.moment` 不可用，旁白用的 `env.cue` 也不可用，调用都会抛错。可用的事件名看你自己的 `events.json`（合成形态）或上面的 `beat`/`downbeat`（歌曲形态）。
 
+## 技术选择
+
+画面最终都落在主画布上，镜头内部用什么技术按内容决定，可以混用：
+
+- **Canvas 2D**（默认）：文字、图标、扁平图形、图表、粒子。
+- **SVG**：放进 `animation/assets/*.svg`，用 `env.assets` 取出后 `ctx.drawImage`；简单路径用 `Path2D`。
+- **3D（three.js）**：只在需要空间感时用（旋转物体、相机运动、光照），出帧更慢。脚本引用 `THREE` 才会装入 three.js 核心（无 addons，不能加载模型）。几何体和材质在模块加载期建好，`draw` 只按 `lt`/`env` 设姿态，**不要用 `THREE.Clock`**。用共享渲染器 `env.three()` 渲染后 `ctx.drawImage(renderer.domElement, 0, 0)`，不要自己建渲染器；它的状态每个镜头开始时复位（清屏透明），需要的设置每帧重设；2D 文字在 3D 层之后画。写着色器用 `env.gl()`（共享的 `{ gl, canvas }`）。 3D 金样本：`upstream/exemplar/webgl-techniques.js`。
+
 ## 时间规则（最容易出错）
 
 - **所有时刻只能由 `env.hit / env.span / env.energy` 推出，不许写字面的秒数**（例如 `lt > 3.5`）。动画自己的相对时长（一次弹簧回弹持续 0.4 秒）可以写字面量，起点必须来自事件。你改了配乐，字面时刻就全部错位。

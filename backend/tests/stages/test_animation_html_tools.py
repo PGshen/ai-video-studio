@@ -31,7 +31,7 @@ from studio.engines.render.html.browser import (
 )
 from studio.engines.render.html.pool import BrowserPool, PoolBusy, set_browser_pool
 from studio.stages.animation_html import STAGE
-from studio.stages.common.scenes import validate_scenes_html
+from studio.stages.common.scenes import WEBGL_EXEMPLAR, validate_scenes_html
 from studio.stages.common.scenes.render_preview_html import RENDER_PREVIEW_HTML_TOOL
 from studio.stages.common.scenes.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 
@@ -511,3 +511,19 @@ async def test_real_browser_violations_are_caught(tmp_path: Path, real_pool: Non
     thrown = await _validate(tmp_path)
     assert thrown.is_error
     assert "镜头 s-explain：" in thrown.text and "[scene s-explain" in thrown.text
+
+
+@pytest.mark.slow
+async def test_webgl_exemplar_validates(tmp_path: Path, real_pool: None) -> None:
+    """The three.js exemplar is itself a valid scene: static check, smoke, determinism, beat
+    sensitivity and frame cost all pass in a real browser (ADR 0028, AC1)."""
+    (tmp_path / "upstream").mkdir()
+    (tmp_path / "upstream" / "timeline.json").write_text(json.dumps(fx.TIMELINE), encoding="utf-8")
+    source = WEBGL_EXEMPLAR.read_text(encoding="utf-8")
+    fx.write_project(tmp_path, scenes={"s-hook": source, "s-explain": source})
+    result = await _validate(tmp_path)
+    assert not result.is_error, result.text
+    assert result.text.splitlines()[0] == "全部 2 个镜头校验通过。"
+    assert "警告" not in result.text, result.text
+    preview = await _preview(tmp_path, scene_id="s-hook")
+    assert not preview.is_error, preview.text

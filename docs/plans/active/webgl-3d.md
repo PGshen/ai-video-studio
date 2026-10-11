@@ -123,7 +123,7 @@
 - **完成标准**：测试通过。
 - **验证命令**：`make check`
 
-### T6：金样本、提示词与预览实测（待开始）
+### T6：金样本、提示词与预览实测（完成）
 
 - **目标**：模型知道什么时候、怎么用 3D；金样本本身能通过检查；预览里 3D 正常。
 - **涉及文件**：`stages/common/scenes/exemplar/webgl-techniques.js`（新）、`stages/animation_html/prepare.py` 与 `stages/produce/prepare.py`（多复制一份金样本）、`stages/animation_html/prompt.md`、`stages/produce/prompt.md`（「画面」一节加「技术选择」小节，确定性规则补一句"three.js 动画只能由 `lt` 驱动，不要用 `THREE.Clock`"）、对应 prepare 测试、慢测试 `test_webgl_exemplar_validates`。
@@ -154,10 +154,11 @@
 - 2026-10-11 — T3 — `runtime.js` 加 `env.gl()`/`env.three()`（懒创建、全页共享；每个镜头第一次取用时清空画布并复位渲染器状态）；`browser.py` 过滤 Chromium 的 WebGL 驱动性能提示；新文件 `test_html_webgl.py`（9 个，含 5 个慢测试），`pytest -m slow tests/engines` 60 个全绿
 - 2026-10-11 — T4 — `STUDIO_RENDER_GPU`（默认 true）；`browser.launch_options`、`HtmlBrowser(gpu=…)`、`renderer_signature()`；`HtmlBackend.renderer_signature` 进 `_cache_key`，`ENGINE_VERSION = html-v2`；全部慢测试（76 个）在 GPU 默认下通过
 - 2026-10-11 — T5 — `probe.frame_cost`（`render_jpeg` 计时，首帧预热不计）；`validate_scenes_html` 超过 `SLOW_FRAME_MS = 120` 时警告，结果末行写出帧渲染器（软件渲染时注明）；`BrowserPool.renderer_signature()`，`BrowserLike` 协议加同名方法
+- 2026-10-11 — T6 — 金样本 `webgl-techniques.js`（点阵地球 + 按 beat 生长的航线 + 2D 标题），两个阶段的 `prepare_turn` 都复制；两套提示词加「技术选择」与 `env.three()`/`env.gl()`；金样本在真实浏览器里通过 `validate_scenes_html` 且无警告；隔离实例里实时预览能显示、拖动、播放 3D 镜头（AC6）
 
 ## 下一步
 
-- 做 T6：写金样本 `stages/common/scenes/exemplar/webgl-techniques.js`，先写 prepare 的测试（两个阶段的 `upstream/exemplar/` 多一份）和慢测试 `test_webgl_exemplar_validates`（把金样本装成镜头跑 `validate_scenes_html`，真实浏览器）；再改两套 `prompt.md`；最后用 `preview_start` 做预览实测（AC6）。
+- 做 T7：真实模型冒烟。用本机 Claude 订阅登录建一个短片项目（`concept` 硬性要求里写"至少一个镜头用 3D 呈现旋转的地球或分子"），走完 `produce` 并渲染成片；参考已有的冒烟用例 `tests/smoke/test_smoke.py` 里 produce/短片的写法，新增一个 `-k webgl` 用例或手动走一遍；记录步数、出帧耗时、成片耗时，写进 `references/webgl-spike.md`。然后更新 ARCHITECTURE、dev-setup、QUALITY、TODO。
 - windows-native 仍在 active 等验收（负责人 2026-10-11 同意本计划并行开工）。
 
 ## 决策记录
@@ -171,12 +172,14 @@
 - 2026-10-11 — 上下文丢失时 `env.gl()` 抛出带说明的错误（`SceneRenderError`），不毒化页面；验证时会换新页面，所以没有额外的池重建逻辑。
 - 2026-10-11 — worker 计算缓存键前要知道渲染器：`HtmlBackend` 新增 `renderer_signature`，真实实现每个 worker 进程（每个开关值）只起一次浏览器读签名并缓存；测试替身返回固定字符串。`pool._launch_default` 不用改（`HtmlBrowser()` 默认读设置）。
 - 2026-10-11 — 渲染器信息放在校验结果的末行（不改首行"校验通过"的格式，已有调用方和测试按首行判断）。
+- 2026-10-11 — produce 提示词有 16 000 字节的体积上限（`test_prompt_stays_a_reasonable_size`）：「技术选择」一节压到一段话，加完后 15 993 字节，几乎没有余量；以后再加内容要先删减别处。
 - 2026-10-11 — three.js 按需装配（脚本里出现 `THREE` 标识符才装）— 纯 2D 项目的预览页不变大。
 
 ## 意外与发现
 
 - 2026-10-11 — three r186 的 `build/three.cjs` 只是转发壳（`process.emitWarning` 加 `require('./three.module.js')`），three 已改为只提供 ES module，所以改走计划里的备选：打包成 IIFE。打包产物里有 21 处 `Math.random`、5 处 `performance.now`、2 处 `requestAnimationFrame`，T2 的确定性兜底确实需要。
 - 2026-10-11 — 读回 WebGL 画布（`toDataURL`、`getImageData`）时 Chromium 会输出 `GL Driver Message (OpenGL, Performance, …): GPU stall due to ReadPixels` 的 console 警告，SwiftShader 下也有；原来会被当成页面错误。现在用 `browser.is_driver_performance_note` 过滤。
+- 2026-10-11 — 实时预览刚打开时（第一次拖动或播放之前）画面是黑的；用 main 分支的后端对照也一样，所以不是本计划引入的。拖动或播放后正常。已记进 TODO（P3）。
 
 ## 阻塞
 
@@ -184,4 +187,5 @@
 
 ## 验证记录
 
-- 无
+- AC1：`pytest -m slow tests/stages/test_animation_html_tools.py -k webgl` 通过（金样本两个镜头校验通过、没有警告，预览拼图正常）。
+- AC6：隔离实例（api 8010、前端 5174、临时数据目录，种子 `seed_animation_html_project`，镜头用金样本）。实时预览拖动到 1.1 秒和 2.2 秒都显示 3D 地球，播放时画面推进，控制台没有错误。截图：`data/evidence/webgl-3d/ac6-preview-seek.jpg`、`ac6-preview-playing.png`；出帧参考图 `exemplar-frame-2.9s.jpg`（GPU：`ANGLE Metal Renderer: Apple M4`）。
