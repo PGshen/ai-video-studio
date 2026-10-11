@@ -83,7 +83,7 @@
 - **完成标准**：上述测试通过；多阶段的现有测试不变。
 - **验证命令**：`make check`
 
-### T2：配音工具迁到 `stages.common.narration`（待开始）
+### T2：配音工具迁到 `stages.common.narration`（完成）
 
 - **目标**：纯重构，让自由阶段能用 `synthesize_tts` 和 `validate_narrative`。
 - **涉及文件**：移动 `backend/src/studio/stages/narrative/{synthesize_tts,validate_narrative,schema}.py` → `backend/src/studio/stages/common/narration/`（新增 `__init__.py` 导出 `SYNTHESIZE_TTS_TOOL`、`VALIDATE_NARRATIVE_TOOL`、`validate_and_normalize`、`NarrativeValidationError`）；`stages/narrative/__init__.py` 改 import；全仓搜索 `stages.narrative.schema`、`stages.narrative.synthesize_tts` 的调用方（含 `tests/`、`api/`）并改正。
@@ -198,11 +198,12 @@
 
 ## 进度
 
-- 2026-10-12 — T1 — `mode` 进入项目类型，自由形态流水线与预设，创建接口与 video-kinds 输出 `mode`
+- 2026-10-12 — T1 — `mode` 进入项目类型，自由形态流水线与预设，创建接口与 video-kinds 输出 `mode`（`21f1651`）
+- 2026-10-12 — T2 — `schema`/`synthesize_tts`/`validate_narrative` 移到 `stages.common.narration`，行为不变
 
 ## 下一步
 
-- 从 T2 开始（配音工具迁到 `stages.common.narration`）。
+- 从 T3 开始（时间轴来源表与工具的阶段归属）。
 
 ## 决策记录
 

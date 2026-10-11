@@ -2,7 +2,8 @@
 
 迁移自 `../ai-video/backend/app/services/narrative_validator.py` 里的
 `normalize_alignment_text` 及其标点映射表——只搬这一个函数，不搬整个旧
-validator；`stages.narrative.schema`（T3）依赖 `engines` 是允许的方向
+validator；`stages.common.narration.schema`（M3 T3 时在 `stages.narrative`）
+依赖 `engines` 是允许的方向
 （ARCHITECTURE §2 依赖表：stages 可以依赖 engines）。
 """
 

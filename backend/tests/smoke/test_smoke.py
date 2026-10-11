@@ -876,7 +876,7 @@ def _style_touches(outcome: TurnOutcome) -> list[dict[str, Any]]:
 
 async def test_style_claude_login(tmp_path: Path) -> None:
     from studio.db.legacy_styles import import_export, load_export
-    from studio.stages.narrative.schema import validate_and_normalize
+    from studio.stages.common.narration.schema import validate_and_normalize
     from studio.styles import store as style_store
     from studio.workspace import create_snapshot, init_workspace
 

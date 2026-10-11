@@ -27,7 +27,7 @@ from studio.db.repo.sessions import create_session
 from studio.db.repo.stages import get_stage
 from studio.db.repo.turns import get_turn, list_events
 from studio.engines.tts.base import TTSRequest, TTSResult, WordTimestamp
-from studio.stages.narrative import synthesize_tts as synthesize_tts_module
+from studio.stages.common.narration import synthesize_tts as synthesize_tts_module
 
 from .conftest import ApiEnv
 

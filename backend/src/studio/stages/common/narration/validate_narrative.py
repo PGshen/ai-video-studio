@@ -7,7 +7,7 @@ import json
 from pydantic import BaseModel
 
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
-from studio.stages.narrative.schema import NarrativeValidationError, validate_and_normalize
+from studio.stages.common.narration.schema import NarrativeValidationError, validate_and_normalize
 from studio.workspace import files
 
 _NARRATIVE_PATH = "narrative/narrative.json"

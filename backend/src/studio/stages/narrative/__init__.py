@@ -10,8 +10,7 @@ from pathlib import Path
 
 from studio.agent.tools import ToolSpec
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
-from studio.stages.narrative.synthesize_tts import SYNTHESIZE_TTS_TOOL
-from studio.stages.narrative.validate_narrative import VALIDATE_NARRATIVE_TOOL
+from studio.stages.common.narration import SYNTHESIZE_TTS_TOOL, VALIDATE_NARRATIVE_TOOL
 from studio.workspace import files
 from studio.workspace.scope import WriteScope
 
