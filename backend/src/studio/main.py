@@ -51,6 +51,7 @@ from studio.engines.render.html.pool import close_browser_pool
 from studio.stages.animation_html import STAGE as ANIMATION_HTML_STAGE
 from studio.stages.brainstorm import STAGE as BRAINSTORM_STAGE
 from studio.stages.concept import STAGE as CONCEPT_STAGE
+from studio.stages.free_produce import STAGE as FREE_PRODUCE_STAGE
 from studio.stages.music import STAGE as MUSIC_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
 from studio.stages.produce import STAGE as PRODUCE_STAGE
@@ -77,6 +78,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         CONCEPT_STAGE,
         MUSIC_STAGE,
         PRODUCE_STAGE,
+        FREE_PRODUCE_STAGE,
         STYLE_STAGE,
     ):
         registry.register(stage)

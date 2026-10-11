@@ -1,4 +1,4 @@
-"""`produce` 阶段的定稿条件与状态摘要（设计 §5.4、§5.5）。
+"""`produce` 与 `free_produce` 共用的定稿条件与状态摘要（produce-stage 设计 §5.4、§5.5）。
 
 两种形态按工作区内容分流（与 `music` 阶段同一信号）：有 `music/source.<ext>` 是 MV（用户上传的歌），
 否则是短片（合成配乐）。配乐与镜头的一致性交给 `timeline.load` 的 `produce` 形态统一检查，
