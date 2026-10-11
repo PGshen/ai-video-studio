@@ -106,3 +106,9 @@ export function KIND_SUMMARY(kind: ProjectKindOut): string {
   const prefix = kind.mode === 'free' ? '自由模式 · ' : ''
   return `${prefix}${label}${sep}${rest}`
 }
+
+/** 自由项目的形态短名：讲解（可带背景乐）、短片、MV（工作台左侧的「自由模式 · …」）。 */
+export function freeFormLabel(kind: ProjectKindOut): string {
+  if (kind.narration) return kind.music_source === 'synth' ? '讲解（带背景乐）' : '讲解'
+  return kind.music_source === 'import' ? 'MV' : '短片'
+}

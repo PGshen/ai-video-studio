@@ -58,3 +58,33 @@ describe('StageNav 的「项目」分组', () => {
     expect(wrapper.get('[data-testid="open-project-info"]').attributes('title')).toBe('信息')
   })
 })
+
+describe('StageNav 的自由模式', () => {
+  it('自由项目不显示阶段条，只标注「自由模式 · 形态」', () => {
+    const wrapper = mount(StageNav, {
+      props: {
+        projectId: 'p1',
+        currentStage: 'free_explainer',
+        stages: [
+          { stage: 'free_explainer', status: 'active', finalized_snapshot_id: null, based_on: {}, finalized_at: null },
+        ],
+        kind: {
+          video_kind: 'explainer_html',
+          engine: 'html',
+          narration: true,
+          music_source: 'synth',
+          mode: 'free',
+          pipeline: ['free_explainer'],
+        },
+      },
+    })
+    expect(wrapper.find('nav[aria-label="阶段"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="free-mode-label"]').text()).toBe('自由模式 · 讲解（带背景乐）')
+  })
+
+  it('分阶段项目照常显示阶段条', () => {
+    const wrapper = mountNav()
+    expect(wrapper.find('nav[aria-label="阶段"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="free-mode-label"]').exists()).toBe(false)
+  })
+})

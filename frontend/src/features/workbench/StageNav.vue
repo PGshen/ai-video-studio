@@ -5,13 +5,14 @@
  * 负责渲染和路由跳转。当前阶段的 [定稿]/[重新打开] 在画布右上角，见 `StageFinalizeButton`。
  */
 import { Info, Settings } from '@lucide/vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import RailGroup from '@/components/RailGroup.vue'
 import { Button } from '@/components/ui/button'
 import { useSuggestionSummaryQuery } from '@/composables/queries'
 import { badgeCount } from '@/components/session/suggestionFlow'
-import type { StageOut } from '@/types/api'
+import { freeFormLabel } from '@/composables/videoKindChoice'
+import type { ProjectKindOut, StageOut } from '@/types/api'
 import ProjectInfoDialog from './ProjectInfoDialog.vue'
 import ProjectSettingsDialog from './ProjectSettingsDialog.vue'
 import { STAGE_TITLES, stageStatusStyle } from './stageStatus'
@@ -22,7 +23,13 @@ const props = defineProps<{
   currentStage: string
   /** 竖栏折叠：只显示图标，名称和说明放进悬停提示。 */
   collapsed?: boolean
+  /** 项目类型；自由项目只有一个阶段，不显示阶段条（free-mode 设计 §6.2）。 */
+  kind?: ProjectKindOut
 }>()
+
+const freeLabel = computed(() =>
+  props.kind?.mode === 'free' ? `自由模式 · ${freeFormLabel(props.kind)}` : null,
+)
 
 const router = useRouter()
 
@@ -43,6 +50,21 @@ function goToStage(stage: StageOut): void {
        折叠时只剩图标；窄屏横向排列。外框和折叠按钮由 ProjectWorkbenchPage 的竖栏负责。 -->
   <div class="flex flex-col gap-3">
     <RailGroup
+      v-if="freeLabel"
+      title="模式"
+      :collapsed="collapsed"
+    >
+      <p
+        class="text-muted-foreground text-sm"
+        :class="collapsed ? 'lg:hidden' : ''"
+        :title="freeLabel"
+        data-testid="free-mode-label"
+      >
+        {{ freeLabel }}
+      </p>
+    </RailGroup>
+    <RailGroup
+      v-else
       title="进度"
       :collapsed="collapsed"
     >

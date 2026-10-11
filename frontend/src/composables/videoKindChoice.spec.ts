@@ -3,6 +3,7 @@ import { VIDEO_KINDS_FIXTURE as DATA } from '@/test/videoKindsFixture'
 import {
   findKind,
   initialSelection,
+  freeFormLabel,
   KIND_SUMMARY,
   presetAvailability,
   presetKey,
@@ -105,5 +106,15 @@ describe('videoKindChoice', () => {
     expect(summary({ video_kind: 'music_video', engine: 'html', narration: false, music_source: 'import', mode: 'staged', pipeline: [] })).toBe(
       '音乐 MV · 无旁白 · 导入音乐',
     )
+  })
+
+  it('freeFormLabel：讲解（可带背景乐）/ 短片 / MV', () => {
+    const base = { engine: 'html' as const, mode: 'free' as const, pipeline: [] }
+    expect(freeFormLabel({ ...base, video_kind: 'explainer_html', narration: true, music_source: 'none' })).toBe('讲解')
+    expect(freeFormLabel({ ...base, video_kind: 'explainer_html', narration: true, music_source: 'synth' })).toBe(
+      '讲解（带背景乐）',
+    )
+    expect(freeFormLabel({ ...base, video_kind: 'motion_reel', narration: false, music_source: 'synth' })).toBe('短片')
+    expect(freeFormLabel({ ...base, video_kind: 'music_video', narration: false, music_source: 'import' })).toBe('MV')
   })
 })

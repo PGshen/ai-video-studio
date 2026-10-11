@@ -170,7 +170,7 @@
 - **完成标准**：vitest 通过；`make check` 的前端 lint、类型检查通过。
 - **验证命令**：`make check`
 
-### T9：前端工作台画布（待开始）
+### T9：前端工作台画布（完成）
 
 - **目标**：自由阶段的工作台显示设计 §6.2 的标签页。
 - **涉及文件**：`frontend/src/features/canvas/animation/HtmlAnimationCanvas.vue` 与 spec、`frontend/src/pages/ProjectWorkbenchPage.vue`、`features/workbench/StageNav.vue` 与 spec、`features/canvas/stageActions.ts`、`features/canvas/narrative/NarrativeCanvas.vue`（加 `hideFinalize` 之类的属性，按现有写法）、`features/canvas/music/ImportMusicCanvas.vue`（确认 `allow-upload` 在自由 MV 下为 true 时的行为）、`features/canvas/generic/FileCanvas.vue`（作为插槽嵌入时的高度和布局）。
@@ -205,11 +205,12 @@
 - 2026-10-12 — T5 — `free_produce` 阶段注册；`produce` 的定稿检查与准备移到 `stages.common.produce_flow`；`free_write_scope`、`free-mode` 片段；出片阶段解析、场景检查、阶段默认模型认识自由阶段（`7f9bd5d`）
 - 2026-10-12 — T6 — `free_explainer` 阶段注册（状态摘要：叙事、配音一致性、场景覆盖、配乐是否过期）；创建自由项目时生成 `notes/project.md`（D7）（`cd56ccf`）
 - 2026-10-12 — T7 — `tests/api/test_free_flow.py`：四种形态从创建到成片定稿、对话中上传 409、Shell 改风格被还原、文件接口；fake 默认脚本在整区可写时写进 `notes/`（`26ed0b9`）
-- 2026-10-12 — T8 — 前端：`mode` 类型；`presetKey`/`presetsFor`/`selectedKind`；`VideoKindPicker` 按模式分组与过滤；`NewFreeProjectDialog` 与项目页「新建项目」；选题卡可选自由形态；卡片「自由」标记；阶段名与阶段默认模型
+- 2026-10-12 — T8 — 前端：`mode` 类型；`presetKey`/`presetsFor`/`selectedKind`；`VideoKindPicker` 按模式分组与过滤；`NewFreeProjectDialog` 与项目页「新建项目」；选题卡可选自由形态；卡片「自由」标记；阶段名与阶段默认模型（`86f1df8`）
+- 2026-10-12 — T9 — `canvasTabs` 纯函数；`HtmlAnimationCanvas` 支持 `narrative`/`files` 插槽、自由阶段默认实时预览、"还没有开始"提示覆盖自由阶段；`NarrativeCanvas` 的 `stage` 属性；`StageNav` 自由模式标签；工作台页接入两个自由阶段
 
 ## 下一步
 
-- 从 T9 开始（前端工作台画布）。`STAGE_TITLES` 已有两个自由阶段；`ProjectKindOut.mode` 可用来判断自由项目。
+- 从 T10 开始（冒烟、L4 与文档）。工作台页的接线没有单元测试（页面本来就没有 spec），由 L4 验证。
 
 ## 决策记录
 
@@ -220,6 +221,7 @@
 - 2026-10-12 — **D6**（T5）：计划写的是"MV 还没有歌曲时 `status_summary` 第一行提示上传"，但阶段协议只给 `workdir`，还没有歌曲时工作区里看不出是短片还是 MV。改为：没有歌曲也没有渲染记录时，摘要同时给出两种形态的下一步（短片写 `compose.py` 并 `render_music`；MV 请用户在「配乐」标签页上传）；提示词「先判断形态」写明"用户要做 MV 但还没有歌曲时请用户上传，不要自己合成"。`free_produce` 的提示词由 `opening.md`、`free-mode` 片段、`inputs.md`、三个 silent 片段和自己的 `lyrics.md`（去掉简报与回退建议的版本）组成。
 - 2026-10-12 — **D7**（T6）：阶段协议只给工作区路径，agent 无从知道自由讲解是否选了背景乐、自由创作是短片还是 MV。创建自由项目时生成 `notes/project.md`（形态、成片需要的文件），两个自由阶段的提示词要求每个新会话先读它。同时把自由项目的选题卡放到顶层 `notes/idea-card.md`，不放 `free_*/notes/`：自由阶段的笔记都在 `notes/`，一个叫 `free_explainer/` 的顶层目录只会让人困惑。设计 §3.3 写的是沿用 `<pipeline[0]>/notes/`，这里是有意偏离。
 - 2026-10-12 — **D8**（T8）：`components/session/suggestionFlow.ts` 的 `STAGE_TITLES` 不加自由阶段：它只用于回退建议的目标阶段，自由阶段没有上游、不会产生回退建议。`projectView.ts` 不用改：阶段筛选项来自 `composables/stageTitles.ts`，加了两个阶段名就自动出现。选择器的预设键：分阶段沿用 `video_kind`，自由加前缀 `free-`（卡片 `data-testid` 随之变化）。
+- 2026-10-12 — **D9**（T9）：`FileCanvas` 的只读判断不改：前端只能挡住"运行中"和 `upstream/`，可写范围外的保存由后端返回 403 并显示原因，自由阶段同样适用（`style/` 保存会得到 403）。`NarrativeCanvas` 不需要 `hideFinalize`：定稿按钮是工作台页通过 `actions` 插槽塞进去的，嵌入自由画布时不传就没有。"还没有开始"的中性提示也覆盖两个自由阶段，自由讲解的提示是"先写叙事并配音"。
 - 2026-10-12 — **D2**：`produce` 的 `blockers.py`、`prepare.py` 挪到 `stages/common/produce_flow/`（T5）。设计 §4.2 写的是"复用"，但阶段之间不能互相 import，只能先挪到 `common`。
 
 ## 意外与发现

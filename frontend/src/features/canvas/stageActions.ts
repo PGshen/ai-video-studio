@@ -10,4 +10,6 @@ export const STAGES_WITH_OWN_ACTIONS: readonly string[] = [
   // Retired Manim stage of old projects: only a notice, and no finalize button.
   'animation',
   'animation_html',
+  'free_explainer',
+  'free_produce',
 ]

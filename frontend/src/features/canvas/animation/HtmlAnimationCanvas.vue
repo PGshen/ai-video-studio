@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
- * HTML 动画阶段（`animation_html`）与短片、MV 的「配乐与动画」阶段（`produce`）的专属画布
- * （子项目 2 设计 §7.2，produce 设计 §9）：三个标签；`produce` 多一个由 `music` 槽提供的「配乐」标签。
+ * HTML 动画阶段（`animation_html`）、短片与 MV 的「配乐与动画」阶段（`produce`）和两个自由阶段
+ * （`free_explainer`、`free_produce`）共用的画布（子项目 2 设计 §7.2，produce 设计 §9，free-mode 设计 §6.2）：
+ * 镜头 / 实时预览 / 成片三个标签；其余标签由插槽提供（`music`、自由阶段的 `narrative`、`files`），
+ * 标签页与默认页的规则在 `canvasTabs.ts`。
  *
  * - **镜头**：镜头列表来自 `html-preview/meta`（不依赖 `upstream/` 要等第一轮才物化），附
  *   "代码是否存在 / 检查状态"；代码用 `CodeEditor`（javascript）编辑，保存的阶段是
@@ -40,6 +42,7 @@ import FinalRenderPanel from './FinalRenderPanel.vue'
 import HtmlPreviewPane from './HtmlPreviewPane.vue'
 import SceneList from './SceneList.vue'
 import SceneReference, { type ReferenceTab } from './SceneReference.vue'
+import { canvasTabs, isFreeStage, type CanvasStage, type CanvasTab } from './canvasTabs'
 import { sceneInfoFromSection } from './htmlSceneInfo'
 
 const props = withDefaults(
@@ -47,17 +50,31 @@ const props = withDefaults(
     projectId: string
     /** 当前项目是否有一轮正在跑；运行中编辑器只读。 */
     busy: boolean
-    /** 讲解的 `animation_html`，或短片、MV 的 `produce`（多一个「配乐」标签，由 `music` 槽提供）。 */
-    stage?: 'animation_html' | 'produce'
+    /** 保存镜头代码写入的阶段，也决定标签页（见 `canvasTabs.ts`）。 */
+    stage?: CanvasStage
   }>(),
   { stage: 'animation_html' },
 )
 
 const slots = useSlots()
-const hasMusicTab = computed(() => props.stage === 'produce' && slots.music !== undefined)
+const layout = canvasTabs(props.stage, {
+  narrative: slots.narrative !== undefined,
+  music: slots.music !== undefined,
+  files: slots.files !== undefined,
+})
+const hasTab = (name: CanvasTab) => layout.tabs.includes(name)
+const hasMusicTab = computed(() => hasTab('music'))
 
-const tab = ref<'scenes' | 'preview' | 'music' | 'final'>('scenes')
-const previewVisited = ref(false)
+const TAB_LABELS: Record<Exclude<CanvasTab, 'scenes'>, string> = {
+  narrative: '叙事',
+  preview: '实时预览',
+  music: '配乐',
+  final: '成片',
+  files: '文件',
+}
+
+const tab = ref<CanvasTab>(layout.initial)
+const previewVisited = ref(layout.initial === 'preview')
 watch(tab, (now) => {
   if (now === 'preview') previewVisited.value = true
 })
@@ -90,12 +107,17 @@ const metaProblemItems = computed<string[]>(() => {
   return items.length > 0 ? items : [text]
 })
 
-/** 配乐与动画刚开始：镜头划分、配乐产物还没写出来，只是「还没做」，不是出错。 */
+/** 没有上游的阶段刚开始：产物还没写出来，只是「还没做」，不是出错。 */
 const produceNotStarted = computed(
   () =>
-    props.stage === 'produce' &&
+    (props.stage === 'produce' || isFreeStage(props.stage)) &&
     metaProblemItems.value.length > 0 &&
     metaProblemItems.value.every((item) => item.includes('不存在')),
+)
+const notStartedHint = computed(() =>
+  props.stage === 'free_explainer'
+    ? '让 agent 先写叙事并配音，之后这里就能预览。'
+    : '让 agent 先写配乐和镜头划分，写出来后这里就能预览。',
 )
 
 /** 服务端的说明已带「时间轴不可用」前缀时不再重复加。 */
@@ -216,38 +238,15 @@ function onLoadLatest(): void {
       data-testid="animation-tabbar"
     >
       <button
+        v-for="name in layout.tabs"
+        :key="name"
         type="button"
         class="rounded px-3 py-1 whitespace-nowrap"
-        :class="tab === 'scenes' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
-        @click="tab = 'scenes'"
+        :class="tab === name ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+        :data-testid="`tab-${name}`"
+        @click="tab = name"
       >
-        镜头（{{ scenes.length }}）
-      </button>
-      <button
-        type="button"
-        class="rounded px-3 py-1 whitespace-nowrap"
-        :class="tab === 'preview' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
-        @click="tab = 'preview'"
-      >
-        实时预览
-      </button>
-      <button
-        v-if="hasMusicTab"
-        type="button"
-        class="rounded px-3 py-1 whitespace-nowrap"
-        :class="tab === 'music' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
-        data-testid="tab-music"
-        @click="tab = 'music'"
-      >
-        配乐
-      </button>
-      <button
-        type="button"
-        class="rounded px-3 py-1 whitespace-nowrap"
-        :class="tab === 'final' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
-        @click="tab = 'final'"
-      >
-        成片
+        {{ name === 'scenes' ? `镜头（${scenes.length}）` : TAB_LABELS[name] }}
       </button>
       <div class="ml-auto flex items-center gap-2">
         <slot name="actions" />
@@ -259,7 +258,7 @@ function onLoadLatest(): void {
       class="text-muted-foreground bg-muted/40 rounded border px-3 py-2 text-sm"
       data-testid="produce-not-started"
     >
-      还没有开始：{{ metaProblemItems.join('；') }}。让 agent 先写配乐和镜头划分，写出来后这里就能预览。
+      还没有开始：{{ metaProblemItems.join('；') }}。{{ notStartedHint }}
     </p>
     <p
       v-else-if="metaProblem"
@@ -269,6 +268,15 @@ function onLoadLatest(): void {
     >
       {{ metaProblemText }}
     </p>
+
+    <div
+      v-if="hasTab('narrative')"
+      v-show="tab === 'narrative'"
+      class="flex min-h-0 flex-1 flex-col"
+      data-testid="narrative-panel"
+    >
+      <slot name="narrative" />
+    </div>
 
     <div
       v-show="tab === 'scenes'"
@@ -419,6 +427,15 @@ function onLoadLatest(): void {
         :project-id="projectId"
         :scene-count="scenes.length"
       />
+    </div>
+
+    <div
+      v-if="hasTab('files')"
+      v-show="tab === 'files'"
+      class="flex min-h-0 flex-1 flex-col"
+      data-testid="files-panel"
+    >
+      <slot name="files" />
     </div>
   </div>
 </template>
