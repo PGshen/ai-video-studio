@@ -16,7 +16,7 @@ import json
 import os
 import shutil
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -1435,6 +1435,64 @@ def _last_ok(outcome_list: list[TurnOutcome], name: str) -> dict[str, Any] | Non
 
 
 async def test_motion_reel_claude_login(tmp_path: Path) -> None:
+    await _run_motion_reel(
+        tmp_path,
+        concept_prompt=_REEL_CONCEPT_PROMPT,
+        produce_prompt=_REEL_PRODUCE_PROMPT,
+        evidence_name="motion-reel-claude-login",
+    )
+
+
+# ---- webgl-3d（ADR 0028）：短片里至少一个 3D 镜头 ---------------------------------------------
+
+_WEBGL_CONCEPT_PROMPT = (
+    "我们要做一支 12 秒左右、没有旁白的动态图形短片，主题是“水分子的旋转与拆分”：一个 3D 水分子"
+    "（一个氧原子、两个氢原子）在光照下旋转，随着重音拆成三个原子，再重新结合。按提示词写出 "
+    "concept/brief.md，目标时长写 12 秒，硬性要求写“总长 10–14 秒；至少一个镜头用 3D（three.js）"
+    "呈现旋转的分子”；写完用 check_concept 检查并修好。不需要联网查资料。"
+)
+_WEBGL_PRODUCE_PROMPT = (
+    "按创意简报完成这支短片的配乐和画面：先写 music/compose.py 并 render_music（看图），再写 "
+    "animation/shots.json 和每个镜头的场景脚本。硬性要求里的 3D 镜头用 three.js 做（读 "
+    "upstream/exemplar/webgl-techniques.js），其余镜头按内容选 2D 或 3D；画面踩在声音事件上"
+    "（env.hit / env.span / env.energy）。按镜头顺序逐个做：写完先用 validate_scenes_html 校验该"
+    "镜头，再用 render_preview_html 看图；全部做完后做一次全量校验。最后说明 3D 镜头怎么做的、"
+    "出帧耗时多少。"
+)
+
+
+async def test_webgl_reel_claude_login(tmp_path: Path) -> None:
+    def three_scenes(work: Path) -> list[str]:
+        return [
+            path.stem
+            for path in sorted((work / "animation" / "scenes").glob("*.js"))
+            if "THREE" in path.read_text("utf-8") and "env.three()" in path.read_text("utf-8")
+        ]
+
+    def check(work: Path, evidence: dict[str, Any]) -> None:
+        evidence["three_scenes"] = three_scenes(work)
+        assert evidence["three_scenes"], "没有用 three.js 和 env.three() 的镜头"
+        validate = evidence["stages"]["produce"]["final_text"]["validate_scenes_html"]
+        evidence["renderer"] = [ln for ln in validate.splitlines() if ln.startswith("出帧渲染器")]
+        evidence["slow_frames"] = [ln for ln in validate.splitlines() if "平均出帧" in ln]
+
+    await _run_motion_reel(
+        tmp_path,
+        concept_prompt=_WEBGL_CONCEPT_PROMPT,
+        produce_prompt=_WEBGL_PRODUCE_PROMPT,
+        evidence_name="webgl-reel-claude-login",
+        extra_checks=check,
+    )
+
+
+async def _run_motion_reel(
+    tmp_path: Path,
+    *,
+    concept_prompt: str,
+    produce_prompt: str,
+    evidence_name: str,
+    extra_checks: Callable[[Path, dict[str, Any]], None] | None = None,
+) -> None:
     from studio.engines.render.html.pool import close_browser_pool
 
     from .support import SYNTH_MUSIC_EVIDENCE_DIR
@@ -1443,8 +1501,8 @@ async def test_motion_reel_claude_login(tmp_path: Path) -> None:
     harness = build_harness(tmp_path, real_stages=True, reel=True)
     evidence: dict[str, Any] = {"stages": {}}
     stage_plan = [
-        ("concept", _REEL_CONCEPT_PROMPT, ("check_concept",), 40),
-        ("produce", _REEL_PRODUCE_PROMPT, ("render_music", "validate_scenes_html"), 160),
+        ("concept", concept_prompt, ("check_concept",), 40),
+        ("produce", produce_prompt, ("render_music", "validate_scenes_html"), 160),
     ]
     try:
         for stage, prompt, tools, steps in stage_plan:
@@ -1479,9 +1537,11 @@ async def test_motion_reel_claude_login(tmp_path: Path) -> None:
         previews = _html_tool_results_all(evidence)
         evidence["preview_calls"] = previews
         assert previews >= 1, "没有调用 render_preview_html"
+        if extra_checks is not None:
+            extra_checks(work, evidence)
         evidence["final"] = await _render_reel_final(harness)
     finally:
-        record_evidence("motion-reel-claude-login", evidence, SYNTH_MUSIC_EVIDENCE_DIR)
+        record_evidence(evidence_name, evidence, SYNTH_MUSIC_EVIDENCE_DIR)
         await close_browser_pool()
         harness.engine.dispose()
 
