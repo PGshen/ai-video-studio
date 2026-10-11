@@ -81,7 +81,7 @@ function onKeydown(event: KeyboardEvent): void {
     </div>
 
     <Dialog v-model:open="dialogOpen">
-      <DialogContent class="max-w-4xl">
+      <DialogContent class="sm:max-w-[min(92vw,1600px)]">
         <DialogTitle>{{ sceneId }} · 关键帧 {{ (openIndex ?? 0) + 1 }} / {{ urls.length }}</DialogTitle>
         <DialogDescription class="sr-only">
           预览关键帧大图
@@ -93,7 +93,7 @@ function onKeydown(event: KeyboardEvent): void {
           <img
             :src="urls[openIndex]"
             :alt="`${sceneId} 关键帧 ${openIndex + 1}`"
-            class="w-full rounded"
+            class="max-h-[80vh] w-full rounded object-contain"
           >
           <button
             type="button"
