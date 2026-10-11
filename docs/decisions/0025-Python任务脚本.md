@@ -6,7 +6,7 @@
 |---|---|
 | 状态 | 已采纳 |
 | 日期 | 2026-10-09 |
-| 相关 | [windows-native-support 设计](../design/2026-10-09-windows-native-support.md) §7、§8；[windows-native 计划](../plans/active/windows-native.md) T1、T7；[ADR 0006](0006-纯本地SOP.md) |
+| 相关 | [windows-native-support 设计](../design/2026-10-09-windows-native-support.md) §7、§8；[windows-native 计划](../plans/completed/windows-native.md) T1、T7；[ADR 0006](0006-纯本地SOP.md) |
 
 ## 背景
 

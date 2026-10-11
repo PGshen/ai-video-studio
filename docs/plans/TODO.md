@@ -17,7 +17,6 @@
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
-| P1 | 原生支持 Windows（Windows 上能用也能开发） | 负责人，2026-10-08 | 设计已批准：[windows-native-support](../design/2026-10-09-windows-native-support.md)；计划待验收：[windows-native.md](active/windows-native.md)（2026-10-10 T1–T12 完成；剩负责人在 Windows 真实终端里按一次 Ctrl+C 确认） |
 | P2 | Windows 上 HTML 引擎的 GPU 出帧实测（新版 headless 走 D3D11/ANGLE 的速度与确定性、没有 GPU 时回落） | webgl-3d，2026-10-11 | 在负责人的 Windows 电脑上做；结论补进 [webgl-spike](../references/webgl-spike.md)，需要时给 `browser.launch_options` 加平台参数 |
 | P3 | 3D 镜头导入 `.glb` 模型（`GLTFLoader` 与异步就绪） | webgl-3d，2026-10-11 | ADR 0028 第一版不做；负责人需要时再设计 |
 | P3 | 实时预览刚打开时画面是黑的，第一次拖动或播放后才出现 | webgl-3d T6，2026-10-11 | 预览页 `ready` 后前端发了 seek，iframe 里用 `requestAnimationFrame` 执行；main 上同样复现，可能是不可见或刚创建的跨源 iframe 里帧回调被节流。可在 `ready` 时直接同步渲染一次 |
@@ -37,6 +36,7 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-11 | 原生支持 Windows（Windows 上能用也能开发；负责人 2026-10-11 验收） | [windows-native.md](completed/windows-native.md) |
 | 2026-10-11 | HTML 引擎支持 WebGL/three.js（3D），出帧默认用 GPU（ADR 0028） | [webgl-3d.md](completed/webgl-3d.md) |
 | 2026-10-10 | TTS 音色管理：设置页可新增/删除音色，按音色区分豆包 v1/v2 | [tts-voice-management.md](completed/tts-voice-management.md) |
 | 2026-10-10 | 模型配置连通性测试：设置页每行「测试」，真实发一次极小请求，显示耗时/回复或失败原因 | [model-connectivity-test.md](completed/model-connectivity-test.md) |
