@@ -59,7 +59,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：放入 three.js 核心（待开始）
+### T1：放入 three.js 核心（完成）
 
 - **目标**：仓库里有固定版本的 `three.cjs`，并确认它在现有的 CommonJS 包装里能加载。
 - **涉及文件**：`backend/src/studio/engines/render/html/vendor/{three.cjs,three.LICENSE,THREE_VERSION}`、`scripts/vendor_three.sh`（一次性取文件的脚本，仿照 `build_fonts.sh`：`npm pack three@<版本>` 到临时目录、解包、复制、写版本号）、`backend/tests/engines/test_html_vendor.py`。
@@ -149,22 +149,24 @@
 
 ## 进度
 
-- 无
+- 2026-10-11 — T1 — three.js 0.186.1 打成 IIFE 放进 `vendor/three.iife.js`（736 KB），`vendor/__init__.py` 提供 `three_script()`/`three_version()`；测试 4 个通过
 
 ## 下一步
 
-- 等负责人批准本计划和 ADR 0028。批准后：把本文件移到 `docs/plans/active/`、状态改为「执行中」，从 main 切出 `webgl-3d` 分支，从 T1 开始。
-- 开工前确认 `docs/plans/active/windows-native.md` 已验收并移走（同一时间一般只有一份 active 计划）。
+- 做 T2：先在 `tests/engines/test_html_assemble.py` 写"按需装配 three.js"的用例（脚本名用 `vendor.THREE_SCRIPT_NAME`，内容用 `three_script()`，不再需要 CommonJS 包装），再写 `determinism.js`。
+- windows-native 仍在 active 等验收（负责人 2026-10-11 同意本计划并行开工）。
 
 ## 决策记录
 
 - 2026-10-11 — 第一版只内置 three.js 核心，不带 addons 和 `.glb` — 负责人选择（范围最小，确定性好控制）。
 - 2026-10-11 — 出帧默认用 GPU — 负责人选择；没有 GPU 时自动回落 SwiftShader 已实测（见 references）。
+- 2026-10-11 — three.js 用 0.186.1（2026-09-24 发布，已满两周）。
+- 2026-10-11 — 用前端已有的 vite（库模式、`iife` 格式、压缩）把 `build/three.module.js` 打成经典脚本，产物定义全局 `var THREE`；不需要 CommonJS 包装，也没有引入 esbuild。产物文件名 `three.iife.js`（计划原写 `three.cjs`）。
 - 2026-10-11 — three.js 按需装配（脚本里出现 `THREE` 标识符才装）— 纯 2D 项目的预览页不变大。
 
 ## 意外与发现
 
-- 无
+- 2026-10-11 — three r186 的 `build/three.cjs` 只是转发壳（`process.emitWarning` 加 `require('./three.module.js')`），three 已改为只提供 ES module，所以改走计划里的备选：打包成 IIFE。打包产物里有 21 处 `Math.random`、5 处 `performance.now`、2 处 `requestAnimationFrame`，T2 的确定性兜底确实需要。
 
 ## 阻塞
 
