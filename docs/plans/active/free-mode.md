@@ -145,7 +145,7 @@
 - **完成标准**：`video-kinds` 中自由讲解变为可用。
 - **验证命令**：`make check`
 
-### T7：api 端到端流程（待开始）
+### T7：api 端到端流程（完成）
 
 - **目标**：fake 运行时下三种自由形态都能从创建走到成片定稿。
 - **涉及文件**：`backend/tests/api/test_free_flow.py`（新）；按需修改 `backend/src/studio/api/projects.py`、`api/music_import.py`、`api/files.py`（只修测试暴露出的问题，不预先改）。
@@ -203,11 +203,12 @@
 - 2026-10-12 — T3 — `stages.common.timeline_source`：来源表与 `load_live_narrated`；场景工具与 `render_music` 按来源分派；工具的 `stages` 加入两个自由阶段（`9e22d63`）
 - 2026-10-12 — T4 — `stages.common.prompts`：7 个共享片段，四个多阶段提示词改为拼接，逐字对照通过后删除对照文件（`0cf60ab`）
 - 2026-10-12 — T5 — `free_produce` 阶段注册；`produce` 的定稿检查与准备移到 `stages.common.produce_flow`；`free_write_scope`、`free-mode` 片段；出片阶段解析、场景检查、阶段默认模型认识自由阶段（`7f9bd5d`）
-- 2026-10-12 — T6 — `free_explainer` 阶段注册（状态摘要：叙事、配音一致性、场景覆盖、配乐是否过期）；创建自由项目时生成 `notes/project.md`（D7）
+- 2026-10-12 — T6 — `free_explainer` 阶段注册（状态摘要：叙事、配音一致性、场景覆盖、配乐是否过期）；创建自由项目时生成 `notes/project.md`（D7）（`cd56ccf`）
+- 2026-10-12 — T7 — `tests/api/test_free_flow.py`：四种形态从创建到成片定稿、对话中上传 409、Shell 改风格被还原、文件接口；fake 默认脚本在整区可写时写进 `notes/`
 
 ## 下一步
 
-- 从 T7 开始（api 端到端流程，fake 运行时）。两个自由阶段都已注册；自由项目的选题卡在 `notes/idea-card.md`，项目说明在 `notes/project.md`（D7）。
+- 从 T8 开始（前端新建入口与类型选择）。后端完成：`ProjectOut.kind.mode`、`KindOptionOut.mode`、`PresetOut.default.mode` 已有；阶段名 `free_explainer`（自由讲解）、`free_produce`（自由创作）。
 
 ## 决策记录
 
