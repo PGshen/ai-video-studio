@@ -8,6 +8,7 @@
 import { STAGE_TITLES } from '@/composables/stageTitles'
 import type {
   KindOptionOut,
+  Mode,
   MusicSource,
   PresetOut,
   ProjectKindOut,
@@ -28,13 +29,32 @@ export const MUSIC_LABELS: Record<MusicSource, string> = {
   import: '导入音乐',
 }
 
+/**
+ * 预设的唯一键：分阶段与自由模式各有一个同 `video_kind` 的预设，单靠 `video_kind` 分不开。
+ * 分阶段预设沿用 `video_kind`（如 `explainer_html`），自由预设加前缀（`free-explainer_html`）。
+ */
+export function presetKey(preset: PresetOut): string {
+  return preset.default.mode === 'free' ? `free-${preset.video_kind}` : preset.video_kind
+}
+
+/** 只保留给定模式的预设与配置（项目页的新建只给自由模式）。 */
+export function presetsFor(data: VideoKindsOut, modes: readonly Mode[]): VideoKindsOut {
+  return {
+    presets: data.presets.filter((p) => modes.includes(p.default.mode)),
+    kinds: data.kinds.filter((k) => modes.includes(k.mode)),
+  }
+}
+
 /** 某个预设 + 配乐对应的配置；不存在（后端没有这个组合）时返回 `undefined`。 */
 export function findKind(
   kinds: KindOptionOut[],
   preset: PresetOut,
   music: MusicSource,
 ): KindOptionOut | undefined {
-  return kinds.find((k) => k.video_kind === preset.video_kind && k.music_source === music)
+  return kinds.find(
+    (k) =>
+      k.video_kind === preset.video_kind && k.music_source === music && k.mode === preset.default.mode,
+  )
 }
 
 /** 预设下任一配乐选项可用即可用；全部不可用时取第一条原因。 */
@@ -50,16 +70,26 @@ export function presetAvailability(
 }
 
 /** 第一个有可用配置的预设，配乐取该预设下第一个可用选项；一个都不可用时退回第一个预设的默认。 */
-export function initialSelection(data: VideoKindsOut): { videoKind: VideoKind; music: MusicSource } {
+export function initialSelection(data: VideoKindsOut): { preset: string; music: MusicSource } {
   for (const preset of data.presets) {
     for (const music of preset.music_choices) {
       if (findKind(data.kinds, preset, music)?.available) {
-        return { videoKind: preset.video_kind, music }
+        return { preset: presetKey(preset), music }
       }
     }
   }
   const first = data.presets[0]
-  return { videoKind: first.video_kind, music: first.default.music_source }
+  return { preset: presetKey(first), music: first.default.music_source }
+}
+
+/** 预设键 + 配乐 → 配置；找不到返回 `undefined`。 */
+export function selectedKind(
+  data: VideoKindsOut,
+  key: string,
+  music: MusicSource,
+): KindOptionOut | undefined {
+  const preset = data.presets.find((p) => presetKey(p) === key)
+  return preset ? findKind(data.kinds, preset, music) : undefined
 }
 
 /** 流水线展示："选题 → 叙事 → 动画"。 */
@@ -73,5 +103,6 @@ export function KIND_SUMMARY(kind: ProjectKindOut): string {
   // 全角右括号后不加空格（"知识讲解（HTML）· 有旁白"），其余用 " · " 分隔。
   const sep = label.endsWith('）') ? '· ' : ' · '
   const rest = [kind.narration ? '有旁白' : '无旁白', MUSIC_LABELS[kind.music_source]].join(' · ')
-  return `${label}${sep}${rest}`
+  const prefix = kind.mode === 'free' ? '自由模式 · ' : ''
+  return `${prefix}${label}${sep}${rest}`
 }

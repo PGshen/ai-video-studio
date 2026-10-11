@@ -15,7 +15,12 @@ export interface ProjectCreate {
   engine?: Engine
   narration?: boolean
   music_source?: MusicSource
+  /** `free`：自由模式，单阶段项目（free-mode 设计 §3）；缺省为 `staged`，要与上面三项一起给出。 */
+  mode?: Mode
 }
+
+/** `staged`：按阶段推进的项目；`free`：自由模式，只有一个对话阶段（创建后只读）。 */
+export type Mode = 'staged' | 'free'
 
 /** `manim` 只出现在已下线的老项目上（只读，ADR 0027），新项目只能是 `html`。 */
 export type Engine = 'manim' | 'html'
@@ -28,6 +33,7 @@ export interface ProjectKindOut {
   engine: Engine
   narration: boolean
   music_source: MusicSource
+  mode: Mode
   pipeline: string[]
 }
 
@@ -36,14 +42,15 @@ export interface PresetOut {
   label: string
   description: string
   music_choices: MusicSource[]
-  default: { engine: Engine; narration: boolean; music_source: MusicSource }
+  default: { engine: Engine; narration: boolean; music_source: MusicSource; mode: Mode }
 }
 
-/** 8 种合法配置之一；`available=false` 表示阶段还没实现（`unavailable_reason` 说明原因）。 */
+/** 一种合法配置；`available=false` 表示阶段还没实现（`unavailable_reason` 说明原因）。 */
 export interface KindOptionOut {
   engine: Engine
   narration: boolean
   music_source: MusicSource
+  mode: Mode
   video_kind: VideoKind
   pipeline: string[]
   available: boolean

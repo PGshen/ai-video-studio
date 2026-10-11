@@ -14,6 +14,8 @@ export const DEFAULT_PROFILE_STAGES = [
   { key: 'music', label: '配乐（讲解背景乐）' },
   { key: 'produce', label: '配乐与动画' },
   { key: 'animation_html', label: '动画' },
+  { key: 'free_explainer', label: '自由讲解' },
+  { key: 'free_produce', label: '自由创作（短片、MV）' },
   { key: 'style', label: '风格对话' },
 ] as const
 

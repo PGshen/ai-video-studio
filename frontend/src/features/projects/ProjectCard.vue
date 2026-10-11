@@ -52,6 +52,13 @@ const statusDate = computed(() => {
             {{ project.title }}
           </CardTitle>
           <div class="flex items-center gap-1">
+            <Badge
+              v-if="project.kind.mode === 'free'"
+              variant="outline"
+              data-testid="free-badge"
+            >
+              自由
+            </Badge>
             <Badge variant="secondary">
               {{ STAGE_TITLES[project.current_stage] ?? project.current_stage }}
             </Badge>

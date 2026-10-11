@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 项目列表：关键词/阶段/状态/选题筛选 + 卡片网格（分页）。项目只能从选题池的卡片创建，这里没有新建入口。
+ * 项目列表：关键词/阶段/状态/选题筛选 + 卡片网格（分页）。「新建项目」直接创建自由项目（free-mode 设计
+ * §6.1）；多阶段项目仍从选题池的卡片创建。
  * 筛选栏固定在顶部，只有卡片区滚动；卡片上的选题信息来自全部选题（按项目的 `idea_id` 关联）。
  * 选题池的「打开项目」带 `?idea=<选题 id>` 跳过来，URL 里的这个参数就是「按选题筛选」的状态。
  */
@@ -12,6 +13,7 @@ import ListPager from '@/components/ListPager.vue'
 import { useAllIdeasQuery, useProjectsQuery } from '@/composables/queries'
 import { PAGE_SIZE, pageCount, paginate } from '@/composables/pagination'
 import { STAGE_TITLES } from '@/composables/stageTitles'
+import NewFreeProjectDialog from './NewFreeProjectDialog.vue'
 import ProjectCard from './ProjectCard.vue'
 import { filterProjects, ideasById, type StatusFilter } from './projectView'
 
@@ -32,6 +34,7 @@ function clearIdea(): void {
 }
 
 const query = ref('')
+const creating = ref(false)
 const stage = ref<string | null>(null)
 const status = ref<StatusFilter>('all')
 
@@ -67,6 +70,13 @@ watch([query, stage, status, ideaId], () => {
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-4">
     <div class="flex shrink-0 flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        data-testid="new-project"
+        @click="creating = true"
+      >
+        新建项目
+      </Button>
       <Button
         v-if="ideaTitle"
         size="sm"
@@ -128,7 +138,7 @@ watch([query, stage, status, ideaId], () => {
         {{
           (projects?.length ?? 0) > 0
             ? '没有符合筛选条件的项目。'
-            : '还没有项目：在「选题」里选一张卡片，点「创建项目」。'
+            : '还没有项目：新建一个项目，或从「选题」的卡片创建。'
         }}
       </p>
       <div
@@ -150,5 +160,6 @@ watch([query, stage, status, ideaId], () => {
       :total-pages="totalPages"
       :current="currentPage"
     />
+    <NewFreeProjectDialog v-model:open="creating" />
   </div>
 </template>
