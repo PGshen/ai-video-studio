@@ -17,10 +17,14 @@ from typing import Any
 from urllib.parse import quote, unquote
 
 from studio.engines.render.html.assets import escapes_workspace, list_assets
+from studio.engines.render.html.static_check import strip_comments
+from studio.engines.render.html.vendor import THREE_IIFE, THREE_SCRIPT_NAME, three_script
 
 _PACKAGE = Path(__file__).parent
 FONTS_DIR = _PACKAGE / "fonts"
 _RUNTIME = _PACKAGE / "runtime.js"
+_DETERMINISM = _PACKAGE / "determinism.js"
+_THREE_REFERENCE = re.compile(r"\bTHREE\b")
 
 _BUNDLED_FACES = [
     ("Anton", 400, "anton.woff2"),
@@ -37,8 +41,8 @@ window.__PREVIEW__ = true;
   window.addEventListener('message', function (e) {
     var m = e.data;
     if (!m || m.type !== 'seek') return;
-    if (pending !== null) cancelAnimationFrame(pending);
-    pending = requestAnimationFrame(function () {
+    if (pending !== null) window.__CAF__(pending);
+    pending = window.__RAF__(function () {
       pending = null;
       try { window.renderAt(m.t); }
       catch (err) {
@@ -109,6 +113,22 @@ def _inside(workdir: Path, paths: list[Path]) -> list[Path]:
     return [p for p in paths if not escapes_workspace(p, workdir)]
 
 
+def _agent_scripts(workdir: Path) -> list[Path]:
+    """Every agent-written script that can end up in the page (scenes, `lib`, `global.js`)."""
+    animation = workdir / "animation"
+    paths = sorted((animation / "scenes").glob("*.js")) + sorted((animation / "lib").glob("*.js"))
+    paths += [p for p in [animation / "global.js"] if p.is_file()]
+    return _inside(workdir, paths)
+
+
+def _uses_three(workdir: Path) -> bool:
+    """three.js is assembled only when an agent script mentions `THREE` outside comments, so 2D-only
+    pages (and their caches) stay as they were (ADR 0028)."""
+    return any(
+        _THREE_REFERENCE.search(strip_comments(_read(path))) for path in _agent_scripts(workdir)
+    )
+
+
 def _style_fonts(workdir: Path) -> list[Path]:
     directory = workdir / "style" / "fonts"
     if not directory.is_dir():
@@ -159,12 +179,15 @@ def assemble(
         "<script>window.__LOAD_ERRORS__=[];window.addEventListener('error',function(e){"
         "window.__LOAD_ERRORS__.push("
         "String(e.message)+' ('+(e.filename||'')+':'+(e.lineno||0)+')')});</script>",
+        add_script("studio-determinism.js", _read(_DETERMINISM)),
         f"<script>window.__TIMELINE__={_json_for_script(dict(timeline))};window.__SCENES__={{}};"
         f"window.__ASSETS__={_json_for_script([f'assets/{p.name}' for p in assets])};</script>",
     ]
     if inline:
         asset_sources = {p.name: _data_uri(p, _content_type(p)) for p in assets}
         parts.append(f"<script>window.__ASSET_SRC__={_json_for_script(asset_sources)};</script>")
+    if _uses_three(workdir):
+        parts.append(add_script(THREE_SCRIPT_NAME, three_script()))
     for lib in _inside(workdir, sorted((animation / "lib").glob("*.js"))):
         parts.append(add_script(f"animation/lib/{lib.name}", _read(lib)))
     for section in timeline.get("sections", []):
@@ -202,7 +225,8 @@ def page_hash(workdir: Path, timeline: Mapping[str, Any]) -> str:
         _inside(workdir, [p for p in [animation / "global.js"] if p.is_file()]),
         list_assets(workdir),
         _style_fonts(workdir),
-        [_RUNTIME],
+        [_DETERMINISM, _RUNTIME],
+        [THREE_IIFE] if _uses_three(workdir) else [],
     ]
     for group in groups:
         for path in group:

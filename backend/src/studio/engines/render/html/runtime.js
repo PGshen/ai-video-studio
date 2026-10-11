@@ -137,6 +137,7 @@
   }
 
   window.renderAt = function (t) {
+    if (window.__RESEED__) window.__RESEED__();  // determinism.js：渲染期的随机数与调用顺序无关
     var timeline = tl();
     t = Math.min(Math.max(t, 0), timeline.duration - 1e-6);
     reset();

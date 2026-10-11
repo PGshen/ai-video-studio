@@ -71,7 +71,7 @@
 - **完成标准**：上述测试通过。
 - **验证命令**：`make check`；`cd backend && uv run pytest -m slow tests/engines/test_html_vendor.py`
 
-### T2：确定性兜底与按需装配（待开始）
+### T2：确定性兜底与按需装配（完成）
 
 - **目标**：页面在任何脚本之前装好确定性兜底；agent 脚本引用 `THREE` 时装配 three.js。
 - **涉及文件**：`engines/render/html/assemble.py`、新增 `engines/render/html/determinism.js`（系统所有）、`runtime.js`（`renderAt` 开头重置随机数）、`tests/engines/test_html_assemble.py`、`tests/engines/test_html_browser.py`。
@@ -150,10 +150,11 @@
 ## 进度
 
 - 2026-10-11 — T1 — three.js 0.186.1 打成 IIFE 放进 `vendor/three.iife.js`（736 KB），`vendor/__init__.py` 提供 `three_script()`/`three_version()`；测试 4 个通过
+- 2026-10-11 — T2 — `determinism.js` 作为第一段系统脚本（种子随机数每次 `renderAt` 重置、时间冻结为 0、定时器不执行），预览改用 `__RAF__`；`THREE` 出现在 agent 脚本（剥注释后）时装配 three.js，`page_hash` 跟随；assemble 新增 7 个用例、浏览器慢测试 2 个，`pytest -m slow tests/engines` 55 个全绿
 
 ## 下一步
 
-- 做 T2：先在 `tests/engines/test_html_assemble.py` 写"按需装配 three.js"的用例（脚本名用 `vendor.THREE_SCRIPT_NAME`，内容用 `three_script()`，不再需要 CommonJS 包装），再写 `determinism.js`。
+- 做 T3：先在新文件 `tests/engines/test_html_webgl.py`（`slow`）写共享上下文的用例：两个镜头共用 `env.three()`、30 个时刻来回切换帧哈希确定；没有 THREE 时 `env.three()` 的报错；纯 2D 页面不建 WebGL 上下文。再改 `runtime.js` 的 `makeEnv`。
 - windows-native 仍在 active 等验收（负责人 2026-10-11 同意本计划并行开工）。
 
 ## 决策记录
@@ -162,6 +163,7 @@
 - 2026-10-11 — 出帧默认用 GPU — 负责人选择；没有 GPU 时自动回落 SwiftShader 已实测（见 references）。
 - 2026-10-11 — three.js 用 0.186.1（2026-09-24 发布，已满两周）。
 - 2026-10-11 — 用前端已有的 vite（库模式、`iife` 格式、压缩）把 `build/three.module.js` 打成经典脚本，产物定义全局 `var THREE`；不需要 CommonJS 包装，也没有引入 esbuild。产物文件名 `three.iife.js`（计划原写 `three.cjs`）。
+- 2026-10-11 — `Date` 换成冻结版构造函数（无参数时是 1970-01-01，带参数照常），不带 `new` 调用返回固定字符串；agent 脚本仍被静态检查禁用 `Date`。
 - 2026-10-11 — three.js 按需装配（脚本里出现 `THREE` 标识符才装）— 纯 2D 项目的预览页不变大。
 
 ## 意外与发现
