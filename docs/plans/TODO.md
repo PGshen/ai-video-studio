@@ -18,7 +18,7 @@
 |---|---|---|---|
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
 | P1 | 原生支持 Windows（Windows 上能用也能开发） | 负责人，2026-10-08 | 设计已批准：[windows-native-support](../design/2026-10-09-windows-native-support.md)；计划待验收：[windows-native.md](active/windows-native.md)（2026-10-10 T1–T12 完成；剩负责人在 Windows 真实终端里按一次 Ctrl+C 确认） |
-| P1 | HTML 引擎支持 WebGL/three.js（3D），出帧默认用 GPU | 负责人，2026-10-11 | 实测见 [webgl-spike](../references/webgl-spike.md)；[ADR 0028](../decisions/0028-HTML引擎放开WebGL与three.js.md) 提议中；计划草稿 [webgl-3d.md](todo/webgl-3d.md)，待批准 |
+| P1 | HTML 引擎支持 WebGL/three.js（3D），出帧默认用 GPU | 负责人，2026-10-11 | 实测见 [webgl-spike](../references/webgl-spike.md)；[ADR 0028](../decisions/0028-HTML引擎放开WebGL与three.js.md)；2026-10-11 批准，执行中：[webgl-3d.md](active/webgl-3d.md) |
 | P3 | 模型配置面板删除失败（409）时看不到原因：`ModelProfilesPanel.vue` 的「确认删除」用 `AlertDialogAction`，它点击即关闭对话框，`preventDefault` 拦不住 | tts-voice-management T4，2026-10-10 | 音色面板已改用普通 `Button` 并有测试（`VoicePanel.spec.ts`）；模型配置面板同样改法，并补一个 409 用例 |
 | P2 | 音乐 MV 的画面质量：让用户通过对话与风格库控制要生成什么样的动画 | 负责人试看 4B 冒烟成片的反馈，2026-10-06 | 4B 冒烟成片（agent 自主写的画面）效果一般；方向是让对话与风格库更强地约束画面（风格、母题、镜头语言），而不是让 agent 自由发挥。负责人系统使用后再提具体需求；强拍相位/BPM/淡出的试听核对也一并在那时做（见 [import-music-mv.md](../references/import-music-mv.md)） |
 | P2 | 讲解类（`explainer`）是否也取消阶段拆分（`topic → narrative → music → animation_html`） | produce 阶段设计，2026-10-06 | 短片、MV 合并配乐与动画后效果是否更好，负责人试用后再决定；讲解类有旁白与时间戳，耦合方式不同，不一并改 |

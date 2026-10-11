@@ -4,9 +4,9 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 提议 |
+| 状态 | 已采纳 |
 | 日期 | 2026-10-11 |
-| 相关 | [webgl-3d 计划](../plans/todo/webgl-3d.md)、[WebGL 实测](../references/webgl-spike.md)、[ADR 0021](0021-HTML引擎与配乐阶段.md)、[HTML 视频流水线设计](../design/2026-10-04-html-video-pipeline.md) §1 非目标、[时间轴与 HTML 引擎设计](../design/2026-10-04-timeline-html-engine.md) §5–§6 |
+| 相关 | [webgl-3d 计划](../plans/active/webgl-3d.md)、[WebGL 实测](../references/webgl-spike.md)、[ADR 0021](0021-HTML引擎与配乐阶段.md)、[HTML 视频流水线设计](../design/2026-10-04-html-video-pipeline.md) §1 非目标、[时间轴与 HTML 引擎设计](../design/2026-10-04-timeline-html-engine.md) §5–§6 |
 
 ## 背景
 
