@@ -131,7 +131,7 @@
 - **完成标准**：`video-kinds` 中自由短片、自由 MV 变为可用。
 - **验证命令**：`make check`
 
-### T6：`free_explainer` 阶段（待开始）
+### T6：`free_explainer` 阶段（完成）
 
 - **目标**：自由讲解（含带背景乐）能跑起来（agent 侧）。
 - **涉及文件**：`stages/free_explainer/{__init__.py,opening.md}`、`backend/src/studio/main.py`、`backend/tests/stages/test_free_explainer_stage.py`（新）。
@@ -202,11 +202,12 @@
 - 2026-10-12 — T2 — `schema`/`synthesize_tts`/`validate_narrative` 移到 `stages.common.narration`，行为不变（`a8bb821`）
 - 2026-10-12 — T3 — `stages.common.timeline_source`：来源表与 `load_live_narrated`；场景工具与 `render_music` 按来源分派；工具的 `stages` 加入两个自由阶段（`9e22d63`）
 - 2026-10-12 — T4 — `stages.common.prompts`：7 个共享片段，四个多阶段提示词改为拼接，逐字对照通过后删除对照文件（`0cf60ab`）
-- 2026-10-12 — T5 — `free_produce` 阶段注册；`produce` 的定稿检查与准备移到 `stages.common.produce_flow`；`free_write_scope`、`free-mode` 片段；出片阶段解析、场景检查、阶段默认模型认识自由阶段
+- 2026-10-12 — T5 — `free_produce` 阶段注册；`produce` 的定稿检查与准备移到 `stages.common.produce_flow`；`free_write_scope`、`free-mode` 片段；出片阶段解析、场景检查、阶段默认模型认识自由阶段（`7f9bd5d`）
+- 2026-10-12 — T6 — `free_explainer` 阶段注册（状态摘要：叙事、配音一致性、场景覆盖、配乐是否过期）；创建自由项目时生成 `notes/project.md`（D7）
 
 ## 下一步
 
-- 从 T6 开始（`free_explainer` 阶段）。复用 T5 的 `free_write_scope`、`free-mode` 片段；片段名见 D4、D5。
+- 从 T7 开始（api 端到端流程，fake 运行时）。两个自由阶段都已注册；自由项目的选题卡在 `notes/idea-card.md`，项目说明在 `notes/project.md`（D7）。
 
 ## 决策记录
 
@@ -215,6 +216,7 @@
 - 2026-10-12 — **D4**（T4）：四份提示词里同名段落（技术选择、时间规则、确定性规则、画面规则）都不逐字相同，所以不合并，片段就是从原文按 `## ` 标题切出的连续段落：`narration-schema`、`narration-writing`（来自 narrative）、`scenes-explainer`（animation_html 的 env 契约到画面规则）、`music-explainer`（music 的脚本契约到你听不到声音）、`silent-compose`、`silent-song`、`silent-scenes`（来自 produce，`silent-scenes` 从「你听不到声音」到结尾）。歌词段（引用简报和 `suggest_upstream_change`）留在 produce 自己的 `lyrics.md`。拼接不加分隔符，每个文件自带结尾空行。
 - 2026-10-12 — **D5**（T4）：片段里有两处说法对自由阶段不准确，为了满足"多阶段逐字不变"仍然保留，由自由阶段的开场白纠正：`narration-schema` 写的是场景文件 `animation/scenes/<id>.py`（Manim 时代的遗留，HTML 引擎实际是 `.js`，多阶段也受影响，已记进 TODO）；`music-explainer` 说 `STUDIO_TIMELINE` "就是 `upstream/timeline.json` 的内容"（自由讲解没有这个文件，时间轴由 `render_music` 即时生成）。
 - 2026-10-12 — **D6**（T5）：计划写的是"MV 还没有歌曲时 `status_summary` 第一行提示上传"，但阶段协议只给 `workdir`，还没有歌曲时工作区里看不出是短片还是 MV。改为：没有歌曲也没有渲染记录时，摘要同时给出两种形态的下一步（短片写 `compose.py` 并 `render_music`；MV 请用户在「配乐」标签页上传）；提示词「先判断形态」写明"用户要做 MV 但还没有歌曲时请用户上传，不要自己合成"。`free_produce` 的提示词由 `opening.md`、`free-mode` 片段、`inputs.md`、三个 silent 片段和自己的 `lyrics.md`（去掉简报与回退建议的版本）组成。
+- 2026-10-12 — **D7**（T6）：阶段协议只给工作区路径，agent 无从知道自由讲解是否选了背景乐、自由创作是短片还是 MV。创建自由项目时生成 `notes/project.md`（形态、成片需要的文件），两个自由阶段的提示词要求每个新会话先读它。同时把自由项目的选题卡放到顶层 `notes/idea-card.md`，不放 `free_*/notes/`：自由阶段的笔记都在 `notes/`，一个叫 `free_explainer/` 的顶层目录只会让人困惑。设计 §3.3 写的是沿用 `<pipeline[0]>/notes/`，这里是有意偏离。
 - 2026-10-12 — **D2**：`produce` 的 `blockers.py`、`prepare.py` 挪到 `stages/common/produce_flow/`（T5）。设计 §4.2 写的是"复用"，但阶段之间不能互相 import，只能先挪到 `common`。
 
 ## 意外与发现

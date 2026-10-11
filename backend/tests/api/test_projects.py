@@ -1055,9 +1055,37 @@ class TestCreateFreeProjects:
         body = response.json()
         assert body["idea_id"] == idea.id
         workdir = api_env.workdir(body["id"])
-        assert (workdir / "free_produce/notes/idea-card.md").is_file()
+        assert (workdir / "notes/idea-card.md").is_file()
+        assert not (workdir / "free_produce").exists()
         stored_idea = get_idea(api_env.app.state.engine, idea.id)
         assert stored_idea is not None and stored_idea.status == "idea"
+
+    @pytest.mark.parametrize(
+        ("narration", "music_source", "form", "needs"),
+        [
+            (True, "none", "自由讲解（有旁白，不带背景乐）", "narrative/timing.json"),
+            (True, "synth", "自由讲解（有旁白，带背景乐）", "music/compose.py"),
+            (False, "synth", "自由短片（无旁白，合成配乐）", "music/compose.py"),
+            (False, "import", "自由 MV（无旁白，用户上传的歌曲）", "music/source"),
+        ],
+    )
+    async def test_project_note_tells_the_agent_the_form(
+        self, api_env: ApiEnv, narration: bool, music_source: str, form: str, needs: str
+    ) -> None:
+        response = await self._create(api_env, narration=narration, music_source=music_source)
+
+        assert response.status_code == 201, response.text
+        note = (api_env.workdir(response.json()["id"]) / "notes/project.md").read_text(
+            encoding="utf-8"
+        )
+        assert "自由" in note.splitlines()[2]
+        assert form in note
+        assert needs in note
+
+    async def test_staged_projects_get_no_project_note(self, api_env: ApiEnv) -> None:
+        body = await api_env.create_project()
+
+        assert not (api_env.workdir(body["id"]) / "notes").exists()
 
     async def test_client_settings_cannot_smuggle_mode(self, api_env: ApiEnv) -> None:
         register_free_stages(api_env.app.state.registry)

@@ -87,7 +87,14 @@ def test_prompt_is_free_mode_and_carries_the_contracts() -> None:
     prompt = STAGE.system_prompt()
 
     assert prompt.startswith("# 自由创作")
-    for anchor in ("照用户说的做", "notes/", "STUDIO_OUT_EVENTS", "music/range.json", "env.lyric"):
+    anchors = (
+        "照用户说的做",
+        "notes/project.md",
+        "STUDIO_OUT_EVENTS",
+        "music/range.json",
+        "env.lyric",
+    )
+    for anchor in anchors:
         assert anchor in prompt, anchor
     assert "upstream/concept" not in prompt
     assert "suggest_upstream_change" not in prompt
