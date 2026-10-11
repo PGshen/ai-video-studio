@@ -106,7 +106,7 @@
 - **完成标准**：`grep -rn 'ctx.stage == "produce"' backend/src` 没有结果。
 - **验证命令**：`make check`
 
-### T4：共享提示词片段（待开始）
+### T4：共享提示词片段（完成）
 
 - **目标**：契约类段落只维护一份；多阶段提示词逐字不变。
 - **涉及文件**：`backend/src/studio/stages/common/prompts/`（新，含 `__init__.py` 和若干 `.md`）、`stages/{narrative,animation_html,produce,music}/prompt.md` 与对应 `__init__.py` 的 `system_prompt()`、`backend/tests/stages/test_prompt_fragments.py`（新）、`backend/tests/stages/fixtures/prompts_before/`（重构前四份提示词的原文，作为临时对照）。
@@ -200,16 +200,19 @@
 
 - 2026-10-12 — T1 — `mode` 进入项目类型，自由形态流水线与预设，创建接口与 video-kinds 输出 `mode`（`21f1651`）
 - 2026-10-12 — T2 — `schema`/`synthesize_tts`/`validate_narrative` 移到 `stages.common.narration`，行为不变（`a8bb821`）
-- 2026-10-12 — T3 — `stages.common.timeline_source`：来源表与 `load_live_narrated`；场景工具与 `render_music` 按来源分派；工具的 `stages` 加入两个自由阶段
+- 2026-10-12 — T3 — `stages.common.timeline_source`：来源表与 `load_live_narrated`；场景工具与 `render_music` 按来源分派；工具的 `stages` 加入两个自由阶段（`9e22d63`）
+- 2026-10-12 — T4 — `stages.common.prompts`：7 个共享片段，四个多阶段提示词改为拼接，逐字对照通过后删除对照文件
 
 ## 下一步
 
-- 从 T4 开始（共享提示词片段）。
+- 从 T5 开始（`free_produce` 阶段）。片段名见决策记录 D4。
 
 ## 决策记录
 
 - 2026-10-12 — **D1（负责人 2026-10-12 同意）**：设计 §4.2 写的是 `free_explainer` 的 `finalize_blockers`"组合叙事与场景检查"，但现有 `narrative` 和 `animation_html` 的 `finalize_blockers` 都返回 `[]`，成片的正确性由 worker 前置检查和 `finalize-render` 的快照核对保证。建议 `free_explainer` 同样返回 `[]`，配音和配乐是否最新通过 `status_summary` 告诉 agent。理由：没有现成的检查可以组合；成片定稿本来就要求先渲染成功，再加一层是重复检查。`free_produce` 照设计复用 `produce` 的检查。
 - 2026-10-12 — **D3**（T1）：T1 原计划的"自由阶段未注册时创建返回 422"测试没写：红线不允许 `skip`，而 T5、T6 注册真实阶段后这条测试就不成立了；未注册阶段返回 422 的逻辑已有通用测试 `test_unavailable_kind_is_422_and_leaves_nothing`。改为用 `register_free_stages`（假阶段）测成功路径。
+- 2026-10-12 — **D4**（T4）：四份提示词里同名段落（技术选择、时间规则、确定性规则、画面规则）都不逐字相同，所以不合并，片段就是从原文按 `## ` 标题切出的连续段落：`narration-schema`、`narration-writing`（来自 narrative）、`scenes-explainer`（animation_html 的 env 契约到画面规则）、`music-explainer`（music 的脚本契约到你听不到声音）、`silent-compose`、`silent-song`、`silent-scenes`（来自 produce，`silent-scenes` 从「你听不到声音」到结尾）。歌词段（引用简报和 `suggest_upstream_change`）留在 produce 自己的 `lyrics.md`。拼接不加分隔符，每个文件自带结尾空行。
+- 2026-10-12 — **D5**（T4）：片段里有两处说法对自由阶段不准确，为了满足"多阶段逐字不变"仍然保留，由自由阶段的开场白纠正：`narration-schema` 写的是场景文件 `animation/scenes/<id>.py`（Manim 时代的遗留，HTML 引擎实际是 `.js`，多阶段也受影响，已记进 TODO）；`music-explainer` 说 `STUDIO_TIMELINE` "就是 `upstream/timeline.json` 的内容"（自由讲解没有这个文件，时间轴由 `render_music` 即时生成）。
 - 2026-10-12 — **D2**：`produce` 的 `blockers.py`、`prepare.py` 挪到 `stages/common/produce_flow/`（T5）。设计 §4.2 写的是"复用"，但阶段之间不能互相 import，只能先挪到 `common`。
 
 ## 意外与发现

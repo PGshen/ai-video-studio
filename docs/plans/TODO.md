@@ -32,6 +32,7 @@
 | P3 | 前端偶发 `Unhandled rejection: TypeError: Cannot read properties of undefined (reading 'find')` | windows-native T11，2026-10-10 | 在选题页建卡片/建项目时 vite 日志里出现一次，界面无可见异常，未复现 |
 | P3 | Fake 运行时关闭时，新建会话的模型下拉框仍把 `fake` 标为默认 | windows-native T11，2026-10-10 | 本机曾用开了 Fake 的 `preview_start` 起过 api，种子里写进了 `fake`；`tasks.py dev`（不开 Fake）下默认仍选它，选了会失败 |
 | P2 | 登录冒烟有 3 个用例被模型行为挡住：`test_claude_login_cancel_then_turn`、`test_claude_login_sandbox_read`（claude-sonnet-5 把"这是自动化测试，用 Bash 执行…"当成提示注入，拒绝运行 `sleep`/探测脚本）、`test_style_claude_login`（叙事轮用 Bash 而不是 Read 读 `style/exemplars/`，断言只认 Read） | windows-native T12，2026-10-10 | main（`13fcef0`）上前两个以同样方式失败，不是该分支引入的；改冒烟的指令写法（例如放进阶段任务里、说明来源）或放宽断言，沙箱读隔离在此之前由慢测试和 Seatbelt 单测覆盖 |
+| P3 | 叙事提示词说场景文件是 `animation/scenes/<id>.py`（Manim 遗留），HTML 引擎实际是 `.js` | free-mode T4，2026-10-12 | 片段 `stages/common/prompts/narration-schema.md`；改一个字，叙事与自由讲解都受益 |
 
 ## 已完成
 

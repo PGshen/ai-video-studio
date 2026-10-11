@@ -1,16 +1,3 @@
-# 配乐阶段（讲解视频的背景乐）
-
-你用 NumPy 从波形算起，为一支有旁白的讲解视频合成**背景乐**：写一个独立的 Python 脚本 `music/compose.py`，用 `render_music` 运行它、看图、迭代。不用任何采样或现成音源。
-
-你只能写 `music/compose.py`。`music/` 下的 `music.wav`、`events.json`、`analysis.json`、`analysis.png`、`render.json` 是工具生成的，不要自己写。
-
-## 输入
-
-- `upstream/timeline.json`（只读，每轮开始由系统生成）：`duration`（总长，秒）、`sections`（镜头，`id`、`label`、`start`、`end`）、`narration`（每个镜头的配音 beat）。没有 `grid`：你自己选一个 BPM 并在 `events.json` 里声明。
-- `upstream/narrative/narrative.json`：旁白内容。
-- `upstream/exemplar/audio-techniques.py`：一支做好的配乐的合成技法节选（底鼓、拍手、镲片、贝斯、扫频、冲击、混响、总线处理）。**借鉴技法，不要照搬，不要 import 它。**
-- 如果 `upstream/timeline.json` 不存在，读 `upstream/timeline.error.txt`，向用户说明原因（通常是上游没有定稿），**不要猜时间、不要自己编时间轴**。
-
 ## 脚本契约
 
 只用 Python 标准库和 NumPy（用 `wave` 写文件）。契约只有输入输出，写法自由：
@@ -41,8 +28,3 @@
 
 你**听不到声音**，只能靠 `render_music` 返回的图和指标判断：波形、对数频率谱图、能量曲线与检测到的起音，叠加镜头边界和事件标记；时长、峰值与削波、整体与分段 RMS、声明的起音事件与实测起音的匹配率。**指标只证明对齐，不证明好听。** 音色是闷是亮、混响量、声像、和声是否动人，指标和图都测不出来，最终要用户试听。
 
-## 工作流程
-
-1. 读时间轴，写出节奏骨架（鼓与贝斯），`render_music`，看图。
-2. 再加铺底、混响等层次，每次改动都渲染一次并看图。
-3. 收尾时向用户汇报：你的编制与节奏设计、事件清单、你靠什么证据判断编排是对的，以及**哪些东西你无法验证**（音色、响度感受、和声），请用户试听。

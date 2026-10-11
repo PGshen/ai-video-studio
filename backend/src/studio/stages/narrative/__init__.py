@@ -11,10 +11,18 @@ from pathlib import Path
 from studio.agent.tools import ToolSpec
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
 from studio.stages.common.narration import SYNTHESIZE_TTS_TOOL, VALIDATE_NARRATIVE_TOOL
+from studio.stages.common.prompts import compose_prompt, fragment
 from studio.workspace import files
 from studio.workspace.scope import WriteScope
 
-_PROMPT_PATH = Path(__file__).parent / "prompt.md"
+_HERE = Path(__file__).parent
+_PROMPT_PARTS = [
+    _HERE / "opening.md",
+    fragment("narration-schema"),
+    _HERE / "structure.md",
+    fragment("narration-writing"),
+    _HERE / "tail.md",
+]
 _WRITE_SCOPE = WriteScope(
     writable=["narrative/narrative.json"],
     tool_managed=["narrative/timing.json", "narrative/audio/**"],
@@ -32,7 +40,7 @@ class NarrativeStage:
     workspaceless = False
 
     def system_prompt(self) -> str:
-        return _PROMPT_PATH.read_text(encoding="utf-8")
+        return compose_prompt(*_PROMPT_PARTS)
 
     def tools(self) -> list[ToolSpec]:
         return list(_TOOLS)

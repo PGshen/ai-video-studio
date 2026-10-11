@@ -12,6 +12,7 @@ from pathlib import Path
 from studio.agent.tools import ToolSpec
 from studio.engines.audio.song import file_hash
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
+from studio.stages.common.prompts import compose_prompt, fragment
 from studio.stages.common.score.sources import infer_sources
 from studio.stages.common.score.tool import RENDER_MUSIC_TOOL
 from studio.stages.music.prepare import prepare_turn
@@ -19,7 +20,8 @@ from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 from studio.workspace.scope import WriteScope
 
-_PROMPT_PATH = Path(__file__).parent / "prompt.md"
+_HERE = Path(__file__).parent
+_PROMPT_PARTS = [_HERE / "opening.md", fragment("music-explainer"), _HERE / "tail.md"]
 _WRITE_SCOPE = WriteScope(
     writable=["music/compose.py"],
     tool_managed=[
@@ -52,7 +54,7 @@ class MusicStage:
     workspaceless = False
 
     def system_prompt(self) -> str:
-        return _PROMPT_PATH.read_text(encoding="utf-8")
+        return compose_prompt(*_PROMPT_PARTS)
 
     def tools(self) -> list[ToolSpec]:
         return list(_TOOLS)
