@@ -19,6 +19,14 @@ describe('buildBreadcrumbs', () => {
     ).toEqual([{ label: '项目', to: '/projects' }, { label: '哈希表 vs B+树' }, { label: '叙事' }])
   })
 
+  it('names every stage in Chinese, including produce and the free stages', () => {
+    const stageCrumb = (stage: string) =>
+      buildBreadcrumbs({ routeName: 'project-workbench', title: '工作台', projectId: 'p1', stage })[2]
+    expect(stageCrumb('produce')).toEqual({ label: '配乐与动画' })
+    expect(stageCrumb('free_produce')).toEqual({ label: '自由创作' })
+    expect(stageCrumb('free_explainer')).toEqual({ label: '自由讲解' })
+  })
+
   it('falls back to a placeholder while the project is loading', () => {
     const crumbs = buildBreadcrumbs({
       routeName: 'project-workbench',
