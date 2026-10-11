@@ -18,6 +18,7 @@ from studio.engines.render.html.probe import (
     boundary_diff,
     contact_sheet,
     determinism_check,
+    frame_cost,
     frame_metrics,
     is_flat,
     sample_times,
@@ -508,3 +509,46 @@ def test_without_lyrics_the_samples_are_unchanged() -> None:
 
     timeline = _gridless()
     assert reel_sample_times({**timeline, "lyrics": []}, "s2") == reel_sample_times(timeline, "s2")
+
+
+# ---- 出帧耗时（ADR 0028）--------------------------------------------------------------------
+
+
+class _TimedPage:
+    """Each frame takes `cost[i]` seconds on a fake clock."""
+
+    def __init__(self, costs: list[float]) -> None:
+        self.errors: list[str] = []
+        self.poisoned = False
+        self.now = 0.0
+        self.rendered: list[float] = []
+        self._costs = list(costs)
+
+    def clock(self) -> float:
+        return self.now
+
+    async def render_jpeg(self, t: float) -> bytes:
+        self.rendered.append(t)
+        self.now += self._costs.pop(0)
+        return b""
+
+    async def render_hash(self, t: float) -> str:
+        return ""
+
+    async def set_timeline(self, timeline: Mapping[str, Any]) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+
+async def test_frame_cost_ignores_the_warm_up_frame() -> None:
+    page = _TimedPage([2.0, 0.1, 0.3])
+    cost = await frame_cost(page, [0.0, 1.0, 2.0], clock=page.clock)
+    assert cost == pytest.approx(200.0)
+    assert page.rendered == [0.0, 1.0, 2.0]
+
+
+async def test_frame_cost_needs_two_frames() -> None:
+    page = _TimedPage([1.0])
+    assert await frame_cost(page, [0.0], clock=page.clock) is None

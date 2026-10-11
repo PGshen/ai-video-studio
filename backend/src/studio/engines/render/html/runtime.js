@@ -39,6 +39,83 @@
     },
   });
 
+  // ---- Shared WebGL (ADR 0028): one lazily created offscreen WebGL2 canvas and one three.js
+  // renderer for the whole page, so scenes never exceed Chromium's context limit. The first use
+  // in each scene clears the canvas and resets the renderer, so frames do not depend on the order
+  // in which scenes were rendered.
+  var glShared = null;
+  var glLost = false;
+  var threeRenderer = null;
+  var glDirty = true;  // set before each scene (and global.js) in renderAt
+
+  function sharedGl() {
+    if (glLost) throw new Error('WebGL 上下文丢失（显存不足或驱动重置）：减少几何体、纹理和后期通道后重新渲染');
+    if (!glShared) {
+      var canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      var gl = canvas.getContext('webgl2', { antialias: true, preserveDrawingBuffer: true, alpha: true, premultipliedAlpha: true });
+      if (!gl) throw new Error('env.gl(): 这台机器的浏览器拿不到 WebGL2，请改用 Canvas 2D');
+      // preventDefault asks for a restore; three.js re-initialises itself on 'webglcontextrestored'.
+      canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); glLost = true; });
+      canvas.addEventListener('webglcontextrestored', function () { glLost = false; glDirty = true; });
+      glShared = { canvas: canvas, gl: gl };
+    }
+    if (glDirty) {
+      glDirty = false;
+      var g = glShared.gl;
+      g.bindFramebuffer(g.FRAMEBUFFER, null);
+      g.viewport(0, 0, W, H);
+      g.disable(g.SCISSOR_TEST);
+      g.colorMask(true, true, true, true);
+      g.depthMask(true);
+      g.clearColor(0, 0, 0, 0);
+      g.clearDepth(1);
+      g.clearStencil(0);
+      g.clear(g.COLOR_BUFFER_BIT | g.DEPTH_BUFFER_BIT | g.STENCIL_BUFFER_BIT);
+      if (threeRenderer) resetThree(threeRenderer);
+    }
+    return glShared;
+  }
+
+  function resetThree(r) {
+    var T = window.THREE;
+    r.setRenderTarget(null);
+    r.setClearColor(0x000000, 0);
+    r.autoClear = true;
+    r.autoClearColor = true;
+    r.autoClearDepth = true;
+    r.autoClearStencil = true;
+    r.sortObjects = true;
+    r.setViewport(0, 0, W, H);
+    r.setScissor(0, 0, W, H);
+    r.setScissorTest(false);
+    r.toneMapping = T.NoToneMapping;
+    r.toneMappingExposure = 1;
+    r.outputColorSpace = T.SRGBColorSpace;
+    r.shadowMap.enabled = false;
+    r.shadowMap.autoUpdate = true;
+    r.shadowMap.type = T.PCFShadowMap;
+    r.localClippingEnabled = false;
+    r.clippingPlanes = [];
+    r.state.reset();
+  }
+
+  function sharedThree() {
+    if (!window.THREE) {
+      throw new Error('env.three(): 页面里没有 three.js——脚本里直接引用 THREE（例如 new THREE.Scene()）时才会装配');
+    }
+    var shared = sharedGl();
+    if (!threeRenderer) {
+      threeRenderer = new window.THREE.WebGLRenderer({
+        canvas: shared.canvas, context: shared.gl, antialias: true, preserveDrawingBuffer: true, alpha: true,
+      });
+      threeRenderer.setPixelRatio(1);
+      threeRenderer.setSize(W, H, false);
+      resetThree(threeRenderer);
+    }
+    return threeRenderer;
+  }
+
   function makeEnv(sec, index, t) {
     var timeline = tl();
     var grid = timeline.grid;
@@ -63,6 +140,8 @@
       },
       grid: grid,
       assets: assetProxy,
+      gl: sharedGl,
+      three: sharedThree,
       bt: function (n) { needGrid(); return grid.beats[0] + n * 60 / grid.bpm - sec.start; },
       bar: function (n) { needGrid(); return grid.beats[0] + n * 240 / grid.bpm - sec.start; },
       // 配乐相关：timeline.music 为 null（无配乐的讲解）时保持中性值，不抛错。
@@ -137,6 +216,7 @@
   }
 
   window.renderAt = function (t) {
+    if (window.__RESEED__) window.__RESEED__();  // determinism.js：渲染期的随机数与调用顺序无关
     var timeline = tl();
     t = Math.min(Math.max(t, 0), timeline.duration - 1e-6);
     reset();
@@ -153,6 +233,7 @@
         throw new Error('[scene ' + sec.id + '] 没有导出 draw 函数（需要 module.exports = { draw(ctx, lt, env) {} }）');
       }
       ctx.save();
+      glDirty = true;
       try {
         scene.draw(ctx, lt, makeEnv(sec, i, t));
       } catch (e) {
@@ -164,6 +245,7 @@
     });
     if (post) {
       ctx.save();
+      glDirty = true;
       var first = timeline.sections[0];
       post(ctx, t, makeEnv(first, 0, t));
       ctx.restore();

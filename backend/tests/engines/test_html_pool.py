@@ -65,6 +65,9 @@ class FakeBrowser:
         self.opened.append(fake)
         return fake
 
+    async def renderer_signature(self) -> str:
+        return "fake-renderer"
+
     async def close(self) -> None:
         self.closed = True
         self.connected = False

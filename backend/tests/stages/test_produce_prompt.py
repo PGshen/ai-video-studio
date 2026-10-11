@@ -61,6 +61,11 @@ _REQUIRED = [
     ("歌词金样本", "lyrics-techniques.js"),
     ("不写死歌词时间", "不要写死歌词出现的秒数"),
     ("镜头跟乐句走", "跟着乐句走"),
+    ("3D 金样本", "upstream/exemplar/webgl-techniques.js"),
+    ("技术选择", "技术选择"),
+    ("共享渲染器", "env.three()"),
+    ("原始 WebGL", "env.gl()"),
+    ("不用 THREE.Clock", "THREE.Clock"),
 ]
 
 

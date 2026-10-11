@@ -31,6 +31,7 @@ from studio.engines.render.html.browser import (
 )
 from studio.engines.render.html.pool import BrowserPool, PoolBusy, set_browser_pool
 from studio.stages.animation_html import STAGE
+from studio.stages.common.scenes import WEBGL_EXEMPLAR, validate_scenes_html
 from studio.stages.common.scenes.render_preview_html import RENDER_PREVIEW_HTML_TOOL
 from studio.stages.common.scenes.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 
@@ -154,6 +155,32 @@ async def test_all_pass_shape(project: Path, behaviour: Behaviour) -> None:
     assert not result.is_error
     assert result.text.splitlines()[0] == "全部 2 个镜头校验通过。"
     assert result.images == []
+
+
+async def test_the_renderer_is_reported(project: Path, behaviour: Behaviour) -> None:
+    result = await _validate(project)
+    assert "出帧渲染器：fake-renderer" in result.text
+
+
+async def test_software_rendering_is_called_out(project: Path, behaviour: Behaviour) -> None:
+    behaviour.renderer = "Chromium 140 | ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))"
+    result = await _validate(project)
+    assert "软件渲染" in result.text
+
+
+async def test_slow_frames_are_a_warning_not_an_error(
+    project: Path, behaviour: Behaviour, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ticks = iter(float(x) for x in range(10_000))  # every clock read advances one second
+    monkeypatch.setattr(validate_scenes_html, "_frame_clock", lambda: next(ticks))
+    result = await _validate(project, scene_id="s-hook")
+    assert not result.is_error
+    assert "平均出帧" in result.text and "毫秒" in result.text
+
+
+async def test_fast_frames_do_not_warn(project: Path, behaviour: Behaviour) -> None:
+    result = await _validate(project, scene_id="s-hook")
+    assert "平均出帧" not in result.text
 
 
 async def test_static_violation_is_an_error_with_file_and_line_and_skips_the_browser(
@@ -484,3 +511,19 @@ async def test_real_browser_violations_are_caught(tmp_path: Path, real_pool: Non
     thrown = await _validate(tmp_path)
     assert thrown.is_error
     assert "镜头 s-explain：" in thrown.text and "[scene s-explain" in thrown.text
+
+
+@pytest.mark.slow
+async def test_webgl_exemplar_validates(tmp_path: Path, real_pool: None) -> None:
+    """The three.js exemplar is itself a valid scene: static check, smoke, determinism, beat
+    sensitivity and frame cost all pass in a real browser (ADR 0028, AC1)."""
+    (tmp_path / "upstream").mkdir()
+    (tmp_path / "upstream" / "timeline.json").write_text(json.dumps(fx.TIMELINE), encoding="utf-8")
+    source = WEBGL_EXEMPLAR.read_text(encoding="utf-8")
+    fx.write_project(tmp_path, scenes={"s-hook": source, "s-explain": source})
+    result = await _validate(tmp_path)
+    assert not result.is_error, result.text
+    assert result.text.splitlines()[0] == "全部 2 个镜头校验通过。"
+    assert "警告" not in result.text, result.text
+    preview = await _preview(tmp_path, scene_id="s-hook")
+    assert not preview.is_error, preview.text

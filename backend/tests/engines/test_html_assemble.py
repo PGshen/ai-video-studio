@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from studio.engines.render.html.assemble import assemble, page_hash
+from studio.engines.render.html.vendor import THREE_SCRIPT_NAME, three_script
 
 TIMELINE: dict[str, Any] = {
     "duration": 3.0,
@@ -48,6 +49,7 @@ def test_html_embeds_timeline_and_orders_scripts(tmp_path: Path) -> None:
     assert json.loads(match.group(1))["sections"][1]["id"] == "s-explain"
     srcs = re.findall(r'<script src="scripts/([^"]+)"', html)
     assert srcs == [
+        "studio-determinism.js",
         "animation/lib/a.js",
         "animation/lib/b.js",
         "animation/scenes/s-hook.js",
@@ -286,3 +288,63 @@ def test_scripts_linking_outside_the_workspace_are_left_out(tmp_path: Path) -> N
     joined = "".join(page.scripts.values())
     assert "LIB-B" in joined and "EXPLAIN" in joined
     assert page_hash(work, TIMELINE) == page_hash(work, TIMELINE)
+
+
+# ---- ADR 0028：确定性兜底与按需装配 three.js -------------------------------------------------
+
+
+def test_determinism_shim_runs_before_any_other_script(tmp_path: Path) -> None:
+    html = assemble(_project(tmp_path), TIMELINE).html
+    first_src = html.index('<script src="scripts/')
+    assert html[first_src:].startswith('<script src="scripts/studio-determinism.js"')
+    assert html.index("studio-determinism.js") < html.index("window.__TIMELINE__")
+
+
+def test_three_is_not_assembled_for_a_2d_project(tmp_path: Path) -> None:
+    _write(tmp_path, "animation/scenes/s-hook.js", "// uses THREE? no, only in a comment\n")
+    page = assemble(_project(tmp_path), TIMELINE)
+    assert THREE_SCRIPT_NAME not in page.scripts
+    assert THREE_SCRIPT_NAME not in page.html
+
+
+def test_three_is_assembled_once_before_libs_when_any_script_references_it(
+    tmp_path: Path,
+) -> None:
+    _project(tmp_path)
+    _write(tmp_path, "animation/scenes/s-hook.js", "const g = new THREE.BoxGeometry(); // HOOK\n")
+    _write(tmp_path, "animation/lib/c.js", "const M = THREE.MathUtils; // LIB-C\n")
+    page = assemble(tmp_path, TIMELINE)
+    assert page.scripts[THREE_SCRIPT_NAME] == three_script()
+    srcs = re.findall(r'<script src="scripts/([^"]+)"', page.html)
+    assert srcs.count(THREE_SCRIPT_NAME) == 1
+    assert srcs.index(THREE_SCRIPT_NAME) < srcs.index("animation/lib/a.js")
+
+
+def test_three_is_detected_in_global_js(tmp_path: Path) -> None:
+    _project(tmp_path)
+    _write(tmp_path, "animation/global.js", "module.exports = { post() { THREE; } };\n")
+    assert THREE_SCRIPT_NAME in assemble(tmp_path, TIMELINE).scripts
+
+
+def test_inline_page_inlines_three(tmp_path: Path) -> None:
+    _project(tmp_path)
+    _write(tmp_path, "animation/scenes/s-hook.js", "THREE;\n")
+    html = assemble(tmp_path, TIMELINE, preview=True, inline=True).html
+    assert f"//# sourceURL={THREE_SCRIPT_NAME}" in html
+    assert "<script src=" not in html
+
+
+def test_page_hash_reacts_to_three_being_referenced(tmp_path: Path) -> None:
+    _project(tmp_path)
+    before = page_hash(tmp_path, TIMELINE)
+    _write(tmp_path, "animation/scenes/s-hook.js", "THREE;\n")
+    with_three = page_hash(tmp_path, TIMELINE)
+    _write(tmp_path, "animation/scenes/s-hook.js", "// THREE\n")
+    assert before != with_three
+    assert page_hash(tmp_path, TIMELINE) != with_three
+
+
+def test_preview_script_uses_the_saved_animation_frame(tmp_path: Path) -> None:
+    html = assemble(_project(tmp_path), TIMELINE, preview=True).html
+    preview = html[html.index("window.__PREVIEW__") :]
+    assert "window.__RAF__(" in preview and "window.__CAF__(" in preview

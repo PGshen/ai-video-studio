@@ -57,7 +57,7 @@ Fake 运行时可以用 `STUDIO_FAKE_DELAY_SECONDS=<秒>` 让默认脚本在回�
 make setup
 ```
 
-这一步会安装后端（`cd backend && uv sync`）和前端（`frontend/` 出现后自动生效）的依赖，并执行 `git config core.hooksPath .githooks`，启用 pre-commit（跑 `tasks.py check-fast`）。`make setup` 还会运行 `cd backend && uv run playwright install chromium`，为 HTML 动画引擎下载无头 Chromium（约 150 MB）；缺失时预览工具和成片会报错并附这条命令。
+这一步会安装后端（`cd backend && uv sync`）和前端（`frontend/` 出现后自动生效）的依赖，并执行 `git config core.hooksPath .githooks`，启用 pre-commit（跑 `tasks.py check-fast`）。`make setup` 还会运行 `cd backend && uv run playwright install chromium`，为 HTML 动画引擎下载 Chromium（完整版和 headless shell 两份，约 150 MB）；缺失时预览工具和成片会报错并附这条命令。出帧默认用 GPU（完整 Chromium 的新版 headless；没有 GPU 时自动回落到软件渲染）；排查渲染问题时可以在 `backend/.env` 里设 `STUDIO_RENDER_GPU=false`，强制用 headless shell 软件渲染（ADR 0028）。两种方式出的帧字节不同，画面缓存会按渲染器区分。
 
 `uv sync` 会在需要时自动下载锁定的 Python 3.12（`backend/pyproject.toml` 里 `requires-python = ">=3.12,<3.13"`），不需要手动安装。
 

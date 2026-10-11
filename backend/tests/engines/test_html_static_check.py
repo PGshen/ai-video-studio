@@ -30,6 +30,8 @@ def _write(workdir: Path, relpath: str, text: str) -> None:
         ('const u = "http://example.com";', "URL"),
         ("eval('1+1');", "eval"),
         ("const f = new Function('return 1');", "Function"),
+        ("const clock = new THREE.Clock();", "THREE.Clock"),
+        ("renderer.setAnimationLoop(tick);", "setAnimationLoop"),
     ],
 )
 def test_forbidden_api_is_reported_with_line(tmp_path: Path, code: str, keyword: str) -> None:

@@ -87,6 +87,8 @@ class TestPrepareTurn:
         assert _load(tmp_path / "upstream" / "timeline.json") == expected.model_dump(mode="json")
         exemplar = tmp_path / "upstream" / "exemplar" / "canvas-techniques.js"
         assert "EXEMPLAR" in exemplar.read_text(encoding="utf-8")
+        webgl = tmp_path / "upstream" / "exemplar" / "webgl-techniques.js"
+        assert "env.three()" in webgl.read_text(encoding="utf-8")
         assert not (tmp_path / "upstream" / "timeline.error.txt").exists()
 
     def test_missing_upstream_does_not_raise_and_records_a_reason(self, tmp_path: Path) -> None:

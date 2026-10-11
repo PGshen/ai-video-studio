@@ -9,15 +9,18 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import re
 from collections.abc import Mapping
 from typing import Any, Protocol
 
 from playwright.async_api import Browser, BrowserContext, Page, Route, async_playwright
 from playwright.async_api import Error as PlaywrightError
 
+from studio.config import get_settings
 from studio.engines.render.html.assemble import AssembledPage, serve_page_path
 
 INSTALL_HINT = "uv run playwright install chromium"
+GPU_OFF_HINT = "或者在 backend/.env 里设 STUDIO_RENDER_GPU=false 改用软件渲染"
 ORIGIN = "http://studio.local/"
 READY_TIMEOUT_SECONDS = 15.0
 RENDER_TIMEOUT_SECONDS = 10.0
@@ -25,10 +28,25 @@ _MAX_ERROR_CHARS = 1500
 
 
 class ChromiumUnavailable(RuntimeError):
-    def __init__(self, detail: str = ""):
-        super().__init__(
-            f"无法启动 Chromium，请先运行：{INSTALL_HINT}" + (f"\n{detail}" if detail else "")
-        )
+    def __init__(self, detail: str = "", *, gpu: bool = False):
+        hint = f"无法启动 Chromium，请先运行：{INSTALL_HINT}"
+        hint += f"（{GPU_OFF_HINT}）" if gpu else ""
+        super().__init__(hint + (f"\n{detail}" if detail else ""))
+
+
+def launch_options(*, gpu: bool) -> dict[str, Any]:
+    """GPU: the full Chromium build in new-headless mode, which uses the GPU when there is one and
+    falls back to SwiftShader on its own; software: the headless shell (always SwiftShader). Both
+    are installed by `playwright install chromium` (ADR 0028, `references/webgl-spike.md`)."""
+    return {"channel": "chromium"} if gpu else {}
+
+
+_RENDERER_PROBE = """() => {
+  const gl = document.createElement('canvas').getContext('webgl2');
+  if (!gl) return 'no-webgl';
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+}"""
 
 
 class PageNotReady(RuntimeError):
@@ -71,7 +89,18 @@ class BrowserLike(Protocol):
 
     async def open_page(self, page: AssembledPage) -> PageLike: ...
 
+    async def renderer_signature(self) -> str: ...
+
     async def close(self) -> None: ...
+
+
+_DRIVER_PERFORMANCE_NOTE = re.compile(r"^\[\.WebGL-[^\]]*\]GL Driver Message \([^,]*, Performance,")
+
+
+def is_driver_performance_note(text: str) -> bool:
+    """Chromium's own WebGL driver hints (e.g. "GPU stall due to ReadPixels", emitted when a frame
+    is read back for encoding) are console warnings, not scene problems (ADR 0028)."""
+    return bool(_DRIVER_PERFORMANCE_NOTE.match(text))
 
 
 def _clean(exc: PlaywrightError) -> str:
@@ -152,11 +181,14 @@ class HtmlBrowser:
         *,
         ready_timeout: float = READY_TIMEOUT_SECONDS,
         render_timeout: float = RENDER_TIMEOUT_SECONDS,
+        gpu: bool | None = None,
     ) -> None:
         self._ready_timeout = ready_timeout
         self._render_timeout = render_timeout
+        self.gpu = get_settings().render_gpu if gpu is None else gpu
         self._playwright: Any = None
         self._browser: Browser | None = None
+        self._signature: str | None = None
 
     @property
     def connected(self) -> bool:
@@ -165,11 +197,12 @@ class HtmlBrowser:
     async def start(self) -> HtmlBrowser:
         self._playwright = await async_playwright().start()
         try:
-            self._browser = await self._playwright.chromium.launch()
+            self._browser = await self._playwright.chromium.launch(**launch_options(gpu=self.gpu))
         except PlaywrightError as exc:
             await self._playwright.stop()
             self._playwright = None
-            raise ChromiumUnavailable(str(exc).splitlines()[0] if str(exc) else "") from exc
+            detail = str(exc).splitlines()[0] if str(exc) else ""
+            raise ChromiumUnavailable(detail, gpu=self.gpu) from exc
         except BaseException:
             await self._playwright.stop()
             self._playwright = None
@@ -196,6 +229,24 @@ class HtmlBrowser:
                     await asyncio.wait_for(playwright.stop(), 5.0)
                 except (TimeoutError, PlaywrightError):
                     pass
+
+    async def renderer_signature(self) -> str:
+        """Browser version plus the WebGL renderer actually in use (GPU model or SwiftShader):
+        frames are only byte-identical for the same signature, so it goes into the cache key."""
+        if self._signature is None:
+            if self._browser is None:
+                raise ChromiumUnavailable("浏览器尚未启动")
+            try:
+                context = await self._browser.new_context()
+                try:
+                    page = await context.new_page()
+                    renderer = await page.evaluate(_RENDERER_PROBE)
+                finally:
+                    await context.close()
+            except PlaywrightError as exc:
+                raise ChromiumUnavailable(_clean(exc), gpu=self.gpu) from exc
+            self._signature = f"Chromium {self._browser.version} | {renderer}"
+        return self._signature
 
     async def open_page(self, page: AssembledPage) -> HtmlPage:
         if self._browser is None:
@@ -226,7 +277,7 @@ class HtmlBrowser:
             "console",
             lambda m: (
                 errors.append(f"console.{m.type}: {m.text}")
-                if m.type in ("error", "warning")
+                if m.type in ("error", "warning") and not is_driver_performance_note(m.text)
                 else None
             ),
         )

@@ -21,12 +21,14 @@ def _page(tmp_path: Path, font: bytes = b"font-v1") -> AssembledPage:
 
 def test_the_key_is_deterministic(tmp_path: Path) -> None:
     page = _page(tmp_path)
-    assert worker_html._cache_key(page, "tl", 30) == worker_html._cache_key(page, "tl", 30)
+    assert worker_html._cache_key(page, "tl", 30, "gpu-a") == worker_html._cache_key(
+        page, "tl", 30, "gpu-a"
+    )
 
 
 def test_a_changed_bundled_font_changes_the_key(tmp_path: Path) -> None:
-    before = worker_html._cache_key(_page(tmp_path, b"font-v1"), "tl", 30)
-    after = worker_html._cache_key(_page(tmp_path, b"font-v2"), "tl", 30)
+    before = worker_html._cache_key(_page(tmp_path, b"font-v1"), "tl", 30, "gpu-a")
+    after = worker_html._cache_key(_page(tmp_path, b"font-v2"), "tl", 30, "gpu-a")
     assert before != after
 
 
@@ -34,12 +36,20 @@ def test_changed_encoding_parameters_change_the_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     page = _page(tmp_path)
-    before = worker_html._cache_key(page, "tl", 30)
+    before = worker_html._cache_key(page, "tl", 30, "gpu-a")
     original = worker_html.encode_signature
     monkeypatch.setattr(
         worker_html, "encode_signature", lambda fps: [*original(fps), "-preset", "slow"]
     )
-    assert worker_html._cache_key(page, "tl", 30) != before
+    assert worker_html._cache_key(page, "tl", 30, "gpu-a") != before
+
+
+def test_a_different_renderer_changes_the_key(tmp_path: Path) -> None:
+    """GPU frames are only reproducible on the same machine (ADR 0028)."""
+    page = _page(tmp_path)
+    assert worker_html._cache_key(page, "tl", 30, "Chromium 140 | ANGLE Metal Apple M4") != (
+        worker_html._cache_key(page, "tl", 30, "Chromium 140 | SwiftShader")
+    )
 
 
 def test_the_encode_command_is_the_signature_plus_the_output_path() -> None:

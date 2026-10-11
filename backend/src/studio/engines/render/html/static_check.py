@@ -23,6 +23,10 @@ _RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bfetch\b|XMLHttpRequest"), "禁止网络访问（fetch/XMLHttpRequest）"),
     (re.compile(r"https?://"), "禁止外部 URL"),
     (re.compile(r"\beval\b|new\s+Function"), "禁止 eval / new Function"),
+    (
+        re.compile(r"\bTHREE\.Clock\b|\.setAnimationLoop\b"),
+        "禁止 THREE.Clock / setAnimationLoop：时间被冻结，画面不会动；姿态只能由 lt / env 算出",
+    ),
 ]
 _FONT_PX = re.compile(r"(\d+(?:\.\d+)?)px")
 
@@ -43,7 +47,7 @@ def _all_script_files(workdir: Path) -> list[Path]:
     return files
 
 
-def _script_files(workdir: Path) -> list[Path]:
+def script_files(workdir: Path) -> list[Path]:
     """The scripts that are actually read: links leaving the workspace are left out (TD-69)."""
     return [p for p in _all_script_files(workdir) if not escapes_workspace(p, workdir)]
 
@@ -89,7 +93,7 @@ def static_check(workdir: Path) -> list[StaticIssue]:
         for path in _all_script_files(workdir)
         if escapes_workspace(path, workdir)
     ]
-    for path in _script_files(workdir):
+    for path in script_files(workdir):
         relpath = path.relative_to(workdir).as_posix()
         for number, line in enumerate(
             strip_comments(path.read_text(encoding="utf-8")).splitlines(), 1
@@ -102,7 +106,7 @@ def static_check(workdir: Path) -> list[StaticIssue]:
 
 def font_size_warnings(workdir: Path) -> list[StaticIssue]:
     warnings: list[StaticIssue] = []
-    for path in _script_files(workdir):
+    for path in script_files(workdir):
         relpath = path.relative_to(workdir).as_posix()
         for number, line in enumerate(
             strip_comments(path.read_text(encoding="utf-8")).splitlines(), 1
@@ -133,7 +137,7 @@ def literal_time_warnings(workdir: Path) -> list[StaticIssue]:
     """`lt`（或 `env.t`）与非零数字字面量比较：时刻必须由 `env` 推出（短片的音乐平移检查补不到
     "部分写死"的镜头，靠这条警告提醒）。零不算：`lt > 0` 只是"已经开始"。"""
     warnings: list[StaticIssue] = []
-    for path in _script_files(workdir):
+    for path in script_files(workdir):
         relpath = path.relative_to(workdir).as_posix()
         for number, line in enumerate(
             strip_comments(path.read_text(encoding="utf-8")).splitlines(), 1

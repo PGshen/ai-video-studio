@@ -18,6 +18,7 @@ class FakeBackend:
     video_error: Exception | None = None
     mix_error: Exception | None = None
     on_video: Any = None
+    renderer: str = "fake-renderer"
 
     async def render_video(
         self, page: AssembledPage, duration: float, output: Path, fps: int, on_progress: Any
@@ -46,5 +47,12 @@ class FakeBackend:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"final-video:" + video.read_bytes())
 
+    async def renderer_signature(self) -> str:
+        return self.renderer
+
     def as_backend(self) -> HtmlBackend:
-        return HtmlBackend(render_video=self.render_video, mix=self.mix)
+        return HtmlBackend(
+            render_video=self.render_video,
+            mix=self.mix,
+            renderer_signature=self.renderer_signature,
+        )

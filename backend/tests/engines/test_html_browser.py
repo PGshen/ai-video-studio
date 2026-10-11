@@ -557,3 +557,56 @@ async def test_the_lyrics_exemplar_runs_and_reacts_to_the_lyrics(
     hashes = {t: await page.render_hash(t) for t in (0.5, 1.6, 2.4, 3.2, 6.5)}
     assert len(set(hashes.values())) == len(hashes)  # the frame follows the lyric, never frozen
     await page.close()
+
+
+# ---- ADR 0028：运行时的确定性兜底 -----------------------------------------------------------
+
+# 模拟内置库在渲染期间调用不确定的 API（agent 自己的脚本会被静态检查拦下，库不会）。
+UNSEEDED_LIB = """
+function libJitter() {
+  return Math.random() + performance.now() + Date.now() + new Date().getTime();
+}
+"""
+UNSEEDED_SCENE = """
+let fired = 0;
+setTimeout(function () { fired += 1; }, 0);
+requestAnimationFrame(function () { fired += 1; });
+module.exports = { draw(ctx, lt, env) {
+  window.__fired = fired;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, env.W, env.H);
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 50; i++) ctx.fillRect(libJitter() * 1800, i * 20, 20, 20);
+} };
+"""
+
+
+async def test_library_calls_to_nondeterministic_apis_are_seeded(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    fx.write_project(
+        tmp_path,
+        scenes={"s-hook": UNSEEDED_SCENE, "s-explain": UNSEEDED_SCENE},
+        lib={"jitter": UNSEEDED_LIB},
+    )
+    times = [0.2, 1.0, 2.5, 4.0]
+    page = await _open(browser, tmp_path)
+    assert await determinism_check(page, times) == []
+    first = [await page.render_hash(t) for t in times]
+    assert await page.evaluate("[Date.now(), performance.now(), window.__fired]") == [0, 0, 0]
+    await page.close()
+    again = await _open(browser, tmp_path)
+    assert [await again.render_hash(t) for t in times] == first
+    await again.close()
+
+
+async def test_preview_page_still_seeks_with_shimmed_animation_frame(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    fx.write_project(tmp_path, scenes={"s-hook": fx.PURE_SCENE_PLAIN})
+    page = await browser.open_page(assemble(tmp_path, fx.TIMELINE, preview=True, inline=True))
+    assert isinstance(page, HtmlPage)
+    await page.evaluate("window.postMessage({type: 'seek', t: 0.5}, '*')")
+    await page.evaluate("new Promise(r => window.__RAF__(() => window.__RAF__(r)))")
+    pixel = await page.evaluate(_PIXEL, [10, 10])
+    assert pixel[:3] == [0x20, 0x40, 0x60]
+    await page.close()

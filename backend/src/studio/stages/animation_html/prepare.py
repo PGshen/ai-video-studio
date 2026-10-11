@@ -11,12 +11,12 @@ import json
 import shutil
 from pathlib import Path
 
-from studio.stages.common.scenes import CANVAS_EXEMPLAR
+from studio.stages.common.scenes import CANVAS_EXEMPLAR, WEBGL_EXEMPLAR
 from studio.stages.common.scenes.helpers import ERROR_PATH, TIMELINE_PATH
 from studio.timeline import TimelineError, TimelineLayers, build_timeline, narration_from_documents
 from studio.timeline.load import TimelineSources, load_timeline
 
-_EXEMPLAR = CANVAS_EXEMPLAR
+_EXEMPLARS = (CANVAS_EXEMPLAR, WEBGL_EXEMPLAR)
 
 
 def _read_json(path: Path) -> dict:
@@ -51,9 +51,10 @@ def _prepare_music_project(workdir: Path) -> None:
 
 
 def prepare_turn(workdir: Path) -> None:
-    exemplar = workdir / "upstream" / "exemplar" / _EXEMPLAR.name
-    exemplar.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(_EXEMPLAR, exemplar)
+    exemplars = workdir / "upstream" / "exemplar"
+    exemplars.mkdir(parents=True, exist_ok=True)
+    for source in _EXEMPLARS:
+        shutil.copyfile(source, exemplars / source.name)
 
     if (workdir / "upstream" / "music" / "events.json").is_file():
         _prepare_music_project(workdir)
