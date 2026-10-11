@@ -36,6 +36,16 @@
   - three.js 本身（`Clock` 用 `performance.now`、`requestAnimationFrame` 与静态检查的冲突，加载 `.glb` 的异步问题）；
   - 显存、内存占用以及浏览器池在 WebGL 上下文丢失时的恢复。
 
+## 真实模型冒烟（webgl-3d T7）
+
+日期：2026-10-11。来源：`make smoke SMOKE_ARGS="-k webgl_reel_claude_login"`（本机 Claude 订阅登录，`claude-sonnet-5`，macOS M4，出帧走 GPU），证据 `data/evidence/synth-music/smoke/20261011T145823Z-webgl-reel-claude-login.json`。
+
+- ✅ 12 秒短片，硬性要求"至少一个镜头用 3D 呈现旋转的分子"：模型把 **5 个镜头全部写成 three.js**，都用了 `env.three()`；最后一次全量校验无错误、无出帧过慢警告。
+- ✅ 用量：concept 2 步（$0.10）；produce 一轮 62 步（$2.24），包括 `validate_scenes_html` 14 次、`render_preview_html` 10 次、`render_music` 1 次，没有触发追加轮。
+- ✅ 过程中只有两类警告：下标字符"₂"不在内置字体里；某个镜头对音乐平移没有反应。没有 WebGL 或 three.js 相关的错误。
+- ✅ 成片：12.0 秒，3.6 MB，带 AAC 音轨；画面出帧加编码共 8.0 秒（GPU）。
+- 观察：模型倾向于整片都用 3D，而不是只在需要的镜头用。提示词说了"只在需要空间感时用"，这次简报本身就以 3D 分子为主题，不能据此判断提示词无效；讲解类项目还要再观察。
+
 ## 对设计的影响
 
 1. 不改启动参数，现在的约定就能跑 WebGL；问题是软件渲染下重 3D 很慢。

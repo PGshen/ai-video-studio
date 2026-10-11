@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import quote, unquote
 
 from studio.engines.render.html.assets import escapes_workspace, list_assets
-from studio.engines.render.html.static_check import strip_comments
+from studio.engines.render.html.static_check import script_files, strip_comments
 from studio.engines.render.html.vendor import THREE_IIFE, THREE_SCRIPT_NAME, three_script
 
 _PACKAGE = Path(__file__).parent
@@ -113,20 +113,14 @@ def _inside(workdir: Path, paths: list[Path]) -> list[Path]:
     return [p for p in paths if not escapes_workspace(p, workdir)]
 
 
-def _agent_scripts(workdir: Path) -> list[Path]:
-    """Every agent-written script that can end up in the page (scenes, `lib`, `global.js`)."""
-    animation = workdir / "animation"
-    paths = sorted((animation / "scenes").glob("*.js")) + sorted((animation / "lib").glob("*.js"))
-    paths += [p for p in [animation / "global.js"] if p.is_file()]
-    return _inside(workdir, paths)
-
-
 def _uses_three(workdir: Path) -> bool:
     """three.js is assembled only when an agent script mentions `THREE` outside comments, so 2D-only
     pages (and their caches) stay as they were (ADR 0028)."""
-    return any(
-        _THREE_REFERENCE.search(strip_comments(_read(path))) for path in _agent_scripts(workdir)
-    )
+    for path in script_files(workdir):
+        source = _read(path)
+        if "THREE" in source and _THREE_REFERENCE.search(strip_comments(source)):
+            return True
+    return False
 
 
 def _style_fonts(workdir: Path) -> list[Path]:

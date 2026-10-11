@@ -189,3 +189,45 @@ async def test_2d_pages_create_no_webgl_context(browser: HtmlBrowser, tmp_path: 
         await page.render_hash(t)
     assert await page.evaluate("window.__glContexts") == 0
     await page.close()
+
+
+@pytest.mark.slow
+async def test_every_renderer_setting_is_reset_between_scenes(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    """Scene A turns off colour auto-clear and sorting; scene B must still render as if fresh."""
+    leaky = three_scene("0xff4422").replace(
+        "  mesh.rotation.set(",
+        "  r.autoClearColor = false; r.autoClearDepth = false; r.sortObjects = false;\n"
+        "  mesh.rotation.set(",
+    )
+    fx.write_project(tmp_path, scenes={"s-hook": leaky, "s-explain": three_scene("0x22aaff")})
+    page = await _open(browser, tmp_path)
+    fresh = await page.render_hash(4.0)
+    await page.render_hash(1.0)
+    assert await page.render_hash(4.0) == fresh
+    assert await page.evaluate(
+        "(() => { const r = [...window.__renderers][0];"
+        " return [r.autoClearColor, r.autoClearDepth, r.sortObjects]; })()"
+    ) == [True, True, True]
+    await page.close()
+
+
+@pytest.mark.slow
+async def test_scenes_recover_after_the_context_is_restored(
+    browser: HtmlBrowser, tmp_path: Path
+) -> None:
+    fx.write_project(tmp_path, scenes={"s-hook": three_scene("0xff4422", clear="0x000000")})
+    page = await _open(browser, tmp_path)
+    before = await page.render_hash(1.0)
+    await page.evaluate(
+        "window.__lose = [...window.__renderers][0].getContext()"
+        ".getExtension('WEBGL_lose_context'); window.__lose.loseContext();"
+    )
+    await page.evaluate("new Promise(r => window.__RAF__(() => window.__RAF__(r)))")
+    with pytest.raises(SceneRenderError, match="WebGL"):
+        await page.render_hash(1.0)
+    await page.evaluate("window.__lose.restoreContext()")
+    await page.evaluate("new Promise(r => window.__RAF__(() => window.__RAF__(r)))")
+    assert await page.render_hash(1.0) == before
+    await page.close()

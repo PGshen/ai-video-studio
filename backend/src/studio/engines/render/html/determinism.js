@@ -1,11 +1,11 @@
-/* HTML 引擎的确定性兜底（系统所有，agent 不可改；ADR 0028）。
- * 在页面里所有其他脚本之前运行。agent 自己的脚本仍由静态检查禁止这些 API；这里兜住的是内置库
- * （three.js 内部会调用 Math.random、performance.now、requestAnimationFrame）：
- * - Math.random：固定种子的 mulberry32，每次 renderAt 开头由运行时调用 __RESEED__() 重置，
- *   所以渲染期间消耗的随机数与渲染顺序无关；
- * - Date / Date.now / performance.now：冻结在 0；
- * - requestAnimationFrame / setTimeout / setInterval：返回句柄，但永远不执行回调。
- * 系统自己的预览脚本要用真正的帧回调，原始函数保存在 __RAF__ / __CAF__。 */
+/* Determinism shim for the HTML engine (system-owned; ADR 0028). Runs before every other script.
+ * Agent scripts are still barred from these APIs by the static check; this covers the bundled
+ * libraries (three.js calls Math.random, performance.now and requestAnimationFrame internally):
+ * - Math.random: seeded mulberry32, reset by the runtime (__RESEED__) at the start of each
+ *   renderAt, so random numbers drawn while rendering do not depend on render order;
+ * - Date / Date.now / performance.now: frozen at 0;
+ * - requestAnimationFrame / setTimeout / setInterval: return a handle, never run the callback.
+ * The system preview script needs real frame callbacks, so the originals stay in __RAF__/__CAF__. */
 (function () {
   window.__RAF__ = window.requestAnimationFrame.bind(window);
   window.__CAF__ = window.cancelAnimationFrame.bind(window);

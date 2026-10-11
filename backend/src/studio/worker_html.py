@@ -95,17 +95,12 @@ async def _mix(
     await mix_final(video, tracks, duration, output, music=music)
 
 
-_signatures: dict[bool, str] = {}
-
-
 async def _renderer_signature() -> str:
-    """Asked once per worker process (and per `STUDIO_RENDER_GPU` value): the cache key is needed
-    before deciding whether to render at all."""
-    browser = HtmlBrowser()
-    if browser.gpu not in _signatures:
-        async with browser:
-            _signatures[browser.gpu] = await browser.renderer_signature()
-    return _signatures[browser.gpu]
+    """Read for every job, not cached per process: if Chromium falls back from the GPU to
+    SwiftShader (GPU process crash, blocklist), later frames must not reuse the GPU cache key.
+    Costs one extra browser start per job; the frames themselves are usually the slow part."""
+    async with HtmlBrowser() as browser:
+        return await browser.renderer_signature()
 
 
 def real_backend() -> HtmlBackend:

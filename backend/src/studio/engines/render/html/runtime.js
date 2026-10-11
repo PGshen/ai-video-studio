@@ -39,13 +39,14 @@
     },
   });
 
-  // ---- 共享 WebGL（ADR 0028）：全页一张离屏 WebGL2 画布和一个 three.js 渲染器，懒创建；
-  // 镜头不自己建上下文，避免超过 Chromium 的上下文数量上限。每个镜头第一次取用时清空画布、
-  // 把渲染器状态复位，所以画面与镜头的渲染顺序无关。
+  // ---- Shared WebGL (ADR 0028): one lazily created offscreen WebGL2 canvas and one three.js
+  // renderer for the whole page, so scenes never exceed Chromium's context limit. The first use
+  // in each scene clears the canvas and resets the renderer, so frames do not depend on the order
+  // in which scenes were rendered.
   var glShared = null;
   var glLost = false;
   var threeRenderer = null;
-  var glDirty = true;  // renderAt 里每个镜头开始前置为 true
+  var glDirty = true;  // set before each scene (and global.js) in renderAt
 
   function sharedGl() {
     if (glLost) throw new Error('WebGL 上下文丢失（显存不足或驱动重置）：减少几何体、纹理和后期通道后重新渲染');
@@ -54,7 +55,9 @@
       canvas.width = W; canvas.height = H;
       var gl = canvas.getContext('webgl2', { antialias: true, preserveDrawingBuffer: true, alpha: true, premultipliedAlpha: true });
       if (!gl) throw new Error('env.gl(): 这台机器的浏览器拿不到 WebGL2，请改用 Canvas 2D');
+      // preventDefault asks for a restore; three.js re-initialises itself on 'webglcontextrestored'.
       canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); glLost = true; });
+      canvas.addEventListener('webglcontextrestored', function () { glLost = false; glDirty = true; });
       glShared = { canvas: canvas, gl: gl };
     }
     if (glDirty) {
@@ -79,6 +82,10 @@
     r.setRenderTarget(null);
     r.setClearColor(0x000000, 0);
     r.autoClear = true;
+    r.autoClearColor = true;
+    r.autoClearDepth = true;
+    r.autoClearStencil = true;
+    r.sortObjects = true;
     r.setViewport(0, 0, W, H);
     r.setScissor(0, 0, W, H);
     r.setScissorTest(false);
@@ -86,6 +93,8 @@
     r.toneMappingExposure = 1;
     r.outputColorSpace = T.SRGBColorSpace;
     r.shadowMap.enabled = false;
+    r.shadowMap.autoUpdate = true;
+    r.shadowMap.type = T.PCFShadowMap;
     r.localClippingEnabled = false;
     r.clippingPlanes = [];
     r.state.reset();

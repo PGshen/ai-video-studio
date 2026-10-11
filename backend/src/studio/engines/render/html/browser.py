@@ -236,12 +236,15 @@ class HtmlBrowser:
         if self._signature is None:
             if self._browser is None:
                 raise ChromiumUnavailable("浏览器尚未启动")
-            context = await self._browser.new_context()
             try:
-                page = await context.new_page()
-                renderer = await page.evaluate(_RENDERER_PROBE)
-            finally:
-                await context.close()
+                context = await self._browser.new_context()
+                try:
+                    page = await context.new_page()
+                    renderer = await page.evaluate(_RENDERER_PROBE)
+                finally:
+                    await context.close()
+            except PlaywrightError as exc:
+                raise ChromiumUnavailable(_clean(exc), gpu=self.gpu) from exc
             self._signature = f"Chromium {self._browser.version} | {renderer}"
         return self._signature
 

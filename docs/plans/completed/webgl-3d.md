@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 已完成 |
 | 里程碑 | 渲染能力扩展（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [ADR 0028](../../decisions/0028-HTML引擎放开WebGL与three.js.md)（提议）、[WebGL 实测](../../references/webgl-spike.md) |
 | 分支 | `webgl-3d`（开工时从 main 切出） |
@@ -46,14 +46,14 @@
 
 ## 验收标准
 
-- [ ] AC1：一个只用 three.js 的镜头（金样本）通过 `validate_scenes_html`：静态检查、冒烟、确定性、出帧耗时全部无错误。（验证方式：慢测试 `test_webgl_exemplar_validates`）
-- [ ] AC2：同一页面里多个镜头共用 `env.three()`，连续渲染 20 个以上镜头切换不出现 WebGL 上下文丢失。（验证方式：慢测试）
-- [ ] AC3：内置库内部调用 `Math.random`/`performance.now` 不影响确定性：倒序重渲与重启浏览器后帧哈希一致。（验证方式：慢测试）
-- [ ] AC4：`STUDIO_RENDER_GPU=true`（默认）时本机渲染器是 GPU（Metal）；`false` 时是 SwiftShader；两种情况下缓存键不同。（验证方式：慢测试读渲染器签名 + 单元测试比较缓存键）
-- [ ] AC5：纯 2D 项目的组装结果不含 three.js；含 `THREE` 的项目包含且只包含一次。（验证方式：单元测试）
-- [ ] AC6：实时预览里 3D 镜头可以拖动时间轴、正常显示。（验证方式：`preview_start` 打开一个含 3D 镜头的项目，截图）
-- [ ] AC7：真实模型（本机 Claude 订阅登录）在短片项目里按要求写出至少一个 3D 镜头，成片渲染成功，记录步数与出帧耗时。（验证方式：真实冒烟，结论写进 `references/webgl-spike.md`）
-- [ ] AC8：`make check` 全绿；`pytest -m slow tests/engines` 全绿。
+- [x] AC1：一个只用 three.js 的镜头（金样本）通过 `validate_scenes_html`：静态检查、冒烟、确定性、出帧耗时全部无错误。（验证方式：慢测试 `test_webgl_exemplar_validates`）
+- [x] AC2：同一页面里多个镜头共用 `env.three()`，连续渲染 20 个以上镜头切换不出现 WebGL 上下文丢失。（验证方式：慢测试）
+- [x] AC3：内置库内部调用 `Math.random`/`performance.now` 不影响确定性：倒序重渲与重启浏览器后帧哈希一致。（验证方式：慢测试）
+- [x] AC4：`STUDIO_RENDER_GPU=true`（默认）时本机渲染器是 GPU（Metal）；`false` 时是 SwiftShader；两种情况下缓存键不同。（验证方式：慢测试读渲染器签名 + 单元测试比较缓存键）
+- [x] AC5：纯 2D 项目的组装结果不含 three.js；含 `THREE` 的项目包含且只包含一次。（验证方式：单元测试）
+- [x] AC6：实时预览里 3D 镜头可以拖动时间轴、正常显示。（验证方式：`preview_start` 打开一个含 3D 镜头的项目，截图）
+- [x] AC7：真实模型（本机 Claude 订阅登录）在短片项目里按要求写出至少一个 3D 镜头，成片渲染成功，记录步数与出帧耗时。（验证方式：真实冒烟，结论写进 `references/webgl-spike.md`）
+- [x] AC8：`make check` 全绿；`pytest -m slow tests/engines` 全绿。
 
 ## 任务
 
@@ -136,7 +136,7 @@
 - **完成标准**：测试通过，预览截图存档。
 - **验证命令**：`make check`；`cd backend && uv run pytest -m slow`
 
-### T7：真实模型冒烟与文档收尾（待开始）
+### T7：真实模型冒烟与文档收尾（完成）
 
 - **目标**：确认真实模型能用好 3D，并把文档对齐。
 - **涉及文件**：`docs/references/webgl-spike.md`（冒烟结论）、`docs/ARCHITECTURE.md`（`engines.render.html` 一行：`vendor/`、`determinism.js`、`env.gl/three`、GPU 开关与签名；`worker` 一行：`html-v2`）、`docs/runbooks/dev-setup.md`（`STUDIO_RENDER_GPU`、`playwright install chromium` 装的是完整 Chromium）、`docs/quality/QUALITY.md`、ADR 0028 状态改为「已采纳」、`docs/plans/TODO.md`。
@@ -155,11 +155,12 @@
 - 2026-10-11 — T4 — `STUDIO_RENDER_GPU`（默认 true）；`browser.launch_options`、`HtmlBrowser(gpu=…)`、`renderer_signature()`；`HtmlBackend.renderer_signature` 进 `_cache_key`，`ENGINE_VERSION = html-v2`；全部慢测试（76 个）在 GPU 默认下通过
 - 2026-10-11 — T5 — `probe.frame_cost`（`render_jpeg` 计时，首帧预热不计）；`validate_scenes_html` 超过 `SLOW_FRAME_MS = 120` 时警告，结果末行写出帧渲染器（软件渲染时注明）；`BrowserPool.renderer_signature()`，`BrowserLike` 协议加同名方法
 - 2026-10-11 — T6 — 金样本 `webgl-techniques.js`（点阵地球 + 按 beat 生长的航线 + 2D 标题），两个阶段的 `prepare_turn` 都复制；两套提示词加「技术选择」与 `env.three()`/`env.gl()`；金样本在真实浏览器里通过 `validate_scenes_html` 且无警告；隔离实例里实时预览能显示、拖动、播放 3D 镜头（AC6）
+- 2026-10-11 — T7 — 冒烟 `test_webgl_reel_claude_login` 通过（共用 `_run_motion_reel`）；ARCHITECTURE、dev-setup、verification、QUALITY、`.env.example` 已更新
+- 2026-10-11 — 评审 — `code-review high`（main...webgl-3d）提出 10 条，修了 8 条：渲染器复位补全（`autoClear*`、`sortObjects`、`shadowMap`）；上下文恢复后可以继续用；静态检查禁用 `THREE.Clock`/`setAnimationLoop`；读取渲染器签名失败时转成 `ChromiumUnavailable`；worker 每个任务读一次签名（不再按进程缓存）；`_uses_three` 复用 `static_check.script_files`，并先用子串预筛；新 JS 注释改为英文。没有修的 2 条：出帧计时复用确定性检查的渲染（另开一次计时更清楚，代价每镜头约 5 帧）、worker 读签名要多起一次浏览器（为了正确性有意保留）
 
 ## 下一步
 
-- 做 T7：真实模型冒烟。用本机 Claude 订阅登录建一个短片项目（`concept` 硬性要求里写"至少一个镜头用 3D 呈现旋转的地球或分子"），走完 `produce` 并渲染成片；参考已有的冒烟用例 `tests/smoke/test_smoke.py` 里 produce/短片的写法，新增一个 `-k webgl` 用例或手动走一遍；记录步数、出帧耗时、成片耗时，写进 `references/webgl-spike.md`。然后更新 ARCHITECTURE、dev-setup、QUALITY、TODO。
-- windows-native 仍在 active 等验收（负责人 2026-10-11 同意本计划并行开工）。
+- 无。计划已完成，后续事项见 TODO：Windows 上的 GPU 实测、预览首帧黑屏（P3）、`.glb` 模型导入（按需）。
 
 ## 决策记录
 
@@ -170,7 +171,7 @@
 - 2026-10-11 — `Date` 换成冻结版构造函数（无参数时是 1970-01-01，带参数照常），不带 `new` 调用返回固定字符串；agent 脚本仍被静态检查禁用 `Date`。
 - 2026-10-11 — 共享上下文的"复位"：每个镜头（以及 `global.js`）第一次调用 `env.gl()`/`env.three()` 时把 WebGL 画布清成全透明，three 渲染器的清屏色、tone mapping、输出色彩空间、阴影、裁剪、渲染目标等复位为默认值；镜头需要的设置要在 `draw` 里每次重新设。这样镜头渲染顺序不影响画面（`test_renderer_state_does_not_leak_between_scenes`）。
 - 2026-10-11 — 上下文丢失时 `env.gl()` 抛出带说明的错误（`SceneRenderError`），不毒化页面；验证时会换新页面，所以没有额外的池重建逻辑。
-- 2026-10-11 — worker 计算缓存键前要知道渲染器：`HtmlBackend` 新增 `renderer_signature`，真实实现每个 worker 进程（每个开关值）只起一次浏览器读签名并缓存；测试替身返回固定字符串。`pool._launch_default` 不用改（`HtmlBrowser()` 默认读设置）。
+- 2026-10-11 — worker 计算缓存键前要知道渲染器：`HtmlBackend` 新增 `renderer_signature`，测试替身返回固定字符串。起初按进程缓存，评审后改为每个任务读一次：Chromium 可能从 GPU 回落到 SwiftShader，缓存的签名会给软件渲染的帧贴上 GPU 的键。`pool._launch_default` 不用改（`HtmlBrowser()` 默认读设置）。
 - 2026-10-11 — 渲染器信息放在校验结果的末行（不改首行"校验通过"的格式，已有调用方和测试按首行判断）。
 - 2026-10-11 — produce 提示词有 16 000 字节的体积上限（`test_prompt_stays_a_reasonable_size`）：「技术选择」一节压到一段话，加完后 15 993 字节，几乎没有余量；以后再加内容要先删减别处。
 - 2026-10-11 — three.js 按需装配（脚本里出现 `THREE` 标识符才装）— 纯 2D 项目的预览页不变大。
@@ -188,4 +189,10 @@
 ## 验证记录
 
 - AC1：`pytest -m slow tests/stages/test_animation_html_tools.py -k webgl` 通过（金样本两个镜头校验通过、没有警告，预览拼图正常）。
+- AC2：`test_scenes_share_one_three_renderer_and_frames_are_deterministic`（两个镜头、30 个时刻来回切换，渲染器 1 个、WebGL 上下文 1 个，帧哈希确定）。
+- AC3：`test_library_calls_to_nondeterministic_apis_are_seeded`（倒序重渲与新页面哈希一致；`Date.now`、`performance.now` 为 0；定时器回调不执行）。
+- AC4：`test_renderer_signature_names_the_actual_renderer`（macOS：开 GPU 是 `Metal`，关掉是 `SwiftShader`）与 `test_a_different_renderer_changes_the_key`、`test_a_different_renderer_does_not_reuse_cached_frames`。
+- AC5：`test_three_is_not_assembled_for_a_2d_project`、`test_three_is_assembled_once_before_libs_when_any_script_references_it`。
 - AC6：隔离实例（api 8010、前端 5174、临时数据目录，种子 `seed_animation_html_project`，镜头用金样本）。实时预览拖动到 1.1 秒和 2.2 秒都显示 3D 地球，播放时画面推进，控制台没有错误。截图：`data/evidence/webgl-3d/ac6-preview-seek.jpg`、`ac6-preview-playing.png`；出帧参考图 `exemplar-frame-2.9s.jpg`（GPU：`ANGLE Metal Renderer: Apple M4`）。
+- AC7：`make smoke SMOKE_ARGS="-k webgl_reel_claude_login"` 通过，用时 17 分钟；5 个镜头都用 three.js，produce 一轮 62 步、$2.24，成片 12.0 秒，出帧加编码 8.0 秒（详见 `references/webgl-spike.md`「真实模型冒烟」）。冒烟跑的是评审修复之前的代码，修复部分由慢测试覆盖。
+- AC8：`make check` 全绿（3 249+ 个后端测试、1 273 个前端测试）；`pytest -m slow` 79 个全绿。
