@@ -17,6 +17,7 @@ import os
 import shutil
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -555,13 +556,23 @@ async def test_deepseek_litellm(harness: SmokeHarness) -> None:
 # ---- Volcengine TTS（M3 T13，AC10）-------------------------------------------------
 # 引擎层直接调用，不经 TurnRunner：这不是模型对话。文本很短，控制费用和时长。
 
+
+@dataclass(frozen=True)
+class _SmokeVoice:
+    alias: str
+    speaker_id: str
+    engine: str
+
+
 TTS_NARRATION = "这是一次语音合成测试"
 TTS_CUES = ["这是一次", "语音合成测试"]
 
 
 async def test_volcengine_tts() -> None:
     _require_env("VOLCENGINE_TTS_API_KEY")
-    engine = build_tts_engine()
+    engine = build_tts_engine(
+        [_SmokeVoice("zizi", "zh_female_qingchezizi_uranus_bigtts", "doubao_2.0")]
+    )
     result = await engine.synthesize(TTSRequest(text=TTS_NARRATION, voice="zizi", speed=1.0))
     evidence: dict[str, Any] = {
         "success": result.success,
@@ -1019,6 +1030,70 @@ async def test_model_switch_claude_login(tmp_path: Path) -> None:
 # ---- M5 T8: TTS 试听（真实合成，产生少量费用；负责人已确认可以接受）-------------------------
 
 _PREVIEW_CASES = (("zizi", 1.0), ("zizi", 0.5), ("zizi", 2.0), ("xiaohe", 1.2), ("yunzhou", 1.0))
+
+
+async def test_tts_voice_versions_real(tmp_path: Path) -> None:
+    """豆包 v1 与 v2 音色都能真实试听（tts-voice-management T5）：种子里的 v1 `sisi`，以及经
+    `POST /api/tts/voices` 新增的 v2 音色；另外直接用引擎合成 `sisi`，记录 v1 逐字时间戳的形态。"""
+    from io import BytesIO
+
+    from httpx import ASGITransport, AsyncClient
+    from mutagen.mp3 import MP3
+
+    from studio.config import Settings
+    from studio.main import create_app
+
+    from .support import M5_EVIDENCE_DIR
+
+    _require_env("VOLCENGINE_TTS_API_KEY")
+    app = create_app(Settings(data_dir=tmp_path / "data"))
+    evidence: dict[str, Any] = {"cases": []}
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+                created = await client.post(
+                    "/api/tts/voices",
+                    json={
+                        "alias": "smoke_xiaohe",
+                        "label": "冒烟小禾",
+                        "gender": "female",
+                        "speaker_id": "zh_female_xiaohe_uranus_bigtts",
+                        "engine": "doubao_2.0",
+                    },
+                )
+                assert created.status_code == 201, created.text
+                for voice in ("sisi", "smoke_xiaohe"):
+                    response = await client.post(
+                        "/api/tts/preview", json={"voice": voice, "speed": 1.0}
+                    )
+                    row: dict[str, Any] = {"voice": voice, "status": response.status_code}
+                    evidence["cases"].append(row)
+                    assert response.status_code == 200, (voice, response.text)
+                    duration = MP3(BytesIO(response.content)).info.length
+                    row["duration_seconds"] = duration
+                    assert 1.0 <= duration <= 30.0, (voice, duration)
+                    M5_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+                    (M5_EVIDENCE_DIR / f"tts-voice-version-{voice}.mp3").write_bytes(
+                        response.content
+                    )
+
+        v1 = build_tts_engine(
+            [_SmokeVoice("sisi", "zh_female_shuangkuaisisi_moon_bigtts", "doubao_1.0")]
+        )
+        result = await v1.synthesize(TTSRequest(text=TTS_NARRATION, voice="sisi", speed=1.0))
+        evidence["v1_synthesize"] = {
+            "success": result.success,
+            "error_message": result.error_message,
+            "duration_seconds": result.duration_seconds,
+            "word_timestamps": [
+                {"word": w.word, "start": w.start_time, "end": w.end_time}
+                for w in result.word_timestamps
+            ],
+        }
+        assert result.success, result.error_message
+    finally:
+        record_evidence("tts-voice-versions-real", evidence, M5_EVIDENCE_DIR)
 
 
 async def test_tts_preview_real(tmp_path: Path) -> None:

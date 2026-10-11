@@ -1,7 +1,8 @@
 """Volcengine（火山引擎）TTS 引擎（设计 §5.2；计划 M3 T1）。
 
 迁移自 `../ai-video/backend/app/engines/tts/volcengine.py`：流式解析、
-重试判定、mp3 时长解析的逻辑不变，只改 import 路径。
+重试判定、mp3 时长解析的逻辑不变。音色（别名 → speaker id + 豆包版本）由调用方传入，
+资源 id 与时间戳参数按音色所属版本选择（计划 tts-voice-management T2）。
 """
 
 from __future__ import annotations
@@ -12,15 +13,20 @@ import binascii
 import json
 import logging
 import uuid
+from collections.abc import Mapping
 from io import BytesIO
 
 import httpx
 from mutagen.mp3 import MP3
 
-from studio.engines.tts.base import TTSRequest, TTSResult, WordTimestamp
-from studio.engines.tts.voice_map import resolve_speaker
+from studio.engines.tts.base import TTSRequest, TTSResult, TTSVoiceSpec, WordTimestamp
 
 _TTS_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+RESOURCE_ID_BY_ENGINE = {
+    "doubao_1.0": "seed-tts-1.0",
+    "doubao_2.0": "seed-tts-2.0",
+}
+"""豆包版本 → `X-Api-Resource-Id`。v1 用 `enable_timestamp`，v2 用 `enable_subtitle`。"""
 _RETRYABLE_HTTP_STATUS_CODES = {408, 425, 429}
 _NON_RETRYABLE_API_ERROR_MARKERS = (
     "api key",
@@ -51,22 +57,18 @@ class VolcengineTTSEngine:
     def __init__(
         self,
         api_key: str,
-        resource_id: str = "seed-tts-2.0",
-        engine: str = "doubao_2.0",
+        voices: Mapping[str, TTSVoiceSpec],
         max_retries: int = 2,
         retry_base_delay_seconds: float = 1.0,
         endpoint: str = _TTS_URL,
         timeout_seconds: float = 60.0,
-        voices: dict[str, str] | None = None,
     ):
         self._api_key = api_key
-        self._resource_id = resource_id
-        self._engine = engine
+        self._voices = dict(voices)
         self._max_retries = max(0, max_retries)
         self._retry_base_delay_seconds = max(0.0, retry_base_delay_seconds)
         self._endpoint = endpoint
         self._timeout_seconds = timeout_seconds
-        self._voices = voices
 
     async def synthesize(self, request: TTSRequest) -> TTSResult:
         total_attempts = self._max_retries + 1
@@ -93,18 +95,18 @@ class VolcengineTTSEngine:
         raise RuntimeError("unreachable")
 
     async def _synthesize_once(self, request: TTSRequest) -> tuple[TTSResult, bool]:
-        if self._voices is None:
-            speaker = resolve_speaker(request.voice, self._engine)
-        else:
-            try:
-                speaker = self._voices[request.voice]
-            except KeyError as exc:
-                raise ValueError(
-                    f"Voice {request.voice!r} is not available for {self._engine}"
-                ) from exc
+        try:
+            voice = self._voices[request.voice]
+        except KeyError as exc:
+            raise ValueError(f"Voice {request.voice!r} is not available") from exc
+        try:
+            resource_id = RESOURCE_ID_BY_ENGINE[voice.engine]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported TTS engine: {voice.engine}") from exc
+        speaker = voice.speaker_id
         headers = {
             "X-Api-Key": self._api_key,
-            "X-Api-Resource-Id": self._resource_id,
+            "X-Api-Resource-Id": resource_id,
             "X-Api-Request-Id": str(uuid.uuid4()),
             "Content-Type": "application/json",
         }
@@ -120,7 +122,7 @@ class VolcengineTTSEngine:
                 },
             }
         }
-        if self._resource_id == "seed-tts-1.0":
+        if voice.engine == "doubao_1.0":
             body["req_params"]["audio_params"]["enable_timestamp"] = True
         else:
             body["req_params"]["audio_params"]["enable_subtitle"] = True
@@ -236,9 +238,7 @@ class VolcengineTTSEngine:
         return not any(marker in normalized for marker in _NON_RETRYABLE_API_ERROR_MARKERS)
 
     async def health_check(self) -> bool:
-        if self._voices:
-            voice = next(iter(self._voices))
-        else:
-            voice = "sisi" if self._engine == "doubao_1.0" else "zizi"
-        result = await self.synthesize(TTSRequest(text="测试", voice=voice))
+        if not self._voices:
+            return False
+        result = await self.synthesize(TTSRequest(text="测试", voice=next(iter(self._voices))))
         return result.success

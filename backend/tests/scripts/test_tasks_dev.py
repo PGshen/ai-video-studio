@@ -11,7 +11,8 @@ import io
 import os
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import cast
 
 import pytest
 
@@ -82,8 +83,10 @@ POSIX_ROOT = "/Users/me/ai-video-studio"
     ],
 )
 def test_belongs_to_project(info: tuple[str, str] | None, platform: str, expected: bool) -> None:
-    root = ROOT if platform == "win32" else POSIX_ROOT
-    assert tasks.belongs_to_project(info, Path(root), platform=platform) is expected
+    # A POSIX path must stay POSIX even when the test runs on Windows (`Path` would turn it
+    # into a `WindowsPath` with backslashes).
+    root = Path(ROOT) if platform == "win32" else cast(Path, PurePosixPath(POSIX_ROOT))
+    assert tasks.belongs_to_project(info, root, platform=platform) is expected
 
 
 def test_cleanup_kills_only_our_processes() -> None:

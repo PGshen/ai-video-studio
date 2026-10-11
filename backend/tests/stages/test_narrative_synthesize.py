@@ -116,7 +116,9 @@ def _ctx(env: NarrativeProjectEnv) -> ToolContext:
 
 
 def _use_fake_engine(monkeypatch: pytest.MonkeyPatch, responses: dict[str, TTSResult]) -> None:
-    monkeypatch.setattr(synthesize_tts_module, "_ENGINE_FACTORY", lambda: FakeTTSEngine(responses))
+    monkeypatch.setattr(
+        synthesize_tts_module, "_ENGINE_FACTORY", lambda _voices: FakeTTSEngine(responses)
+    )
 
 
 def _read_timing(env: NarrativeProjectEnv) -> dict:
@@ -209,7 +211,9 @@ async def test_invalid_narrative_json_is_rejected_before_any_synthesis(
             calls.append(request.text)
             return await super().synthesize(request)
 
-    monkeypatch.setattr(synthesize_tts_module, "_ENGINE_FACTORY", lambda: _RecordingEngine({}))
+    monkeypatch.setattr(
+        synthesize_tts_module, "_ENGINE_FACTORY", lambda _voices: _RecordingEngine({})
+    )
     _write_narrative(narrative_project, {"scenes": []})
 
     result = await invoke_tool(SYNTHESIZE_TTS_TOOL, _ctx(narrative_project), {})

@@ -226,3 +226,16 @@ class Setting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+
+class TtsVoice(Base):
+    __tablename__ = "tts_voices"
+
+    alias: Mapped[str] = mapped_column(String, primary_key=True)
+    """项目设置里存的就是别名（`projects.settings.voice`），所以全局唯一。"""
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    gender: Mapped[str] = mapped_column(String, nullable=False)
+    speaker_id: Mapped[str] = mapped_column(String, nullable=False)
+    engine: Mapped[str] = mapped_column(String, nullable=False)
+    """豆包 TTS 版本：`doubao_1.0`（`seed-tts-1.0`）或 `doubao_2.0`（`seed-tts-2.0`）。"""
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

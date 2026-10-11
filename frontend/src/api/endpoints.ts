@@ -54,6 +54,7 @@ import type {
   TopicCheckOut,
   TurnAccepted,
   VideoKindsOut,
+  VoiceCreate,
   VoiceOut,
 } from '@/types/api'
 
@@ -283,6 +284,15 @@ export function dismissSuggestion(suggestionId: string): Promise<SuggestionOut> 
 
 export function listVoices(): Promise<VoiceOut[]> {
   return request('/tts/voices')
+}
+
+export function createVoice(body: VoiceCreate): Promise<VoiceOut> {
+  return request('/tts/voices', { method: 'POST', body })
+}
+
+/** 被项目使用、是默认音色或最后一个音色时 409（原因在 `ApiError` 的 detail 里）。 */
+export function deleteVoice(alias: string): Promise<void> {
+  return request(`/tts/voices/${encodePathSegment(alias)}`, { method: 'DELETE' })
 }
 
 /**

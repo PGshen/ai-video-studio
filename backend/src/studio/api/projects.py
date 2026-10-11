@@ -66,7 +66,7 @@ from studio.db.repo.settings import SPEECH_RATE_MAX, SPEECH_RATE_MIN, get_all_se
 from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
 from studio.db.repo.suggestions import delete_suggestions
-from studio.engines.tts.voice_map import voice_aliases
+from studio.db.repo.voices import get_voice
 from studio.stages.pipeline import (
     DEFAULT_KIND,
     KIND_SETTING_KEYS,
@@ -311,7 +311,7 @@ async def patch_project_settings_endpoint(
     _require_not_busy(turn_runner, project_id)
     patch = body.model_dump(exclude_unset=True)
     voice, rate = patch.get("voice"), patch.get("speech_rate")
-    if voice is not None and voice not in voice_aliases():
+    if voice is not None and get_voice(engine, voice) is None:
         raise HTTPException(status_code=422, detail=f"音色不可用：{voice}")
     if rate is not None and not SPEECH_RATE_MIN <= rate <= SPEECH_RATE_MAX:
         raise HTTPException(
