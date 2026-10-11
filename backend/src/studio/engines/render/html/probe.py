@@ -8,7 +8,8 @@ from __future__ import annotations
 import copy
 import io
 import re
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -266,6 +267,21 @@ async def smoke_run(page: PageLike, timeline: Mapping[str, Any], scene_id: str) 
             seen.add(_error_key(message))
             report.errors.append(message)
     return report
+
+
+async def frame_cost(
+    page: PageLike, times: list[float], *, clock: Callable[[], float] = time.perf_counter
+) -> float | None:
+    """Average milliseconds per exported frame (`render_jpeg`, as the final render does) over
+    `times[1:]`; the first frame is a warm-up (shader compilation, texture upload). `None` when
+    there are fewer than two times (ADR 0028)."""
+    if len(times) < 2:
+        return None
+    await page.render_jpeg(times[0])
+    start = clock()
+    for t in times[1:]:
+        await page.render_jpeg(t)
+    return (clock() - start) / (len(times) - 1) * 1000
 
 
 async def determinism_check(page: PageLike, times: list[float]) -> list[float]:

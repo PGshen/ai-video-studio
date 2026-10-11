@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from studio.engines.render.html.probe import (
     SHIFT_MUSIC_SECONDS,
     beat_sensitivity,
     determinism_check,
+    frame_cost,
     is_reel,
     music_shift_sensitivity,
     scene_sample_times,
@@ -50,6 +52,10 @@ _CUE_REFERENCE = re.compile(r"\bcue\s*\(|\bcueEnd\s*\(|\.beats\b")
 _SCENE_FILE = re.compile(r"^animation/scenes/(.+)\.js$")
 _DETERMINISM_SAMPLES = 6
 _MOSTLY_UNCHANGED = 0.5
+SLOW_FRAME_MS = 120.0
+"""Above this a minute of 30 fps video needs more than ~3.6 minutes just to draw (ADR 0028)."""
+_FPS = 30
+_frame_clock = time.perf_counter
 
 
 class ValidateScenesHtmlArgs(BaseModel):
@@ -60,6 +66,7 @@ class ValidateScenesHtmlArgs(BaseModel):
 class _Report:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    renderer: str | None = None
 
     def error(self, message: str, scene: str | None = None) -> None:
         self.errors.append(f"镜头 {scene}：{message}" if scene else message)
@@ -169,6 +176,14 @@ async def _check_scene(page: PageLike, timeline: dict[str, Any], sid: str, repor
                 sid,
             )
             return
+        cost = await frame_cost(page, times, clock=_frame_clock)
+        if cost is not None and cost > SLOW_FRAME_MS:
+            minutes = cost * _FPS * 60 / 1000 / 60
+            report.warn(
+                f"平均出帧 {cost:.0f} 毫秒，一分钟成片约需 {minutes:.1f} 分钟出帧：减少三角形数量、"
+                "粒子数和后期通道，关掉不需要的阴影，或改用 Canvas 2D",
+                sid,
+            )
         if not beats:
             return
         sensitivity = await beat_sensitivity(page, timeline, sid)
@@ -279,6 +294,8 @@ async def _browser_checks(
     while remaining:
         try:
             async with get_browser_pool().acquire(assemble(workdir, timeline)) as page:
+                if report.renderer is None:
+                    report.renderer = await get_browser_pool().renderer_signature()
                 _report_page_errors(page, seen_page_errors, report)
                 while remaining:
                     sid = remaining[0]
@@ -303,13 +320,20 @@ async def _browser_checks(
             return
 
 
+def _renderer_line(renderer: str | None) -> list[str]:
+    if renderer is None:
+        return []
+    kind = "软件渲染，没有 GPU，3D 会明显变慢" if "SwiftShader" in renderer else "GPU"
+    return [f"出帧渲染器：{renderer}（{kind}）"]
+
+
 def _render(report: _Report, targets: list[str], single: bool) -> ToolResult:
     if report.errors:
         lines = [*report.errors, *report.warnings]
         lines.append(f"共 {len(report.errors)} 个错误、{len(report.warnings)} 个警告。")
-        return ToolResult(text="\n".join(lines), is_error=True)
+        return ToolResult(text="\n".join([*lines, *_renderer_line(report.renderer)]), is_error=True)
     head = f"镜头 {targets[0]} 校验通过。" if single else f"全部 {len(targets)} 个镜头校验通过。"
-    return ToolResult(text="\n".join([head, *report.warnings]))
+    return ToolResult(text="\n".join([head, *report.warnings, *_renderer_line(report.renderer)]))
 
 
 async def _handler(ctx: ToolContext, args: ValidateScenesHtmlArgs) -> ToolResult:

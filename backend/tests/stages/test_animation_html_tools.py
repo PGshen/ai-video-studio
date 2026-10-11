@@ -31,6 +31,7 @@ from studio.engines.render.html.browser import (
 )
 from studio.engines.render.html.pool import BrowserPool, PoolBusy, set_browser_pool
 from studio.stages.animation_html import STAGE
+from studio.stages.common.scenes import validate_scenes_html
 from studio.stages.common.scenes.render_preview_html import RENDER_PREVIEW_HTML_TOOL
 from studio.stages.common.scenes.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 
@@ -154,6 +155,32 @@ async def test_all_pass_shape(project: Path, behaviour: Behaviour) -> None:
     assert not result.is_error
     assert result.text.splitlines()[0] == "全部 2 个镜头校验通过。"
     assert result.images == []
+
+
+async def test_the_renderer_is_reported(project: Path, behaviour: Behaviour) -> None:
+    result = await _validate(project)
+    assert "出帧渲染器：fake-renderer" in result.text
+
+
+async def test_software_rendering_is_called_out(project: Path, behaviour: Behaviour) -> None:
+    behaviour.renderer = "Chromium 140 | ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))"
+    result = await _validate(project)
+    assert "软件渲染" in result.text
+
+
+async def test_slow_frames_are_a_warning_not_an_error(
+    project: Path, behaviour: Behaviour, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ticks = iter(float(x) for x in range(10_000))  # every clock read advances one second
+    monkeypatch.setattr(validate_scenes_html, "_frame_clock", lambda: next(ticks))
+    result = await _validate(project, scene_id="s-hook")
+    assert not result.is_error
+    assert "平均出帧" in result.text and "毫秒" in result.text
+
+
+async def test_fast_frames_do_not_warn(project: Path, behaviour: Behaviour) -> None:
+    result = await _validate(project, scene_id="s-hook")
+    assert "平均出帧" not in result.text
 
 
 async def test_static_violation_is_an_error_with_file_and_line_and_skips_the_browser(

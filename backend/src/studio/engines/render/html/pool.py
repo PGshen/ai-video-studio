@@ -118,6 +118,11 @@ class BrowserPool:
                 if self._active == 0:
                     self._schedule_idle()
 
+    async def renderer_signature(self) -> str:
+        """The pool browser's renderer (GPU model or SwiftShader), for reporting to the agent."""
+        browser = await self._ensure_browser()
+        return await browser.renderer_signature()
+
     async def close(self) -> None:
         self._cancel_idle()
         async with self._lock:

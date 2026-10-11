@@ -76,6 +76,7 @@ class Behaviour:
         self.pads: dict[str, float] = {}
         self.opened = 0
         self.assembled: list[AssembledPage] = []
+        self.renderer = "fake-renderer"
 
 
 class ScriptedBrowser:
@@ -89,6 +90,9 @@ class ScriptedBrowser:
         self._b.opened += 1
         self._b.assembled.append(page)
         return ScriptedPage(self._b, _embedded_timeline(page))
+
+    async def renderer_signature(self) -> str:
+        return self._b.renderer
 
     async def close(self) -> None:
         self.connected = False
