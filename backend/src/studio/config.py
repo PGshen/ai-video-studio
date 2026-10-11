@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     OpenAI 不提供 Shell、`render_music` 报错。macOS 上无效（永远用 Seatbelt）。设置页可以覆盖，
     见 `db.repo.settings.effective_allow_unsandboxed_exec`。"""
 
+    render_gpu: bool = True
+    """成片、预览和镜头检查出帧时是否用 GPU（`STUDIO_RENDER_GPU`，ADR 0028）。默认开：用完整
+    Chromium 的新版 headless，拿得到 GPU 就走 GPU，拿不到时 Chromium 自己回落到 SwiftShader
+    软件渲染。设为 `false` 时用 headless shell 的软件渲染，供排查问题用。两种方式出的帧字节
+    不同，画面缓存按渲染器区分。"""
+
     @field_validator(
         "anthropic_base_url",
         "openai_base_url",
@@ -109,6 +115,13 @@ class Settings(BaseSettings):
     def _blank_switch_is_off(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return False
+        return value
+
+    @field_validator("render_gpu", mode="before")
+    @classmethod
+    def _blank_gpu_is_default(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return True
         return value
 
     @field_validator("data_dir")

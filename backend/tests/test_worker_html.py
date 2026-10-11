@@ -206,6 +206,16 @@ async def test_changing_a_scene_lib_or_the_timeline_invalidates_the_cache(
     assert len(backend.video_calls) == 4
 
 
+async def test_a_different_renderer_does_not_reuse_cached_frames(html_env: HtmlEnv) -> None:
+    backend = FakeBackend()
+    await _run(html_env, backend)
+    await _run(html_env, backend)
+    assert len(backend.video_calls) == 1
+    backend.renderer = "Chromium 140 | SwiftShader"
+    await _run(html_env, backend)
+    assert len(backend.video_calls) == 2
+
+
 async def test_render_failure_fails_the_job_and_keeps_old_output_and_cache_clean(
     html_env: HtmlEnv,
 ) -> None:

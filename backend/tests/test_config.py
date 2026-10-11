@@ -156,3 +156,14 @@ def test_allow_unsandboxed_exec_defaults_to_false_and_reads_env(
     assert Settings().allow_unsandboxed_exec is True
     monkeypatch.setenv("STUDIO_ALLOW_UNSANDBOXED_EXEC", "")
     assert Settings().allow_unsandboxed_exec is False
+
+
+def test_render_gpu_defaults_to_true_and_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studio.config import Settings
+
+    monkeypatch.delenv("STUDIO_RENDER_GPU", raising=False)
+    assert Settings().render_gpu is True
+    monkeypatch.setenv("STUDIO_RENDER_GPU", "false")
+    assert Settings().render_gpu is False
+    monkeypatch.setenv("STUDIO_RENDER_GPU", " ")
+    assert Settings().render_gpu is True

@@ -98,7 +98,7 @@
 - **完成标准**：测试通过。
 - **验证命令**：`make check`；`cd backend && uv run pytest -m slow tests/engines`
 
-### T4：默认 GPU、开关与渲染器签名进缓存键（待开始）
+### T4：默认 GPU、开关与渲染器签名进缓存键（完成）
 
 - **目标**：出帧默认用 GPU，可以用开关关掉；画面缓存按渲染器区分。
 - **涉及文件**：`config.py`（`render_gpu: bool = True`，`STUDIO_RENDER_GPU`，空值按默认处理）、`engines/render/html/browser.py`（`HtmlBrowser(gpu: bool)`、启动参数、`renderer_signature`）、`engines/render/html/pool.py`（`_launch_default` 读设置；`BrowserLike` 协议加 `renderer_signature`）、`worker_html.py`（`_cache_key` 加签名、`ENGINE_VERSION = "html-v2"`）、`backend/.env.example`、相关测试。
@@ -152,10 +152,11 @@
 - 2026-10-11 — T1 — three.js 0.186.1 打成 IIFE 放进 `vendor/three.iife.js`（736 KB），`vendor/__init__.py` 提供 `three_script()`/`three_version()`；测试 4 个通过
 - 2026-10-11 — T2 — `determinism.js` 作为第一段系统脚本（种子随机数每次 `renderAt` 重置、时间冻结为 0、定时器不执行），预览改用 `__RAF__`；`THREE` 出现在 agent 脚本（剥注释后）时装配 three.js，`page_hash` 跟随；assemble 新增 7 个用例、浏览器慢测试 2 个，`pytest -m slow tests/engines` 55 个全绿
 - 2026-10-11 — T3 — `runtime.js` 加 `env.gl()`/`env.three()`（懒创建、全页共享；每个镜头第一次取用时清空画布并复位渲染器状态）；`browser.py` 过滤 Chromium 的 WebGL 驱动性能提示；新文件 `test_html_webgl.py`（9 个，含 5 个慢测试），`pytest -m slow tests/engines` 60 个全绿
+- 2026-10-11 — T4 — `STUDIO_RENDER_GPU`（默认 true）；`browser.launch_options`、`HtmlBrowser(gpu=…)`、`renderer_signature()`；`HtmlBackend.renderer_signature` 进 `_cache_key`，`ENGINE_VERSION = html-v2`；全部慢测试（76 个）在 GPU 默认下通过
 
 ## 下一步
 
-- 做 T4：先写测试——`config.Settings.render_gpu`（默认 true、`false`、空值）、`worker_html._cache_key` 对不同渲染器签名得到不同键、`pool._launch_default` 按设置传 `gpu`；再改 `browser.HtmlBrowser`（`gpu` 参数、`channel="chromium"`、`renderer_signature`）。
+- 做 T5：先在 `tests/engines/test_html_probe.py` 写 `frame_cost` 的用例（假页面），再在 `validate_scenes_html` 的工具测试里写"超过 `SLOW_FRAME_MS` 出警告、首行带渲染器"；`PageLike` 没有渲染器签名，签名从 `get_browser_pool()` 的浏览器取（可能要给 `BrowserPool` 加 `renderer_signature()`）。
 - windows-native 仍在 active 等验收（负责人 2026-10-11 同意本计划并行开工）。
 
 ## 决策记录
@@ -167,6 +168,7 @@
 - 2026-10-11 — `Date` 换成冻结版构造函数（无参数时是 1970-01-01，带参数照常），不带 `new` 调用返回固定字符串；agent 脚本仍被静态检查禁用 `Date`。
 - 2026-10-11 — 共享上下文的"复位"：每个镜头（以及 `global.js`）第一次调用 `env.gl()`/`env.three()` 时把 WebGL 画布清成全透明，three 渲染器的清屏色、tone mapping、输出色彩空间、阴影、裁剪、渲染目标等复位为默认值；镜头需要的设置要在 `draw` 里每次重新设。这样镜头渲染顺序不影响画面（`test_renderer_state_does_not_leak_between_scenes`）。
 - 2026-10-11 — 上下文丢失时 `env.gl()` 抛出带说明的错误（`SceneRenderError`），不毒化页面；验证时会换新页面，所以没有额外的池重建逻辑。
+- 2026-10-11 — worker 计算缓存键前要知道渲染器：`HtmlBackend` 新增 `renderer_signature`，真实实现每个 worker 进程（每个开关值）只起一次浏览器读签名并缓存；测试替身返回固定字符串。`pool._launch_default` 不用改（`HtmlBrowser()` 默认读设置）。
 - 2026-10-11 — three.js 按需装配（脚本里出现 `THREE` 标识符才装）— 纯 2D 项目的预览页不变大。
 
 ## 意外与发现

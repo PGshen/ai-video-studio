@@ -47,7 +47,7 @@ from studio.timeline.load import TimelineSources, load_timeline
 from studio.timeline.schema import Timeline
 from studio.workspace import BlobStore, ScopeError, create_snapshot, safe_path
 
-ENGINE_VERSION = "html-v1"
+ENGINE_VERSION = "html-v2"  # v2: determinism shim, optional three.js, GPU frames (ADR 0028)
 """缓存键的一部分；改动出帧或编码逻辑时 bump，让旧缓存自然失效。"""
 _VIDEO_PROGRESS_SHARE = 0.95
 """出帧占总进度的比例，剩下的留给混音。"""
@@ -56,6 +56,7 @@ _BEAT_INTERVAL_SECONDS = 10.0
 
 RenderVideo = Callable[[AssembledPage, float, Path, int, ProgressCallback], Awaitable[None]]
 Mix = Callable[[Path, list[AudioTrack], float, Path, MusicMix | None], Awaitable[None]]
+RendererSignature = Callable[[], Awaitable[str]]
 
 
 class HtmlJobError(RuntimeError):
@@ -66,6 +67,7 @@ class HtmlJobError(RuntimeError):
 class HtmlBackend:
     render_video: RenderVideo
     mix: Mix
+    renderer_signature: RendererSignature
 
 
 async def _render_video(
@@ -93,8 +95,21 @@ async def _mix(
     await mix_final(video, tracks, duration, output, music=music)
 
 
+_signatures: dict[bool, str] = {}
+
+
+async def _renderer_signature() -> str:
+    """Asked once per worker process (and per `STUDIO_RENDER_GPU` value): the cache key is needed
+    before deciding whether to render at all."""
+    browser = HtmlBrowser()
+    if browser.gpu not in _signatures:
+        async with browser:
+            _signatures[browser.gpu] = await browser.renderer_signature()
+    return _signatures[browser.gpu]
+
+
 def real_backend() -> HtmlBackend:
-    return HtmlBackend(render_video=_render_video, mix=_mix)
+    return HtmlBackend(render_video=_render_video, mix=_mix, renderer_signature=_renderer_signature)
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,12 +284,14 @@ def _cache_path(workdir: Path, key: str) -> Path:
     return workdir / ".cache" / "render_cache" / f"{key}.mp4"
 
 
-def _cache_key(page: AssembledPage, timeline_digest: str, fps: int) -> str:
+def _cache_key(page: AssembledPage, timeline_digest: str, fps: int, renderer: str) -> str:
     """键取自**要交给浏览器渲染的那份组装结果**（页面、脚本、路由文件的字节），不是另读一遍工作区：
     渲染期间镜头被改了，存进缓存的也是按旧内容渲染出的帧，键与内容始终对得上。
-    随包字体经 `page.routes` 进键（字节在里面），编码参数经 `encode_signature` 进键（TD-70）。"""
+    随包字体经 `page.routes` 进键（字节在里面），编码参数经 `encode_signature` 进键（TD-70）；
+    渲染器签名（浏览器版本与 GPU/软件渲染器）进键：GPU 出的帧只在同一台机器上可复现（ADR 0028）。"""
     digest = hashlib.sha256()
     digest.update(f"{ENGINE_VERSION}|{timeline_digest}|1920x1080|{fps}|".encode())
+    digest.update(f"{renderer}|".encode())
     digest.update("\0".join(encode_signature(fps)).encode("utf-8"))
     digest.update(page.html.encode("utf-8"))
     for name, source in sorted(page.scripts.items()):
@@ -387,9 +404,10 @@ async def _run_html_job(
 
     heartbeat(engine, job_id)
     page = assemble(workdir, timeline)
-    silent = _cache_path(workdir, _cache_key(page, loaded.hash, fps))
     output_dir = workdir / "output"
     try:
+        renderer = await backend.renderer_signature()
+        silent = _cache_path(workdir, _cache_key(page, loaded.hash, fps, renderer))
         if not silent.is_file():
             await backend.render_video(
                 page, float(timeline["duration"]), silent, fps, _progress_reporter(engine, job_id)
