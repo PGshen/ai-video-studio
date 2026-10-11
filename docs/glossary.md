@@ -13,6 +13,9 @@
 | 选题池 | idea pool | 所有想法卡片的集合，头脑风暴的产出放在这里 |
 | 项目 | project | 从一张想法卡片创建，完整走完三个阶段，产出一个视频 |
 | 阶段 | stage | `topic`（选题打磨）、`narrative`（叙事）、`animation`（动画，含成片）；另有不属于项目的 `brainstorm` |
+| 多阶段模式 | staged mode | 项目类型的 `mode=staged`（默认）：从选题卡创建，按阶段推进、逐步定稿 |
+| 自由模式 | free mode | 项目类型的 `mode=free`：在项目页直接创建（也可以从选题卡），只有一个对话阶段 `free_explainer`（自由讲解）或 `free_produce`（自由创作：短片、MV），整个工作区可写、联网、没有上游；预览与成片照常，见 [ADR 0029](decisions/0029-自由模式单阶段项目.md) |
+| 项目说明 | project note | 自由项目创建时生成的 `notes/project.md`：形态与成片需要的文件，agent 每个新会话先读它 |
 | 阶段状态 | stage status | `locked`（未开放）、`active`（进行中）、`finalized`（已定稿）、`stale`（上游已变更） |
 | 工作区 | workspace | 一个项目的文件目录 `data/projects/<id>/`，产物的权威来源 |
 | 产物 | artifact | 阶段的主要输出文件：`brief.md`、`narrative.json`、`scenes/*.py`、`final.mp4` |

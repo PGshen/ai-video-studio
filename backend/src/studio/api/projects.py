@@ -179,7 +179,7 @@ _FREE_FORMS: dict[tuple[bool, str], tuple[str, list[str]]] = {
 }
 
 
-def _project_note_markdown(kind: ProjectKind, title: str) -> str:
+def project_note_markdown(kind: ProjectKind, title: str) -> str:
     form, needs = _FREE_FORMS[(kind.narration, kind.music_source)]
     lines = [
         f"# 项目说明：{title}",
@@ -201,7 +201,7 @@ def _seed_files(
     """新项目除风格之外的初始文件：想法卡片（有的话）与自由项目的项目说明。"""
     if kind.mode != "free":
         return {f"{pipeline[0]}/{IDEA_CARD_NAME}": _idea_card_markdown(idea)} if idea else {}
-    seeded = {PROJECT_NOTE_NAME: _project_note_markdown(kind, title)}
+    seeded = {PROJECT_NOTE_NAME: project_note_markdown(kind, title)}
     if idea is not None:
         seeded[IDEA_CARD_NAME] = _idea_card_markdown(idea)
     return seeded

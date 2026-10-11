@@ -23,7 +23,7 @@
 | P3 | 实时预览刚打开时画面是黑的，第一次拖动或播放后才出现 | webgl-3d T6，2026-10-11 | 预览页 `ready` 后前端发了 seek，iframe 里用 `requestAnimationFrame` 执行；main 上同样复现，可能是不可见或刚创建的跨源 iframe 里帧回调被节流。可在 `ready` 时直接同步渲染一次 |
 | P3 | 模型配置面板删除失败（409）时看不到原因：`ModelProfilesPanel.vue` 的「确认删除」用 `AlertDialogAction`，它点击即关闭对话框，`preventDefault` 拦不住 | tts-voice-management T4，2026-10-10 | 音色面板已改用普通 `Button` 并有测试（`VoicePanel.spec.ts`）；模型配置面板同样改法，并补一个 409 用例 |
 | P2 | 音乐 MV 的画面质量：让用户通过对话与风格库控制要生成什么样的动画 | 负责人试看 4B 冒烟成片的反馈，2026-10-06 | 4B 冒烟成片（agent 自主写的画面）效果一般；方向是让对话与风格库更强地约束画面（风格、母题、镜头语言），而不是让 agent 自由发挥。负责人系统使用后再提具体需求；强拍相位/BPM/淡出的试听核对也一并在那时做（见 [import-music-mv.md](../references/import-music-mv.md)） |
-| P2 | 讲解类（`explainer`）是否也取消阶段拆分（`topic → narrative → music → animation_html`） | produce 阶段设计，2026-10-06 | 短片、MV 合并配乐与动画后效果是否更好，负责人试用后再决定；讲解类有旁白与时间戳，耦合方式不同，不一并改 |
+| P2 | 讲解类（`explainer`）是否也取消阶段拆分（`topic → narrative → music → animation_html`） | produce 阶段设计，2026-10-06 | 短片、MV 合并配乐与动画后效果是否更好，负责人试用后再决定；讲解类有旁白与时间戳，耦合方式不同，不一并改；自由讲解（free-mode，2026-10-12）可作为不拆阶段的对照样本 |
 | P2 | 能量曲线叠加歌词刻度 | mv-lyrics T6，2026-10-07 | 歌词列表已能点击跳转；刻度要改 `EnergyView` 的坐标层，用过之后再决定要不要 |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
@@ -33,6 +33,7 @@
 | P3 | Fake 运行时关闭时，新建会话的模型下拉框仍把 `fake` 标为默认 | windows-native T11，2026-10-10 | 本机曾用开了 Fake 的 `preview_start` 起过 api，种子里写进了 `fake`；`tasks.py dev`（不开 Fake）下默认仍选它，选了会失败 |
 | P2 | 登录冒烟有 3 个用例被模型行为挡住：`test_claude_login_cancel_then_turn`、`test_claude_login_sandbox_read`（claude-sonnet-5 把"这是自动化测试，用 Bash 执行…"当成提示注入，拒绝运行 `sleep`/探测脚本）、`test_style_claude_login`（叙事轮用 Bash 而不是 Read 读 `style/exemplars/`，断言只认 Read） | windows-native T12，2026-10-10 | main（`13fcef0`）上前两个以同样方式失败，不是该分支引入的；改冒烟的指令写法（例如放进阶段任务里、说明来源）或放宽断言，沙箱读隔离在此之前由慢测试和 Seatbelt 单测覆盖 |
 | P3 | 叙事提示词说场景文件是 `animation/scenes/<id>.py`（Manim 遗留），HTML 引擎实际是 `.js` | free-mode T4，2026-10-12 | 片段 `stages/common/prompts/narration-schema.md`；改一个字，叙事与自由讲解都受益 |
+| P3 | 自由讲解还没有叙事时，预览接口的原因写"叙事阶段需要先定稿并完成配音"（来自 `timeline/load.py` 的缺文件提示），自由项目没有叙事阶段 | free-mode L4，2026-10-12 | 前端已补一句正确的下一步；可以让提示按来源（顶层/`upstream/`）区分措辞 |
 
 ## 已完成
 
