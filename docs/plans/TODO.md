@@ -16,6 +16,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
+| P1 | 自由模式：直接创建的单阶段项目（给题目直接出讲解片、临时短片） | 负责人，2026-10-12 | [设计](../design/2026-10-12-free-mode.md)；计划 [free-mode.md](active/free-mode.md)（待批准） |
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
 | P2 | Windows 上 HTML 引擎的 GPU 出帧实测（新版 headless 走 D3D11/ANGLE 的速度与确定性、没有 GPU 时回落） | webgl-3d，2026-10-11 | 在负责人的 Windows 电脑上做；结论补进 [webgl-spike](../references/webgl-spike.md)，需要时给 `browser.launch_options` 加平台参数 |
 | P3 | 3D 镜头导入 `.glb` 模型（`GLTFLoader` 与异步就绪） | webgl-3d，2026-10-11 | ADR 0028 第一版不做；负责人需要时再设计 |
