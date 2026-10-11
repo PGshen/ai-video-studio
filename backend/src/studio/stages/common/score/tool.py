@@ -15,12 +15,14 @@ from studio.agent.exec_policy import exec_mode
 from studio.agent.shell_sandbox import SANDBOX_EXEC, sandbox_available, seatbelt_profile
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
 from studio.config import get_settings, repo_root
+from studio.db.repo.projects import get_project
 from studio.engines.audio.analysis import MusicReport
 from studio.engines.audio.runner import WrapCommand
 from studio.stages.common.picture import compress_png
 from studio.stages.common.score.render import RenderOutcome, render_music_core
 from studio.stages.common.score.sources import import_source, infer_sources
 from studio.stages.common.timeline_source import load_live_narrated, timeline_source
+from studio.stages.pipeline import FREE_STAGES, kind_from_settings
 from studio.timeline import TimelineError
 from studio.timeline.load import load_timeline
 
@@ -146,10 +148,38 @@ class RenderMusicArgs(BaseModel):
     pass
 
 
+_FREE_MV_WITHOUT_SONG = (
+    "这是自由 MV（见 notes/project.md），配乐就是用户上传的歌，不能自己合成。"
+    "工作区里还没有歌曲：请用户先在工作台「配乐」标签页上传歌曲，再调用 analyze_music。"
+)
+_FREE_EXPLAINER_WITHOUT_MUSIC = (
+    "这个自由讲解不带背景乐（见 notes/project.md），成片不会用配乐，不要渲染配乐。"
+    "需要背景乐请用户新建一个带背景乐的项目。"
+)
+
+
+def _free_form_refusal(ctx: ToolContext) -> str | None:
+    """自由阶段拿得到项目类型（工作区看不出来）：MV 还没有歌、讲解没选背景乐时都不该合成。"""
+    if ctx.stage not in FREE_STAGES or ctx.engine is None or ctx.project_id is None:
+        return None
+    project = get_project(ctx.engine, ctx.project_id)
+    if project is None:
+        return None
+    kind = kind_from_settings(project.settings)
+    if kind.music_source == "import":
+        return _FREE_MV_WITHOUT_SONG
+    if kind.music_source == "none":
+        return _FREE_EXPLAINER_WITHOUT_MUSIC
+    return None
+
+
 async def _handler(ctx: ToolContext, args: RenderMusicArgs) -> ToolResult:
     source = timeline_source(ctx.stage)
     if import_source(ctx.workdir) is not None:
         return ToolResult(text=PRODUCE_IMPORT_MESSAGE, is_error=True)
+    refusal = _free_form_refusal(ctx)
+    if refusal is not None:
+        return ToolResult(text=refusal, is_error=True)
     wrap = exec_wrapper(ctx.workdir, allow_unsandboxed=ctx.allow_unsandboxed_exec)
     if wrap is None:
         return ToolResult(text=NO_SANDBOX_MESSAGE, is_error=True)

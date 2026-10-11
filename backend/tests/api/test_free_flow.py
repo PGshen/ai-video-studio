@@ -330,3 +330,89 @@ async def test_files_api_writes_notes_but_not_style(api_env: ApiEnv) -> None:
 
     assert ok.status_code == 200, ok.text
     assert refused.status_code == 403
+
+
+# ---- 整分支评审后的修复 ------------------------------------------------------------------
+
+
+async def test_free_explainer_with_music_previews_before_the_music_exists(api_env: ApiEnv) -> None:
+    pid = await _create(api_env, narration=True, music_source="synth")
+    await _turn(
+        api_env,
+        pid,
+        "free_explainer",
+        [
+            *_narration_steps(),
+            write("animation/scenes/s-hook.js", _CUE_SCENE),
+            write("animation/scenes/s-explain.js", _CUE_SCENE),
+        ],
+    )
+
+    meta = await api_env.client.get(f"/api/projects/{pid}/animation/html-preview/meta")
+
+    assert meta.status_code == 200, meta.text
+    assert meta.json()["music"] is None
+
+
+async def test_free_mv_without_a_song_refuses_render_music(api_env: ApiEnv) -> None:
+    pid = await _create(api_env, narration=False, music_source="import")
+
+    results = await _turn(
+        api_env,
+        pid,
+        "free_produce",
+        [write("music/compose.py", FREE.read_text()), call_tool("render_music")],
+    )
+
+    result = results["render_music"][0]
+    assert result["is_error"] is True
+    assert "上传歌曲" in result["text"]
+    assert not (api_env.workdir(pid) / "music" / "music.wav").exists()
+
+
+async def test_free_explainer_without_music_refuses_render_music(api_env: ApiEnv) -> None:
+    pid = await _create(api_env, narration=True, music_source="none")
+
+    results = await _turn(
+        api_env,
+        pid,
+        "free_explainer",
+        [write("music/compose.py", REF.read_text()), call_tool("render_music")],
+    )
+
+    result = results["render_music"][0]
+    assert result["is_error"] is True
+    assert "不带背景乐" in result["text"]
+
+
+async def test_project_note_points_at_the_idea_card(api_env: ApiEnv) -> None:
+    from studio.db.repo.ideas import create_idea
+
+    idea = create_idea(api_env.app.state.engine, title="彩虹", pitch="为什么是弧形")
+    response = await api_env.client.post(
+        "/api/projects",
+        json={
+            "title": "彩虹",
+            "idea_id": idea.id,
+            "mode": "free",
+            "engine": "html",
+            "narration": True,
+            "music_source": "none",
+        },
+    )
+    note = (api_env.workdir(response.json()["id"]) / "notes/project.md").read_text(encoding="utf-8")
+
+    assert "notes/idea-card.md" in note
+
+
+@pytest.mark.parametrize("path", ["upstream/exemplar/x.js", "output/final.json", ".cache/a"])
+async def test_files_api_still_refuses_system_dirs(api_env: ApiEnv, path: str) -> None:
+    pid = await _create(api_env, narration=True, music_source="none")
+
+    response = await api_env.client.put(
+        f"/api/projects/{pid}/files/{path}",
+        params={"stage": "free_explainer"},
+        json={"content": "x\n"},
+    )
+
+    assert response.status_code in (400, 403), response.text

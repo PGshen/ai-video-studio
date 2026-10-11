@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 自由模式（非编号） |
 | 设计依据 | [自由模式设计](../../design/2026-10-12-free-mode.md) |
 | 分支 | `feat/free-mode`（从 `main` 的 `1850787` 切出，设计文档已在其上） |
@@ -185,7 +185,7 @@
 - **完成标准**：vitest 通过。
 - **验证命令**：`make check`
 
-### T10：冒烟、L4 与文档（待开始）
+### T10：冒烟、L4 与文档（完成）
 
 - **目标**：真实模型和浏览器验证；文档同步。
 - **涉及文件**：`backend/tests/smoke/test_free_mode_smoke.py`（新）、`docs/decisions/0029-自由模式单阶段项目.md`（新）、`docs/ARCHITECTURE.md`、`docs/glossary.md`、`docs/quality/QUALITY.md`、`docs/plans/TODO.md`、`docs/runbooks/verification.md`（如冒烟命令有新增）。
@@ -206,11 +206,13 @@
 - 2026-10-12 — T6 — `free_explainer` 阶段注册（状态摘要：叙事、配音一致性、场景覆盖、配乐是否过期）；创建自由项目时生成 `notes/project.md`（D7）（`cd56ccf`）
 - 2026-10-12 — T7 — `tests/api/test_free_flow.py`：四种形态从创建到成片定稿、对话中上传 409、Shell 改风格被还原、文件接口；fake 默认脚本在整区可写时写进 `notes/`（`26ed0b9`）
 - 2026-10-12 — T8 — 前端：`mode` 类型；`presetKey`/`presetsFor`/`selectedKind`；`VideoKindPicker` 按模式分组与过滤；`NewFreeProjectDialog` 与项目页「新建项目」；选题卡可选自由形态；卡片「自由」标记；阶段名与阶段默认模型（`86f1df8`）
-- 2026-10-12 — T9 — `canvasTabs` 纯函数；`HtmlAnimationCanvas` 支持 `narrative`/`files` 插槽、自由阶段默认实时预览、"还没有开始"提示覆盖自由阶段；`NarrativeCanvas` 的 `stage` 属性；`StageNav` 自由模式标签；工作台页接入两个自由阶段
+- 2026-10-12 — T9（`9036c0a`）— `canvasTabs` 纯函数；`HtmlAnimationCanvas` 支持 `narrative`/`files` 插槽、自由阶段默认实时预览、"还没有开始"提示覆盖自由阶段；`NarrativeCanvas` 的 `stage` 属性；`StageNav` 自由模式标签；工作台页接入两个自由阶段
+- 2026-10-12 — T10 — L4 走查（发现并修好面包屑英文 id，`68f2669`）；ADR 0029、ARCHITECTURE、glossary、QUALITY、TODO；冒烟用例 `tests/smoke/test_free_mode_smoke.py`（`a17e6c2`）
+- 2026-10-12 — 整分支独立评审（Opus）：无 Critical；修了 I1–I3 和 M1（见 D10），其余小问题延后（见「意外与发现」）
 
 ## 下一步
 
-- 从 T10 开始（冒烟、L4 与文档）。工作台页的接线没有单元测试（页面本来就没有 spec），由 L4 验证。
+- 全部任务完成，等负责人验收。验收通过后：计划移到 `completed/`，TODO 条目移到「已完成」，`feat/free-mode` 以 `--no-ff` 合并回 `main` 并在 `main` 上重跑 `make check`。
 
 ## 决策记录
 
@@ -222,10 +224,12 @@
 - 2026-10-12 — **D7**（T6）：阶段协议只给工作区路径，agent 无从知道自由讲解是否选了背景乐、自由创作是短片还是 MV。创建自由项目时生成 `notes/project.md`（形态、成片需要的文件），两个自由阶段的提示词要求每个新会话先读它。同时把自由项目的选题卡放到顶层 `notes/idea-card.md`，不放 `free_*/notes/`：自由阶段的笔记都在 `notes/`，一个叫 `free_explainer/` 的顶层目录只会让人困惑。设计 §3.3 写的是沿用 `<pipeline[0]>/notes/`，这里是有意偏离。
 - 2026-10-12 — **D8**（T8）：`components/session/suggestionFlow.ts` 的 `STAGE_TITLES` 不加自由阶段：它只用于回退建议的目标阶段，自由阶段没有上游、不会产生回退建议。`projectView.ts` 不用改：阶段筛选项来自 `composables/stageTitles.ts`，加了两个阶段名就自动出现。选择器的预设键：分阶段沿用 `video_kind`，自由加前缀 `free-`（卡片 `data-testid` 随之变化）。
 - 2026-10-12 — **D9**（T9）：`FileCanvas` 的只读判断不改：前端只能挡住"运行中"和 `upstream/`，可写范围外的保存由后端返回 403 并显示原因，自由阶段同样适用（`style/` 保存会得到 403）。`NarrativeCanvas` 不需要 `hideFinalize`：定稿按钮是工作台页通过 `actions` 插槽塞进去的，嵌入自由画布时不传就没有。"还没有开始"的中性提示也覆盖两个自由阶段，自由讲解的提示是"先写叙事并配音"。
+- 2026-10-12 — **D10**（整分支评审后的修复）：（I1）带背景乐的自由讲解先配音后配乐，预览端点原来一律要 `music/events.json`，配乐出来前预览打不开；改为自由讲解只在 `events.json` 存在时叠加配乐层（`api/html_preview.py`），与工具口径一致，成片仍由 worker 要求配乐。设计 §5.5 写的是预览接口不改，这是为满足"预览保留"做的最小偏离。（I2）从选题卡建的自由项目，`notes/project.md` 写明卡片位置，`free-mode` 片段不再说"没有选题"。（I3）`render_music` 在自由阶段读项目类型：自由 MV 没有歌曲、或自由讲解不带背景乐时拒绝合成并说明原因（D6 只论证了 `status_summary` 拿不到项目类型，工具通过 `ctx.engine` 拿得到）。（M1，升为 Important）自由阶段的 `tool_managed` 加 `upstream/*`、`output/*`、`.cache/*`，文件接口对这些目录重新返回 403。
 - 2026-10-12 — **D2**：`produce` 的 `blockers.py`、`prepare.py` 挪到 `stages/common/produce_flow/`（T5）。设计 §4.2 写的是"复用"，但阶段之间不能互相 import，只能先挪到 `common`。
 
 ## 意外与发现
 
+- 2026-10-12（评审，延后的小问题）：M2 `free_explainer` 只在已有 `compose.py` 时才复制配乐金样本（第一次写脚本那轮看不到）；M3 自由讲解的场景工具按文件判断是否叠加配乐层（I3 修复后不会再出现不一致状态）；M4 自由 MV 成片定稿后仍能换歌（已记 TODO）；M5 大小写不敏感文件系统上文件接口可绕过受保护路径（已记 TODO）；M6 自由讲解选了背景乐但还没做时状态摘要不提（靠 `notes/project.md`）；M7 测试缺口：Shell 改 `timing.json`/`music.wav`/写 `uploads/` 的端到端还原、自由讲解改稿后成片前置检查拒绝、多阶段提示词的逐字锁定（对照文件已按计划删除，评审逐字比对过四份一致）。
 - 无
 
 ## 阻塞

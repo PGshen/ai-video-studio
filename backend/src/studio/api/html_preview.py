@@ -51,12 +51,19 @@ def _load(engine: Engine, settings: Settings, project_id: str) -> tuple[LoadedTi
     workdir = project_dir(settings.data_dir, project_id)
     try:
         kind = kind_from_settings(project.settings)
+        # A free explainer voices first and scores later (free-mode): preview the narration alone
+        # until `music/events.json` exists. The final render still requires the score.
+        with_music = (
+            not (kind.mode == "free" and kind.narration)
+            or (workdir / "music" / "events.json").is_file()
+        )
         # Silent-narration projects (reel, MV) are `produce` projects: shots come from the model.
         sources = TimelineSources(
             workdir,
             narration=kind.narration,
             music_source=kind.music_source,
             produce=not kind.narration,
+            with_music=with_music,
         )
         return load_timeline(sources), workdir
     except TimelineError as exc:

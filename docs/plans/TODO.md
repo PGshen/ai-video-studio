@@ -16,7 +16,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | 自由模式：直接创建的单阶段项目（给题目直接出讲解片、临时短片） | 负责人，2026-10-12 | [设计](../design/2026-10-12-free-mode.md)；计划 [free-mode.md](active/free-mode.md)（执行中） |
+| P1 | 自由模式：直接创建的单阶段项目（给题目直接出讲解片、临时短片） | 负责人，2026-10-12 | [设计](../design/2026-10-12-free-mode.md)；计划 [free-mode.md](active/free-mode.md)（待验收） |
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
 | P2 | Windows 上 HTML 引擎的 GPU 出帧实测（新版 headless 走 D3D11/ANGLE 的速度与确定性、没有 GPU 时回落） | webgl-3d，2026-10-11 | 在负责人的 Windows 电脑上做；结论补进 [webgl-spike](../references/webgl-spike.md)，需要时给 `browser.launch_options` 加平台参数 |
 | P3 | 3D 镜头导入 `.glb` 模型（`GLTFLoader` 与异步就绪） | webgl-3d，2026-10-11 | ADR 0028 第一版不做；负责人需要时再设计 |
@@ -34,6 +34,8 @@
 | P2 | 登录冒烟有 3 个用例被模型行为挡住：`test_claude_login_cancel_then_turn`、`test_claude_login_sandbox_read`（claude-sonnet-5 把"这是自动化测试，用 Bash 执行…"当成提示注入，拒绝运行 `sleep`/探测脚本）、`test_style_claude_login`（叙事轮用 Bash 而不是 Read 读 `style/exemplars/`，断言只认 Read） | windows-native T12，2026-10-10 | main（`13fcef0`）上前两个以同样方式失败，不是该分支引入的；改冒烟的指令写法（例如放进阶段任务里、说明来源）或放宽断言，沙箱读隔离在此之前由慢测试和 Seatbelt 单测覆盖 |
 | P3 | 叙事提示词说场景文件是 `animation/scenes/<id>.py`（Manim 遗留），HTML 引擎实际是 `.js` | free-mode T4，2026-10-12 | 片段 `stages/common/prompts/narration-schema.md`；改一个字，叙事与自由讲解都受益 |
 | P3 | 自由讲解还没有叙事时，预览接口的原因写"叙事阶段需要先定稿并完成配音"（来自 `timeline/load.py` 的缺文件提示），自由项目没有叙事阶段 | free-mode L4，2026-10-12 | 前端已补一句正确的下一步；可以让提示按来源（顶层/`upstream/`）区分措辞 |
+| P3 | 自由 MV 成片定稿后仍能上传或换歌（上传接口只看 `concept` 行，自由项目没有） | free-mode 评审 M4，2026-10-12 | 自由项目在出片阶段已定稿时也返回 409，提示先重新打开 |
+| P3 | 大小写不敏感的文件系统（macOS）上，文件接口用 `STYLE/STYLE.md` 这类大小写能绕过受保护路径 | free-mode 评审 M5，2026-10-12 | 原来就有，`*` 让范围变大；范围判断前把路径按磁盘真实大小写规范化 |
 
 ## 已完成
 
