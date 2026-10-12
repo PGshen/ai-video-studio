@@ -22,8 +22,8 @@ import VideoKindPicker from '@/components/VideoKindPicker.vue'
 import { useCreateProjectMutation, useStylesQuery, useVideoKindsQuery } from '@/composables/queries'
 import { DEFAULT_EFFORT, type Effort } from '@/composables/effortChoice'
 import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
-import { findKind, initialSelection } from '@/composables/videoKindChoice'
-import type { IdeaOut, MusicSource, VideoKind } from '@/types/api'
+import { initialSelection, selectedKind as kindFor } from '@/composables/videoKindChoice'
+import type { IdeaOut, MusicSource } from '@/types/api'
 
 const props = defineProps<{ idea: IdeaOut | null }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -32,7 +32,7 @@ const router = useRouter()
 const mutation = useCreateProjectMutation()
 const { data: stylePresets } = useStylesQuery()
 const { data: videoKinds, isError: kindsError } = useVideoKindsQuery()
-const videoKind = ref<VideoKind>('explainer_html')
+const preset = ref('explainer_html')
 const music = ref<MusicSource>('none')
 const title = ref('')
 const styleId = ref('')
@@ -51,7 +51,7 @@ watch(open, (isOpen) => {
 function resetKind(): void {
   if (!videoKinds.value) return
   const initial = initialSelection(videoKinds.value)
-  videoKind.value = initial.videoKind
+  preset.value = initial.preset
   music.value = initial.music
 }
 // 对话框打开时类型数据可能还没到：到了之后补上预选。
@@ -59,11 +59,9 @@ watch(videoKinds, (data, old) => {
   if (data && !old) resetKind()
 })
 
-const selectedKind = computed(() => {
-  const data = videoKinds.value
-  const preset = data?.presets.find((p) => p.video_kind === videoKind.value)
-  return data && preset ? findKind(data.kinds, preset, music.value) : undefined
-})
+const selectedKind = computed(() =>
+  videoKinds.value ? kindFor(videoKinds.value, preset.value, music.value) : undefined,
+)
 // 类型数据重取失败时选择器被隐藏（见模板），此时不能再提交一个用户看不见的选择。
 const canSubmit = computed(() => !kindsError.value && selectedKind.value?.available === true)
 
@@ -78,6 +76,7 @@ async function submit(): Promise<void> {
     engine: kind.engine,
     narration: kind.narration,
     music_source: kind.music_source,
+    mode: kind.mode,
     settings: { effort: effort.value },
   })
   open.value = false
@@ -110,7 +109,7 @@ async function submit(): Promise<void> {
         </p>
         <VideoKindPicker
           v-else-if="videoKinds"
-          v-model:video-kind="videoKind"
+          v-model:preset="preset"
           v-model:music="music"
           class="mt-2"
           :data="videoKinds"

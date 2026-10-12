@@ -30,6 +30,7 @@ from studio.agent.runner import TurnRunner
 from studio.agent.runtime import RuntimeFactory, UserInput
 from studio.agent.stage import StageDefinition, StageRegistry
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
+from studio.api.projects import PROJECT_NOTE_NAME, project_note_markdown
 from studio.config import Settings
 from studio.db.engine import make_engine, migrate, session_scope
 from studio.db.models import ModelProfile
@@ -41,8 +42,11 @@ from studio.db.repo.turns import TurnEventValue, TurnValue, get_turn, list_event
 from studio.stages.animation_html import STAGE as ANIMATION_HTML
 from studio.stages.brainstorm import STAGE as BRAINSTORM
 from studio.stages.concept import STAGE as CONCEPT
+from studio.stages.free_explainer import STAGE as FREE_EXPLAINER
+from studio.stages.free_produce import STAGE as FREE_PRODUCE
 from studio.stages.music import STAGE as MUSIC
 from studio.stages.narrative import STAGE as NARRATIVE
+from studio.stages.pipeline import ProjectKind, kind_settings
 from studio.stages.produce import STAGE as PRODUCE
 from studio.stages.style import STAGE as STYLE
 from studio.stages.topic import STAGE as TOPIC
@@ -331,11 +335,14 @@ def build_harness(
     web_mode: Literal["tools", "native"] = "tools",
     reel: bool = False,
     music_video: bool = False,
+    free: ProjectKind | None = None,
 ) -> SmokeHarness:
     """项目默认是 HTML 讲解（Manim 已下线，ADR 0027）；`reel`/`music_video` 换成短片/MV。
 
     `real_stages=True`（M4）：注册真实的 brainstorm/topic/narrative/animation_html 等阶段（带联网
-    工具、`check_brief` 等），并按 `web_mode` 决定联网方式；默认仍是 M1 的精简阶段。"""
+    工具、`check_brief` 等），并按 `web_mode` 决定联网方式；默认仍是 M1 的精简阶段。
+
+    `free`（free-mode）：自由项目，流水线只有一个自由阶段，工作区里有 `notes/project.md`。"""
     data_dir = tmp_path / "data"
     engine = make_engine(tmp_path / "studio.db")
     migrate(engine)
@@ -355,6 +362,8 @@ def build_harness(
             PRODUCE,
             ANIMATION_HTML,
             STYLE,
+            FREE_EXPLAINER,
+            FREE_PRODUCE,
         ):
             registry.register(stage)
     else:
@@ -404,6 +413,9 @@ def build_harness(
             "pipeline": pipeline,
         }
     )
+    if free is not None:
+        project_settings = kind_settings(free)
+        pipeline = project_settings["pipeline"]
     project = create_project(engine, title="冒烟测试", settings=project_settings)
     for index, stage in enumerate(pipeline):
         create_stage(
@@ -412,6 +424,10 @@ def build_harness(
     style = project_dir(data_dir, project.id) / "style" / "STYLE.md"
     style.parent.mkdir(parents=True, exist_ok=True)
     style.write_text("# 风格\n", encoding="utf-8")
+    if free is not None:
+        note = project_dir(data_dir, project.id) / PROJECT_NOTE_NAME
+        note.parent.mkdir(parents=True, exist_ok=True)
+        note.write_text(project_note_markdown(free, "冒烟测试"), encoding="utf-8")
     create_snapshot(engine, blobs, project.id, reason="init")
     return SmokeHarness(data_dir, engine, blobs, registry, runner, project.id, bus)
 

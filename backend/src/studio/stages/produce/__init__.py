@@ -12,15 +12,22 @@ from pathlib import Path
 from studio.agent.tools import ToolSpec
 from studio.stages.common import SUGGEST_UPSTREAM_CHANGE_TOOL
 from studio.stages.common.music_source import SOURCE_EXTENSIONS
+from studio.stages.common.produce_flow import finalize_blockers, prepare_turn, status_summary
+from studio.stages.common.prompts import compose_prompt, fragment
 from studio.stages.common.scenes.render_preview_html import RENDER_PREVIEW_HTML_TOOL
 from studio.stages.common.scenes.validate_scenes_html import VALIDATE_SCENES_HTML_TOOL
 from studio.stages.common.score.analyze import ANALYZE_MUSIC_TOOL
 from studio.stages.common.score.tool import RENDER_MUSIC_TOOL
-from studio.stages.produce.blockers import finalize_blockers, status_summary
-from studio.stages.produce.prepare import prepare_turn
 from studio.workspace.scope import WriteScope
 
-_PROMPT_PATH = Path(__file__).parent / "prompt.md"
+_HERE = Path(__file__).parent
+_PROMPT_PARTS = [
+    _HERE / "opening.md",
+    fragment("silent-compose"),
+    fragment("silent-song"),
+    _HERE / "lyrics.md",
+    fragment("silent-scenes"),
+]
 _WRITE_SCOPE = WriteScope(
     writable=[
         "music/compose.py",
@@ -56,7 +63,7 @@ class ProduceStage:
     workspaceless = False
 
     def system_prompt(self) -> str:
-        return _PROMPT_PATH.read_text(encoding="utf-8")
+        return compose_prompt(*_PROMPT_PARTS)
 
     def tools(self) -> list[ToolSpec]:
         return list(_TOOLS)

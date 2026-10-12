@@ -260,4 +260,61 @@ describe('HtmlAnimationCanvas', () => {
       ])
     })
   })
+
+  describe('free stages', () => {
+    const slotsFor = (narrative: boolean) => ({
+      ...(narrative ? { narrative: () => h('div', { 'data-testid': 'narrative-slot' }, '叙事内容') } : {}),
+      music: () => h('div', { 'data-testid': 'music-slot' }, '配乐内容'),
+      files: () => h('div', { 'data-testid': 'files-slot' }, '文件内容'),
+    })
+    const mountFree = (stage: 'free_explainer' | 'free_produce') =>
+      mount(HtmlAnimationCanvas, {
+        props: { projectId: 'p1', busy: false, stage },
+        slots: slotsFor(stage === 'free_explainer'),
+        global: { stubs },
+      })
+
+    it('自由讲解：叙事 / 镜头 / 实时预览 / 配乐 / 成片 / 文件，默认打开实时预览', async () => {
+      const wrapper = mountFree('free_explainer')
+      const tabs = wrapper.findAll('[data-testid="animation-tabbar"] button').map((b) => b.text())
+      expect(tabs).toEqual(['叙事', '镜头（2）', '实时预览', '配乐', '成片', '文件'])
+      expect(wrapper.get('[data-testid="preview-pane"]').attributes('data-active')).toBe('true')
+      await wrapper.get('[data-testid="tab-narrative"]').trigger('click')
+      expect(wrapper.get('[data-testid="narrative-panel"]').attributes('style') ?? '').not.toContain(
+        'display: none',
+      )
+      expect(wrapper.get('[data-testid="narrative-slot"]').text()).toBe('叙事内容')
+      await wrapper.get('[data-testid="tab-files"]').trigger('click')
+      expect(wrapper.get('[data-testid="files-panel"]').attributes('style') ?? '').not.toContain(
+        'display: none',
+      )
+    })
+
+    it('自由讲解还没有叙事时是中性的「还没有开始」提示', () => {
+      state.meta = undefined
+      state.metaError = new ApiError(
+        409,
+        '时间轴不可用，共 1 个问题：\n- narrative/narrative.json 不存在（叙事阶段需要先定稿并完成配音）',
+      )
+      const wrapper = mountFree('free_explainer')
+      expect(wrapper.find('[data-testid="meta-problem"]').exists()).toBe(false)
+      const hint = wrapper.get('[data-testid="produce-not-started"]')
+      expect(hint.text()).toContain('还没有开始')
+      expect(hint.text()).toContain('叙事')
+    })
+
+    it('自由创作没有叙事页，镜头代码保存在 free_produce 阶段', async () => {
+      const wrapper = mountFree('free_produce')
+      expect(wrapper.find('[data-testid="tab-narrative"]').exists()).toBe(false)
+      await wrapper.findAll('[data-testid="animation-tabbar"] button')[0]!.trigger('click')
+      await wrapper.findAll('li button')[0]!.trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="code-editor"]').trigger('click')
+      await wrapper.findAll('button').find((b) => b.text() === '保存')!.trigger('click')
+      await flushPromises()
+      expect(state.written).toEqual([
+        { path: 'animation/scenes/s-hook.js', stage: 'free_produce', content: 'edited();\n' },
+      ])
+    })
+  })
 })

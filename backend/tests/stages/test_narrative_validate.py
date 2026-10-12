@@ -1,4 +1,4 @@
-"""`stages.narrative.validate_narrative`（设计 §5.2；计划 M3 T5）。
+"""`stages.common.narration.validate_narrative`（设计 §5.2；计划 M3 T5）。
 
 用 T4 的 `narrative_project` fixture（顶层 `conftest.py`）取一个"选题已
 定稿"的项目，直接往工作区写 `narrative/narrative.json`（绕过
@@ -15,7 +15,7 @@ from typing import Protocol
 from sqlalchemy import Engine
 
 from studio.agent.tools import ToolContext, invoke_tool
-from studio.stages.narrative.validate_narrative import VALIDATE_NARRATIVE_TOOL
+from studio.stages.common.narration.validate_narrative import VALIDATE_NARRATIVE_TOOL
 from studio.workspace import BlobStore
 
 
@@ -63,7 +63,7 @@ def _ctx(env: NarrativeProjectEnv) -> ToolContext:
 
 
 def test_tool_is_scoped_to_narrative_stage() -> None:
-    assert VALIDATE_NARRATIVE_TOOL.stages == {"narrative"}
+    assert VALIDATE_NARRATIVE_TOOL.stages == {"narrative", "free_explainer"}
 
 
 async def test_missing_file_reports_error(narrative_project: NarrativeProjectEnv) -> None:

@@ -147,6 +147,6 @@ ANALYZE_MUSIC_TOOL = ToolSpec(
         "没有上传音乐时会报错。你听不到声音，靠这张图和指标判断。"
     ),
     input_model=AnalyzeMusicArgs,
-    stages={"concept", "produce"},
+    stages={"concept", "produce", "free_produce"},
     handler=_handler,
 )

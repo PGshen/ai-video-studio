@@ -59,11 +59,16 @@ import {
   type SceneDubbing,
 } from './timingStatus'
 
-const props = defineProps<{
-  projectId: string
-  /** 当前项目是否有一轮正在跑（同 `FileCanvas.vue` 的 `busy`）。 */
-  busy: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    projectId: string
+    /** 当前项目是否有一轮正在跑（同 `FileCanvas.vue` 的 `busy`）。 */
+    busy: boolean
+    /** 保存 `narrative.json` 写入的阶段：叙事阶段，或嵌在自由讲解画布里的 `free_explainer`。 */
+    stage?: string
+  }>(),
+  { stage: 'narrative' },
+)
 
 type Tab = 'scenes' | 'json'
 const tab = ref<Tab>('scenes')
@@ -258,7 +263,7 @@ async function onSave(): Promise<void> {
   saveError.value = null
   const content = buffer.value.content
   try {
-    await writeMutation.mutateAsync({ path: NARRATIVE_PATH, stage: 'narrative', content })
+    await writeMutation.mutateAsync({ path: NARRATIVE_PATH, stage: props.stage, content })
     buffer.value = saved(buffer.value, content)
   } catch (error) {
     saveError.value = describeError(error)

@@ -7,7 +7,7 @@ import json
 from pydantic import BaseModel
 
 from studio.agent.tools import ToolContext, ToolResult, ToolSpec
-from studio.stages.narrative.schema import NarrativeValidationError, validate_and_normalize
+from studio.stages.common.narration.schema import NarrativeValidationError, validate_and_normalize
 from studio.workspace import files
 
 _NARRATIVE_PATH = "narrative/narrative.json"
@@ -40,6 +40,6 @@ VALIDATE_NARRATIVE_TOOL = ToolSpec(
     name="validate_narrative",
     description="校验 narrative.json：cue_text 是否覆盖 narration、transition 是否合法。",
     input_model=ValidateNarrativeArgs,
-    stages={"narrative"},
+    stages={"narrative", "free_explainer"},
     handler=_handler,
 )

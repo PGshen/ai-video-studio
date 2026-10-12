@@ -1,4 +1,4 @@
-"""`GET /api/video-kinds`：可创建的视频类型（预设 + 5 种合法配置及其可用性）。
+"""`GET /api/video-kinds`：可创建的视频类型（预设 + 合法配置及其可用性；含自由模式）。
 
 可用性 = 流水线里的每个阶段都已在注册表里注册；尚未实现的阶段会让对应类型显示为不可用，
 并给出可读原因。导入音乐只有无旁白的 HTML 音乐视频这一种形态（时间轴读取不支持旁白）。
@@ -33,6 +33,8 @@ STAGE_TITLES: dict[str, str] = {
     "produce": "配乐与动画",
     "animation": "动画",
     "animation_html": "动画",
+    "free_explainer": "自由讲解",
+    "free_produce": "自由创作",
 }
 
 
@@ -68,6 +70,7 @@ def list_video_kinds_endpoint(registry: StageRegistry = Depends(get_registry)) -
                 engine=preset.default.engine,
                 narration=preset.default.narration,
                 music_source=preset.default.music_source,
+                mode=preset.default.mode,
             ),
         )
         for preset in PRESETS
@@ -83,6 +86,7 @@ def list_video_kinds_endpoint(registry: StageRegistry = Depends(get_registry)) -
                 engine=kind.engine,
                 narration=kind.narration,
                 music_source=kind.music_source,
+                mode=kind.mode,
                 video_kind=video_kind_of(kind),
                 pipeline=pipeline,
                 available=reason is None,

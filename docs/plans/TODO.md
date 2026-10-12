@@ -16,14 +16,13 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | 自由模式：直接创建的单阶段项目（给题目直接出讲解片、临时短片） | 负责人，2026-10-12 | [设计](../design/2026-10-12-free-mode.md)；计划 [free-mode.md](active/free-mode.md)（待批准） |
 | P1 | 多形态视频子项目 2：统一时间轴 + HTML 引擎 | [设计 §11](../design/2026-10-04-html-video-pipeline.md)，2026-10-04 | 设计 §12 的小试已于 2026-10-04 完成，结论可行，见 [html-canvas-agent-spike](../references/html-canvas-agent-spike.md)；设计已批准 [timeline-html-engine](../design/2026-10-04-timeline-html-engine.md)，拆为计划 2A/2B（均已完成）；子项目 2 整体完成 |
 | P2 | Windows 上 HTML 引擎的 GPU 出帧实测（新版 headless 走 D3D11/ANGLE 的速度与确定性、没有 GPU 时回落） | webgl-3d，2026-10-11 | 在负责人的 Windows 电脑上做；结论补进 [webgl-spike](../references/webgl-spike.md)，需要时给 `browser.launch_options` 加平台参数 |
 | P3 | 3D 镜头导入 `.glb` 模型（`GLTFLoader` 与异步就绪） | webgl-3d，2026-10-11 | ADR 0028 第一版不做；负责人需要时再设计 |
 | P3 | 实时预览刚打开时画面是黑的，第一次拖动或播放后才出现 | webgl-3d T6，2026-10-11 | 预览页 `ready` 后前端发了 seek，iframe 里用 `requestAnimationFrame` 执行；main 上同样复现，可能是不可见或刚创建的跨源 iframe 里帧回调被节流。可在 `ready` 时直接同步渲染一次 |
 | P3 | 模型配置面板删除失败（409）时看不到原因：`ModelProfilesPanel.vue` 的「确认删除」用 `AlertDialogAction`，它点击即关闭对话框，`preventDefault` 拦不住 | tts-voice-management T4，2026-10-10 | 音色面板已改用普通 `Button` 并有测试（`VoicePanel.spec.ts`）；模型配置面板同样改法，并补一个 409 用例 |
 | P2 | 音乐 MV 的画面质量：让用户通过对话与风格库控制要生成什么样的动画 | 负责人试看 4B 冒烟成片的反馈，2026-10-06 | 4B 冒烟成片（agent 自主写的画面）效果一般；方向是让对话与风格库更强地约束画面（风格、母题、镜头语言），而不是让 agent 自由发挥。负责人系统使用后再提具体需求；强拍相位/BPM/淡出的试听核对也一并在那时做（见 [import-music-mv.md](../references/import-music-mv.md)） |
-| P2 | 讲解类（`explainer`）是否也取消阶段拆分（`topic → narrative → music → animation_html`） | produce 阶段设计，2026-10-06 | 短片、MV 合并配乐与动画后效果是否更好，负责人试用后再决定；讲解类有旁白与时间戳，耦合方式不同，不一并改 |
+| P2 | 讲解类（`explainer`）是否也取消阶段拆分（`topic → narrative → music → animation_html`） | produce 阶段设计，2026-10-06 | 短片、MV 合并配乐与动画后效果是否更好，负责人试用后再决定；讲解类有旁白与时间戳，耦合方式不同，不一并改；自由讲解（free-mode，2026-10-12）可作为不拆阶段的对照样本 |
 | P2 | 能量曲线叠加歌词刻度 | mv-lyrics T6，2026-10-07 | 歌词列表已能点击跳转；刻度要改 `EnergyView` 的坐标层，用过之后再决定要不要 |
 | P2 | 上游时间轴变化摘要（stale 后前言附段落增减与时长变化） | [timeline-html-engine §13](../design/2026-10-04-timeline-html-engine.md)，2026-10-04 | 子项目 2 有意延后 |
 | P2 | 项目级分辨率与 fps 设置 | 同上 | 子项目 2 沿用 1920×1080、30fps |
@@ -37,6 +36,8 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-12 | 自由模式：项目页直接创建的单阶段项目（自由讲解、自由短片、自由 MV），整区可写、联网、预览与成片照常（ADR 0029；负责人 2026-10-12 验收） | [free-mode.md](completed/free-mode.md) |
+| 2026-10-12 | free-mode 遗留的四条 TODO：叙事提示词的场景文件改为 `.js`；时间轴缺文件提示按来源区分（顶层说下一步，`upstream/` 说阶段）；自由 MV 成片定稿后不能换歌和改歌词；文件接口按磁盘上的真实名字（不区分大小写）做范围检查 | [free-mode.md](completed/free-mode.md) D11 |
 | 2026-10-11 | 原生支持 Windows（Windows 上能用也能开发；负责人 2026-10-11 验收） | [windows-native.md](completed/windows-native.md) |
 | 2026-10-11 | HTML 引擎支持 WebGL/three.js（3D），出帧默认用 GPU（ADR 0028） | [webgl-3d.md](completed/webgl-3d.md) |
 | 2026-10-10 | TTS 音色管理：设置页可新增/删除音色，按音色区分豆包 v1/v2 | [tts-voice-management.md](completed/tts-voice-management.md) |

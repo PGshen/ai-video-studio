@@ -99,6 +99,7 @@ def _project_kind_out(engine: Engine, value: ProjectValue) -> ProjectKindOut:
         engine=kind.engine,
         narration=kind.narration,
         music_source=kind.music_source,
+        mode=kind.mode,
         pipeline=project_pipeline(engine, value.id),
     )
 
@@ -134,7 +135,81 @@ _SCORE_LABELS = (
     ("novelty", "新鲜度"),
 )
 IDEA_CARD_NAME = "notes/idea-card.md"
-"""想法卡片放在流水线第一个阶段目录下：`<pipeline[0]>/notes/idea-card.md`。"""
+"""想法卡片放在流水线第一个阶段目录下：`<pipeline[0]>/notes/idea-card.md`；自由项目放在工作区顶层
+`notes/idea-card.md`（自由阶段的笔记都在 `notes/`，见 free-mode 计划决策 D7）。"""
+
+PROJECT_NOTE_NAME = "notes/project.md"
+"""自由项目的项目说明：形态与成片需要的文件。阶段协议只给工作区路径，agent 靠它知道项目形态。"""
+
+_FREE_FORMS: dict[tuple[bool, str], tuple[str, list[str]]] = {
+    (True, "none"): (
+        "自由讲解（有旁白，不带背景乐）",
+        [
+            "`narrative/narrative.json`（叙事）",
+            "`narrative/timing.json` 与 `narrative/audio/*`（`synthesize_tts` 生成）",
+            "`animation/scenes/<镜头 id>.js`（每个镜头一个）",
+        ],
+    ),
+    (True, "synth"): (
+        "自由讲解（有旁白，带背景乐）",
+        [
+            "`narrative/narrative.json`（叙事）",
+            "`narrative/timing.json` 与 `narrative/audio/*`（`synthesize_tts` 生成）",
+            "`animation/scenes/<镜头 id>.js`（每个镜头一个）",
+            "`music/compose.py` 与 `render_music` 的产物（配音定下来之后再渲染）",
+        ],
+    ),
+    (False, "synth"): (
+        "自由短片（无旁白，合成配乐）",
+        [
+            "`music/compose.py` 与 `render_music` 的产物",
+            "`animation/shots.json`（镜头划分）",
+            "`animation/scenes/<镜头 id>.js`（每个镜头一个）",
+        ],
+    ),
+    (False, "import"): (
+        "自由 MV（无旁白，用户上传的歌曲）",
+        [
+            "`music/source.*`（用户在「配乐」标签页上传）与 `analyze_music` 的分析",
+            "`music/range.json`（可选，截取区间）",
+            "`animation/shots.json`（镜头划分）",
+            "`animation/scenes/<镜头 id>.js`（每个镜头一个）",
+        ],
+    ),
+}
+
+
+def project_note_markdown(kind: ProjectKind, title: str, *, idea_card: bool = False) -> str:
+    form, needs = _FREE_FORMS[(kind.narration, kind.music_source)]
+    lines = [
+        f"# 项目说明：{title}",
+        "",
+        "（创建项目时系统生成，形态创建后不能修改。这是自由模式项目：没有阶段，"
+        "在一个对话里完成全部工作。）",
+        "",
+        f"- 形态：{form}",
+        *(
+            [f"- 选题卡：`{IDEA_CARD_NAME}`（从选题池的卡片创建，先读它；它是起点，不是结论）"]
+            if idea_card
+            else []
+        ),
+        "- 成片需要：",
+        *(f"  - {need}" for need in needs),
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _seed_files(
+    kind: ProjectKind, pipeline: list[str], title: str, idea: IdeaValue | None
+) -> dict[str, str]:
+    """新项目除风格之外的初始文件：想法卡片（有的话）与自由项目的项目说明。"""
+    if kind.mode != "free":
+        return {f"{pipeline[0]}/{IDEA_CARD_NAME}": _idea_card_markdown(idea)} if idea else {}
+    seeded = {PROJECT_NOTE_NAME: project_note_markdown(kind, title, idea_card=idea is not None)}
+    if idea is not None:
+        seeded[IDEA_CARD_NAME] = _idea_card_markdown(idea)
+    return seeded
 
 
 def _idea_card_markdown(idea: IdeaValue) -> str:
@@ -203,7 +278,7 @@ def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str)
 def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> ProjectKind:
     """请求里的类型配置 → 合法且阶段都已注册的 `ProjectKind`，否则 422（在建工作区之前）。"""
     given = (body.engine, body.narration, body.music_source)
-    if all(value is None for value in given):
+    if all(value is None for value in given) and body.mode == "staged":
         kind = DEFAULT_KIND
     elif any(value is None for value in given) or body.engine is None:
         raise HTTPException(
@@ -212,7 +287,10 @@ def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> Proje
     else:
         assert body.narration is not None and body.music_source is not None
         kind = ProjectKind(
-            engine=body.engine, narration=body.narration, music_source=body.music_source
+            engine=body.engine,
+            narration=body.narration,
+            music_source=body.music_source,
+            mode=body.mode,
         )
     errors = kind_errors(kind)
     if errors:
@@ -272,14 +350,7 @@ def create_project_endpoint(
             blobs,
             settings,
             project_id,
-            {
-                **style_files,
-                **(
-                    {f"{pipeline[0]}/{IDEA_CARD_NAME}": _idea_card_markdown(idea)}
-                    if idea is not None
-                    else {}
-                ),
-            },
+            {**style_files, **_seed_files(kind, pipeline, body.title, idea)},
         )
         project = create_project(
             engine,

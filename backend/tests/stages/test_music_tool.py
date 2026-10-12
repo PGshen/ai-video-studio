@@ -46,7 +46,7 @@ def _ctx(
 
 
 def test_tool_belongs_to_the_music_and_produce_stages() -> None:
-    assert RENDER_MUSIC_TOOL.stages == {"music", "produce"}
+    assert RENDER_MUSIC_TOOL.stages == {"music", "produce", "free_explainer", "free_produce"}
     assert RENDER_MUSIC_TOOL.name == "render_music"
 
 

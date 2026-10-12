@@ -1,16 +1,21 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { VIDEO_KINDS_FIXTURE } from '@/test/videoKindsFixture'
-import type { MusicSource, VideoKind } from '@/types/api'
+import type { Mode, MusicSource } from '@/types/api'
 import VideoKindPicker from './VideoKindPicker.vue'
 
-function mountPicker(videoKind: VideoKind = 'explainer_html', music: MusicSource = 'none') {
+function mountPicker(
+  preset = 'explainer_html',
+  music: MusicSource = 'none',
+  modes?: Mode[],
+) {
   const wrapper = mount(VideoKindPicker, {
     props: {
       data: VIDEO_KINDS_FIXTURE,
-      videoKind,
+      preset,
       music,
-      'onUpdate:videoKind': (value: VideoKind) => wrapper.setProps({ videoKind: value }),
+      ...(modes ? { modes } : {}),
+      'onUpdate:preset': (value: string) => wrapper.setProps({ preset: value }),
       'onUpdate:music': (value: MusicSource) => wrapper.setProps({ music: value }),
     },
   })
@@ -57,5 +62,33 @@ describe('VideoKindPicker', () => {
   it('只有一个配乐选择的预设不显示配乐下拉', () => {
     w = mountPicker('motion_reel', 'synth')
     expect(w.find('[data-testid="music-select"]').exists()).toBe(false)
+  })
+
+  it('两种模式都给时分成「分阶段」与「自由」两组', () => {
+    w = mountPicker()
+    expect(w.get('[data-testid="kind-group-staged"]').text()).toContain('分阶段')
+    expect(w.get('[data-testid="kind-group-free"]').text()).toContain('自由')
+    expect(w.find('[data-testid="kind-card-free-explainer_html"]').exists()).toBe(true)
+  })
+
+  it('选自由讲解：配乐只有无配乐与合成，流水线是单个「自由讲解」阶段', async () => {
+    w = mountPicker()
+    await w.get('[data-testid="kind-card-free-explainer_html"]').trigger('click')
+    expect(w.props('preset')).toBe('free-explainer_html')
+    const options = w.findAll('[data-testid="music-select"] option')
+    expect(options.map((o) => o.attributes('value'))).toEqual(['none', 'synth'])
+    expect(w.get('[data-testid="kind-pipeline"]').text()).toContain('自由讲解')
+  })
+
+  it('只给自由模式时只有三张自由卡片，不分组', () => {
+    w = mountPicker('free-motion_reel', 'synth', ['free'])
+    const cards = w.findAll('[data-testid^="kind-card-"]')
+    expect(cards.map((c) => c.attributes('data-testid'))).toEqual([
+      'kind-card-free-explainer_html',
+      'kind-card-free-motion_reel',
+      'kind-card-free-music_video',
+    ])
+    expect(w.find('[data-testid="kind-group-staged"]').exists()).toBe(false)
+    expect(w.find('[data-testid="kind-group-free"]').exists()).toBe(false)
   })
 })

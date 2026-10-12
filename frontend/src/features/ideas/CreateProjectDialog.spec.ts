@@ -60,7 +60,13 @@ describe('CreateProjectDialog 视频类型', () => {
     submitButton().click()
     await flushPromises()
     expect(state.mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ engine: 'html', narration: true, music_source: 'none', idea_id: 'i1' }),
+      expect.objectContaining({
+        engine: 'html',
+        narration: true,
+        music_source: 'none',
+        mode: 'staged',
+        idea_id: 'i1',
+      }),
     )
     expect(state.push).toHaveBeenCalledWith('/projects/p9/concept')
     wrapper.unmount()
@@ -79,6 +85,29 @@ describe('CreateProjectDialog 视频类型', () => {
       expect.objectContaining({ engine: 'html', narration: false, music_source: 'import', idea_id: 'i1' }),
     )
     expect(state.push).toHaveBeenCalledWith('/projects/p10/concept')
+    wrapper.unmount()
+  })
+
+  it('选中自由短片后创建的是自由项目（mode=free），跳到它唯一的阶段', async () => {
+    state.mutateAsync.mockResolvedValue({ id: 'p11', current_stage: 'free_produce' })
+    const wrapper = await mountOpen()
+    const card = document.body.querySelector(
+      '[data-testid="kind-card-free-motion_reel"]',
+    ) as HTMLButtonElement
+    card.click()
+    await flushPromises()
+    submitButton().click()
+    await flushPromises()
+    expect(state.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        engine: 'html',
+        narration: false,
+        music_source: 'synth',
+        mode: 'free',
+        idea_id: 'i1',
+      }),
+    )
+    expect(state.push).toHaveBeenCalledWith('/projects/p11/free_produce')
     wrapper.unmount()
   })
 

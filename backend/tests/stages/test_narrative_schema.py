@@ -1,10 +1,10 @@
-"""`stages.narrative.schema` 测试（计划 M3 T3）。"""
+"""`stages.common.narration.schema` 测试（计划 M3 T3）。"""
 
 from __future__ import annotations
 
 import pytest
 
-from studio.stages.narrative.schema import NarrativeValidationError, validate_and_normalize
+from studio.stages.common.narration.schema import NarrativeValidationError, validate_and_normalize
 
 _VALID_DOC = {
     "scenes": [

@@ -1,5 +1,5 @@
-"""`produce` 阶段的 `prepare_turn`：复制金样本（配乐、2D 画面、3D 画面；有歌词时多一份
-歌词画面的样本）。
+"""`produce` 与 `free_produce` 共用的 `prepare_turn`：复制金样本（配乐、2D 画面、3D 画面；
+有歌词时多一份歌词画面的样本）。
 
 不再生成 `upstream/timeline.json`：镜头划分和配乐都由本阶段自己写，改一处就要立刻反映到另一处，
 所以时间轴由各工具即时构建（`timeline.load` 的 `produce` 形态），不是每轮开始时的快照。

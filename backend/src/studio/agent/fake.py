@@ -270,7 +270,9 @@ def _first_writable_dir(write_scope: WriteScope) -> str:
     for suffix in ("/**", "/*"):
         if pattern.endswith(suffix):
             return pattern[: -len(suffix)]
-    return str(PurePosixPath(pattern).parent)
+    parent = str(PurePosixPath(pattern).parent)
+    # The whole workspace is writable (free stages, pattern `*`): notes go in `notes/`.
+    return "notes" if parent == "." else parent
 
 
 DEMO_ACTIVITY_COMMAND = "/demo-activity"

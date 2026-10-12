@@ -47,7 +47,7 @@ _HTML_SCENE_ERROR_RE = re.compile(r"^镜头 (\S+?)：", re.MULTILINE)
 _VALIDATE_TOOL = "validate_scenes_html"
 _PREVIEW_TOOL = "render_preview_html"
 _SCENE_PATH_TEMPLATE = "animation/scenes/{scene_id}.js"
-_CHECKED_STAGES = frozenset({"animation_html", "produce"})
+_CHECKED_STAGES = frozenset({"animation_html", "produce", "free_explainer", "free_produce"})
 
 
 CheckOutcome = Literal["passed", "failed", "not_checked"]

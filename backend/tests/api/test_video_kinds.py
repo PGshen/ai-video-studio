@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .conftest import ApiEnv, register_reel_stages
+from .conftest import ApiEnv, register_free_stages, register_reel_stages
 
 
 async def test_default_registry_makes_the_three_presets_available(api_env: ApiEnv) -> None:
@@ -10,11 +10,16 @@ async def test_default_registry_makes_the_three_presets_available(api_env: ApiEn
 
     assert response.status_code == 200
     body = response.json()
-    assert [p["video_kind"] for p in body["presets"]] == [
-        "explainer_html",
-        "motion_reel",
-        "music_video",
+    assert [(p["video_kind"], p["label"]) for p in body["presets"]] == [
+        ("explainer_html", "知识讲解（HTML）"),
+        ("motion_reel", "动态图形短片"),
+        ("music_video", "音乐 MV"),
+        ("explainer_html", "自由讲解"),
+        ("motion_reel", "自由短片"),
+        ("music_video", "自由 MV"),
     ]
+    assert body["presets"][3]["default"]["mode"] == "free"
+    assert body["presets"][3]["music_choices"] == ["none", "synth"]
     assert set(body["presets"][0]) == {
         "video_kind",
         "label",
@@ -26,8 +31,9 @@ async def test_default_registry_makes_the_three_presets_available(api_env: ApiEn
         "engine": "html",
         "narration": True,
         "music_source": "none",
+        "mode": "staged",
     }
-    kinds = body["kinds"]
+    kinds = [k for k in body["kinds"] if k["mode"] == "staged"]
     assert len(kinds) == 5
     assert all(k["engine"] == "html" for k in kinds)
     available = [k for k in kinds if k["available"]]
@@ -76,7 +82,11 @@ async def test_real_stages_make_the_music_video_available_and_narrated_import_st
 ) -> None:
     body = (await api_env.client.get("/api/video-kinds")).json()
 
-    by_kind = {(k["engine"], k["narration"], k["music_source"]): k for k in body["kinds"]}
+    by_kind = {
+        (k["engine"], k["narration"], k["music_source"]): k
+        for k in body["kinds"]
+        if k["mode"] == "staged"
+    }
     for key in (("html", False, "synth"), ("html", True, "synth")):
         assert by_kind[key]["available"] is True, key
     assert by_kind[("html", True, "none")]["available"] is True
@@ -95,6 +105,25 @@ async def test_kinds_become_available_when_stages_registered(api_env: ApiEnv) ->
 
     body = (await api_env.client.get("/api/video-kinds")).json()
 
-    by_kind = {(k["engine"], k["narration"], k["music_source"]): k for k in body["kinds"]}
+    by_kind = {
+        (k["engine"], k["narration"], k["music_source"]): k
+        for k in body["kinds"]
+        if k["mode"] == "staged"
+    }
     assert by_kind[("html", False, "synth")]["available"] is True
     assert by_kind[("html", True, "none")]["available"] is True
+
+
+async def test_free_kinds_are_listed_and_follow_stage_registration(api_env: ApiEnv) -> None:
+    register_free_stages(api_env.app.state.registry)
+
+    body = (await api_env.client.get("/api/video-kinds")).json()
+
+    free = [k for k in body["kinds"] if k["mode"] == "free"]
+    assert [(k["narration"], k["music_source"], k["pipeline"]) for k in free] == [
+        (True, "none", ["free_explainer"]),
+        (True, "synth", ["free_explainer"]),
+        (False, "synth", ["free_produce"]),
+        (False, "import", ["free_produce"]),
+    ]
+    assert all(k["available"] for k in free)

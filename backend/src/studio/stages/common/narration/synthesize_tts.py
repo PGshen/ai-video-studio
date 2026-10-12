@@ -20,7 +20,7 @@ from studio.db.repo.projects import get_project
 from studio.db.repo.voices import VoiceValue, list_voices
 from studio.engines.tts import TTSEngine, TTSRequest, align_scene_beats, build_tts_engine
 from studio.engines.tts.voice_map import DEFAULT_SPEED, DEFAULT_VOICE
-from studio.stages.narrative.schema import NarrativeValidationError, validate_and_normalize
+from studio.stages.common.narration.schema import NarrativeValidationError, validate_and_normalize
 from studio.workspace import files
 
 _NARRATIVE_PATH = "narrative/narrative.json"
@@ -175,6 +175,6 @@ SYNTHESIZE_TTS_TOOL = ToolSpec(
         "对指定镜头（或全部）配音并对齐 beat，写 narrative/audio/*.mp3 和 narrative/timing.json。"
     ),
     input_model=SynthesizeTtsArgs,
-    stages={"narrative"},
+    stages={"narrative", "free_explainer"},
     handler=_handler,
 )

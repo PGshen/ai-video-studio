@@ -254,8 +254,16 @@ def load_timeline(sources: TimelineSources) -> LoadedTimeline:
     if sources.music_source == "import":
         raise TimelineError(["导入音乐只用于没有旁白的 MV（produce 阶段）"])
     root, prefix = sources.root, sources.prefix
-    narrative = _read_document(root, f"{prefix}{_NARRATIVE}", "叙事阶段需要先定稿并完成配音")
-    timing = _read_document(root, f"{prefix}{_TIMING}", "叙事阶段需要先定稿并完成配音")
+    # `upstream/` is a finalized stage's copy; the top level is what the current stage writes
+    # (free projects have no narrative or music stage), so say what to do there instead.
+    upstream = prefix.startswith("upstream")
+    voice_hint = (
+        "叙事阶段需要先定稿并完成配音"
+        if upstream
+        else "先写 narrative/narrative.json，再用 synthesize_tts 配音"
+    )
+    narrative = _read_document(root, f"{prefix}{_NARRATIVE}", voice_hint)
+    timing = _read_document(root, f"{prefix}{_TIMING}", voice_hint)
     base = TimelineLayers(narration_from_documents(narrative, timing))
     base_timeline = build_timeline(base)
     base_hash = timeline_hash(base_timeline)
@@ -263,7 +271,9 @@ def load_timeline(sources: TimelineSources) -> LoadedTimeline:
     if not (sources.with_music and sources.music_source == "synth"):
         return LoadedTimeline(base_timeline, base_hash, base_hash, narrative, timing)
 
-    hint = "配乐阶段需要先渲染并定稿"
+    hint = (
+        "配乐阶段需要先渲染并定稿" if upstream else "先写 music/compose.py，再用 render_music 渲染"
+    )
     events_doc = _read_document(root, f"{prefix}{_EVENTS}", hint)
     analysis_doc = _read_document(root, f"{prefix}{_ANALYSIS}", hint)
     music = _music_input(events_doc, analysis_doc)

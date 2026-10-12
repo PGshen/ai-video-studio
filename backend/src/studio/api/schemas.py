@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, StrictBool
 
 from studio.agent.runtime import Effort
-from studio.stages.pipeline import Engine, MusicSource, VideoKind
+from studio.stages.pipeline import Engine, Mode, MusicSource, VideoKind
 
 
 class ProjectCreate(BaseModel):
@@ -26,6 +26,8 @@ class ProjectCreate(BaseModel):
     narration: bool | None = None
     music_source: MusicSource | None = None
     """项目类型配置：三者都不给 = 默认（HTML 讲解）；只给一部分 → 422。"""
+    mode: Mode = "staged"
+    """`free`：自由模式，单阶段项目（free-mode 设计 §3）；要与上面三项一起给出。"""
 
 
 class ProjectSettingsPatch(BaseModel):
@@ -52,6 +54,7 @@ class ProjectKindConfig(BaseModel):
     engine: Engine
     narration: bool
     music_source: MusicSource
+    mode: Mode = "staged"
 
 
 class ProjectKindOut(BaseModel):
@@ -59,6 +62,7 @@ class ProjectKindOut(BaseModel):
     engine: Engine
     narration: bool
     music_source: MusicSource
+    mode: Mode
     pipeline: list[str]
 
 
@@ -467,6 +471,7 @@ class KindOptionOut(BaseModel):
     engine: Engine
     narration: bool
     music_source: MusicSource
+    mode: Mode
     video_kind: VideoKind
     pipeline: list[str]
     available: bool

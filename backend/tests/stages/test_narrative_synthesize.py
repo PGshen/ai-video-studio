@@ -1,4 +1,4 @@
-"""`stages.narrative.synthesize_tts`（设计 §5.2；计划 M3 T6）。
+"""`stages.common.narration.synthesize_tts`（设计 §5.2；计划 M3 T6）。
 
 用 T4 的 `narrative_project` fixture 取一个"选题已定稿"的项目，直接往
 工作区写 `narrative/narrative.json`（模拟 agent 已经写好的产物），再
@@ -17,8 +17,8 @@ from sqlalchemy import Engine
 
 from studio.agent.tools import ToolContext, invoke_tool
 from studio.engines.tts.base import TTSRequest, TTSResult, WordTimestamp
-from studio.stages.narrative import synthesize_tts as synthesize_tts_module
-from studio.stages.narrative.synthesize_tts import SYNTHESIZE_TTS_TOOL
+from studio.stages.common.narration import synthesize_tts as synthesize_tts_module
+from studio.stages.common.narration.synthesize_tts import SYNTHESIZE_TTS_TOOL
 from studio.workspace import BlobStore
 
 
@@ -126,7 +126,7 @@ def _read_timing(env: NarrativeProjectEnv) -> dict:
 
 
 def test_tool_is_scoped_to_narrative_stage() -> None:
-    assert SYNTHESIZE_TTS_TOOL.stages == {"narrative"}
+    assert SYNTHESIZE_TTS_TOOL.stages == {"narrative", "free_explainer"}
 
 
 async def test_synthesizes_all_scenes_and_writes_timing_json(

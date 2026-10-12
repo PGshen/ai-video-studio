@@ -1,8 +1,11 @@
 <script setup lang="ts">
 /**
- * 创建项目时的视频类型选择器（计划 pipeline-config T6）：四张预设卡片 + 配乐下拉 + 所选配置的流水线。
- * 所有可用性和流水线都来自后端的 `data`（`GET /api/video-kinds`），这里不复写规则。
- * 调用方用 `composables/videoKindChoice.ts::initialSelection` 设置初始值。
+ * 创建项目时的视频类型选择器（计划 pipeline-config T6；free-mode T8 加了自由模式）：预设卡片 + 配乐下拉 +
+ * 所选配置的流水线。所有可用性和流水线都来自后端的 `data`（`GET /api/video-kinds`），这里不复写规则。
+ *
+ * 预设用 `presetKey` 区分（分阶段与自由各有一个同 `video_kind` 的预设）；`modes` 只保留给定模式的预设，
+ * 两种模式都在时分成「分阶段」「自由」两组。调用方用 `composables/videoKindChoice.ts::initialSelection`
+ * （对 `presetsFor(data, modes)` 调用）设置初始值。
  */
 import { computed } from 'vue'
 import { Label } from '@/components/ui/label'
@@ -11,23 +14,41 @@ import {
   findKind,
   pipelineText,
   presetAvailability,
+  presetKey,
+  presetsFor,
 } from '@/composables/videoKindChoice'
-import type { MusicSource, VideoKind, VideoKindsOut } from '@/types/api'
+import type { Mode, MusicSource, PresetOut, VideoKindsOut } from '@/types/api'
 
-const props = defineProps<{ data: VideoKindsOut }>()
-const videoKind = defineModel<VideoKind>('videoKind', { required: true })
+const props = withDefaults(defineProps<{ data: VideoKindsOut; modes?: Mode[] }>(), {
+  modes: () => ['staged', 'free'],
+})
+const preset = defineModel<string>('preset', { required: true })
 const music = defineModel<MusicSource>('music', { required: true })
 
-const cards = computed(() =>
-  props.data.presets.map((preset) => ({ preset, ...presetAvailability(props.data, preset) })),
+const GROUP_LABELS: Record<Mode, string> = {
+  staged: '分阶段（选题 → 叙事 → 动画，逐步定稿）',
+  free: '自由（一个对话里完成全部，不分阶段）',
+}
+
+const scoped = computed(() => presetsFor(props.data, props.modes))
+const groups = computed(() =>
+  props.modes
+    .map((mode) => ({
+      mode,
+      cards: scoped.value.presets
+        .filter((p) => p.default.mode === mode)
+        .map((p) => ({ preset: p, key: presetKey(p), ...presetAvailability(scoped.value, p) })),
+    }))
+    .filter((group) => group.cards.length > 0),
 )
-const current = computed(() => props.data.presets.find((p) => p.video_kind === videoKind.value))
+const grouped = computed(() => groups.value.length > 1)
+const current = computed(() => scoped.value.presets.find((p) => presetKey(p) === preset.value))
 const selected = computed(() =>
-  current.value ? findKind(props.data.kinds, current.value, music.value) : undefined,
+  current.value ? findKind(scoped.value.kinds, current.value, music.value) : undefined,
 )
 const musicOptions = computed(() =>
   (current.value?.music_choices ?? []).map((value) => {
-    const kind = current.value ? findKind(props.data.kinds, current.value, value) : undefined
+    const kind = current.value ? findKind(scoped.value.kinds, current.value, value) : undefined
     const available = kind?.available ?? false
     return {
       value,
@@ -40,12 +61,12 @@ const musicOptions = computed(() =>
   }),
 )
 
-function choose(preset: (typeof cards.value)[number]): void {
-  if (!preset.available) return
-  videoKind.value = preset.preset.video_kind
-  const options = preset.preset.music_choices.map((m) => ({
+function choose(card: { preset: PresetOut; key: string; available: boolean }): void {
+  if (!card.available) return
+  preset.value = card.key
+  const options = card.preset.music_choices.map((m) => ({
     m,
-    kind: findKind(props.data.kinds, preset.preset, m),
+    kind: findKind(scoped.value.kinds, card.preset, m),
   }))
   // 保持当前配乐（如果新预设也有且可用），否则取第一个可用的。
   const keep = options.find((o) => o.m === music.value && o.kind?.available)
@@ -56,31 +77,44 @@ function choose(preset: (typeof cards.value)[number]): void {
 <template>
   <div class="flex flex-col gap-1.5">
     <Label>视频类型</Label>
-    <div class="grid grid-cols-2 gap-2">
-      <div
-        v-for="card in cards"
-        :key="card.preset.video_kind"
-        class="flex flex-col gap-1"
+    <div
+      v-for="group in groups"
+      :key="group.mode"
+      class="flex flex-col gap-1"
+    >
+      <p
+        v-if="grouped"
+        class="text-muted-foreground text-xs"
+        :data-testid="`kind-group-${group.mode}`"
       >
-        <button
-          type="button"
-          class="border-input hover:bg-accent flex h-full flex-col gap-0.5 rounded-md border p-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-          :class="card.preset.video_kind === videoKind ? 'border-primary ring-primary ring-1' : ''"
-          :disabled="!card.available"
-          :aria-pressed="card.preset.video_kind === videoKind"
-          :data-testid="`kind-card-${card.preset.video_kind}`"
-          @click="choose(card)"
+        {{ GROUP_LABELS[group.mode] }}
+      </p>
+      <div class="grid grid-cols-2 gap-2">
+        <div
+          v-for="card in group.cards"
+          :key="card.key"
+          class="flex flex-col gap-1"
         >
-          <span class="font-medium">{{ card.preset.label }}</span>
-          <span class="text-muted-foreground text-xs">{{ card.preset.description }}</span>
-        </button>
-        <p
-          v-if="!card.available"
-          class="text-muted-foreground text-xs"
-          :data-testid="`kind-reason-${card.preset.video_kind}`"
-        >
-          {{ card.reason ?? '暂不可用' }}
-        </p>
+          <button
+            type="button"
+            class="border-input hover:bg-accent flex h-full flex-col gap-0.5 rounded-md border p-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+            :class="card.key === preset ? 'border-primary ring-primary ring-1' : ''"
+            :disabled="!card.available"
+            :aria-pressed="card.key === preset"
+            :data-testid="`kind-card-${card.key}`"
+            @click="choose(card)"
+          >
+            <span class="font-medium">{{ card.preset.label }}</span>
+            <span class="text-muted-foreground text-xs">{{ card.preset.description }}</span>
+          </button>
+          <p
+            v-if="!card.available"
+            class="text-muted-foreground text-xs"
+            :data-testid="`kind-reason-${card.key}`"
+          >
+            {{ card.reason ?? '暂不可用' }}
+          </p>
+        </div>
       </div>
     </div>
 

@@ -127,6 +127,14 @@ class FakeStage:
         return []
 
 
+def register_free_stages(registry: StageRegistry) -> None:
+    for stage in (
+        FakeStage("free_explainer", [], "narrative"),
+        FakeStage("free_produce", [], "music"),
+    ):
+        registry.register(stage)
+
+
 def register_reel_stages(registry: StageRegistry) -> None:
     for stage in (
         FakeStage("concept", [], "concept"),

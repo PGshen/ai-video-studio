@@ -10,6 +10,7 @@ from studio.agent.tools import ToolContext, ToolResult
 from studio.engines.render.html.browser import ChromiumUnavailable, PageNotReady
 from studio.engines.render.html.pool import PoolBusy
 from studio.stages.common.music_source import find_source
+from studio.stages.common.timeline_source import load_live_narrated, timeline_source
 from studio.timeline import TimelineError
 from studio.timeline.load import TimelineSources
 from studio.timeline.load import load_timeline as read_timeline
@@ -20,19 +21,26 @@ _DEFAULT_REASON = "upstream/timeline.json 不存在（叙事阶段需要先定�
 
 
 MAX_SHOTS = 40
-"""镜头数超过它时给警告（`produce` 阶段）。"""
+"""镜头数超过它时给警告（无旁白、镜头由模型自己划分的阶段）。"""
 
 
-def _produce_timeline(ctx: ToolContext) -> tuple[dict[str, Any] | None, ToolResult | None]:
-    """`produce` 阶段没有上游时间轴：镜头划分和配乐都是本阶段自己写的，每次调用即时构建。"""
-    sources = TimelineSources(
-        ctx.workdir,
-        narration=False,
-        music_source="synth" if find_source(ctx.workdir / "music") is None else "import",
-        produce=True,
-    )
+def _live_timeline(ctx: ToolContext) -> tuple[dict[str, Any] | None, ToolResult | None]:
+    """没有上游时间轴的阶段：每次调用即时构建。
+
+    无旁白（`produce`、`free_produce`）：镜头划分和配乐都是本阶段自己写的；有旁白
+    （`free_explainer`）：读工作区顶层的叙事与配音，有配乐时叠加配乐层。
+    """
     try:
-        loaded = read_timeline(sources)
+        if timeline_source(ctx.stage) == "live_narrated":
+            loaded = load_live_narrated(ctx.workdir, with_music=True)
+        else:
+            sources = TimelineSources(
+                ctx.workdir,
+                narration=False,
+                music_source="synth" if find_source(ctx.workdir / "music") is None else "import",
+                produce=True,
+            )
+            loaded = read_timeline(sources)
     except TimelineError as exc:
         return None, ToolResult(text=f"时间轴不可用：{exc}", is_error=True)
     except (KeyError, TypeError, AttributeError, ValueError) as exc:
@@ -42,8 +50,8 @@ def _produce_timeline(ctx: ToolContext) -> tuple[dict[str, Any] | None, ToolResu
 
 
 def load_timeline(ctx: ToolContext) -> tuple[dict[str, Any] | None, ToolResult | None]:
-    if ctx.stage == "produce":
-        return _produce_timeline(ctx)
+    if timeline_source(ctx.stage) != "upstream":
+        return _live_timeline(ctx)
     timeline = ctx.workdir / TIMELINE_PATH
     if timeline.is_file():
         return json.loads(timeline.read_text(encoding="utf-8")), None

@@ -131,6 +131,8 @@ async def write_file_endpoint(
         # Normalize first so the scope check sees the same path that is written
         # (`narrative/./x` and `narrative//x` must not slip past the globs).
         path = files.normalize_relpath(path)
+        # Case-insensitive disks: `STYLE/STYLE.md` must be checked as the `style/STYLE.md` it hits.
+        path = files.match_existing_case(workdir, path)
         files.safe_path(workdir, path)
     except ScopeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

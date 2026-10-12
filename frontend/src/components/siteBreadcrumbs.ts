@@ -2,7 +2,7 @@
  * 顶栏面包屑的纯函数：由路由信息（和工作台的项目名）算出面包屑条目。
  * 最后一项是当前页（无 `to`），其余带 `to` 可点击。
  */
-import { STAGE_TITLES } from '@/components/session/suggestionFlow'
+import { STAGE_TITLES } from '@/composables/stageTitles'
 
 export interface Crumb {
   label: string

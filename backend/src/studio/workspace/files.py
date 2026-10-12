@@ -102,6 +102,34 @@ def normalize_relpath(relpath: str) -> str:
     return check_model_path(relpath).as_posix()
 
 
+def match_existing_case(workdir: Path | str, relpath: str) -> str:
+    """把（已规范化的）`relpath` 的每一段换成磁盘上已有条目的真实名字，按不区分大小写匹配。
+
+    范围检查（`fnmatchcase`）区分大小写，而 macOS 的默认文件系统不区分：`STYLE/STYLE.md` 不匹配
+    `style/*`，写下去却会落到 `style/STYLE.md`。范围检查前先换成磁盘上的名字就堵上了这条路；
+    在区分大小写的文件系统上这样做偏保守（会写进已有的同名目录），不会放宽任何限制。
+    从第一段不存在的条目起原样保留。
+    """
+    current = Path(workdir)
+    out: list[str] = []
+    parts = PurePosixPath(relpath).parts
+    for index, part in enumerate(parts):
+        if not current.is_dir():
+            return "/".join([*out, *parts[index:]])
+        names = [entry.name for entry in current.iterdir()]
+        # `exists()` is true for any casing on a case-insensitive disk: read the real name.
+        name = (
+            part
+            if part in names
+            else next((n for n in names if n.casefold() == part.casefold()), None)
+        )
+        if name is None:
+            return "/".join([*out, *parts[index:]])
+        out.append(name)
+        current = current / name
+    return "/".join(out)
+
+
 def safe_path(workdir: Path | str, relpath: str) -> Path:
     """校验 `relpath` 合法且落在 `workdir` 内，返回绝对路径；否则抛出 `ScopeError`。
 

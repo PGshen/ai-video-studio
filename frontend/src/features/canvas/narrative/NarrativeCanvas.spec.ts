@@ -22,6 +22,7 @@ const timing = (id: string) => ({
 const state = vi.hoisted(() => ({
   files: [] as string[],
   timing: undefined as string | undefined,
+  written: [] as Array<{ path: string; stage: string }>,
 }))
 
 vi.mock('@/composables/queries', async () => {
@@ -39,11 +40,26 @@ vi.mock('@/composables/queries', async () => {
       ),
     }),
     useProjectQuery: () => ({ data: vueRef({ settings: {} }) }),
-    useWriteFileMutation: () => ({ isPending: vueRef(false), mutateAsync: () => Promise.resolve() }),
+    useWriteFileMutation: () => ({
+      isPending: vueRef(false),
+      mutateAsync: (input: { path: string; stage: string }) => {
+        state.written.push({ path: input.path, stage: input.stage })
+        return Promise.resolve()
+      },
+    }),
   }
 })
 vi.mock('@/components/CodeEditor.vue', () => ({
-  default: { name: 'CodeEditor', render: () => h('div', { 'data-testid': 'code-editor' }) },
+  default: {
+    name: 'CodeEditor',
+    emits: ['update:content'],
+    render() {
+      return h('div', {
+        'data-testid': 'code-editor',
+        onClick: () => this.$emit('update:content', '{"scenes": []}'),
+      })
+    },
+  },
 }))
 
 import NarrativeCanvas from './NarrativeCanvas.vue'
@@ -74,6 +90,28 @@ describe('NarrativeCanvas', () => {
   beforeEach(() => {
     state.files = ['narrative/narrative.json']
     state.timing = undefined
+    state.written = []
+  })
+
+  async function editAndSave(stage?: string) {
+    const w = mount(NarrativeCanvas, {
+      props: { projectId: 'p1', busy: false, ...(stage ? { stage } : {}) },
+    })
+    await w.findAll('button').find((b) => b.text() === '原始 JSON')!.trigger('click')
+    await flushPromises()
+    await w.get('[data-testid="code-editor"]').trigger('click')
+    await w.findAll('button').find((b) => b.text() === '保存')!.trigger('click')
+    await flushPromises()
+  }
+
+  it('保存默认写在叙事阶段', async () => {
+    await editAndSave()
+    expect(state.written).toEqual([{ path: 'narrative/narrative.json', stage: 'narrative' }])
+  })
+
+  it('嵌在自由讲解里时保存写在 free_explainer 阶段', async () => {
+    await editAndSave('free_explainer')
+    expect(state.written).toEqual([{ path: 'narrative/narrative.json', stage: 'free_explainer' }])
   })
 
   it('narrative.json 已在缓存里时，切到原始 JSON 标签直接显示编辑器而不是一直"加载中"', async () => {

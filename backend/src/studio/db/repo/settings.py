@@ -34,6 +34,8 @@ STAGES: Final = (
     "music",
     "produce",
     "animation_html",
+    "free_explainer",
+    "free_produce",
     "style",
 )
 WEB_MODES: Final = ("tools", "native")

@@ -3,6 +3,8 @@
  * 项目工作台外壳（任务简报 T13/T14，控制者裁定 1；M2 T12 加了按阶段分派
  * 画布组件）：阶段导航 + 会话面板 | 画布 | 快照栏（后三者由 `WorkbenchSplit` 分栏，可拖宽）。
  * `animation_html`/`produce` 阶段用 `HtmlAnimationCanvas`（镜头列表 + 代码编辑器，见该目录）；
+ * 自由项目唯一的阶段（`free_explainer`/`free_produce`，free-mode 设计 §6.2）也用它，叙事、配乐、文件
+ * 由插槽填进来；
  * 老 manim 项目的 `animation` 阶段只显示下线提示（Manim 已下线，ADR 0027，项目只读），
  * `narrative` 阶段用 `NarrativeCanvas`（镜头卡片 + 配音播放条 + JSON，M3），
  * 其它阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）。
@@ -178,6 +180,7 @@ const canvasBusy = computed(() =>
             :stages="project.stages"
             :current-stage="stage"
             :collapsed="railCollapsed"
+            :kind="project.kind"
           />
           <SessionList
             v-model:session-id="sessionId"
@@ -251,6 +254,62 @@ const canvasBusy = computed(() =>
                     />
                   </template>
                 </ManimRetiredNotice>
+                <HtmlAnimationCanvas
+                  v-else-if="stage === 'free_explainer' || stage === 'free_produce'"
+                  :key="stage"
+                  :project-id="projectId"
+                  :busy="canvasBusy"
+                  :stage="stage"
+                >
+                  <template
+                    v-if="stage === 'free_explainer'"
+                    #narrative
+                  >
+                    <NarrativeCanvas
+                      :project-id="projectId"
+                      :busy="canvasBusy"
+                      stage="free_explainer"
+                    />
+                  </template>
+                  <template
+                    v-if="project.kind.music_source !== 'none'"
+                    #music
+                  >
+                    <ImportMusicCanvas
+                      v-if="isImportMusic(project.settings)"
+                      :project-id="projectId"
+                      :busy="canvasBusy"
+                      :allow-upload="true"
+                      compact
+                    />
+                    <MusicCanvas
+                      v-else
+                      :project-id="projectId"
+                      :busy="canvasBusy"
+                      :stage="stage"
+                    />
+                  </template>
+                  <template #files>
+                    <FileCanvas
+                      :project-id="projectId"
+                      :stage="stage"
+                      :busy="canvasBusy"
+                    />
+                  </template>
+                  <template #actions>
+                    <StageFinalizeButton
+                      :project-id="projectId"
+                      :stages="project.stages"
+                      :current-stage="stage"
+                      reopen-only
+                    />
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </HtmlAnimationCanvas>
                 <HtmlAnimationCanvas
                   v-else-if="stage === 'animation_html' || stage === 'produce'"
                   :project-id="projectId"
