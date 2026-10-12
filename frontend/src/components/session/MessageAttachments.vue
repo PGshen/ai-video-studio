@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
- * 用户消息下的附件（设计 2026-10-09 §6）：图片显示缩略图，点击在本页弹窗看原图；文件显示名字和
+ * 用户消息下的附件（设计 2026-10-09 §6）：图片显示缩略图，点击在本页弹窗看原图（多张时可左右切换）；文件显示名字和
  * 大小，项目会话里链接到工作区原文件（风格/选题会话没有可访问的工作区，只显示名字）。文件只下载、
  * 不在应用源上直接打开：上传的 .html/.svg 里的脚本否则会以应用身份运行。
  * 真实 turn 的 `attachments` 优先；还没到时用乐观占位的本地预览。
  */
 import { computed, ref } from 'vue'
-import { FileIcon } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, FileIcon } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { attachmentUrl, workspaceFileUrl } from '@/api/endpoints'
 import type { LocalAttachment } from '@/composables/useSessionStream'
@@ -45,7 +46,27 @@ const shown = computed<Shown[]>(() => {
   return (props.local ?? []).map((a) => ({ ...a, src: a.previewUrl }))
 })
 
-const viewing = ref<Shown | null>(null)
+/** Images that can be viewed full size; the dialog steps through these. */
+const images = computed(() => shown.value.filter((item) => item.kind === 'image' && item.src))
+const viewingIndex = ref<number | null>(null)
+const viewing = computed(() =>
+  viewingIndex.value === null ? undefined : images.value[viewingIndex.value],
+)
+
+function open(item: Shown): void {
+  viewingIndex.value = images.value.indexOf(item)
+}
+
+function step(delta: number): void {
+  const count = images.value.length
+  if (viewingIndex.value === null || count === 0) return
+  viewingIndex.value = (viewingIndex.value + delta + count) % count
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'ArrowLeft') step(-1)
+  else if (event.key === 'ArrowRight') step(1)
+}
 </script>
 
 <template>
@@ -64,7 +85,7 @@ const viewing = ref<Shown | null>(null)
         class="cursor-zoom-in"
         :aria-label="`查看图片 ${item.name}`"
         data-testid="attachment-image"
-        @click="viewing = item"
+        @click="open(item)"
       >
         <img
           :src="item.src"
@@ -95,10 +116,13 @@ const viewing = ref<Shown | null>(null)
       </span>
     </template>
     <Dialog
-      :open="viewing !== null"
-      @update:open="(open) => !open && (viewing = null)"
+      :open="viewing !== undefined"
+      @update:open="(isOpen) => !isOpen && (viewingIndex = null)"
     >
-      <DialogContent class="sm:max-w-4xl">
+      <DialogContent
+        class="sm:max-w-4xl"
+        @keydown="onKeydown"
+      >
         <DialogTitle class="truncate pr-6 text-sm font-normal">
           {{ viewing?.name }}
         </DialogTitle>
@@ -107,11 +131,41 @@ const viewing = ref<Shown | null>(null)
         </DialogDescription>
         <img
           v-if="viewing"
+          :key="viewing.src"
           :src="viewing.src"
           :alt="viewing.name"
           class="max-h-[75vh] w-full rounded-md object-contain"
           data-testid="attachment-image-large"
         >
+        <div
+          v-if="images.length > 1"
+          class="flex items-center justify-center gap-3"
+        >
+          <Button
+            size="icon"
+            variant="outline"
+            aria-label="上一张"
+            data-testid="attachment-image-prev"
+            @click="step(-1)"
+          >
+            <ChevronLeft />
+          </Button>
+          <span
+            class="text-muted-foreground text-sm"
+            data-testid="attachment-image-counter"
+          >
+            {{ (viewingIndex ?? 0) + 1 }} / {{ images.length }}
+          </span>
+          <Button
+            size="icon"
+            variant="outline"
+            aria-label="下一张"
+            data-testid="attachment-image-next"
+            @click="step(1)"
+          >
+            <ChevronRight />
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   </div>

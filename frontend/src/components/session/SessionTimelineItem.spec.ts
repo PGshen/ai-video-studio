@@ -193,6 +193,43 @@ describe('SessionTimelineItem：用户消息的附件', () => {
     await flushPromises()
     const large = document.body.querySelector('[data-testid="attachment-image-large"]')
     expect(large?.getAttribute('src')).toBe('/api/sessions/s1/attachments/abc')
+    // 只有一张图时不显示切换按钮
+    expect(document.body.querySelector('[data-testid="attachment-image-next"]')).toBeNull()
+    wrapper.unmount()
+    document.body.innerHTML = ''
+  })
+
+  it('一条消息有多张图时弹窗里可以左右切换（按钮和方向键，首尾循环）', async () => {
+    const img = (name: string, sha256: string) => ({
+      kind: 'image' as const, name, size: 3, sha256, path: null, binary: true,
+    })
+    const wrapper = mount(SessionTimelineItem, {
+      props: {
+        item: user(),
+        projectId: 'p1',
+        sessionId: 's1',
+        turns: new Map([['t1', {
+          ...withAttachments(),
+          attachments: [img('a.png', 'aaa'), withAttachments().attachments![1]!, img('b.png', 'bbb')],
+        }]]),
+      },
+      attachTo: document.body,
+    })
+    const $ = (id: string) => document.body.querySelector(`[data-testid="${id}"]`) as HTMLElement
+    const largeSrc = () => $('attachment-image-large').getAttribute('src')
+    await wrapper.findAll('button[data-testid="attachment-image"]')[1]!.trigger('click')
+    await flushPromises()
+    expect(largeSrc()).toBe('/api/sessions/s1/attachments/bbb')
+    expect($('attachment-image-counter').textContent).toContain('2 / 2')
+    $('attachment-image-next').click()
+    await flushPromises()
+    expect(largeSrc()).toBe('/api/sessions/s1/attachments/aaa')
+    $('attachment-image-prev').click()
+    await flushPromises()
+    expect(largeSrc()).toBe('/api/sessions/s1/attachments/bbb')
+    $('attachment-image-large').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await flushPromises()
+    expect(largeSrc()).toBe('/api/sessions/s1/attachments/aaa')
     wrapper.unmount()
     document.body.innerHTML = ''
   })
