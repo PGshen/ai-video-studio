@@ -177,6 +177,26 @@ describe('SessionTimelineItem：用户消息的附件', () => {
     expect(link.attributes('download')).toBe('notes.md')
   })
 
+  it('点图片缩略图在本页弹窗看原图，不开新标签页', async () => {
+    const wrapper = mount(SessionTimelineItem, {
+      props: {
+        item: user(),
+        projectId: 'p1',
+        sessionId: 's1',
+        turns: new Map([['t1', withAttachments()]]),
+      },
+      attachTo: document.body,
+    })
+    const thumb = wrapper.get('button[data-testid="attachment-image"]')
+    expect(wrapper.find('a[target="_blank"] img').exists()).toBe(false)
+    await thumb.trigger('click')
+    await flushPromises()
+    const large = document.body.querySelector('[data-testid="attachment-image-large"]')
+    expect(large?.getAttribute('src')).toBe('/api/sessions/s1/attachments/abc')
+    wrapper.unmount()
+    document.body.innerHTML = ''
+  })
+
   it('没有项目（风格/选题会话）时文件只显示名字', () => {
     const wrapper = mount(SessionTimelineItem, {
       props: {
