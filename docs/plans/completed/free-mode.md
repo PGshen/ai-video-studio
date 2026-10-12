@@ -6,11 +6,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | 自由模式（非编号） |
 | 设计依据 | [自由模式设计](../../design/2026-10-12-free-mode.md) |
 | 分支 | `feat/free-mode`（从 `main` 的 `1850787` 切出，设计文档已在其上） |
-| 批准记录 | 2026-10-12：负责人批准计划，同意 D1 |
+| 批准记录 | 2026-10-12：负责人批准计划，同意 D1；2026-10-12：负责人验收通过 |
 | 执行方式 | 本会话内联（Native），完成后一个独立评审检查整个分支 |
 
 ## 目标
@@ -55,14 +55,14 @@
 
 ## 验收标准
 
-- [ ] AC1：`POST /projects` 可以用 `mode=free` 创建三种自由形态（带或不带 `idea_id`），流水线、settings、卡片路径正确；非法组合返回 422 且没有副作用；老项目按 `staged` 处理。（验证：`tests/stages/test_pipeline.py`、`tests/api/test_projects.py`、`tests/api/test_video_kinds.py`）
-- [ ] AC2：多阶段的四个提示词逐字不变；`narrative` 阶段的现有测试全部通过；import-linter 通过。（验证：`tests/stages/test_prompt_fragments.py`、`make check`）
-- [ ] AC3：fake 运行时下，自由讲解（含带背景乐）、自由短片、自由 MV 都能从创建走到渲染任务成功、成片定稿、项目完成。（验证：`tests/api/test_free_flow.py`）
-- [ ] AC4：自由阶段的可写范围、工具清单、联网、时间轴来源符合设计 §4、§5。（验证：`tests/stages/test_free_explainer_stage.py`、`test_free_produce_stage.py`、`test_timeline_source.py`）
-- [ ] AC5：前端可以在项目页新建自由项目、在选题卡建自由项目；工作台显示设计 §6.2 的标签页，默认打开「预览」；单阶段项目不显示阶段条。（验证：vitest 用例）
-- [ ] AC6：真实模型冒烟：自由讲解与自由短片各出一次成片；自由讲解的第一轮先给方案或提问。（验证：`make smoke SMOKE_ARGS="-k free"`，用本机 Claude 登录）
-- [ ] AC7：L4：浏览器里走一遍新建 → 对话 → 预览 → 成片 → 定稿，附截图。
-- [ ] AC8：`make check` 全绿；ADR 0029、ARCHITECTURE、glossary、QUALITY、TODO 已同步。
+- [x] AC1：`POST /projects` 可以用 `mode=free` 创建三种自由形态（带或不带 `idea_id`），流水线、settings、卡片路径正确；非法组合返回 422 且没有副作用；老项目按 `staged` 处理。（验证：`tests/stages/test_pipeline.py`、`tests/api/test_projects.py`、`tests/api/test_video_kinds.py`）
+- [x] AC2：多阶段的四个提示词逐字不变；`narrative` 阶段的现有测试全部通过；import-linter 通过。（验证：`tests/stages/test_prompt_fragments.py`、`make check`）
+- [x] AC3：fake 运行时下，自由讲解（含带背景乐）、自由短片、自由 MV 都能从创建走到渲染任务成功、成片定稿、项目完成。（验证：`tests/api/test_free_flow.py`）
+- [x] AC4：自由阶段的可写范围、工具清单、联网、时间轴来源符合设计 §4、§5。（验证：`tests/stages/test_free_explainer_stage.py`、`test_free_produce_stage.py`、`test_timeline_source.py`）
+- [x] AC5：前端可以在项目页新建自由项目、在选题卡建自由项目；工作台显示设计 §6.2 的标签页，默认打开「预览」；单阶段项目不显示阶段条。（验证：vitest 用例）
+- [x] AC6：真实模型冒烟：自由讲解与自由短片各出一次成片；自由讲解的第一轮先给方案或提问。（验证：`make smoke SMOKE_ARGS="-k free"`，用本机 Claude 登录）
+- [x] AC7：L4：浏览器里走一遍新建 → 对话 → 预览 → 成片 → 定稿，附截图。
+- [x] AC8：`make check` 全绿；ADR 0029、ARCHITECTURE、glossary、QUALITY、TODO 已同步。
 
 ## 任务
 
@@ -208,12 +208,13 @@
 - 2026-10-12 — T8 — 前端：`mode` 类型；`presetKey`/`presetsFor`/`selectedKind`；`VideoKindPicker` 按模式分组与过滤；`NewFreeProjectDialog` 与项目页「新建项目」；选题卡可选自由形态；卡片「自由」标记；阶段名与阶段默认模型（`86f1df8`）
 - 2026-10-12 — T9（`9036c0a`）— `canvasTabs` 纯函数；`HtmlAnimationCanvas` 支持 `narrative`/`files` 插槽、自由阶段默认实时预览、"还没有开始"提示覆盖自由阶段；`NarrativeCanvas` 的 `stage` 属性；`StageNav` 自由模式标签；工作台页接入两个自由阶段
 - 2026-10-12 — T10 — L4 走查（发现并修好面包屑英文 id，`68f2669`）；ADR 0029、ARCHITECTURE、glossary、QUALITY、TODO；冒烟用例 `tests/smoke/test_free_mode_smoke.py`（`a17e6c2`）
-- 2026-10-12 — 负责人要求处理遗留的四条 TODO：已完成（D11）
+- 2026-10-12 — 负责人要求处理遗留的四条 TODO：已完成（D11，`a1d8616`）
+- 2026-10-12 — 负责人验收通过；计划归档，合并回 `main`
 - 2026-10-12 — 整分支独立评审（Opus）：无 Critical；修了 I1–I3 和 M1（见 D10），其余小问题延后（见「意外与发现」）
 
 ## 下一步
 
-- 全部任务完成，等负责人验收。验收通过后：计划移到 `completed/`，TODO 条目移到「已完成」，`feat/free-mode` 以 `--no-ff` 合并回 `main` 并在 `main` 上重跑 `make check`。
+- 无（2026-10-12 负责人验收通过，计划已归档，`feat/free-mode` 已合并回 `main`）。
 
 ## 决策记录
 
