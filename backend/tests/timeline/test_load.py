@@ -128,3 +128,29 @@ def _hash_after(mv: Path, relpath: str, **changes: object) -> str:
     document.update(changes)
     _write_json(mv, relpath, document)
     return _load_mv(mv).hash
+
+
+def test_missing_top_level_narration_says_what_to_do_not_which_stage(tmp_path: Path) -> None:
+    with pytest.raises(TimelineError) as info:
+        load_timeline(TimelineSources(tmp_path, narration=True, music_source="none"))
+    message = str(info.value)
+    assert "narrative/narrative.json 不存在" in message
+    assert "synthesize_tts" in message
+    assert "阶段" not in message
+
+
+def test_missing_upstream_narration_still_names_the_stage(tmp_path: Path) -> None:
+    with pytest.raises(TimelineError) as info:
+        load_timeline(
+            TimelineSources(tmp_path, narration=True, music_source="none", prefix="upstream/")
+        )
+    assert "叙事阶段需要先定稿" in str(info.value)
+
+
+def test_missing_top_level_score_points_at_render_music(workdir: Path) -> None:
+    with pytest.raises(TimelineError) as info:
+        load_timeline(TimelineSources(workdir, narration=True, music_source="synth"))
+    message = str(info.value)
+    assert "music/events.json 不存在" in message
+    assert "render_music" in message
+    assert "阶段" not in message

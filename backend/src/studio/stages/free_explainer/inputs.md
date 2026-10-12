@@ -13,7 +13,7 @@
 
 没有 `upstream/timeline.json`：时间轴由 `narrative.json` 加配音结果（`timing.json`）即时生成，镜头就是 `narrative.json` 的 `scenes`，**镜头的时长和 beat 的时刻都来自配音**。所以：
 
-- 场景文件名 `animation/scenes/<镜头 id>.js` 里的 id 就是 `narrative.json` 里镜头的 `id`（下文叙事格式里提到的 `.py` 是旧写法，以 `.js` 为准）。
+- 场景文件名 `animation/scenes/<镜头 id>.js` 里的 id 就是 `narrative.json` 里镜头的 `id`。
 - 改了某个镜头的 `narration` 或 `cue_text` 后要重新配音这个镜头，否则时间轴和旁白对不上，场景工具会报"timing.json 缺少对应记录"或"beat 数不一致"。
 - 重新配音会改变时刻：场景里的时刻都从 `env.cue(i)` 推出，就不用改；带背景乐时要重新 `render_music`。
 

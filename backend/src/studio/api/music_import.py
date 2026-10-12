@@ -36,6 +36,7 @@ from studio.db.repo.stages import get_stage
 from studio.engines.audio.probe import AudioProbeError, probe_audio
 from studio.engines.audio.song import MAX_SONG_SECONDS, MIN_SONG_SECONDS
 from studio.stages.common.music_source import SOURCE_EXTENSIONS, find_source
+from studio.stages.pipeline import FREE_PRODUCE_STAGE
 from studio.timeline.lyrics import LYRICS_PATH, MAX_LRC_BYTES, LyricsError, parse_lrc
 from studio.workspace import project_dir
 
@@ -154,6 +155,10 @@ _FINALIZED_DETAIL = {
     "song": "创意与要求已定稿，请先重新打开再换歌曲",
     "lyrics": "创意与要求已定稿，请先重新打开再改歌词",
 }
+_FREE_FINALIZED_DETAIL = {
+    "song": "已经成片定稿，换歌会让成片过期：请先在「成片」里重新打开再换歌曲",
+    "lyrics": "已经成片定稿，改歌词会让成片过期：请先在「成片」里重新打开再改歌词",
+}
 
 
 def _guard_song_request(
@@ -166,7 +171,8 @@ def _guard_song_request(
     """Shared pre-checks of the three song/lyrics endpoints, run before anything touches disk.
 
     The song and its lyrics are `concept` inputs: once `concept` is finalized they are frozen
-    until the user reopens it (a missing `concept` row counts as not finalized)."""
+    until the user reopens it (a missing `concept` row counts as not finalized). A free MV has
+    no `concept`; there they freeze once `free_produce` is finalized (the film is)."""
     form, _ = require_music_project(engine, project_id)
     if form != "import":
         raise HTTPException(status_code=404, detail="这个项目没有导入音乐")
@@ -175,6 +181,10 @@ def _guard_song_request(
     concept = get_stage(engine, project_id, "concept")
     if concept is not None and concept.status == "finalized":
         raise HTTPException(status_code=409, detail=_FINALIZED_DETAIL[target])
+    # A free MV has no `concept`: its only stage is finalized once the film is (free-mode).
+    free = get_stage(engine, project_id, FREE_PRODUCE_STAGE)
+    if free is not None and free.status == "finalized":
+        raise HTTPException(status_code=409, detail=_FREE_FINALIZED_DETAIL[target])
     if project_id in request.app.state.music_uploads:
         raise HTTPException(status_code=409, detail="这个项目正在上传音乐，请稍后再试")
 

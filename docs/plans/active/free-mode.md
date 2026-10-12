@@ -208,6 +208,7 @@
 - 2026-10-12 — T8 — 前端：`mode` 类型；`presetKey`/`presetsFor`/`selectedKind`；`VideoKindPicker` 按模式分组与过滤；`NewFreeProjectDialog` 与项目页「新建项目」；选题卡可选自由形态；卡片「自由」标记；阶段名与阶段默认模型（`86f1df8`）
 - 2026-10-12 — T9（`9036c0a`）— `canvasTabs` 纯函数；`HtmlAnimationCanvas` 支持 `narrative`/`files` 插槽、自由阶段默认实时预览、"还没有开始"提示覆盖自由阶段；`NarrativeCanvas` 的 `stage` 属性；`StageNav` 自由模式标签；工作台页接入两个自由阶段
 - 2026-10-12 — T10 — L4 走查（发现并修好面包屑英文 id，`68f2669`）；ADR 0029、ARCHITECTURE、glossary、QUALITY、TODO；冒烟用例 `tests/smoke/test_free_mode_smoke.py`（`a17e6c2`）
+- 2026-10-12 — 负责人要求处理遗留的四条 TODO：已完成（D11）
 - 2026-10-12 — 整分支独立评审（Opus）：无 Critical；修了 I1–I3 和 M1（见 D10），其余小问题延后（见「意外与发现」）
 
 ## 下一步
@@ -225,11 +226,12 @@
 - 2026-10-12 — **D8**（T8）：`components/session/suggestionFlow.ts` 的 `STAGE_TITLES` 不加自由阶段：它只用于回退建议的目标阶段，自由阶段没有上游、不会产生回退建议。`projectView.ts` 不用改：阶段筛选项来自 `composables/stageTitles.ts`，加了两个阶段名就自动出现。选择器的预设键：分阶段沿用 `video_kind`，自由加前缀 `free-`（卡片 `data-testid` 随之变化）。
 - 2026-10-12 — **D9**（T9）：`FileCanvas` 的只读判断不改：前端只能挡住"运行中"和 `upstream/`，可写范围外的保存由后端返回 403 并显示原因，自由阶段同样适用（`style/` 保存会得到 403）。`NarrativeCanvas` 不需要 `hideFinalize`：定稿按钮是工作台页通过 `actions` 插槽塞进去的，嵌入自由画布时不传就没有。"还没有开始"的中性提示也覆盖两个自由阶段，自由讲解的提示是"先写叙事并配音"。
 - 2026-10-12 — **D10**（整分支评审后的修复）：（I1）带背景乐的自由讲解先配音后配乐，预览端点原来一律要 `music/events.json`，配乐出来前预览打不开；改为自由讲解只在 `events.json` 存在时叠加配乐层（`api/html_preview.py`），与工具口径一致，成片仍由 worker 要求配乐。设计 §5.5 写的是预览接口不改，这是为满足"预览保留"做的最小偏离。（I2）从选题卡建的自由项目，`notes/project.md` 写明卡片位置，`free-mode` 片段不再说"没有选题"。（I3）`render_music` 在自由阶段读项目类型：自由 MV 没有歌曲、或自由讲解不带背景乐时拒绝合成并说明原因（D6 只论证了 `status_summary` 拿不到项目类型，工具通过 `ctx.engine` 拿得到）。（M1，升为 Important）自由阶段的 `tool_managed` 加 `upstream/*`、`output/*`、`.cache/*`，文件接口对这些目录重新返回 403。
+- 2026-10-12 — **D11**（负责人要求处理遗留 TODO）：（1）`narration-schema` 片段里的场景文件改为 `animation/scenes/<id>.js`，多阶段叙事提示词随之改了这一处（有意的修正，D5 的第一处不准确说法已消除），自由讲解开场白里的纠正说明删掉；（2）`timeline/load.py` 缺文件的提示按来源区分：读 `upstream/` 时仍说"叙事/配乐阶段需要先定稿"，读工作区顶层时说下一步（"先写 narrative/narrative.json，再用 synthesize_tts 配音""先写 music/compose.py，再用 render_music 渲染"），多阶段项目的成片前置检查也读顶层，新说法对它同样成立；（3）歌曲与歌词上传接口在 `free_produce` 已定稿时返回 409，提示先重新打开（评审 M4）；（4）`workspace.files.match_existing_case`：文件接口写入前把路径各段换成磁盘上已有条目的真实名字（不区分大小写匹配），再做范围检查（评审 M5）；在区分大小写的文件系统上偏保守，不放宽任何限制。
 - 2026-10-12 — **D2**：`produce` 的 `blockers.py`、`prepare.py` 挪到 `stages/common/produce_flow/`（T5）。设计 §4.2 写的是"复用"，但阶段之间不能互相 import，只能先挪到 `common`。
 
 ## 意外与发现
 
-- 2026-10-12（评审，延后的小问题）：M2 `free_explainer` 只在已有 `compose.py` 时才复制配乐金样本（第一次写脚本那轮看不到）；M3 自由讲解的场景工具按文件判断是否叠加配乐层（I3 修复后不会再出现不一致状态）；M4 自由 MV 成片定稿后仍能换歌（已记 TODO）；M5 大小写不敏感文件系统上文件接口可绕过受保护路径（已记 TODO）；M6 自由讲解选了背景乐但还没做时状态摘要不提（靠 `notes/project.md`）；M7 测试缺口：Shell 改 `timing.json`/`music.wav`/写 `uploads/` 的端到端还原、自由讲解改稿后成片前置检查拒绝、多阶段提示词的逐字锁定（对照文件已按计划删除，评审逐字比对过四份一致）。
+- 2026-10-12（评审，延后的小问题）：M2 `free_explainer` 只在已有 `compose.py` 时才复制配乐金样本（第一次写脚本那轮看不到）；M3 自由讲解的场景工具按文件判断是否叠加配乐层（I3 修复后不会再出现不一致状态）；M4 自由 MV 成片定稿后仍能换歌、M5 大小写不敏感文件系统上文件接口可绕过受保护路径（两条都已按 D11 修好）；M6 自由讲解选了背景乐但还没做时状态摘要不提（靠 `notes/project.md`）；M7 测试缺口：Shell 改 `timing.json`/`music.wav`/写 `uploads/` 的端到端还原、自由讲解改稿后成片前置检查拒绝、多阶段提示词的逐字锁定（对照文件已按计划删除，评审逐字比对过四份一致）。
 - 无
 
 ## 阻塞

@@ -416,3 +416,45 @@ async def test_files_api_still_refuses_system_dirs(api_env: ApiEnv, path: str) -
     )
 
     assert response.status_code in (400, 403), response.text
+
+
+@pytest.mark.parametrize("path", ["STYLE/STYLE.md", "Style/style.md", "UPLOADS/x.md"])
+async def test_files_api_matches_existing_names_case_insensitively(
+    api_env: ApiEnv, path: str
+) -> None:
+    pid = await _create(api_env, narration=True, music_source="none")
+    (api_env.workdir(pid) / "uploads").mkdir()
+    style = api_env.workdir(pid) / "style" / "STYLE.md"
+    before = style.read_text(encoding="utf-8")
+
+    response = await api_env.client.put(
+        f"/api/projects/{pid}/files/{path}",
+        params={"stage": "free_explainer"},
+        json={"content": "hijacked\n"},
+    )
+
+    assert response.status_code == 403, response.text
+    assert style.read_text(encoding="utf-8") == before
+
+
+async def test_song_cannot_change_after_the_free_mv_is_finalized(
+    api_env: ApiEnv, tmp_path: Path
+) -> None:
+    from studio.db.repo.stages import update_stage
+
+    pid = await _create(api_env, narration=False, music_source="import")
+    song = write_click_song(tmp_path / "song.wav").read_bytes()
+    url = f"/api/projects/{pid}/music/source"
+    files = {"file": ("song.wav", song, "application/octet-stream")}
+    engine = api_env.app.state.engine
+
+    update_stage(engine, pid, "free_produce", status="finalized")
+    refused = await api_env.client.post(url, files=files)
+    lyrics = await api_env.client.delete(f"/api/projects/{pid}/music/lyrics")
+    update_stage(engine, pid, "free_produce", status="active")
+    accepted = await api_env.client.post(url, files=files)
+
+    assert refused.status_code == 409
+    assert "重新打开" in refused.json()["detail"]
+    assert lyrics.status_code == 409
+    assert accepted.status_code == 200, accepted.text

@@ -32,15 +32,12 @@
 | P3 | 前端偶发 `Unhandled rejection: TypeError: Cannot read properties of undefined (reading 'find')` | windows-native T11，2026-10-10 | 在选题页建卡片/建项目时 vite 日志里出现一次，界面无可见异常，未复现 |
 | P3 | Fake 运行时关闭时，新建会话的模型下拉框仍把 `fake` 标为默认 | windows-native T11，2026-10-10 | 本机曾用开了 Fake 的 `preview_start` 起过 api，种子里写进了 `fake`；`tasks.py dev`（不开 Fake）下默认仍选它，选了会失败 |
 | P2 | 登录冒烟有 3 个用例被模型行为挡住：`test_claude_login_cancel_then_turn`、`test_claude_login_sandbox_read`（claude-sonnet-5 把"这是自动化测试，用 Bash 执行…"当成提示注入，拒绝运行 `sleep`/探测脚本）、`test_style_claude_login`（叙事轮用 Bash 而不是 Read 读 `style/exemplars/`，断言只认 Read） | windows-native T12，2026-10-10 | main（`13fcef0`）上前两个以同样方式失败，不是该分支引入的；改冒烟的指令写法（例如放进阶段任务里、说明来源）或放宽断言，沙箱读隔离在此之前由慢测试和 Seatbelt 单测覆盖 |
-| P3 | 叙事提示词说场景文件是 `animation/scenes/<id>.py`（Manim 遗留），HTML 引擎实际是 `.js` | free-mode T4，2026-10-12 | 片段 `stages/common/prompts/narration-schema.md`；改一个字，叙事与自由讲解都受益 |
-| P3 | 自由讲解还没有叙事时，预览接口的原因写"叙事阶段需要先定稿并完成配音"（来自 `timeline/load.py` 的缺文件提示），自由项目没有叙事阶段 | free-mode L4，2026-10-12 | 前端已补一句正确的下一步；可以让提示按来源（顶层/`upstream/`）区分措辞 |
-| P3 | 自由 MV 成片定稿后仍能上传或换歌（上传接口只看 `concept` 行，自由项目没有） | free-mode 评审 M4，2026-10-12 | 自由项目在出片阶段已定稿时也返回 409，提示先重新打开 |
-| P3 | 大小写不敏感的文件系统（macOS）上，文件接口用 `STYLE/STYLE.md` 这类大小写能绕过受保护路径 | free-mode 评审 M5，2026-10-12 | 原来就有，`*` 让范围变大；范围判断前把路径按磁盘真实大小写规范化 |
 
 ## 已完成
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-12 | free-mode 遗留的四条 TODO：叙事提示词的场景文件改为 `.js`；时间轴缺文件提示按来源区分（顶层说下一步，`upstream/` 说阶段）；自由 MV 成片定稿后不能换歌和改歌词；文件接口按磁盘上的真实名字（不区分大小写）做范围检查 | [free-mode.md](active/free-mode.md) D11 |
 | 2026-10-11 | 原生支持 Windows（Windows 上能用也能开发；负责人 2026-10-11 验收） | [windows-native.md](completed/windows-native.md) |
 | 2026-10-11 | HTML 引擎支持 WebGL/three.js（3D），出帧默认用 GPU（ADR 0028） | [webgl-3d.md](completed/webgl-3d.md) |
 | 2026-10-10 | TTS 音色管理：设置页可新增/删除音色，按音色区分豆包 v1/v2 | [tts-voice-management.md](completed/tts-voice-management.md) |

@@ -61,3 +61,9 @@ def test_compose_prompt_concatenates_in_order(tmp_path: Path) -> None:
     a.write_text("# A\n\n", encoding="utf-8")
     b.write_text("## B\n", encoding="utf-8")
     assert compose_prompt(a, b) == "# A\n\n## B\n"
+
+
+def test_narration_schema_names_html_scene_files() -> None:
+    text = fragment("narration-schema").read_text(encoding="utf-8")
+    assert "animation/scenes/<id>.js" in text
+    assert ".py" not in text

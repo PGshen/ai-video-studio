@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from studio.workspace import files
 from studio.workspace.files import (
     ScopeError,
     delete_file,
@@ -268,3 +269,13 @@ class TestInitAndRemoveWorkspace:
         remove_workspace(data_dir, "p1")
 
         assert not workdir.exists()
+
+
+def test_match_existing_case_uses_the_names_on_disk(tmp_path: Path) -> None:
+    (tmp_path / "style" / "exemplars").mkdir(parents=True)
+    (tmp_path / "style" / "STYLE.md").write_text("x", encoding="utf-8")
+
+    assert files.match_existing_case(tmp_path, "STYLE/STYLE.md") == "style/STYLE.md"
+    assert files.match_existing_case(tmp_path, "Style/Exemplars/new.md") == "style/exemplars/new.md"
+    assert files.match_existing_case(tmp_path, "notes/Idea.md") == "notes/Idea.md"
+    assert files.match_existing_case(tmp_path, "style/STYLE.md") == "style/STYLE.md"
