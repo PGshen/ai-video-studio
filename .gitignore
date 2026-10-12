@@ -5,6 +5,8 @@ data/*
 data/styles/.*.tmp-*/
 data/styles/.*.old-*/
 
+posters
+
 # Python
 .venv/
 __pycache__/

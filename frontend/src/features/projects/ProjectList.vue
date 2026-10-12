@@ -7,7 +7,15 @@
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ChevronDown } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import ListPager from '@/components/ListPager.vue'
 import { useAllIdeasQuery, useProjectsQuery } from '@/composables/queries'
@@ -44,10 +52,14 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: StatusFilter; label: string }> = [
   { value: 'completed', label: '已完成' },
   { value: 'abandoned', label: '已废弃' },
 ]
+/** 下拉单选项的值必须是字符串，「全部阶段」用这个哨兵值，对应 `stage = null`。 */
+const ALL_STAGES = '__all__'
 const STAGE_OPTIONS = [
-  { value: null, label: '全部阶段' },
+  { value: ALL_STAGES, label: '全部阶段' },
   ...Object.entries(STAGE_TITLES).map(([value, label]) => ({ value, label })),
 ]
+const statusLabel = computed(() => STATUS_OPTIONS.find((o) => o.value === status.value)?.label ?? '')
+const stageLabel = computed(() => STAGE_OPTIONS.find((o) => o.value === (stage.value ?? ALL_STAGES))?.label ?? '')
 
 const visible = computed(() =>
   filterProjects(projects.value ?? [], ideaOf.value, {
@@ -89,28 +101,58 @@ watch([query, stage, status, ideaId], () => {
         <span class="truncate">选题：{{ ideaTitle }}</span>
         <span aria-hidden="true">×</span>
       </Button>
-      <div class="flex gap-1">
-        <Button
-          v-for="option in STATUS_OPTIONS"
-          :key="option.value"
-          size="sm"
-          :variant="status === option.value ? 'default' : 'outline'"
-          @click="status = option.value"
-        >
-          {{ option.label }}
-        </Button>
-      </div>
-      <div class="flex gap-1">
-        <Button
-          v-for="option in STAGE_OPTIONS"
-          :key="option.value ?? 'all'"
-          size="sm"
-          :variant="stage === option.value ? 'default' : 'outline'"
-          @click="stage = option.value"
-        >
-          {{ option.label }}
-        </Button>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="status-filter"
+          >
+            {{ statusLabel }}
+            <ChevronDown />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuRadioGroup
+            :model-value="status"
+            @update:model-value="status = $event as StatusFilter"
+          >
+            <DropdownMenuRadioItem
+              v-for="option in STATUS_OPTIONS"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="stage-filter"
+          >
+            {{ stageLabel }}
+            <ChevronDown />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuRadioGroup
+            :model-value="stage ?? ALL_STAGES"
+            @update:model-value="stage = $event === ALL_STAGES ? null : String($event)"
+          >
+            <DropdownMenuRadioItem
+              v-for="option in STAGE_OPTIONS"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Input
         v-model="query"
         class="max-w-xs"

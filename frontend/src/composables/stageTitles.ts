@@ -6,7 +6,7 @@ export const STAGE_TITLES: Record<string, string> = {
   music: '配乐',
   produce: '配乐与动画',
   animation: '动画',
-  animation_html: '动画',
+  animation_html: '动画（HTML5）',
   free_explainer: '自由讲解',
   free_produce: '自由创作',
 }
