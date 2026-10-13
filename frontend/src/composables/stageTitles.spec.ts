@@ -11,7 +11,7 @@ describe('STAGE_TITLES', () => {
     expect(STAGE_TITLES.topic).toBe('选题')
     expect(STAGE_TITLES.narrative).toBe('叙事')
     expect(STAGE_TITLES.music).toBe('配乐')
-    expect(STAGE_TITLES.animation_html).toBe('动画')
+    expect(STAGE_TITLES.animation_html).toBe('动画（HTML5）')
     expect(STAGE_TITLES).not.toHaveProperty('beatsheet')
   })
 })
