@@ -18,8 +18,8 @@ import {
 // 只保留外壳布局；导航项对应本项目真实的路由（见 src/router.ts）。
 const data = {
   user: {
-    name: 'pengguishen',
-    email: 'pgs1108pgs@gmail.com',
+    name: '小朋友',
+    email: 'pipi@gmail.com',
     avatar: '',
   },
   navMain: NAV_MAIN,

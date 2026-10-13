@@ -77,6 +77,6 @@ const disclosure = useDisclosure(toRef(props, 'sessionId'))
     class="text-muted-foreground flex items-center gap-2 text-sm"
   >
     <LoaderCircleIcon class="size-4 animate-spin" />
-    <span>正在进行中…</span>
+    <span>thinking…</span>
   </div>
 </template>
