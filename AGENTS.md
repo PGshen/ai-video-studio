@@ -7,7 +7,7 @@
 
 单人本地使用的**对话式 AI 知识视频工作台**。流程：选题打磨 → 叙事 → 动画（代码 + 成片）。
 每个阶段都以画布式对话打磨产物：agent 直接改工作区文件，每轮自动快照，可以回滚。
-底层同时支持 Claude Agent SDK 和 OpenAI Agents SDK。
+底层同时支持 Claude Agent SDK、OpenAI Agents SDK，以及用 ChatGPT 本机登录驱动的 Codex CLI（[ADR 0030](docs/decisions/0030-Codex本机登录运行时.md)）。
 
 - 架构设计（权威来源）：[docs/design/2026-09-26-architecture.md](docs/design/2026-09-26-architecture.md)
 - 模块地图与分层规则：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

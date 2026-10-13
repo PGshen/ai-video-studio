@@ -6,7 +6,7 @@
 |---|---|
 | 状态 | 已采纳（2026-10-13，负责人接受全部四条前提） |
 | 日期 | 2026-10-13 |
-| 相关 | [codex-login-spike 计划](../plans/completed/codex-login-spike.md)、[codex.md](../references/codex.md)、[ADR 0008](0008-模型接入方式.md)、[ADR 0009](0009-Shell沙箱.md)、[ADR 0012](0012-会话内同供应商换模型.md) |
+| 相关 | [codex-login-spike 计划](../plans/completed/codex-login-spike.md)、[codex-runtime 计划](../plans/completed/codex-runtime.md)（正式接入，2026-10-13 合并）、[codex.md](../references/codex.md)、[ADR 0008](0008-模型接入方式.md)、[ADR 0009](0009-Shell沙箱.md)、[ADR 0012](0012-会话内同供应商换模型.md) |
 
 ## 背景
 

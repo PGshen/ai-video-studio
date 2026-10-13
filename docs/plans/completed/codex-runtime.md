@@ -6,11 +6,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | 零散需求（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [ADR 0030](../../decisions/0030-Codex本机登录运行时.md)（已采纳，四条前提已接受）；已验证行为见 [codex.md](../../references/codex.md)；运行时分层沿用 [架构设计 §4.1–§4.3](../../design/2026-09-26-architecture.md) |
 | 分支 | `codex-runtime` |
-| 批准记录 | 2026-10-13：负责人批准计划，Native 执行 |
+| 批准记录 | 2026-10-13：负责人批准计划，Native 执行；2026-10-13：负责人验收通过，合并到 main |
 
 ## 目标
 
@@ -183,10 +183,12 @@
 - 2026-10-13 — T5 — `codex_sandbox.py`（permission profile）、`exec_policy.codex_sandbox_available`、拒读清单加 `~/.codex`；冒烟 `codex_login_sandbox_read`、`codex_login_view_image_through_symlink` 通过（`view_image` 受拒读约束）（bd8aaaa）
 - 2026-10-13 — T6 — `runtime=codex`（只允许本机登录）、内置 `codex-login`；oneshot（`--ephemeral`）、连通性测试与自动命名超时 120 秒、联网回退自建工具、附件说明；设置页 codex 时禁用 key 输入（759c49d）
 - 2026-10-13 — T7 — codex 冒烟 4 条通过；隔离实例浏览器走查 AC6、AC7 通过；过滤换模型时 codex 必出的英文警告；文档（runbook、ARCHITECTURE、QUALITY、tech-debt TD-93–95、TODO）
+- 2026-10-13 — 评审修复 — 未登录时第一条 401 即结束本轮、停止时不再等进行中的工具调用（c05e6d2）
+- 2026-10-13 — 收尾 — 负责人验收通过；计划移到 `completed/`，以 `--no-ff` 合并到 main。整理：遗留问题登记为 TD-93–TD-97，Windows 实测排进 TODO（P3）
 
 ## 下一步
 
-- 全部任务完成，等整分支评审与负责人验收；验收通过后按 SOP 收尾（计划移到 `completed/`）并合并到 main。
+- 无（已完成并合并）。后续：Windows 实测见 TODO（P3），遗留问题见 tech-debt TD-93–TD-97。
 
 ## 决策记录
 
