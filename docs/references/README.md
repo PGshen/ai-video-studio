@@ -20,6 +20,7 @@ agent SDK 和前端组件库更新很快，AI 的训练知识可能已经过时�
 |---|---|
 | [claude-agent-sdk.md](claude-agent-sdk.md) | Claude Agent SDK（Python） |
 | [openai-agents-sdk.md](openai-agents-sdk.md) | OpenAI Agents SDK（Python） |
+| [codex.md](codex.md) | Codex CLI 用 ChatGPT 本机登录：认证、事件格式、注入上下文的收口、会话与沙箱（spike 实测） |
 | [frontend-stack.md](frontend-stack.md) | shadcn-vue、@ai-elements、Tailwind v4 |
 | [sse-starlette.md](sse-starlette.md) | sse-starlette、httpx `ASGITransport` 流式测试的限制 |
 | [legacy-assets.md](legacy-assets.md) | 旧项目 `../ai-video` 中可迁移的资产 |
