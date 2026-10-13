@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,17 @@ EXPLAINER_SETTINGS = {
     "music_source": "none",
     "pipeline": ["topic", "narrative", "animation_html"],
 }
+
+
+@pytest.fixture
+def fake_codex_bin(tmp_path: Path) -> Path:
+    """An executable standing in for the Codex CLI (`fixtures/fake_codex.py`, POSIX only)."""
+    wrapper = tmp_path / "bin" / "codex"
+    wrapper.parent.mkdir()
+    script = Path(__file__).parent / "fixtures" / "fake_codex.py"
+    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8")
+    wrapper.chmod(0o755)
+    return wrapper
 
 
 @pytest.fixture

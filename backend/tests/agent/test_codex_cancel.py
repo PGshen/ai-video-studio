@@ -43,18 +43,6 @@ def test_descendants_walks_the_process_tree() -> None:
     assert descendants(20, table) == []
 
 
-@pytest.fixture
-def fake_bin(tmp_path: Path) -> Path:
-    wrapper = tmp_path / "bin" / "codex"
-    wrapper.parent.mkdir()
-    wrapper.write_text(
-        f'#!/bin/sh\nexec "{sys.executable}" "{FIXTURES / "fake_codex.py"}" "$@"\n',
-        encoding="utf-8",
-    )
-    wrapper.chmod(0o755)
-    return wrapper
-
-
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -81,7 +69,7 @@ def _ctx(workdir: Path, token: CancelToken) -> TurnContext:
 
 
 async def _cancelled_turn(
-    tmp_path: Path, fake_bin: Path, hang: str
+    tmp_path: Path, fake_codex_bin: Path, hang: str
 ) -> tuple[list[events.AgentEvent], int, float]:
     script = tmp_path / "start.jsonl"
     script.write_text(
@@ -99,7 +87,7 @@ async def _cancelled_turn(
     }
     workdir = tmp_path / "ws"
     workdir.mkdir()
-    runtime = CodexRuntime(tmp_path / "data", fake_bin, environ=environ, cancel_grace_s=1.0)
+    runtime = CodexRuntime(tmp_path / "data", fake_codex_bin, environ=environ, cancel_grace_s=1.0)
     token = CancelToken()
     out: list[events.AgentEvent] = []
     started = 0.0
@@ -112,8 +100,8 @@ async def _cancelled_turn(
     return out, int(pid_file.read_text(encoding="utf-8")), time.monotonic() - started
 
 
-async def test_sigint_lets_codex_clean_up(tmp_path: Path, fake_bin: Path) -> None:
-    out, child, elapsed = await _cancelled_turn(tmp_path, fake_bin, "handle")
+async def test_sigint_lets_codex_clean_up(tmp_path: Path, fake_codex_bin: Path) -> None:
+    out, child, elapsed = await _cancelled_turn(tmp_path, fake_codex_bin, "handle")
     assert out[-1] == events.TurnEnd(resume_ref=THREAD, status="cancelled")
     assert elapsed < 1.0  # no need to wait for the grace period
     assert not _alive(child)
@@ -122,9 +110,9 @@ async def test_sigint_lets_codex_clean_up(tmp_path: Path, fake_bin: Path) -> Non
 
 
 async def test_force_kill_also_reaps_orphaned_command_groups(
-    tmp_path: Path, fake_bin: Path
+    tmp_path: Path, fake_codex_bin: Path
 ) -> None:
-    out, child, elapsed = await _cancelled_turn(tmp_path, fake_bin, "ignore")
+    out, child, elapsed = await _cancelled_turn(tmp_path, fake_codex_bin, "ignore")
     assert out[-1] == events.TurnEnd(resume_ref=THREAD, status="cancelled")
     assert 1.0 <= elapsed < 10  # waited for the grace period, then forced
     # The `sleep` was in its own process group and still held our stdout pipe.

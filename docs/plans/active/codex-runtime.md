@@ -151,7 +151,7 @@
 - **完成标准**：单元测试通过；冒烟结果满足 AC4。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k codex_login_sandbox"`
 
-### T6：模型配置、设置页与周边接入（待开始）
+### T6：模型配置、设置页与周边接入（完成）
 
 - **目标**：用户能在界面上建、测、用 `codex` 配置；周边功能对 `codex` 有明确行为。
 - **涉及文件**：
@@ -180,11 +180,12 @@
 - 2026-10-13 — T2 — 实测选定方案 A（每轮内置 HTTP MCP）；`codex_mcp.TurnToolServer`；真实 codex 调到工具并看到图片（`r2a`–`r2d`）（9c1cbda）
 - 2026-10-13 — T3 — `codex_args`/`codex_events`/`codex_env`/`codex_runtime`，`events.Notice`；真实 CLI 跑两轮（含业务工具、续会话、提示更新）通过（6396fa6）
 - 2026-10-13 — T4 — SIGINT → 宽限 15 秒 → 强杀并清理命令进程组（`codex_procs.py`）；真实 CLI 取消 1.9 秒、无残留，续会话带上残余用量（`r4a-runtime-cancel.txt`）（e757891）
-- 2026-10-13 — T5 — `codex_sandbox.py`（permission profile）、`exec_policy.codex_sandbox_available`、拒读清单加 `~/.codex`；冒烟 `codex_login_sandbox_read`、`codex_login_view_image_through_symlink` 通过（`view_image` 受拒读约束）
+- 2026-10-13 — T5 — `codex_sandbox.py`（permission profile）、`exec_policy.codex_sandbox_available`、拒读清单加 `~/.codex`；冒烟 `codex_login_sandbox_read`、`codex_login_view_image_through_symlink` 通过（`view_image` 受拒读约束）（bd8aaaa）
+- 2026-10-13 — T6 — `runtime=codex`（只允许本机登录）、内置 `codex-login`；oneshot（`--ephemeral`）、连通性测试与自动命名超时 120 秒、联网回退自建工具、附件说明；设置页 codex 时禁用 key 输入
 
 ## 下一步
 
-- 从 T6 开始：模型配置 `runtime=codex`（`db/repo/profiles.py` 的 `USER_RUNTIMES`、登录模式校验、内置配置 `codex-login`），然后是 oneshot/probe/titler/runner/attachments 与设置页。T6 加了内置配置后，把 `tests/smoke/test_smoke.py` 里临时的 `_codex_profile` 换成 `h.profile("codex-login")`（T7）。
+- 从 T7 开始：把 `tests/smoke/test_smoke.py` 里临时的 `_codex_profile` 换成 `h.profile("codex-login", ...)`，加 `test_codex_login`（含版本漂移提醒）、`test_codex_login_cancel_then_turn`、`test_codex_login_tools`；然后 `make dev` + 浏览器按 AC6、AC7 实测截图，补文档（runbook、QUALITY、tech-debt、ARCHITECTURE、TODO）。
 
 ## 决策记录
 
@@ -201,6 +202,9 @@
 - 2026-10-13 — T4：取消时在发 SIGINT **之前**记下 codex 全部后代的进程组，codex 退出后（不论是否强杀）都对这些组补一次 SIGKILL — codex 退出后孤儿的父进程变成 1，事后找不到；孤儿还握着 stdout 管道，不清理的话读循环会一直等到命令自己结束。
 - 2026-10-13 — T5：没有可用沙箱且无隔离开关关闭时，codex 本轮直接失败（不像 Claude 那样只去掉命令工具）— codex 的文件编辑（apply_patch）也走同一套权限，去掉命令执行后几乎什么都做不了。
 - 2026-10-13 — T5：冒烟在 T6 加内置配置之前用临时的 `_codex_profile` 直接建配置行。
+- 2026-10-13 — T6：内置 `codex-login` 不填单价 — 订阅额度，codex 也不报成本；代价是每轮会有一条"本轮成本未计价"提示（与其他缺单价的配置一致，如实反映）。
+- 2026-10-13 — T6：codex 的单轮调用复用 `CodexRuntime`（`ephemeral=True`：加 `--ephemeral`、不记账），而不是另写一套 — 环境清理、隔离、取消都一致；单轮调用在 `<data_dir>/codex/oneshot/<用途>/` 下运行。
+- 2026-10-13 — T6：附件说明对 codex 不设读文件的大小上限（它用 shell 读），只对非图片的二进制文件提示用 shell 提取文本。
 - 2026-10-13 — 参数校验只在 `invoke_tool` 做一次（MCP 层 `validate_input=False`），错误文案与其他运行时一致。
 
 - 2026-10-13 — **CLI 改用 ChatGPT 桌面版自带的**（负责人决定，ADR 0030 前提 2 改定）— 计划原定在 `tools/codex/` 安装 `@openai/codex@0.162.1`；T1 开始安装时发现 npm 包解压约 340 MB（与桌面版自带的 322 MB 相当），下载约 8 分钟只下了 43 MB。改用桌面版后不再有 npm 新依赖，也不需要在新版本上复验（实测用的就是这个版本）；T1 缩为"定位 + 补测思考强度"。

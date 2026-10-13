@@ -147,3 +147,27 @@ def test_stage_flags() -> None:
     assert not any(s.workspaceless for s in (TOPIC, NARRATIVE, ANIMATION))
     for stage in (BRAINSTORM, TOPIC):
         assert {t.name for t in stage.tools() if t.web} == WEB_TOOLS
+
+
+async def test_native_mode_falls_back_to_self_built_tools_for_codex(env: StudioEnv) -> None:
+    """codex-runtime：codex 的沙箱断网、不开自带的网页搜索，联网阶段用自建联网工具（经 MCP）。"""
+    from studio.db.engine import session_scope
+    from studio.db.models import ModelProfile
+
+    h = _harness(env, "native")
+    with session_scope(env.engine) as db:
+        row = ModelProfile(name="codex-like", provider="openai", model="m", runtime="codex")
+        db.add(row)
+        db.flush()
+        profile_id = row.id
+    session = create_session(
+        env.engine,
+        project_id=None,
+        stage="brainstorm",
+        model_profile_id=profile_id,
+        runtime="fake",
+    )
+    await h.run(session.id, [fake.say("x")])
+
+    assert h.contexts[-1].allow_web is False
+    assert WEB_TOOLS <= _tool_names(h)

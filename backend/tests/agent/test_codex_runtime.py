@@ -47,18 +47,6 @@ PROFILE = ModelProfileValue(
 
 
 @pytest.fixture
-def fake_bin(tmp_path: Path) -> Path:
-    wrapper = tmp_path / "bin" / "codex"
-    wrapper.parent.mkdir()
-    wrapper.write_text(
-        f'#!/bin/sh\nexec "{sys.executable}" "{FIXTURES / "fake_codex.py"}" "$@"\n',
-        encoding="utf-8",
-    )
-    wrapper.chmod(0o755)
-    return wrapper
-
-
-@pytest.fixture
 def workdir(tmp_path: Path) -> Path:
     path = tmp_path / "ws"
     path.mkdir()
@@ -119,8 +107,8 @@ async def _run(runtime: CodexRuntime, ctx: TurnContext) -> list[events.AgentEven
     return [event async for event in runtime.run_turn(ctx)]
 
 
-def _runtime(tmp_path: Path, fake_bin: Path, environ: dict[str, str]) -> CodexRuntime:
-    return CodexRuntime(tmp_path / "data", fake_bin, environ=environ, platform="darwin")
+def _runtime(tmp_path: Path, fake_codex_bin: Path, environ: dict[str, str]) -> CodexRuntime:
+    return CodexRuntime(tmp_path / "data", fake_codex_bin, environ=environ, platform="darwin")
 
 
 def _thread(script: str) -> str:
@@ -128,8 +116,8 @@ def _thread(script: str) -> str:
     return str(json.loads(first)["thread_id"])
 
 
-async def test_new_session_turn(tmp_path: Path, fake_bin: Path, workdir: Path) -> None:
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+async def test_new_session_turn(tmp_path: Path, fake_codex_bin: Path, workdir: Path) -> None:
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
     out = await _run(runtime, _ctx(workdir))
 
     thread = _thread("minimal.jsonl")
@@ -161,13 +149,13 @@ async def test_new_session_turn(tmp_path: Path, fake_bin: Path, workdir: Path) -
 
 
 async def test_resumed_turn_reports_the_difference(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     thread = _thread("minimal.jsonl")
     ledger = CodexLedger(tmp_path / "data" / "codex" / "ledger")
     ledger.record(thread, {"input_tokens": 9000, "cached_input_tokens": 0, "output_tokens": 2})
     ledger.set_prompt(thread, prompt_digest("阶段提示 v1"))
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
 
     out = await _run(runtime, _ctx(workdir, resume_ref=thread))
 
@@ -180,14 +168,14 @@ async def test_resumed_turn_reports_the_difference(
 
 
 async def test_unfinished_turn_is_settled_by_the_next(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     thread = _thread("cancelled.jsonl")
     ledger = CodexLedger(tmp_path / "data" / "codex" / "ledger")
     ledger.record(thread, {"input_tokens": 100, "cached_input_tokens": 0, "output_tokens": 1})
 
     first = await _run(
-        _runtime(tmp_path, fake_bin, _environ(tmp_path, "cancelled.jsonl")),
+        _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "cancelled.jsonl")),
         _ctx(workdir, resume_ref=thread),
     )
     end = first[-1]
@@ -205,7 +193,7 @@ async def test_unfinished_turn_is_settled_by_the_next(
         encoding="utf-8",
     )
     second = await _run(
-        _runtime(tmp_path, fake_bin, _environ(tmp_path, FAKE_CODEX_SCRIPT=str(script))),
+        _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, FAKE_CODEX_SCRIPT=str(script))),
         _ctx(workdir, resume_ref=thread),
     )
     usage = next(e for e in second if isinstance(e, events.Usage))
@@ -215,9 +203,9 @@ async def test_unfinished_turn_is_settled_by_the_next(
     assert entry is not None and not entry.unsettled
 
 
-async def test_model_not_found(tmp_path: Path, fake_bin: Path, workdir: Path) -> None:
+async def test_model_not_found(tmp_path: Path, fake_codex_bin: Path, workdir: Path) -> None:
     runtime = _runtime(
-        tmp_path, fake_bin, _environ(tmp_path, "model_not_found.jsonl", FAKE_CODEX_EXIT="1")
+        tmp_path, fake_codex_bin, _environ(tmp_path, "model_not_found.jsonl", FAKE_CODEX_EXIT="1")
     )
     out = await _run(runtime, _ctx(workdir))
     assert any(isinstance(e, events.Notice) for e in out)
@@ -226,9 +214,9 @@ async def test_model_not_found(tmp_path: Path, fake_bin: Path, workdir: Path) ->
     assert end.error is not None and "gpt-no-such-model" in end.error
 
 
-async def test_not_logged_in(tmp_path: Path, fake_bin: Path, workdir: Path) -> None:
+async def test_not_logged_in(tmp_path: Path, fake_codex_bin: Path, workdir: Path) -> None:
     runtime = _runtime(
-        tmp_path, fake_bin, _environ(tmp_path, "not_logged_in.jsonl", FAKE_CODEX_EXIT="1")
+        tmp_path, fake_codex_bin, _environ(tmp_path, "not_logged_in.jsonl", FAKE_CODEX_EXIT="1")
     )
     end = (await _run(runtime, _ctx(workdir)))[-1]
     assert isinstance(end, events.TurnEnd) and end.status == "failed"
@@ -236,12 +224,12 @@ async def test_not_logged_in(tmp_path: Path, fake_bin: Path, workdir: Path) -> N
 
 
 async def test_crash_without_events_reports_redacted_stderr(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlLXZhbHVlLWhlcmU"
     stderr = f"Error: required MCP servers failed to initialize: studio (token {token})\n"
     runtime = _runtime(
-        tmp_path, fake_bin, _environ(tmp_path, FAKE_CODEX_STDERR=stderr, FAKE_CODEX_EXIT="2")
+        tmp_path, fake_codex_bin, _environ(tmp_path, FAKE_CODEX_STDERR=stderr, FAKE_CODEX_EXIT="2")
     )
     out = await _run(runtime, _ctx(workdir, resume_ref="th-1"))
     end = out[-1]
@@ -253,12 +241,12 @@ async def test_crash_without_events_reports_redacted_stderr(
 
 
 async def test_changed_system_prompt_is_sent_with_the_message(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     thread = _thread("minimal.jsonl")
     ledger = CodexLedger(tmp_path / "data" / "codex" / "ledger")
     ledger.set_prompt(thread, prompt_digest("阶段提示 v1"))
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
 
     await _run(runtime, _ctx(workdir, resume_ref=thread, system_prompt="阶段提示 v2"))
 
@@ -269,7 +257,7 @@ async def test_changed_system_prompt_is_sent_with_the_message(
     assert entry is not None and entry.prompt_digest == prompt_digest("阶段提示 v2")
 
 
-async def test_very_long_output_line(tmp_path: Path, fake_bin: Path, workdir: Path) -> None:
+async def test_very_long_output_line(tmp_path: Path, fake_codex_bin: Path, workdir: Path) -> None:
     text = "长" * 700_000  # > 2 MiB in UTF-8, on one JSONL line
     script = tmp_path / "long.jsonl"
     script.write_text(
@@ -291,26 +279,28 @@ async def test_very_long_output_line(tmp_path: Path, fake_bin: Path, workdir: Pa
         + "\n",
         encoding="utf-8",
     )
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, FAKE_CODEX_SCRIPT=str(script)))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, FAKE_CODEX_SCRIPT=str(script)))
     out = await _run(runtime, _ctx(workdir))
     assert out[0] == events.TextBlock(text)
     assert out[-1] == events.TurnEnd(resume_ref="th-long", status="done")
 
 
 async def test_already_cancelled_does_not_start(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     token = CancelToken()
     token.cancel()
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
     out = await _run(runtime, _ctx(workdir, resume_ref="th-9", cancel_token=token))
     assert out == [events.TurnEnd(resume_ref="th-9", status="cancelled")]
     assert not (tmp_path / "record.json").exists()
 
 
-async def test_api_key_profiles_are_refused(tmp_path: Path, fake_bin: Path, workdir: Path) -> None:
+async def test_api_key_profiles_are_refused(
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
+) -> None:
     profile = dataclasses.replace(PROFILE, api_key_env="OPENAI_API_KEY")
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
     out = await _run(runtime, _ctx(workdir, profile=profile))
     end = out[-1]
     assert isinstance(end, events.TurnEnd) and end.status == "failed"
@@ -319,11 +309,11 @@ async def test_api_key_profiles_are_refused(tmp_path: Path, fake_bin: Path, work
 
 
 async def test_images_are_passed_as_files_and_removed(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     png = events.ImageData("image/png", "iVBORw0KGgo=")
     jpeg = events.ImageData("image/jpeg", "/9j/4AAQ")
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
     await _run(runtime, _ctx(workdir, images=[png, jpeg]))
 
     record = _record(tmp_path)
@@ -338,13 +328,13 @@ class _NoArgs(BaseModel):
 
 
 async def test_business_tools_get_a_turn_server(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     def handler(ctx: ToolContext, args: _NoArgs) -> ToolResult:
         return ToolResult(text="x")
 
     spec = ToolSpec("lookup", "look something up", _NoArgs, {"topic"}, handler)
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
     await _run(runtime, _ctx(workdir, tools=[spec]))
 
     record = _record(tmp_path)
@@ -352,13 +342,13 @@ async def test_business_tools_get_a_turn_server(
     assert any(arg.startswith("mcp_servers.studio.url=") for arg in record["argv"])
 
 
-def test_register_codex_only_when_the_cli_is_found(tmp_path: Path, fake_bin: Path) -> None:
+def test_register_codex_only_when_the_cli_is_found(tmp_path: Path, fake_codex_bin: Path) -> None:
     from studio.agent.codex_runtime import register_codex
     from studio.agent.runtime import RuntimeFactory
     from studio.config import Settings
 
     found = RuntimeFactory()
-    register_codex(found, Settings(data_dir=tmp_path / "data", codex_bin=fake_bin))
+    register_codex(found, Settings(data_dir=tmp_path / "data", codex_bin=fake_codex_bin))
     assert found.has("codex")
 
     missing = RuntimeFactory()
@@ -367,9 +357,9 @@ def test_register_codex_only_when_the_cli_is_found(tmp_path: Path, fake_bin: Pat
 
 
 async def test_macos_turns_run_under_the_permission_profile(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
-    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
     await _run(runtime, _ctx(workdir))
     argv = _record(tmp_path)["argv"]
     assert 'default_permissions="studio"' in argv
@@ -377,10 +367,13 @@ async def test_macos_turns_run_under_the_permission_profile(
 
 
 async def test_without_a_sandbox_the_switch_decides(
-    tmp_path: Path, fake_bin: Path, workdir: Path
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
     runtime = CodexRuntime(
-        tmp_path / "data", fake_bin, environ=_environ(tmp_path, "minimal.jsonl"), platform="linux"
+        tmp_path / "data",
+        fake_codex_bin,
+        environ=_environ(tmp_path, "minimal.jsonl"),
+        platform="linux",
     )
     refused = await _run(runtime, _ctx(workdir))
     end = refused[-1]

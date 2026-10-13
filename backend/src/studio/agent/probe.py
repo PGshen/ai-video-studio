@@ -19,6 +19,8 @@ from studio.agent.oneshot import ask_once
 from studio.db.repo.profiles import ModelProfileValue
 
 PROBE_TIMEOUT_SECONDS = 30.0
+CODEX_PROBE_TIMEOUT_SECONDS = 120.0
+"""codex 单轮最小请求就要 28–44 秒，未登录时约 80 秒才报错（docs/references/codex.md）。"""
 ERROR_MAX_CHARS = 300
 REPLY_MAX_CHARS = 100
 
@@ -71,6 +73,7 @@ def make_probe(
     environ: Mapping[str, str] | None = None,
     *,
     timeout: float = PROBE_TIMEOUT_SECONDS,
+    codex_timeout: float = CODEX_PROBE_TIMEOUT_SECONDS,
     ask: Ask = ask_once,
 ) -> Probe:
     env = environ if environ is not None else os.environ
@@ -80,16 +83,17 @@ def make_probe(
             return ProbeResult(ok=True, latency_ms=0, reply="fake 运行时不发请求", error=None)
         if profile.api_key_env and not env.get(profile.api_key_env):
             return _fail(f"环境变量 {profile.api_key_env} 未设置（写在 backend/.env 后重启）")
+        limit = codex_timeout if profile.runtime == "codex" else timeout
         start = time.monotonic()
         try:
             reply = await asyncio.wait_for(
                 ask(
                     profile, INSTRUCTIONS, MESSAGE, data_dir=data_dir, environ=env, workdir="probe"
                 ),
-                timeout,
+                limit,
             )
         except TimeoutError:
-            return _fail(f"超时：{timeout:g} 秒内没有回复", round(timeout * 1000))
+            return _fail(f"超时：{limit:g} 秒内没有回复", round(limit * 1000))
         except Exception as exc:
             elapsed = round((time.monotonic() - start) * 1000)
             return _fail(_describe(exc, _secrets(profile, env)), elapsed)

@@ -24,7 +24,19 @@ export interface ProfileFormValues {
 export type ProfileFormErrors = Partial<Record<keyof ProfileFormValues, string>>
 
 /** 界面里可以新建的运行时（`fake` 只用于测试）。 */
-export const USER_RUNTIMES = ['claude', 'openai'] as const
+export const USER_RUNTIMES = ['claude', 'openai', 'codex'] as const
+
+/** 只能用本机登录的运行时：codex 用 ChatGPT 登录，设了 key 会改走 API 计费（ADR 0030）。 */
+export const LOGIN_ONLY_RUNTIMES: readonly string[] = ['codex']
+
+export function isLoginOnly(runtime: string): boolean {
+  return LOGIN_ONLY_RUNTIMES.includes(runtime)
+}
+
+export function keyEnvPlaceholder(runtime: string): string {
+  if (isLoginOnly(runtime)) return '不用填：codex 使用本机 ChatGPT 登录'
+  return '例如 OPENAI_API_KEY；claude 可以留空（使用本机登录）'
+}
 
 const NAME_PATTERN = /^[\p{L}\p{N}_.-]{1,50}$/u
 const ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/
@@ -123,9 +135,11 @@ export function validateProfileForm(
 
   const keyEnv = values.api_key_env.trim()
   if (!keyEnv) {
-    if (values.runtime !== 'claude' && values.runtime !== 'fake') {
-      errors.api_key_env = '只有 claude 运行时可以不填 API key 环境变量（使用本机登录）'
+    if (!['claude', 'codex', 'fake'].includes(values.runtime)) {
+      errors.api_key_env = '只有 claude、codex 运行时可以不填 API key 环境变量（使用本机登录）'
     }
+  } else if (isLoginOnly(values.runtime)) {
+    errors.api_key_env = 'codex 只支持本机登录（ChatGPT 账号），API key 环境变量须留空'
   } else if (!ENV_NAME_PATTERN.test(keyEnv)) {
     errors.api_key_env = '要填环境变量的名字（大写字母、数字、下划线），不是 key 本身'
   }

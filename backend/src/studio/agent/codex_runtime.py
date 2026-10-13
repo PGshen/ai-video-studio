@@ -140,6 +140,16 @@ class CodexLedger:
         tmp.replace(path)
 
 
+class _NoLedger(CodexLedger):
+    """`ephemeral` 运行（单轮调用）：codex 不存会话，也就不记账。"""
+
+    def get(self, thread_id: str) -> LedgerEntry | None:
+        return None
+
+    def _write(self, thread_id: str, entry: LedgerEntry) -> None:
+        return None
+
+
 class CodexRuntime:
     def __init__(
         self,
@@ -150,13 +160,17 @@ class CodexRuntime:
         platform: str | None = None,
         cancel_grace_s: float = CANCEL_GRACE_S,
         repo_root: Path | None = None,
+        ephemeral: bool = False,
     ) -> None:
+        """`ephemeral`：单轮调用（会话命名、连通性测试），`--ephemeral` 不写会话文件、不记账。"""
         self._binary = binary
         self._data_dir = data_dir
         self._repo_root = repo_root if repo_root is not None else default_repo_root()
         self._cancel_grace_s = cancel_grace_s
         self._codex_dir = data_dir / "codex"
-        self._ledger = CodexLedger(self._codex_dir / "ledger")
+        self._ephemeral = ephemeral
+        ledger_root = self._codex_dir / "ledger"
+        self._ledger = _NoLedger(ledger_root) if ephemeral else CodexLedger(ledger_root)
         self._environ = environ if environ is not None else os.environ
         self._platform = platform or sys.platform
 
@@ -208,7 +222,7 @@ class CodexRuntime:
                     system_prompt=ctx.system_prompt,
                     effort=ctx.effort,
                     image_paths=image_paths,
-                    extra=[*mcp.args(), *sandbox],
+                    extra=[*mcp.args(), *sandbox, *(["--ephemeral"] if self._ephemeral else [])],
                 )
                 env = build_env(self._environ, platform=self._platform) | mcp.env
                 child = await asyncio.create_subprocess_exec(

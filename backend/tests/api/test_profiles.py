@@ -28,7 +28,7 @@ class TestListModelProfiles:
 
         assert response.status_code == 200
         names = {p["name"] for p in response.json()}
-        assert {"fake", "claude-sonnet", "claude-login", "gpt", "deepseek"} <= names
+        assert {"fake", "claude-sonnet", "claude-login", "gpt", "deepseek", "codex-login"} <= names
 
     async def test_exposes_env_var_names_but_never_key_values(
         self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch

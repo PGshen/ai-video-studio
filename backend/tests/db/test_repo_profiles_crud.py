@@ -75,6 +75,18 @@ class TestCreate:
 
         assert created.api_key_env is None
 
+    def test_codex_profile_uses_the_local_login(self, migrated_engine: Engine) -> None:
+        created = create_model_profile(
+            migrated_engine,
+            **_fields(name="my-codex", runtime="codex", api_key_env=None, model="gpt-6-luna"),
+        )
+        assert created.runtime == "codex" and created.api_key_env is None
+
+    def test_codex_profile_cannot_use_an_api_key(self, migrated_engine: Engine) -> None:
+        # CODEX_API_KEY would switch codex to paid API billing (ADR 0030): login only.
+        with pytest.raises(ProfileValidationError, match="codex 只支持本机登录"):
+            create_model_profile(migrated_engine, **_fields(name="my-codex", runtime="codex"))
+
     def test_zero_cost_budget_is_allowed(self, migrated_engine: Engine) -> None:
         assert (
             create_model_profile(migrated_engine, **_fields(max_cost_per_turn=0)).max_cost_per_turn
@@ -246,7 +258,7 @@ class TestDelete:
 
     def test_builtin_profiles_cannot_be_deleted(self, migrated_engine: Engine) -> None:
         seed_model_profiles(migrated_engine, enable_fake_runtime=True)
-        for name in ("claude-sonnet", "claude-login", "gpt", "deepseek", "fake"):
+        for name in ("claude-sonnet", "claude-login", "gpt", "deepseek", "codex-login", "fake"):
             profile = get_model_profile(migrated_engine, name)
             assert profile is not None
             with pytest.raises(BuiltinProfileError):

@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 TITLE_MAX_CHARS = 10
 TITLE_TIMEOUT_SECONDS = 60.0
+CODEX_TITLE_TIMEOUT_SECONDS = 120.0
+"""codex 单轮最小请求就要 28–44 秒（docs/references/codex.md）。"""
 
 TitleGenerator = Callable[[ModelProfileValue, str], Awaitable[str | None]]
 """`(会话的模型配置, 第一条用户消息) → 标题或 None`。"""
@@ -60,7 +62,10 @@ def make_title_generator(
             coro = ask_once(
                 profile, INSTRUCTIONS, text, data_dir=data_dir, environ=env, workdir="titler"
             )
-            return clean_title(await asyncio.wait_for(coro, TITLE_TIMEOUT_SECONDS))
+            limit = (
+                CODEX_TITLE_TIMEOUT_SECONDS if profile.runtime == "codex" else TITLE_TIMEOUT_SECONDS
+            )
+            return clean_title(await asyncio.wait_for(coro, limit))
         except Exception:
             logger.warning("会话自动命名失败（沿用截取的标题）", exc_info=True)
             return None

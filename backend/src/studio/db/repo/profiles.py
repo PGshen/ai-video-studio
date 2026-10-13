@@ -131,6 +131,17 @@ _SEED_PROFILES: list[dict[str, Any]] = [
         "price_input": 0.30,
         "price_output": 1.20,
     },
+    {
+        # GPT through the local ChatGPT login (ADR 0030): subscription, codex reports no cost.
+        "name": "codex-login",
+        "provider": "openai",
+        "model": "gpt-6.1-sol",
+        "runtime": "codex",
+        "api_key_env": None,
+        "supports_vision": True,
+        "price_input": None,
+        "price_output": None,
+    },
 ]
 
 _FAKE_PROFILE: dict[str, Any] = {
@@ -207,10 +218,12 @@ def get_model_profile_by_id(engine: Engine, profile_id: str) -> ModelProfileValu
 
 # ---- M5 T6：增改删 ---------------------------------------------------------
 
-USER_RUNTIMES: Final = ("claude", "openai")
+USER_RUNTIMES: Final = ("claude", "openai", "codex")
 """界面里可以新建的运行时（`fake` 只用于测试，不能新建）。"""
-_LOGIN_RUNTIMES: Final = ("claude", "fake")
-"""`api_key_env` 可以为空的运行时：claude 用本机登录，fake 不需要 key。"""
+_LOGIN_RUNTIMES: Final = ("claude", "codex", "fake")
+"""`api_key_env` 可以为空的运行时：claude、codex 用本机登录，fake 不需要 key。"""
+_LOGIN_ONLY_RUNTIMES: Final = ("codex",)
+"""只能用本机登录的运行时：codex 设了 `CODEX_API_KEY` 会改走 API 计费（ADR 0030）。"""
 BUILTIN_NAMES: Final = frozenset({str(spec["name"]) for spec in _SEED_PROFILES} | {"fake"})
 _NAME = re.compile(r"^[\w.\-]{1,50}$")
 _ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
@@ -292,7 +305,9 @@ def _validate_profile(
     key_env = fields["api_key_env"]
     if key_env is None:
         if runtime not in _LOGIN_RUNTIMES:
-            errors.append("只有 claude 运行时可以不填 API key 环境变量（使用本机登录）")
+            errors.append("只有 claude、codex 运行时可以不填 API key 环境变量（使用本机登录）")
+    elif runtime in _LOGIN_ONLY_RUNTIMES:
+        errors.append("codex 只支持本机登录（ChatGPT 账号），API key 环境变量须留空")
     elif not isinstance(key_env, str) or _ENV_NAME.match(key_env) is None:
         errors.append("api_key_env 必须是环境变量的名字（大写字母、数字、下划线），不是 key 本身")
     if not isinstance(fields["supports_vision"], bool):

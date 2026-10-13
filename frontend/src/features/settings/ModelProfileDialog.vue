@@ -22,6 +22,8 @@ import {
   USER_RUNTIMES,
   emptyProfileForm,
   formFromProfile,
+  isLoginOnly,
+  keyEnvPlaceholder,
   toCreateBody,
   toPatchBody,
   validateProfileForm,
@@ -55,6 +57,14 @@ watch(open, (isOpen) => {
   errors.value = {}
   nothingChanged.value = false
 })
+
+// codex only runs on the local ChatGPT login: an API key name would be rejected anyway.
+watch(
+  () => values.value.runtime,
+  (runtime) => {
+    if (isLoginOnly(runtime)) values.value.api_key_env = ''
+  },
+)
 
 function locked(field: string): boolean {
   return props.profile !== null && isFieldLocked(props.profile, field)
@@ -193,7 +203,8 @@ function submit(): void {
           <Input
             id="profile-key-env"
             v-model="values.api_key_env"
-            placeholder="例如 OPENAI_API_KEY；claude 可以留空（使用本机登录）"
+            :placeholder="keyEnvPlaceholder(values.runtime)"
+            :disabled="isLoginOnly(values.runtime)"
           />
           <p
             v-if="errors.api_key_env"
