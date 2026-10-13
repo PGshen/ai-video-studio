@@ -3,8 +3,9 @@
  * 通用文件画布（任务简报 T14，控制者裁定 1/2/3/4）：文件树 + CodeMirror
  * 编辑器。`FileTree`/`CodeEditor` 都是纯展示组件，这里负责：
  *
- * - 选中文件后拉内容（`useFileContentQuery`），二进制文件不拉，只显示
- *   占位（`fileKind.isTextFile`）。
+ * - 选中文件后拉内容（`useFileContentQuery`），二进制文件不拉：图片/音频/
+ *   视频（`fileKind.mediaKind`）用 `<img>`/`<audio>`/`<video>` 直连原始文件
+ *   端点预览（支持 Range），其余只显示占位（`fileKind.isTextFile`）。
  * - 只读判断：`busy`（父组件传入，来自当前会话的 turn 状态）或者
  *   `FileEntry.readonly`（`upstream/`）——见 `editorReadonly.ts`。
  * - 未保存修改的冲突：`composables/conflictState.ts` 状态机；`workspace_changed`
@@ -18,11 +19,12 @@ import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { useFileContentQuery, useFileTreeQuery, useWriteFileMutation } from '@/composables/queries'
 import { ApiError } from '@/api/http'
+import { workspaceFileUrl } from '@/api/endpoints'
 import CodeEditor from '@/components/CodeEditor.vue'
 import FileTree from './FileTree.vue'
 import { computeReadonly } from './editorReadonly'
 import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from '@/composables/conflictState'
-import { editorLanguage, isTextFile } from './fileKind'
+import { editorLanguage, isTextFile, mediaKind } from './fileKind'
 import { computeMissingFileAction } from './missingFile'
 
 const props = defineProps<{
@@ -32,13 +34,31 @@ const props = defineProps<{
   busy: boolean
 }>()
 
-const { data: fileTree } = useFileTreeQuery(() => props.projectId)
+const { data: fileTree, dataUpdatedAt: treeUpdatedAt } = useFileTreeQuery(() => props.projectId)
 const selectedPath = ref<string | null>(null)
 
 const selectedEntry = computed(
   () => fileTree.value?.files.find((f) => f.path === selectedPath.value) ?? null,
 )
 const isTextSelected = computed(() => selectedPath.value !== null && isTextFile(selectedPath.value))
+const selectedMedia = computed(() => (selectedPath.value ? mediaKind(selectedPath.value) : null))
+
+// 媒体地址带版本号，避免浏览器沿用旧内容：文件树每次因 `workspace_changed`
+// 重新拉取都会更新 `dataUpdatedAt`。图片跟着刷新；音频/视频只在切换文件
+// 时取一次版本号，不让 agent 写别的文件时打断正在播放的音频。
+const mediaVersion = ref(0)
+watch(
+  [selectedPath, treeUpdatedAt],
+  ([, updatedAt], [prevPath]) => {
+    if (selectedMedia.value === 'image' || selectedPath.value !== prevPath) mediaVersion.value = updatedAt
+  },
+  { immediate: true },
+)
+const mediaUrl = computed(() =>
+  selectedPath.value && selectedMedia.value
+    ? workspaceFileUrl(props.projectId, selectedPath.value, String(mediaVersion.value))
+    : null,
+)
 
 // 文件树已加载、且选中的路径不在其中：文件被回滚/删除了（G1）。文件树
 // 首次加载完成之前不判定，避免选中文件还没来得及被这次查询看到就被
@@ -151,6 +171,35 @@ function onLoadLatest(): void {
           :language="currentLanguage"
           readonly
         />
+      </template>
+      <template v-else-if="selectedMedia && mediaUrl">
+        <p class="text-muted-foreground truncate text-xs">
+          {{ selectedPath }}
+        </p>
+        <div class="bg-muted/40 flex min-h-0 flex-1 items-center justify-center overflow-auto rounded border p-3">
+          <img
+            v-if="selectedMedia === 'image'"
+            :src="mediaUrl"
+            :alt="selectedPath"
+            class="max-h-full max-w-full object-contain"
+          >
+          <audio
+            v-else-if="selectedMedia === 'audio'"
+            :key="mediaUrl"
+            :src="mediaUrl"
+            controls
+            preload="metadata"
+            class="w-full"
+          />
+          <video
+            v-else
+            :key="mediaUrl"
+            :src="mediaUrl"
+            controls
+            preload="metadata"
+            class="max-h-full max-w-full"
+          />
+        </div>
       </template>
       <template v-else-if="!isTextSelected">
         <p class="text-muted-foreground text-sm">

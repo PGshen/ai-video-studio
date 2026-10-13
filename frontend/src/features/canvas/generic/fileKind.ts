@@ -51,3 +51,32 @@ export function isTextFile(path: string): boolean {
 export function editorLanguage(path: string): EditorLanguage {
   return LANGUAGE_BY_EXT[extensionOf(path)] ?? 'text'
 }
+
+export type MediaKind = 'image' | 'audio' | 'video'
+
+/**
+ * Binary files the browser can preview directly from the raw file endpoint.
+ * SVG stays a text file (editable in CodeEditor), so it is not listed here.
+ */
+const MEDIA_BY_EXT: Record<string, MediaKind> = {
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  gif: 'image',
+  webp: 'image',
+  avif: 'image',
+  bmp: 'image',
+  mp3: 'audio',
+  wav: 'audio',
+  m4a: 'audio',
+  aac: 'audio',
+  ogg: 'audio',
+  flac: 'audio',
+  mp4: 'video',
+  webm: 'video',
+  mov: 'video',
+}
+
+export function mediaKind(path: string): MediaKind | null {
+  return MEDIA_BY_EXT[extensionOf(path)] ?? null
+}
