@@ -136,6 +136,15 @@ class Usage:
 
 
 @dataclass(frozen=True, slots=True)
+class Notice:
+    """运行时自己的提示（落库为 `turn_events.type == "notice"`），例如 codex 的配置警告：
+    不影响本轮结果，但要让用户看得到（codex-runtime T3）。"""
+
+    kind: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class TurnEnd:
     resume_ref: str | None
     status: TurnStatus
@@ -143,5 +152,13 @@ class TurnEnd:
 
 
 AgentEvent = (
-    TextDelta | TextBlock | ThinkingDelta | ThinkingBlock | ToolCall | ToolResult | Usage | TurnEnd
+    TextDelta
+    | TextBlock
+    | ThinkingDelta
+    | ThinkingBlock
+    | ToolCall
+    | ToolResult
+    | Usage
+    | Notice
+    | TurnEnd
 )

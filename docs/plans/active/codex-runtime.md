@@ -110,7 +110,7 @@
 - **完成标准**：上述测试通过；一次真实 codex 调用（极小提示）成功调到一个工具并看到图片。
 - **验证命令**：`make check`
 
-### T3：`CodexRuntime` 主体（待开始）
+### T3：`CodexRuntime` 主体（完成）
 
 - **目标**：实现 `AgentRuntime`：一轮 = 一个 `codex exec --json` 子进程，产出现有的 `AgentEvent` 序列。
 - **涉及文件**：`backend/src/studio/agent/codex_args.py`（新，纯函数：参数构造）、`codex_events.py`（新：JSONL → `AgentEvent`）、`codex_runtime.py`（新：进程、账本、`register_codex`）、`codex_env.py`（新：子进程环境）、`backend/src/studio/main.py`（注册）、`backend/tests/agent/test_codex_args.py`、`test_codex_events.py`、`test_codex_runtime.py`、`backend/tests/agent/fixtures/codex/*.jsonl`（从 spike 证据裁剪、去掉任何身份信息）、假 CLI 脚本 `backend/tests/agent/fixtures/fake_codex.py`。
@@ -177,11 +177,12 @@
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-13 — T1 — 改用桌面版 CLI（负责人决定）；`codex_cli.py`（定位、版本）、`STUDIO_CODEX_BIN`；思考强度实测通过（`r1g-*`）（03a10cf）
-- 2026-10-13 — T2 — 实测选定方案 A（每轮内置 HTTP MCP）；`codex_mcp.TurnToolServer`；真实 codex 调到工具并看到图片（`r2a`–`r2d`）
+- 2026-10-13 — T2 — 实测选定方案 A（每轮内置 HTTP MCP）；`codex_mcp.TurnToolServer`；真实 codex 调到工具并看到图片（`r2a`–`r2d`）（9c1cbda）
+- 2026-10-13 — T3 — `codex_args`/`codex_events`/`codex_env`/`codex_runtime`，`events.Notice`；真实 CLI 跑两轮（含业务工具、续会话、提示更新）通过
 
 ## 下一步
 
-- 从 T3 开始：先写 `codex_args.py` 的参数构造测试，再从 `data/evidence/codex-spike/` 的 JSONL 裁剪回放用例（`backend/tests/agent/fixtures/codex/`）写 `codex_events.py` 的映射测试。T2 的 `TurnToolServer` 产出 `CodexMcpConfig`（`args()` + `env`），T3 把它的 `env` 合并进清理后的子进程环境。
+- 从 T4 开始：`CodexRuntime._stop_on_cancel` 目前直接 `proc.kill_tree`（T3 的临时做法），换成 SIGINT → 宽限 → 强杀并清理孤儿进程组。先写 `test_codex_cancel.py`（假 CLI 起一个独立进程组的 `sleep`），再实现 `codex_procs.py`。
 
 ## 决策记录
 
@@ -190,6 +191,11 @@
 - 2026-10-13 — T2 选方案 A（每轮内置 HTTP MCP 服务），不做 stdio 桥接 — 实测登录模式与 permission profile 下都可用，续会话换端口令牌也可用；不需要额外进程和回调通道，handler 直接拿本轮 `ToolContext`。
 - 2026-10-13 — codex 侧 `required=true` — 不加时令牌或服务出错会被悄悄忽略，模型只是看不到工具；加了之后启动即失败（只有 stderr 有原因，T3 要把 stderr 尾部带进错误）。
 - 2026-10-13 — `tool_timeout_sec=900` — 渲染预览、配乐合成要跑几分钟；900 秒高于工具自身最长的超时（Shell 上限 600 秒），超时由工具自己报，codex 这层只兜底。
+- 2026-10-13 — T3：提示词改从 stdin 传（`-`），图片用 `--image=<路径>` — 系统提示与前言可能很长；`-i` 是可变参数，会吞掉位置参数（实测 `r3a`/`r3b`）。
+- 2026-10-13 — T3：新增 `events.Notice(kind, message)`，TurnRunner 落库为 `notice` — 计划要求 codex 配置警告"界面上可见"，现有事件里没有运行时可用的提示类型；前端加 `runtime_warning` 的标签。
+- 2026-10-13 — T3：只有 `turn.started` 之前的 `error` item 产出提示，之后的（WebSocket 回落 HTTPS 等传输层消息）只记日志 — 前者是配置问题，后者是噪音。
+- 2026-10-13 — T3：子进程环境额外去掉 `STUDIO_` 前缀的变量，保留 `CODEX_HOME` — 前者是本应用的配置，与 codex 无关；后者决定去哪里读登录。
+- 2026-10-13 — T3：账本没有提示摘要（例如老会话）时不发更新块，直接记下当前摘要 — 无从判断是否变过。
 - 2026-10-13 — 参数校验只在 `invoke_tool` 做一次（MCP 层 `validate_input=False`），错误文案与其他运行时一致。
 
 - 2026-10-13 — **CLI 改用 ChatGPT 桌面版自带的**（负责人决定，ADR 0030 前提 2 改定）— 计划原定在 `tools/codex/` 安装 `@openai/codex@0.162.1`；T1 开始安装时发现 npm 包解压约 340 MB（与桌面版自带的 322 MB 相当），下载约 8 分钟只下了 43 MB。改用桌面版后不再有 npm 新依赖，也不需要在新版本上复验（实测用的就是这个版本）；T1 缩为"定位 + 补测思考强度"。
@@ -200,7 +206,7 @@
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 无
+- 2026-10-13 — T3：续会话时把更新后的阶段说明放进用户消息，codex 收到了但模型不一定照做（说明改成"用法语回答"，模型仍用英文）。用户消息的优先级低于建会话时的 `developer_instructions`。机制保留（总比静默用旧提示好），已写进 codex.md；阶段说明大改时新建会话更可靠。
 
 ## 阻塞
 

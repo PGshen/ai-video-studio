@@ -19,6 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from studio.agent import register_fake
 from studio.agent.bus import SessionBus
 from studio.agent.claude_runtime import register_claude
+from studio.agent.codex_runtime import register_codex
 from studio.agent.openai_runtime import register_openai
 from studio.agent.probe import make_probe
 from studio.agent.runner import TurnRunner
@@ -88,6 +89,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     runtime_factory = RuntimeFactory()
     register_claude(runtime_factory, settings)
     register_openai(runtime_factory, settings)
+    register_codex(runtime_factory, settings)
     if settings.enable_fake_runtime:
         register_fake(runtime_factory, delay_seconds=settings.fake_delay_seconds)
 

@@ -52,6 +52,8 @@
 | ✅ 已验证（2026-10-13） | 命令执行的事件：`item.started`（`item.type: command_execution`，`command` 为 `/bin/zsh -lc '<命令>'`，`status: in_progress`），完成时 `item.completed` 带 `aggregated_output`、`exit_code` | `t2d-cancel-*` |
 | ✅ 已验证（2026-10-13） | **取消用 SIGINT**：命令执行中发 SIGINT，codex 收尾后退出（退出码 1，实测 2.4 秒；收尾期间还会再发一次模型请求，会话里随后记 `turn_aborted`，所以耗时不固定），**会收掉自己启动的命令进程**；SIGTERM（退出码 -15）和杀进程组（SIGKILL，-9）都会留下孤儿命令进程（`/bin/zsh -c ...` 和其子进程，父进程变成 1）——codex 把命令放在**独立的进程组**里，杀 codex 所在进程组够不着（探针 `.meta.json` 的 `process_group_alive_after_exit` 只检查 codex 自己的进程组，所以是 false）。三种方式都**没有** `turn.completed`/用量事件 | `t2d-cancel-*`（三者并发，`ps` 观察未存证）；单独复测 `t2f-cancel-TERM-solo` + `t2f-ps-TERM.txt`（SIGTERM 后留下 ppid=1、独立 pgid 的 `/bin/zsh -c sleep 60 ...`）、`t2g-cancel-INT-solo` + `t2g-ps-INT.txt`（SIGINT 后无新增残留） |
 | ✅ 已验证（2026-10-13） | 被取消的会话（三种方式）都能 `resume` 续上，模型知道上一条命令被中断；续上那一轮的累计用量**包含被取消那一轮的消耗**（例如 SIGKILL 后下一轮 `input_tokens` 19885，约为两次模型调用）。所以 ClaudeRuntime 的"没拿到结果就标 `unsettled`，下一轮差值含上一轮残余"可以照搬。TERM/KILL 后续会话时 stderr 有 `Custom tool call output is missing for call id`，codex 会自动补齐缺失的工具输出 | `t2e-after-cancel-*` |
+| ✅ 已验证（2026-10-13） | **提示词从 stdin 读**：新会话 `exec ... -`、续会话 `exec ... resume <thread_id> -`，stdin 写入提示后关闭即可（没有命令行长度限制）。图片用 `--image=<路径>` 单值写法（`exec` 的 `-i` 是可变参数，空格写法会吞掉后面的位置参数），新会话和续会话都能看到图片 | `r3a-stdin-image`、`r3b-resume-stdin-image` |
+| ⚠️ 观察（2026-10-13） | 续会话时把更新后的阶段说明放在用户消息开头（`【阶段说明已更新】...<stage_instructions>`），codex 收到了（会话文件里是本轮用户消息），但模型不一定照做：说明改成"用法语回答"、用户问题是英文时仍用英文回答。用户消息里的指令优先级低于建会话时的 `developer_instructions`；阶段说明有重大变化时，新建会话更可靠 | `probes/runtime_probe.py`（codex-runtime T3） |
 
 ## 业务工具（MCP）
 
