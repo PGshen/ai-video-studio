@@ -126,7 +126,7 @@
 - **完成标准**：上述测试通过；`fake`/Claude/OpenAI 的测试不变。
 - **验证命令**：`make check`
 
-### T4：取消与进程清理（待开始）
+### T4：取消与进程清理（完成）
 
 - **目标**：取消可靠、不留孤儿进程。
 - **涉及文件**：`backend/src/studio/agent/codex_runtime.py`、`backend/src/studio/agent/codex_procs.py`（新：列出某进程的全部后代及其进程组）、`backend/tests/agent/test_codex_cancel.py`、`test_codex_procs.py`。
@@ -178,11 +178,12 @@
 
 - 2026-10-13 — T1 — 改用桌面版 CLI（负责人决定）；`codex_cli.py`（定位、版本）、`STUDIO_CODEX_BIN`；思考强度实测通过（`r1g-*`）（03a10cf）
 - 2026-10-13 — T2 — 实测选定方案 A（每轮内置 HTTP MCP）；`codex_mcp.TurnToolServer`；真实 codex 调到工具并看到图片（`r2a`–`r2d`）（9c1cbda）
-- 2026-10-13 — T3 — `codex_args`/`codex_events`/`codex_env`/`codex_runtime`，`events.Notice`；真实 CLI 跑两轮（含业务工具、续会话、提示更新）通过
+- 2026-10-13 — T3 — `codex_args`/`codex_events`/`codex_env`/`codex_runtime`，`events.Notice`；真实 CLI 跑两轮（含业务工具、续会话、提示更新）通过（6396fa6）
+- 2026-10-13 — T4 — SIGINT → 宽限 15 秒 → 强杀并清理命令进程组（`codex_procs.py`）；真实 CLI 取消 1.9 秒、无残留，续会话带上残余用量（`r4a-runtime-cancel.txt`）
 
 ## 下一步
 
-- 从 T4 开始：`CodexRuntime._stop_on_cancel` 目前直接 `proc.kill_tree`（T3 的临时做法），换成 SIGINT → 宽限 → 强杀并清理孤儿进程组。先写 `test_codex_cancel.py`（假 CLI 起一个独立进程组的 `sleep`），再实现 `codex_procs.py`。
+- 从 T5 开始：`CodexRuntime._sandbox_args` 目前是 T3 的占位（`-s workspace-write`，读不受限）。先写 `codex_sandbox.py` 的参数构造测试，再接 `exec_policy`，最后跑冒烟 `codex_login_sandbox_read`。
 
 ## 决策记录
 
@@ -196,6 +197,7 @@
 - 2026-10-13 — T3：只有 `turn.started` 之前的 `error` item 产出提示，之后的（WebSocket 回落 HTTPS 等传输层消息）只记日志 — 前者是配置问题，后者是噪音。
 - 2026-10-13 — T3：子进程环境额外去掉 `STUDIO_` 前缀的变量，保留 `CODEX_HOME` — 前者是本应用的配置，与 codex 无关；后者决定去哪里读登录。
 - 2026-10-13 — T3：账本没有提示摘要（例如老会话）时不发更新块，直接记下当前摘要 — 无从判断是否变过。
+- 2026-10-13 — T4：取消时在发 SIGINT **之前**记下 codex 全部后代的进程组，codex 退出后（不论是否强杀）都对这些组补一次 SIGKILL — codex 退出后孤儿的父进程变成 1，事后找不到；孤儿还握着 stdout 管道，不清理的话读循环会一直等到命令自己结束。
 - 2026-10-13 — 参数校验只在 `invoke_tool` 做一次（MCP 层 `validate_input=False`），错误文案与其他运行时一致。
 
 - 2026-10-13 — **CLI 改用 ChatGPT 桌面版自带的**（负责人决定，ADR 0030 前提 2 改定）— 计划原定在 `tools/codex/` 安装 `@openai/codex@0.162.1`；T1 开始安装时发现 npm 包解压约 340 MB（与桌面版自带的 322 MB 相当），下载约 8 分钟只下了 43 MB。改用桌面版后不再有 npm 新依赖，也不需要在新版本上复验（实测用的就是这个版本）；T1 缩为"定位 + 补测思考强度"。
@@ -207,6 +209,7 @@
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
 - 2026-10-13 — T3：续会话时把更新后的阶段说明放进用户消息，codex 收到了但模型不一定照做（说明改成"用法语回答"，模型仍用英文）。用户消息的优先级低于建会话时的 `developer_instructions`。机制保留（总比静默用旧提示好），已写进 codex.md；阶段说明大改时新建会话更可靠。
+- 2026-10-13 — T4：Windows 上的取消用 `CTRL_BREAK_EVENT`（子进程有自己的进程组），没有实测；强杀走 `taskkill /T`。
 
 ## 阻塞
 

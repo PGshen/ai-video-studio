@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import sys
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -39,6 +40,7 @@ from studio.agent.codex_cli import desktop_candidates, find_codex
 from studio.agent.codex_env import build_env
 from studio.agent.codex_events import CodexTurn, convert_event, failure_message, redact
 from studio.agent.codex_mcp import TurnToolServer
+from studio.agent.codex_procs import descendant_groups, kill_groups
 from studio.agent.openai_tools import turn_cost
 from studio.agent.runtime import RuntimeFactory, TurnContext
 from studio.config import Settings
@@ -49,6 +51,8 @@ PROMPT_UPDATE = (
     "【阶段说明已更新】会话开始时给你的阶段说明已被替换，从本轮起以下面的新说明为准：\n"
     "<stage_instructions>\n{prompt}\n</stage_instructions>\n\n"
 )
+CANCEL_GRACE_S = 15.0
+"""取消时等 codex 响应 SIGINT 的时间（它收尾时还会再发一次模型请求，实测 2–3 秒）。"""
 _READ_CHUNK = 1 << 16
 _STDERR_KEEP = 16 * 1024
 _STDERR_TAIL = 800
@@ -141,8 +145,10 @@ class CodexRuntime:
         *,
         environ: Mapping[str, str] | None = None,
         platform: str | None = None,
+        cancel_grace_s: float = CANCEL_GRACE_S,
     ) -> None:
         self._binary = binary
+        self._cancel_grace_s = cancel_grace_s
         self._codex_dir = data_dir / "codex"
         self._ledger = CodexLedger(self._codex_dir / "ledger")
         self._environ = environ if environ is not None else os.environ
@@ -222,7 +228,7 @@ class CodexRuntime:
             return
         finally:
             if child is not None and child.returncode is None:
-                await proc.kill_tree(child)
+                await _force_stop(child)
             shutil.rmtree(image_dir, ignore_errors=True)
 
         returncode = child.returncode if child is not None else None
@@ -241,7 +247,7 @@ class CodexRuntime:
 
     async def _stop_on_cancel(self, ctx: TurnContext, child: asyncio.subprocess.Process) -> None:
         await ctx.cancel_token.wait()
-        await proc.kill_tree(child)
+        await _stop(child, grace_s=self._cancel_grace_s, platform=self._platform)
 
     def _finish(
         self, ctx: TurnContext, turn: CodexTurn, returncode: int | None, stderr: str
@@ -293,6 +299,33 @@ class CodexRuntime:
             priced=profile.price_input is not None and profile.price_output is not None,
             includes_carryover=carryover,
         )
+
+
+async def _stop(child: asyncio.subprocess.Process, *, grace_s: float, platform: str) -> None:
+    """取消：先 SIGINT（codex 收尾并收掉自己启动的命令），宽限期内没退出再强杀。
+
+    命令所在的进程组在发信号前记下：codex 退出后它们的父进程变成 1，就找不到了。
+    """
+    groups = await asyncio.to_thread(descendant_groups, child.pid)
+    with contextlib.suppress(ProcessLookupError, OSError):
+        if platform == "win32":
+            # Windows: the child has its own process group (`proc.spawn_kwargs`); untested there.
+            os.kill(child.pid, getattr(signal, "CTRL_BREAK_EVENT", signal.SIGINT))
+        else:
+            child.send_signal(signal.SIGINT)
+    try:
+        await asyncio.wait_for(child.wait(), grace_s)
+    except TimeoutError:
+        logger.warning("codex 在 %.0f 秒内没有响应 SIGINT，强制结束", grace_s)
+        await _force_stop(child, groups)
+        return
+    kill_groups(groups)
+
+
+async def _force_stop(child: asyncio.subprocess.Process, known: set[int] | None = None) -> None:
+    groups = (known or set()) | await asyncio.to_thread(descendant_groups, child.pid)
+    await proc.kill_tree(child)
+    kill_groups(groups)
 
 
 def _write_images(directory: Path, images: Sequence[events.ImageData]) -> list[Path]:
