@@ -61,3 +61,14 @@ export function groupTimeline(
   }
   return blocks
 }
+
+/**
+ * 一轮已发出（发送中、排队或运行）但最后一条用户消息之后还没有任何文本或活动：时间线末尾显示
+ * 「进行中」，免得等首个 token 时看起来像卡住了。notice 等不算输出；空白思考在分组时已被丢弃。
+ */
+export function awaitingFirstOutput(blocks: readonly TimelineBlock[], busy: boolean): boolean {
+  if (!busy) return false
+  const lastUser = blocks.findLastIndex((block) => block.kind === 'user_message')
+  if (lastUser === -1) return false
+  return !blocks.slice(lastUser + 1).some((block) => block.kind === 'text' || block.kind === 'activity')
+}

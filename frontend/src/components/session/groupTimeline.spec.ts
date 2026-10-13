@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TimelineItem } from '@/composables/useSessionStream'
-import { groupTimeline, type ActivityGroupBlock } from './groupTimeline'
+import { awaitingFirstOutput, groupTimeline, type ActivityGroupBlock } from './groupTimeline'
 
 const user = (turnId = 't1'): TimelineItem => ({ kind: 'user_message', turnId, text: '你好' })
 const text = (turnId = 't1', streaming = false): TimelineItem => ({
@@ -105,5 +105,34 @@ describe('groupTimeline', () => {
 
     expect(blocks[0]).toBe(u)
     expect(blocks[2]).toBe(t)
+  })
+})
+
+describe('awaitingFirstOutput', () => {
+  const notice: TimelineItem = { kind: 'notice', turnId: 't1', noticeKind: 'x' }
+
+  it('忙且最后一条用户消息之后还没有文本或活动：在等第一段输出', () => {
+    expect(awaitingFirstOutput(groupTimeline([user()], 't1'), true)).toBe(true)
+    expect(awaitingFirstOutput(groupTimeline([user(), notice], 't1'), true)).toBe(true)
+  })
+
+  it('空白思考不算输出', () => {
+    expect(awaitingFirstOutput(groupTimeline([user(), thinking('t1', ' ')], 't1'), true)).toBe(true)
+  })
+
+  it('已经有思考、工具或文本：不再等待', () => {
+    expect(awaitingFirstOutput(groupTimeline([user(), thinking()], 't1'), true)).toBe(false)
+    expect(awaitingFirstOutput(groupTimeline([user(), tool()], 't1'), true)).toBe(false)
+    expect(awaitingFirstOutput(groupTimeline([user(), text('t1', true)], 't1'), true)).toBe(false)
+  })
+
+  it('不忙或没有用户消息：不显示', () => {
+    expect(awaitingFirstOutput(groupTimeline([user()], null), false)).toBe(false)
+    expect(awaitingFirstOutput([], true)).toBe(false)
+  })
+
+  it('只看最后一条用户消息之后', () => {
+    const blocks = groupTimeline([user('t0'), text('t0'), user('t1')], 't1')
+    expect(awaitingFirstOutput(blocks, true)).toBe(true)
   })
 })

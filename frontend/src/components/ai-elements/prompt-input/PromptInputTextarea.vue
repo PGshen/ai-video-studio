@@ -13,7 +13,7 @@ interface Props extends /* @vue-ignore */ PromptInputTextareaProps {
 
 const props = defineProps<Props>()
 
-const { textInput, setTextInput, addFiles, files, removeFile } = usePromptInput()
+const { textInput, setTextInput, addFiles } = usePromptInput()
 const isComposing = ref(false)
 
 function handleKeyDown(e: KeyboardEvent) {
@@ -31,16 +31,7 @@ function handleKeyDown(e: KeyboardEvent) {
 
     textarea?.form?.requestSubmit()
   }
-
-  // Remove last attachment on backspace if input is empty
-  if (e.key === 'Backspace' && textInput.value === '' && files.value.length > 0) {
-    e.preventDefault()
-
-    const lastFile = files.value[files.value.length - 1]
-    if (lastFile) {
-      removeFile(lastFile.id)
-    }
-  }
+  // Backspace never removes attachments; they are removed only via their chip's remove button.
 }
 
 function handlePaste(e: ClipboardEvent) {

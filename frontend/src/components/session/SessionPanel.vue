@@ -88,6 +88,14 @@ const cancelMutation = useCancelSessionMutation(() => props.sessionId ?? '')
 const continueMutation = useContinueSessionMutation(() => props.sessionId ?? '')
 
 const sendError = ref<string | null>(null)
+/** 一次发送/继续进行中（还没拿到后端接受的 turn）：和运行中的 turn 一起决定时间线末尾的「进行中」。 */
+const sending = ref(false)
+const busy = computed(() => sending.value || runningTurnId.value !== null)
+
+function setSending(value: boolean): void {
+  sending.value = value
+  emit('sending', value)
+}
 /** 正在为第一条消息建会话：期间不能再发，免得建出两个会话。 */
 const creatingSession = ref(false)
 
@@ -120,7 +128,7 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
     throw new Error(problem)
   }
   sendError.value = null
-  emit('sending', true)
+  setSending(true)
   try {
     await props.beforeSend?.()
     if (!props.sessionId && props.createSession) {
@@ -158,7 +166,7 @@ async function onSubmit(message: PromptInputMessage): Promise<void> {
     sendError.value = describeError(error)
     if (files.length) throw error
   } finally {
-    emit('sending', false)
+    setSending(false)
   }
 }
 
@@ -178,7 +186,7 @@ async function onStop(): Promise<void> {
 
 async function onContinue(): Promise<void> {
   sendError.value = null
-  emit('sending', true)
+  setSending(true)
   try {
     await props.beforeSend?.()
     // The backend sends the fixed text "继续" as this turn's user message, or re-sends the
@@ -193,7 +201,7 @@ async function onContinue(): Promise<void> {
   } catch (error) {
     sendError.value = describeError(error)
   } finally {
-    emit('sending', false)
+    setSending(false)
   }
 }
 </script>
@@ -210,6 +218,7 @@ async function onContinue(): Promise<void> {
         <SessionTimeline
           :items="items"
           :running-turn-id="runningTurnId"
+          :busy="busy"
           :turns="turns"
           :project-id="props.projectId"
           :session-id="props.sessionId"

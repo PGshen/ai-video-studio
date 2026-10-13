@@ -3,25 +3,29 @@
  * 时间线渲染（设计 §2、§4）：把扁平的条目流归成「活动组」，活动组走 `ActivityGroup`，其余
  * 条目（用户消息、助手文本、notice 等）走 `SessionTimelineItem`。折叠状态按会话保存。
  */
+import { LoaderCircleIcon } from '@lucide/vue'
 import { computed, toRef } from 'vue'
 import type { TimelineItem } from '@/composables/useSessionStream'
 import type { TurnOut } from '@/types/api'
 import ActivityGroup from './activity/ActivityGroup.vue'
 import ReplyFooter from './activity/ReplyFooter.vue'
 import { useDisclosure } from './activity/useDisclosure'
-import { groupTimeline } from './groupTimeline'
+import { awaitingFirstOutput, groupTimeline } from './groupTimeline'
 import SessionTimelineItem from './SessionTimelineItem.vue'
 
 const props = defineProps<{
   items: TimelineItem[]
   /** 正在排队/运行的 turn（没有则为 `null`）：决定末尾活动组是否展开、工具是否转圈。 */
   runningTurnId: string | null
+  /** 正在发送，或有 turn 排队/运行：用来在首段输出到达前显示「进行中」。 */
+  busy?: boolean
   turns: ReadonlyMap<string, TurnOut>
   projectId: string | null
   sessionId: string | null
 }>()
 
 const blocks = computed(() => groupTimeline(props.items, props.runningTurnId))
+const awaiting = computed(() => awaitingFirstOutput(blocks.value, props.busy ?? false))
 
 /** 每个已结束的 turn 在它最后一段助手文本后放一个操作栏：块下标 → { turnId, 文本 }。 */
 const footers = computed(() => {
@@ -67,4 +71,12 @@ const disclosure = useDisclosure(toRef(props, 'sessionId'))
       :turns="turns"
     />
   </template>
+  <div
+    v-if="awaiting"
+    data-testid="awaiting-reply"
+    class="text-muted-foreground flex items-center gap-2 text-sm"
+  >
+    <LoaderCircleIcon class="size-4 animate-spin" />
+    <span>正在进行中…</span>
+  </div>
 </template>

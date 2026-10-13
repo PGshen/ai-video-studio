@@ -240,6 +240,14 @@ describe('SessionPanel：附件', () => {
     expect(w.text()).not.toContain('notes.md')
   })
 
+  it('输入框为空时按退格不会删掉附件（只能点 chip 上的移除）', async () => {
+    const w = mountPanel({ sessionId: 's1' })
+    await attach(w, [png(), md()])
+    await textarea(w).trigger('keydown', { key: 'Backspace' })
+    expect(w.text()).toContain('a.png')
+    expect(w.text()).toContain('notes.md')
+  })
+
   it('发送时把原始文件交给 sendMessage', async () => {
     const w = mountPanel({ sessionId: 's1' })
     const a = png()

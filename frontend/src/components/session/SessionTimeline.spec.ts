@@ -19,13 +19,27 @@ const settle = async () => {
   await flushPromises()
 }
 
-function render(runningTurnId: string | null, list = items) {
+function render(runningTurnId: string | null, list = items, busy = runningTurnId !== null) {
   return mount(SessionTimeline, {
-    props: { items: list, runningTurnId, turns: new Map(), projectId: null, sessionId: 's1' },
+    props: { items: list, runningTurnId, busy, turns: new Map(), projectId: null, sessionId: 's1' },
   })
 }
 
 describe('SessionTimeline', () => {
+  it('等第一段输出时在末尾显示进行中；有输出后消失', async () => {
+    const waiting = render('t1', items.slice(0, 1))
+    await settle()
+    expect(waiting.find('[data-testid="awaiting-reply"]').exists()).toBe(true)
+
+    const started = render('t1', items.slice(0, 2))
+    await settle()
+    expect(started.find('[data-testid="awaiting-reply"]').exists()).toBe(false)
+
+    const idle = render(null, items.slice(0, 1))
+    await settle()
+    expect(idle.find('[data-testid="awaiting-reply"]').exists()).toBe(false)
+  })
+
   it('用户消息、活动组、助手文本按顺序渲染', async () => {
     const wrapper = render(null)
     await settle()
