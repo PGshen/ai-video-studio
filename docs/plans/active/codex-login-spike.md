@@ -73,7 +73,7 @@
 - **完成标准**：AC1、AC2 的结论写进 `codex.md` 草稿表格。
 - **验证命令**：`make check`
 
-### T2：续会话、取消与用量（待开始）
+### T2：续会话、取消与用量（完成）
 
 - **目标**：确认多轮会话和取消语义能映射到本项目的轮次模型（`runner` 的取消令牌、宽限、`unsettled` 账本）。
 - **涉及文件**：`probes/run_resume.py`、`probes/run_cancel.py`（不入库）；证据 `t2-*.jsonl`。
@@ -125,10 +125,11 @@
 ## 进度
 
 - 2026-10-13 — T1 — 完成：登录可用、事件格式、模型、`CODEX_HOME`/key 覆盖对照、注入上下文收口；结论写进 `references/codex.md`
+- 2026-10-13 — T2 — 完成：`resume` 可续、换模型可续；用量是会话累计值；取消须用 SIGINT（TERM/KILL 留孤儿命令进程）；取消轮用量计入下一轮累计值
 
 ## 下一步
 
-- 做 T2：在 `data/evidence/codex-spike/probes/` 复用 `run_exec.py`（已支持 `--cancel-after`、`--signal INT|TERM|KILLPG`、`--env`），参数一律用 `references/codex.md`「注入的上下文与收口」末尾的最小上下文组合，加 `-s workspace-write`；续会话用 `exec resume <thread_id>`（先看 `exec resume --help`）。zsh 里参数要放数组（`C=(...)`），不能靠字符串分词。
+- 做 T3：写 `data/evidence/codex-spike/probes/mcp_server.py`（先确认 `backend/.venv` 里有 `mcp` 包，用 `backend/.venv/bin/python` 运行它），用 `-c 'mcp_servers.studio.command="..."'`、`-c 'mcp_servers.studio.args=[...]'` 传入；探针参数用 `source probes/min.zsh` 得到的 `$M` 数组。同时试关掉 `collaboration.*`/`request_user_input` 工具（二进制里有 `ToolsToml`、`enabled_tools`），以及续会话时 `developer_instructions` 是否重复注入。
 
 ## 决策记录
 
@@ -137,6 +138,7 @@
 
 ## 意外与发现
 
+- 2026-10-13 — T2：codex 把模型执行的命令放在独立进程组里，SIGTERM/SIGKILL 取消会留下孤儿进程（实验后已手动清理）。正式运行时取消必须先发 SIGINT 等它收尾，超时再强杀，并且要另想办法兜底清理命令进程（例如记录 `command_execution` 的进程或外包一层沙箱进程）。
 - 2026-10-13 — 即使 `--ignore-user-config`，Codex 仍会注入仓库根的 `AGENTS.md`（从工作区往上找）、用户级 skills 列表（含开发用的 superpowers）、多 agent 角色段。前两项可用 `-c` 关闭；多 agent 段和 `collaboration.*` 工具用 feature 开关关不掉，留到 T3 继续找办法。详见 `references/codex.md`。
 - 2026-10-13 — `CODEX_API_KEY` 会覆盖登录，`OPENAI_API_KEY` 不会；无凭据时要重试约 75–85 秒才失败，正式运行时需要自己的超时。
 - 2026-10-13 — 单轮最小请求 28–44 秒，明显慢于 Claude 本机登录（12–14 秒）；stderr 经常有刷新模型列表超时。

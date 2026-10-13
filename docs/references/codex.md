@@ -34,6 +34,17 @@
 | ✅ 已验证（2026-10-13） | stdin 为 `/dev/null` 时 stderr 打印 `Reading additional input from stdin...`，无害 | 各次运行 |
 | ✅ 已验证（2026-10-13） | 单轮"回复 ok"端到端 28–44 秒，首个事件 0.3–13 秒（Claude 本机登录同类请求约 12–14 秒）；基础指令约 2.2 万字符，最小上下文仍有约 1.1 万输入 token | `t1a`–`t1j` 的 `.meta.json` |
 
+## 续会话、取消与用量
+
+| 状态 | 内容 | 来源 |
+|---|---|---|
+| ✅ 已验证（2026-10-13） | 续会话：`codex exec <exec 级参数> resume <thread_id> "<提示>"`（`--json`、`-s`、`-C`、`--skip-git-repo-check` 放在 `resume` 之前；`resume` 子命令自己只接受 `-c`、`--enable/--disable`、`-m`、`-i` 等）。续上后 `thread.started` 给出同一个 `thread_id`，模型正确复述上一轮的背景；会话仍写在同一个 rollout 文件里 | `t2a-turn1`、`t2b-resume` |
+| ✅ 已验证（2026-10-13） | **`turn.completed.usage` 是整个会话的累计值**，不是本轮值：同一会话三轮的 `input_tokens` 依次为 9827 → 19692 → 33133，`output_tokens` 18 → 28 → 37。本轮用量要像 ClaudeRuntime 那样对累计值求差 | `t2a`、`t2b`、`t2c` |
+| ✅ 已验证（2026-10-13） | 续会话时用 `-m` 换模型（`gpt-6.1-sol` → `gpt-6-luna`）能续上，模型正确复述；`turn.started` 之前多一条 `item.completed`（`type: error`）警告"recorded with model ... resuming with ..."，不影响完成 | `t2c-resume-switch-model` |
+| ✅ 已验证（2026-10-13） | 命令执行的事件：`item.started`（`item.type: command_execution`，`command` 为 `/bin/zsh -lc '<命令>'`，`status: in_progress`），完成时 `item.completed` 带 `aggregated_output`、`exit_code` | `t2d-cancel-*` |
+| ✅ 已验证（2026-10-13） | **取消用 SIGINT**：命令执行中发 SIGINT，codex 约 2.4 秒后退出（退出码 1），**会收掉自己启动的命令进程**；SIGTERM（退出码 -15）和杀进程组（SIGKILL，-9）都会留下孤儿命令进程（`/bin/zsh -c ...` 和其子进程，父进程变成 1）——codex 把命令放在**独立的进程组**里，杀 codex 所在进程组够不着。三种方式都**没有** `turn.completed`/用量事件 | `t2d-cancel-INT/TERM/KILLPG`，`ps` 观察 |
+| ✅ 已验证（2026-10-13） | 被取消的会话（三种方式）都能 `resume` 续上，模型知道上一条命令被中断；续上那一轮的累计用量**包含被取消那一轮的消耗**（例如 SIGKILL 后下一轮 `input_tokens` 19885，约为两次模型调用）。所以 ClaudeRuntime 的"没拿到结果就标 `unsettled`，下一轮差值含上一轮残余"可以照搬 | `t2e-after-cancel-*` |
+
 ## 注入的上下文与收口
 
 默认情况下，Codex 会把很多与本项目无关的内容注入每一轮。下表是逐项关闭的结果（会话文件里 `response_item` 的 developer/user 消息）。
