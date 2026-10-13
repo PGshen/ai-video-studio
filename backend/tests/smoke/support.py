@@ -24,6 +24,7 @@ from sqlalchemy import Engine
 
 from studio.agent.bus import SessionBus
 from studio.agent.claude_runtime import register_claude
+from studio.agent.codex_runtime import register_codex
 from studio.agent.events import ImageData
 from studio.agent.openai_runtime import register_openai
 from studio.agent.runner import TurnRunner
@@ -373,6 +374,7 @@ def build_harness(
     factory = RuntimeFactory()
     register_claude(factory, settings)
     register_openai(factory, settings)
+    register_codex(factory, settings)
     blobs = BlobStore(data_dir / "blobs")
     bus = SessionBus()
     runner = TurnRunner(

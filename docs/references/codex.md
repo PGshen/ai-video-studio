@@ -29,6 +29,7 @@
 |---|---|---|
 | ✅ 已验证（2026-10-13） | 不传 `-m` 时（含 `--ignore-user-config`）用 `gpt-6.1-sol`（会话文件 `turn_context.model`）。`-m gpt-6-luna` 正常完成。可选模型见 `~/.codex/models_cache.json` 的 `models[].slug`（`visibility: list` 的有 `gpt-6.1-sol`、`gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`、`gpt-5.6-sol/terra/luna`、`gpt-5.5`） | `t1a-minimal`、`t1b-model-luna` |
 | ✅ 已验证（2026-10-13） | 不存在的模型名：先出一条 `item.completed`（`type: error`，"Model metadata ... not found"），随后 `error` + `turn.failed`，消息为 400 `The '<名字>' model is not supported when using Codex with a ChatGPT account.`；退出码 1，约 22 秒 | `t1c-model-bogus` |
+| ✅ 已验证（2026-10-13） | 思考强度：`-c 'model_reasoning_effort="low"'`（`"high"` 同）被接受，会话 `turn_context.effort` 记为对应值；非法值（如 `"extreme"`）启动时不报错，请求时 400 `invalid_enum_value` 后 `turn.failed`，可选值为 `none`/`minimal`/`low`/`medium`/`high`/…（错误消息列出）。本项目的 `low`/`medium`/`high` 可以原样映射 | `r1g-effort-low`、`r1g-effort-high`、`r1g-effort-extreme`（codex-runtime T1） |
 | ✅ 已验证（2026-10-13） | stderr 经常出现 `failed to refresh available models: request timed out`（每次约 5 秒超时），不影响本轮完成 | 各次运行的 `.stderr.txt` |
 
 ## 事件格式（`codex exec --json`）
@@ -51,6 +52,8 @@
 | ✅ 已验证（2026-10-13） | 命令执行的事件：`item.started`（`item.type: command_execution`，`command` 为 `/bin/zsh -lc '<命令>'`，`status: in_progress`），完成时 `item.completed` 带 `aggregated_output`、`exit_code` | `t2d-cancel-*` |
 | ✅ 已验证（2026-10-13） | **取消用 SIGINT**：命令执行中发 SIGINT，codex 收尾后退出（退出码 1，实测 2.4 秒；收尾期间还会再发一次模型请求，会话里随后记 `turn_aborted`，所以耗时不固定），**会收掉自己启动的命令进程**；SIGTERM（退出码 -15）和杀进程组（SIGKILL，-9）都会留下孤儿命令进程（`/bin/zsh -c ...` 和其子进程，父进程变成 1）——codex 把命令放在**独立的进程组**里，杀 codex 所在进程组够不着（探针 `.meta.json` 的 `process_group_alive_after_exit` 只检查 codex 自己的进程组，所以是 false）。三种方式都**没有** `turn.completed`/用量事件 | `t2d-cancel-*`（三者并发，`ps` 观察未存证）；单独复测 `t2f-cancel-TERM-solo` + `t2f-ps-TERM.txt`（SIGTERM 后留下 ppid=1、独立 pgid 的 `/bin/zsh -c sleep 60 ...`）、`t2g-cancel-INT-solo` + `t2g-ps-INT.txt`（SIGINT 后无新增残留） |
 | ✅ 已验证（2026-10-13） | 被取消的会话（三种方式）都能 `resume` 续上，模型知道上一条命令被中断；续上那一轮的累计用量**包含被取消那一轮的消耗**（例如 SIGKILL 后下一轮 `input_tokens` 19885，约为两次模型调用）。所以 ClaudeRuntime 的"没拿到结果就标 `unsettled`，下一轮差值含上一轮残余"可以照搬。TERM/KILL 后续会话时 stderr 有 `Custom tool call output is missing for call id`，codex 会自动补齐缺失的工具输出 | `t2e-after-cancel-*` |
+| ✅ 已验证（2026-10-13） | **提示词从 stdin 读**：新会话 `exec ... -`、续会话 `exec ... resume <thread_id> -`，stdin 写入提示后关闭即可（没有命令行长度限制）。图片用 `--image=<路径>` 单值写法（`exec` 的 `-i` 是可变参数，空格写法会吞掉后面的位置参数），新会话和续会话都能看到图片 | `r3a-stdin-image`、`r3b-resume-stdin-image` |
+| ⚠️ 观察（2026-10-13） | 续会话时把更新后的阶段说明放在用户消息开头（`【阶段说明已更新】...<stage_instructions>`），codex 收到了（会话文件里是本轮用户消息），但模型不一定照做：说明改成"用法语回答"、用户问题是英文时仍用英文回答。用户消息里的指令优先级低于建会话时的 `developer_instructions`；阶段说明有重大变化时，新建会话更可靠 | `probes/runtime_probe.py`（codex-runtime T3） |
 
 ## 业务工具（MCP）
 
@@ -62,7 +65,10 @@
 | ✅ 已验证（2026-10-13） | 模型**看得到** MCP 工具返回的图片：左蓝右黄的 PNG（文字不提颜色），模型答出"左半边蓝色、右半边黄色" | `t3b-mcp-approve` |
 | ✅ 已验证（2026-10-13） | `-c 'mcp_servers.<名字>.enabled_tools=["lookup_note"]'` 生效：未开放的 `render_swatch` 模型看不到（模型报告"不存在"），服务器也没收到调用。可以用它实现阶段工具白名单 | `t3d-enabled-tools` |
 | ⚠️ 观察（2026-10-13，未存证） | codex 退出后 stdio MCP server 进程随之退出，没有残留 | `pgrep` 观察 |
-| ⚠️ 待验证 | 接入形态：业务工具需要访问后端的项目、快照等状态。两种形态：① stdio 桥接进程（`python -m <桥接模块>`，经本机 HTTP 回调后端，凭本轮令牌鉴权）；② 后端直接提供 streamable HTTP MCP 端点，codex 用 `url` + `bearer_token_env_var` 连接（不需要额外进程，但要确认 codex 的 HTTP MCP 在登录模式下可用、令牌如何轮换）。两者都未实测 | 方案描述 |
+| ✅ 已验证（2026-10-13） | **streamable HTTP MCP 可用**（登录模式）：`-c 'mcp_servers.<名字>.url="http://127.0.0.1:<端口>/mcp"'` + `-c 'mcp_servers.<名字>.bearer_token_env_var="<变量名>"'`，codex 从子进程环境读令牌，以 `Authorization: Bearer <令牌>` 发请求；工具调用、图片结果与 stdio 形态一致。permission profile（断网、拒读仓库根）下照常连接：MCP 连接由 codex 进程自己发起，不受 profile 约束 | `r2a-http-mcp`（profile 下）、`mcp_calls.log` |
+| ✅ 已验证（2026-10-13） | **令牌错误时默认悄悄去掉这个服务**：服务返回 401，stderr 记 `UnexpectedServerResponse("HTTP 401...")`，本轮照常完成，模型只是看不到这些工具。加 `-c 'mcp_servers.<名字>.required=true'` 后改为启动即失败：退出码非零、stdout **没有任何 JSON 事件**，原因只在 stderr（`required MCP servers failed to initialize`） | `r2b-http-mcp-badtoken`、`r2b-http-mcp-badtoken-required` |
+| ✅ 已验证（2026-10-13） | 续会话时换一个端口和令牌（每轮一个新服务）能正常调用工具：MCP 配置随每次调用传入，不随会话保存 | `r2c-http-mcp-resume` |
+| ✅ 已验证（2026-10-13） | 接入形态选定为**后端每轮内置 HTTP MCP 服务**（`studio.agent.codex_mcp.TurnToolServer`，`mcp` 包的 lowlevel `Server` + 无状态 `StreamableHTTPSessionManager`，uvicorn 监听 `127.0.0.1` 随机端口）；不需要 stdio 桥接进程。用它跑真实 codex：调用工具、拿到图片、模型答对颜色 | `r2d-turn-tool-server.jsonl`（codex-runtime T2） |
 
 ## 注入的上下文与收口
 
@@ -106,5 +112,6 @@ exec --json --skip-git-repo-check --ignore-user-config
 | ⚠️ 部分验证（2026-10-13） | `apply_patch` 写工作区内文件成功（`item.type: file_change`，`changes[].path/kind`）；要求写工作区外的文件时文件没有被创建，但事件里只有一条成功的 `file_change`，分不清是工具拒绝还是模型没尝试。不论哪种，轮末 guard 都会还原阶段可写范围外的改动 | `t4d-apply-patch` |
 | ✅ 已验证（2026-10-13） | 不需要外包 `sandbox-exec`：codex 自带的 permission profile 已能达到本项目的隔离要求，所以没有实测嵌套 Seatbelt | 结论 |
 | ✅ 已验证（2026-10-13） | permission profile 只约束模型执行的命令，**不约束 MCP 子进程**：profile 拒读整个仓库根时，位于仓库内的 `backend/.venv/bin/python` 和 MCP 服务器脚本照常启动，`lookup_note` 调用成功。好处是桥接进程能读后端代码；但 MCP 工具本身没有沙箱，读写边界要由工具实现自己保证（与 Claude 路径的业务工具一致） | `t3f-profile-plus-mcp`、`mcp_calls.log` |
-| ⚠️ 待验证 | codex 进程内的读文件工具（`view_image`、`read_mcp_resource`）是否受 profile 拒读约束：要求模型对拒读路径调用 `view_image` 时，模型依据权限说明**拒绝调用**（即使提示里强调要测工具本身），所以无法经由模型验证工具层面的拦截 | `t3f-profile-plus-mcp`、`t4e-view-image-denied` |
+| ✅ 已验证（2026-10-13） | **codex 进程内的 `view_image` 也受 profile 拒读约束**（会解析符号链接）：工作区里放一个指向其他项目图片的符号链接，模型只看到工作区路径、照常调用 `view_image`，工具返回 "Operation not permitted (os error 1)"；同一轮里工作区内真实文件的对照图正常识别出颜色。`view_image` 调用不出现在 `--json` 事件流里。`read_mcp_resource` 未测（本应用的 MCP 服务不提供 resources） | 冒烟 `test_codex_login_view_image_through_symlink`，证据 `data/evidence/codex-runtime/*-codex-login-view-image-symlink.json`（codex-runtime T5） |
+| ✅ 已验证（2026-10-13） | 本应用真实布局（数据目录在仓库内）下经 `CodexRuntime` 实测：工作区可读写；`backend/.env`、仓库 `AGENTS.md`、其他项目、数据目录文件、`~/.codex/auth.json`、`~/.ssh` 不可读；仓库根和 `/tmp` 不可写；断网；`ls`、`python3` 照常可用 | 冒烟 `test_codex_login_sandbox_read`，证据 `data/evidence/codex-runtime/*-codex-login-sandbox.json` |
 | ✅ 已验证（2026-10-13） | 偶发的网络错误以 `error` 事件出现（`Reconnecting... n/5 (workspace routing discovery failed)`），重连成功后本轮继续，不一定 `turn.failed`；运行时不能见到 `error` 事件就判失败 | `t2f-cancel-TERM-solo` |

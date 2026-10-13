@@ -1,0 +1,10 @@
+{"type":"thread.started","thread_id":"01a134b5-dca1-7dd1-b9b3-dd412f562c78"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll find the studio tools, render the swatch, and look up the `intro` note."}}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"studio","tool":"render_swatch","arguments":{},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"studio","tool":"render_swatch","arguments":{},"result":{"content":[{"type":"image","data":"iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAIAAAAt/+nTAAAAOUlEQVR4nO3PMQ0AAAgDsEnD/4Uj0MDB16QGmtS8ms6rCAgICAgICAgICAgICAgICAgICAgICAhcLTUgOLWmZ8MfAAAAAElFTkSuQmCC","mimeType":"image/png"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"The left half is blue, and the right half is yellow. I’ll look up `intro` now."}}
+{"type":"item.started","item":{"id":"item_3","type":"mcp_tool_call","server":"studio","tool":"lookup_note","arguments":{"key":"intro"},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"mcp_tool_call","server":"studio","tool":"lookup_note","arguments":{"key":"intro"},"result":{"content":[{"type":"text","text":"Note for intro: the secret word is MAGENTA-OTTER."}],"structured_content":{"result":"Note for intro: the secret word is MAGENTA-OTTER."}},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"The swatch’s left half is blue; its right half is yellow.\n\nThe `intro` note says:\n> Note for intro: the secret word is MAGENTA-OTTER."}}
+{"type":"turn.completed","usage":{"input_tokens":40347,"cached_input_tokens":29440,"cache_write_input_tokens":0,"output_tokens":220,"reasoning_output_tokens":0}}

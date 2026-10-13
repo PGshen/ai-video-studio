@@ -167,3 +167,13 @@ def test_render_gpu_defaults_to_true_and_reads_env(monkeypatch: pytest.MonkeyPat
     assert Settings().render_gpu is False
     monkeypatch.setenv("STUDIO_RENDER_GPU", " ")
     assert Settings().render_gpu is True
+
+
+def test_codex_bin_reads_env_and_blank_means_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """codex-runtime T1：`STUDIO_CODEX_BIN` 指定 CLI；留空等于没设置（用仓库内安装）。"""
+    from studio.config import Settings
+
+    monkeypatch.setenv("STUDIO_CODEX_BIN", "/opt/codex/bin/codex")
+    assert Settings().codex_bin == Path("/opt/codex/bin/codex")
+    monkeypatch.setenv("STUDIO_CODEX_BIN", "  ")
+    assert Settings().codex_bin is None

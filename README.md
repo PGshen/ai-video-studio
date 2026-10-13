@@ -20,6 +20,10 @@ agent 直接修改工作区文件，每轮结束自动打快照，可以随时�
 
 成片由 Chromium 逐帧渲染 HTML 场景，ffmpeg 编码并混音。Manim 引擎已下线，老 Manim 项目只读（[ADR 0027](docs/decisions/0027-下线Manim引擎.md)）。
 
+### 预览
+![风格库](docs/image/风格库.jpg)
+![工作台](docs/image/工作台.jpg)
+
 ### 主要能力
 
 | 能力 | 说明 |

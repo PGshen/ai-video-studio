@@ -53,3 +53,25 @@ async def test_failure_returns_none_instead_of_raising() -> None:
     # openai 运行时没有 api_key_env：建模型时抛错，命名只返回 None。
     generate = make_title_generator(data_dir=__import__("pathlib").Path("."), environ={})
     assert await generate(_profile("openai"), "你好") is None
+
+
+async def test_codex_sessions_are_titled_with_a_longer_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """codex-runtime T6：codex 会话也自动命名；它的单轮调用比其他运行时慢得多。"""
+    import asyncio
+    from pathlib import Path
+    from typing import Any
+
+    from studio.agent import titler
+
+    async def slow_ask(profile: ModelProfileValue, *args: Any, **kwargs: Any) -> str:
+        await asyncio.sleep(0.1)
+        return "「峰终定律」"
+
+    monkeypatch.setattr(titler, "ask_once", slow_ask)
+    monkeypatch.setattr(titler, "TITLE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(titler, "CODEX_TITLE_TIMEOUT_SECONDS", 1.0)
+    generate = make_title_generator(data_dir=Path("."), environ={})
+    assert await generate(_profile("codex"), "讲讲峰终定律") == "峰终定律"
+    assert await generate(_profile("claude"), "讲讲峰终定律") is None  # timed out

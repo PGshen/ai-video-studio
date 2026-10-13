@@ -22,6 +22,10 @@ describe('noticeText', () => {
     expect(noticeText('draft_pruned')).toBe('草稿里不属于风格的文件已被清除')
   })
 
+  it('运行时提示（例如 codex 的配置警告）带标签', () => {
+    expect(noticeText('runtime_warning', '未识别的配置项 foo')).toBe('运行时提示：未识别的配置项 foo')
+  })
+
   it('未知类型显示类型名', () => {
     expect(noticeText('mystery')).toBe('mystery')
     expect(noticeText('mystery', '说明')).toBe('mystery：说明')

@@ -155,6 +155,8 @@ def handle(runner: TurnRunner, job: _Job, state: _State, event: events.AgentEven
             and state.cost_usd > limit
         ):
             _exceed_budget(runner, job, state, "cost")
+    elif isinstance(event, events.Notice):
+        runner._persist(job, "notice", {"kind": event.kind, "message": event.message})
     elif isinstance(event, events.TurnEnd):
         state.end = event
 

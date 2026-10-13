@@ -1,13 +1,15 @@
 """单轮、不带工具的一次性模型调用：会话自动命名和模型连通性测试共用。
 
 按模型配置的运行时分派：`claude` 用 Claude Agent SDK 的 `query()`，`openai` 用 Agents SDK
-的 `Runner.run`；其它运行时（`fake`）不支持。不进会话的轮次/事件，也不算进会话成本。
+的 `Runner.run`，`codex` 跑一轮 `codex exec --ephemeral`；其它运行时（`fake`）不支持。
+不进会话的轮次/事件，也不算进会话成本。
 调用失败（SDK 抛错、Claude 的 result 或助手消息带错误）抛 `OneShotError` 或原异常；
 超时由调用方用 `asyncio.wait_for` 控制。
 """
 
 from __future__ import annotations
 
+import sys
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import aclosing
 from pathlib import Path
@@ -18,7 +20,7 @@ from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage
 from studio.agent.claude_env import build_env
 from studio.db.repo.profiles import ModelProfileValue
 
-SUPPORTED_RUNTIMES = frozenset({"claude", "openai"})
+SUPPORTED_RUNTIMES = frozenset({"claude", "openai", "codex"})
 
 
 class OneShotError(Exception):
@@ -84,6 +86,57 @@ async def _openai(
     return str(result.final_output or "")
 
 
+def codex_binary() -> Path | None:
+    from studio.agent.codex_cli import desktop_candidates, find_codex
+    from studio.config import get_settings
+
+    return find_codex(get_settings().codex_bin, desktop_candidates(platform=sys.platform))
+
+
+async def _codex(
+    profile: ModelProfileValue,
+    system: str,
+    message: str,
+    data_dir: Path,
+    environ: Mapping[str, str],
+    workdir: str,
+) -> str:
+    """一轮 `codex exec --ephemeral`（不存会话），复用 `CodexRuntime` 的环境、隔离和取消。"""
+    from studio.agent import events
+    from studio.agent.codex_runtime import CodexRuntime
+    from studio.agent.runtime import Budget, CancelToken, TurnContext, UserInput
+    from studio.workspace.scope import WriteScope
+
+    binary = codex_binary()
+    if binary is None:
+        raise OneShotError("未找到 Codex CLI：安装 ChatGPT 桌面版，或设置 STUDIO_CODEX_BIN")
+    cwd = data_dir / "codex" / "oneshot" / workdir
+    cwd.mkdir(parents=True, exist_ok=True)
+    runtime = CodexRuntime(data_dir, binary, environ=environ, ephemeral=True)
+    ctx = TurnContext(
+        system_prompt=system,
+        user_input=UserInput(text=message),
+        tools=[],
+        workdir=cwd,
+        model_profile=profile,
+        resume_ref=None,
+        cancel_token=CancelToken(),
+        budget=Budget(),
+        write_scope=WriteScope(writable=[], tool_managed=[]),
+        project_id=None,
+        stage="oneshot",
+        record_tool_write=lambda *_: None,
+        effort="low",
+    )
+    parts: list[str] = []
+    async for event in runtime.run_turn(ctx):
+        if isinstance(event, events.TextBlock):
+            parts.append(event.text)
+        elif isinstance(event, events.TurnEnd) and event.status != "done":
+            raise OneShotError(event.error or f"codex 本轮未完成（{event.status}）")
+    return "\n".join(parts)
+
+
 async def ask_once(
     profile: ModelProfileValue,
     system: str,
@@ -98,4 +151,6 @@ async def ask_once(
         return await _claude(profile, system, message, data_dir, environ, workdir)
     if profile.runtime == "openai":
         return await _openai(profile, system, message, environ)
+    if profile.runtime == "codex":
+        return await _codex(profile, system, message, data_dir, environ, workdir)
     raise OneShotError(f"运行时 {profile.runtime} 不支持单轮调用")

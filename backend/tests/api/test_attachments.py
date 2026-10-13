@@ -287,6 +287,15 @@ class TestFileNote:
         assert "无法直接读取" in note
         assert "如实告诉用户" in note
 
+    def test_codex_reads_text_of_any_size_with_shell_commands(self) -> None:
+        note = file_note([self._file("a.txt", MAX_READ_BYTES + 1)], "codex")
+        assert "无法直接读取" not in note
+
+    def test_binary_file_on_codex_suggests_shell_extraction(self) -> None:
+        note = file_note([self._file("p.pdf", 10, binary=True)], "codex")
+        assert "shell" in note and "pdftotext" in note
+        assert "Bash" not in note and "Read" not in note
+
     def test_huge_text_file_is_unreadable(self) -> None:
         note = file_note([self._file("a.txt", MAX_READ_BYTES + 1)], "openai")
         assert "无法直接读取" in note

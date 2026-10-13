@@ -456,6 +456,24 @@ class TestBudget:
         assert [n["kind"] for n in notices] == ["cost_unpriced"]
         assert turn.usage is not None and turn.usage["input_tokens"] == 20
 
+    async def test_runtime_notice_is_persisted(self, env: StudioEnv) -> None:
+        """codex-runtime T3：运行时自己的提示（例如 codex 的配置警告）落库为 `notice`。"""
+        h = _make_harness(env)
+
+        class Warning:
+            async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
+                yield events.Notice(kind="runtime_warning", message="未识别的配置项 foo")
+                yield events.TurnEnd(resume_ref=None, status="done")
+
+        session_id = h.session()
+        turn = await h.run(session_id, Warning)
+
+        assert turn.status == "done"
+        notices = [r.payload for r in list_events(env.engine, session_id) if r.type == "notice"]
+        assert [(n["kind"], n["message"]) for n in notices] == [
+            ("runtime_warning", "未识别的配置项 foo")
+        ]
+
 
 class TestWorkspaceChangedPaths:
     async def test_move_to_target_is_published(self, h: Harness) -> None:
