@@ -137,7 +137,7 @@
 ## 决策记录
 
 - 2026-10-13 — Final：评审（全新上下文）给出 0 Critical、3 Important、5 Minor，全部按文档修正处理：补做单独的 SIGTERM/SIGINT 取消复测并保存 `ps` 快照、补做 profile 与 MCP 组合实测、补 `make check` 记录、修正证据来源与措辞。没有不予修正的条目。
-- 2026-10-13 — 收尾：负责人验收通过；对 ADR 0030 前提 2 选择单独安装固定版本的 `@openai/codex`。ADR 保持「提议」，因为前提 1、3、4 还没有明确答复 — 如果负责人的验收本意是采纳整个 ADR，改一下状态即可。
+- 2026-10-13 — 收尾：负责人验收通过；对 ADR 0030 前提 2 选择单独安装固定版本的 `@openai/codex`。随后负责人接受其余三条前提，ADR 0030 改为「已采纳」。
 - 2026-10-13 — Ruling：不复制 `auth.json` 到独立 `CODEX_HOME`，登录模式沿用 `~/.codex`（会话落在 `~/.codex/sessions/`）— 与 Claude 登录模式会话落在 `~/.claude/projects/` 的先例一致；复制 OAuth 凭据会让两份 refresh token 互相作废（轮换），还会扩大凭据副本面 — 如果判断错：正式运行时需要另找隔离会话文件的办法（例如定期清理或 `--ephemeral` 加自建历史）。
 - 2026-10-13 — spike 直接以子进程调用 ChatGPT.app 自带的 `codex`，不安装 `@openai/codex` 或 `openai-codex-sdk` — 不引入计划外依赖；`openai-codex-sdk` 来源未核实。
 
