@@ -15,6 +15,7 @@ import contextlib
 import json
 import os
 import shutil
+import sys
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -34,10 +35,12 @@ from .support import (
     M3_EVIDENCE_DIR,
     M4_EVIDENCE_DIR,
     REPO_ROOT,
+    SMOKE_COLOURS,
     THINKING_EVIDENCE_DIR,
     SmokeHarness,
     TurnOutcome,
     build_harness,
+    make_two_colour_png,
     mentions_colours,
     outcome_summary,
     record_evidence,
@@ -450,6 +453,170 @@ async def test_claude_login_sandbox_read() -> None:
         h.engine.dispose()
         shutil.rmtree(base, ignore_errors=True)
         with contextlib.suppress(OSError):  # kept only if another run is using it
+            base.parent.rmdir()
+
+
+# ---- Codex（ChatGPT 本机登录，ADR 0030） -------------------------------------------
+
+CODEX_EVIDENCE_DIR = REPO_ROOT / "data" / "evidence" / "codex-runtime"
+
+
+def _codex_cli() -> Path | None:
+    from studio.agent.codex_cli import desktop_candidates, find_codex
+    from studio.config import Settings
+
+    return find_codex(Settings().codex_bin, desktop_candidates(platform=sys.platform))
+
+
+def _skip_unless_codex() -> None:
+    if os.environ.get("STUDIO_SMOKE_SKIP_LOGIN") == "1":
+        pytest.skip("STUDIO_SMOKE_SKIP_LOGIN=1，跳过本机登录用例")
+    if _codex_cli() is None:
+        pytest.skip("未找到 Codex CLI（ChatGPT 桌面版或 STUDIO_CODEX_BIN），跳过 codex 用例")
+    if not (Path.home() / ".codex" / "auth.json").is_file():
+        pytest.skip("没有 ~/.codex/auth.json（ChatGPT 未登录），跳过 codex 用例")
+
+
+def _codex_profile(h: SmokeHarness, *, model: str = "gpt-6.1-sol", suffix: str = "") -> str:
+    """codex 本机登录的模型配置（T6 加内置配置 `codex-login` 之前，直接建一行）。"""
+    from studio.db.engine import session_scope
+    from studio.db.models import ModelProfile
+
+    with session_scope(h.engine) as db:
+        row = ModelProfile(
+            name=f"smoke-codex-login{suffix}",
+            provider="openai",
+            model=model,
+            runtime="codex",
+            base_url=None,
+            api_key_env=None,
+            supports_vision=True,
+            max_steps_per_turn=MAX_STEPS,
+        )
+        db.add(row)
+        db.flush()
+        return row.id
+
+
+async def test_codex_login_sandbox_read() -> None:
+    """Same layout and probe as `test_claude_login_sandbox_read`, plus what the codex profile
+    adds: the ChatGPT login (`~/.codex/auth.json`), `/tmp` and the network are out of reach."""
+    _skip_unless_codex()
+    env_file = REPO_ROOT / "backend" / ".env"
+    assert os.access(env_file, os.R_OK), "前置条件：backend/.env 存在且本进程可读"
+
+    base = REPO_ROOT / "data" / "smoke-tmp" / uuid.uuid4().hex
+    h = build_harness(base)
+    evidence: dict[str, Any] = {"data_dir": str(h.data_dir), "workdir": str(h.workdir)}
+    try:
+        other = h.data_dir / "projects" / "other-project" / "topic" / "y.md"
+        other.parent.mkdir(parents=True)
+        other.write_text("other project\n", encoding="utf-8")
+        canary = h.data_dir / "canary.db"
+        canary.write_text("data dir file\n", encoding="utf-8")
+        inside = h.workdir / "topic" / "x.md"
+        inside.parent.mkdir(parents=True, exist_ok=True)
+        inside.write_text(SANDBOX_MARKER + "\n", encoding="utf-8")
+        targets: dict[str, Path | str] = {
+            "workspace": "topic/x.md",
+            "workspace-abs": inside,
+            "backend-env": env_file,
+            "repo-file": REPO_ROOT / "AGENTS.md",
+            "other-project": other,
+            "data-dir-file": canary,
+            "codex-auth": Path.home() / ".codex" / "auth.json",
+        }
+        denied = ["backend-env", "repo-file", "other-project", "data-dir-file", "codex-auth"]
+        ssh_files = sorted(p for p in (Path.home() / ".ssh").glob("*") if p.is_file())
+        if ssh_files:
+            targets["home-ssh"] = ssh_files[0]
+            denied.append("home-ssh")
+        extra = "\n".join(
+            [
+                'if echo x > topic/w.txt 2>/dev/null; then echo "WRITABLE workspace"; '
+                'else echo "NOWRITE workspace"; fi',
+                f'if echo x > "{REPO_ROOT}/codex-smoke-w.txt" 2>/dev/null; then '
+                'echo "WRITABLE repo"; else echo "NOWRITE repo"; fi',
+                'if echo x > /tmp/codex-smoke-w.txt 2>/dev/null; then echo "WRITABLE tmp"; '
+                'else echo "NOWRITE tmp"; fi',
+                "if curl -sS -m 8 -o /dev/null https://example.com 2>/dev/null; then "
+                'echo "NET open"; else echo "NET blocked"; fi',
+            ]
+        )
+        (h.workdir / "topic" / "probe.sh").write_text(
+            _probe_script(targets) + extra + "\n", encoding="utf-8"
+        )
+
+        session_id = h.session(_codex_profile(h), "codex")
+        outcome = await h.turn(
+            session_id,
+            "这是自动化测试。执行 shell 命令 `sh topic/probe.sh` 一次（不要改写、不要重试），"
+            "然后原样报告输出。",
+        )
+        evidence["turn"] = outcome_summary(outcome)
+        output = "\n".join(str(r["text"]) for r in outcome.tool_results("shell"))
+        evidence["shell_output"] = output
+        assert outcome.turn.status == "done", outcome.turn.error
+        for name in ("workspace", "workspace-abs"):
+            assert f"READABLE {name}" in output, output
+        for name in denied:
+            assert f"DENIED {name}" in output, output
+        for marker in (SANDBOX_MARKER, "ls-ok", "usr-bin-ok", "py-ok", "WRITABLE workspace"):
+            assert marker in output, output
+        for marker in ("NOWRITE repo", "NOWRITE tmp", "NET blocked"):
+            assert marker in output, output
+        assert not (REPO_ROOT / "codex-smoke-w.txt").exists()
+    finally:
+        record_evidence("codex-login-sandbox", evidence, CODEX_EVIDENCE_DIR)
+        h.engine.dispose()
+        shutil.rmtree(base, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            base.parent.rmdir()
+
+
+async def test_codex_login_view_image_through_symlink() -> None:
+    """ADR 0030 open question, answered 2026-10-13: codex's in-process `view_image` honours the
+    profile's deny list. The model only sees a workspace path (a symlink to an image in another
+    project), so it has no reason to refuse on its own; the tool fails with "Operation not
+    permitted" while the control image in the workspace is described."""
+    _skip_unless_codex()
+    base = REPO_ROOT / "data" / "smoke-tmp" / uuid.uuid4().hex
+    h = build_harness(base)
+    evidence: dict[str, Any] = {}
+    try:
+        target = h.data_dir / "projects" / "other-project" / "swatch.png"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(make_two_colour_png(64, 32, (255, 0, 0), (0, 160, 0)))  # red | green
+        link = h.workdir / "topic" / "swatch.png"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target)
+        # Control: a real file in the workspace, so a refusal above is the deny list, not the tool.
+        (h.workdir / "topic" / "plain.png").write_bytes(
+            make_two_colour_png(64, 32, SMOKE_COLOURS["blue"], SMOKE_COLOURS["yellow"])
+        )
+
+        session_id = h.session(_codex_profile(h), "codex")
+        outcome = await h.turn(
+            session_id,
+            "用 view_image 工具分别查看工作区里的 topic/plain.png 和 topic/swatch.png"
+            "（不要用 shell 命令），然后对每张图用一句话说出左半边和右半边的颜色；"
+            "哪张看不到就如实说明原因。",
+        )
+        text = outcome.text.lower()
+        evidence["turn"] = outcome_summary(outcome)
+        evidence["text"] = outcome.text
+        evidence["control_described"] = mentions_colours(outcome.text)
+        evidence["denied_described"] = ("红" in text or "red" in text) and (
+            "绿" in text or "green" in text
+        )
+        assert outcome.turn.status == "done", outcome.turn.error
+        assert evidence["control_described"], outcome.text
+        assert not evidence["denied_described"], outcome.text
+    finally:
+        record_evidence("codex-login-view-image-symlink", evidence, CODEX_EVIDENCE_DIR)
+        h.engine.dispose()
+        shutil.rmtree(base, ignore_errors=True)
+        with contextlib.suppress(OSError):
             base.parent.rmdir()
 
 

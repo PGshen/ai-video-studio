@@ -364,3 +364,31 @@ def test_register_codex_only_when_the_cli_is_found(tmp_path: Path, fake_bin: Pat
     missing = RuntimeFactory()
     register_codex(missing, Settings(data_dir=tmp_path / "data", codex_bin=tmp_path / "nope"))
     assert not missing.has("codex")
+
+
+async def test_macos_turns_run_under_the_permission_profile(
+    tmp_path: Path, fake_bin: Path, workdir: Path
+) -> None:
+    runtime = _runtime(tmp_path, fake_bin, _environ(tmp_path, "minimal.jsonl"))
+    await _run(runtime, _ctx(workdir))
+    argv = _record(tmp_path)["argv"]
+    assert 'default_permissions="studio"' in argv
+    assert "-s" not in argv
+
+
+async def test_without_a_sandbox_the_switch_decides(
+    tmp_path: Path, fake_bin: Path, workdir: Path
+) -> None:
+    runtime = CodexRuntime(
+        tmp_path / "data", fake_bin, environ=_environ(tmp_path, "minimal.jsonl"), platform="linux"
+    )
+    refused = await _run(runtime, _ctx(workdir))
+    end = refused[-1]
+    assert isinstance(end, events.TurnEnd) and end.status == "failed"
+    assert end.error is not None and "无隔离执行" in end.error
+    assert not (tmp_path / "record.json").exists()
+
+    allowed = await _run(runtime, dataclasses.replace(_ctx(workdir), allow_unsandboxed_exec=True))
+    assert allowed[-1] == events.TurnEnd(resume_ref=_thread("minimal.jsonl"), status="done")
+    argv = _record(tmp_path)["argv"]
+    assert argv[argv.index("-s") + 1] == "danger-full-access"

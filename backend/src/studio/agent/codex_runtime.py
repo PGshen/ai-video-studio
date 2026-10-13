@@ -41,9 +41,12 @@ from studio.agent.codex_env import build_env
 from studio.agent.codex_events import CodexTurn, convert_event, failure_message, redact
 from studio.agent.codex_mcp import TurnToolServer
 from studio.agent.codex_procs import descendant_groups, kill_groups
+from studio.agent.codex_sandbox import sandbox_args
+from studio.agent.exec_policy import codex_sandbox_available, exec_mode
 from studio.agent.openai_tools import turn_cost
 from studio.agent.runtime import RuntimeFactory, TurnContext
 from studio.config import Settings
+from studio.config import repo_root as default_repo_root
 
 logger = logging.getLogger(__name__)
 
@@ -146,17 +149,24 @@ class CodexRuntime:
         environ: Mapping[str, str] | None = None,
         platform: str | None = None,
         cancel_grace_s: float = CANCEL_GRACE_S,
+        repo_root: Path | None = None,
     ) -> None:
         self._binary = binary
+        self._data_dir = data_dir
+        self._repo_root = repo_root if repo_root is not None else default_repo_root()
         self._cancel_grace_s = cancel_grace_s
         self._codex_dir = data_dir / "codex"
         self._ledger = CodexLedger(self._codex_dir / "ledger")
         self._environ = environ if environ is not None else os.environ
         self._platform = platform or sys.platform
 
-    def _sandbox_args(self, ctx: TurnContext) -> list[str]:
-        # Placeholder until the permission profile lands (T5).
-        return ["-s", "workspace-write"]
+    def _sandbox_args(self, ctx: TurnContext) -> list[str] | None:
+        mode = exec_mode(
+            platform=self._platform,
+            sandbox_available=codex_sandbox_available(self._platform),
+            allow_unsandboxed=ctx.allow_unsandboxed_exec,
+        )
+        return sandbox_args(mode, ctx.workdir, self._repo_root, self._data_dir)
 
     async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
         if ctx.cancel_token.is_cancelled:
@@ -172,6 +182,17 @@ class CodexRuntime:
             )
             return
 
+        sandbox = self._sandbox_args(ctx)
+        if sandbox is None:
+            yield events.TurnEnd(
+                resume_ref=ctx.resume_ref,
+                status="failed",
+                error=(
+                    "当前平台没有可用的命令隔离，codex 不能运行；"
+                    "如需使用，请在设置里打开「无隔离执行」开关（ADR 0024）"
+                ),
+            )
+            return
         message, digest = self._message(ctx)
         image_dir = self._codex_dir / "tmp" / uuid.uuid4().hex
         turn = CodexTurn(workdir=ctx.workdir.resolve(), call_prefix=uuid.uuid4().hex[:8])
@@ -187,7 +208,7 @@ class CodexRuntime:
                     system_prompt=ctx.system_prompt,
                     effort=ctx.effort,
                     image_paths=image_paths,
-                    extra=[*mcp.args(), *self._sandbox_args(ctx)],
+                    extra=[*mcp.args(), *sandbox],
                 )
                 env = build_env(self._environ, platform=self._platform) | mcp.env
                 child = await asyncio.create_subprocess_exec(

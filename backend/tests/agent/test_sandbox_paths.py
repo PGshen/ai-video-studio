@@ -12,7 +12,7 @@ def test_sensitive_home_dirs_are_under_the_given_home(tmp_path: Path) -> None:
     dirs = sensitive_home_dirs(tmp_path)
 
     names = {d.relative_to(tmp_path).as_posix() for d in dirs}
-    assert {".ssh", ".aws", ".gnupg", ".kube", ".docker", "Library/Keychains"} <= names
+    assert {".ssh", ".aws", ".gnupg", ".kube", ".docker", "Library/Keychains", ".codex"} <= names
     assert all(d.is_absolute() for d in dirs)
 
 
