@@ -34,6 +34,9 @@ TOKEN_ENV = "STUDIO_CODEX_MCP_TOKEN"
 """codex 子进程里放本轮令牌的环境变量名（由运行时在清理继承环境之后加入）。"""
 TOOL_TIMEOUT_S = 900
 """单次工具调用的上限：渲染预览、配乐合成等工具要跑几分钟（codex 默认值偏短）。"""
+SHUTDOWN_GRACE_S = 1
+"""关闭本轮服务时等进行中的工具调用的时间，之后取消它们：用户点了停止，codex 已经退出，
+不能等一个几分钟的渲染跑完（整分支评审 Important 2）。"""
 _PATH = "/mcp"
 _PREFIX = f"mcp_servers.{SERVER_NAME}."
 
@@ -132,7 +135,11 @@ class TurnToolServer:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
         config = uvicorn.Config(
-            _BearerGate(manager, token), lifespan="off", log_level="warning", access_log=False
+            _BearerGate(manager, token),
+            lifespan="off",
+            log_level="warning",
+            access_log=False,
+            timeout_graceful_shutdown=SHUTDOWN_GRACE_S,
         )
         server = uvicorn.Server(config)
         task = asyncio.create_task(server.serve(sockets=[sock]))

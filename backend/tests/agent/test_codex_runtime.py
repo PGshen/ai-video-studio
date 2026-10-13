@@ -385,3 +385,34 @@ async def test_without_a_sandbox_the_switch_decides(
     assert allowed[-1] == events.TurnEnd(resume_ref=_thread("minimal.jsonl"), status="done")
     argv = _record(tmp_path)["argv"]
     assert argv[argv.index("-s") + 1] == "danger-full-access"
+
+
+async def test_login_failure_ends_the_turn_at_the_first_401(
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
+) -> None:
+    """codex retries a 401 about ten times (~80 s) before `turn.failed`; the turn must not sit
+    there "running" — the first auth error already says what is wrong (review Important 1)."""
+    import asyncio
+    import time
+
+    lines = (SCRIPTS / "not_logged_in.jsonl").read_text(encoding="utf-8").splitlines()
+    script = tmp_path / "auth.jsonl"
+    script.write_text("\n".join(lines[:3]) + "\n", encoding="utf-8")  # started + first 401
+    environ = _environ(
+        tmp_path,
+        FAKE_CODEX_SCRIPT=str(script),
+        FAKE_CODEX_HANG="handle",
+        FAKE_CODEX_CHILD_PID=str(tmp_path / "child.pid"),
+    )
+    runtime = CodexRuntime(
+        tmp_path / "data", fake_codex_bin, environ=environ, platform="darwin", cancel_grace_s=2
+    )
+    started = time.monotonic()
+    async with asyncio.timeout(20):  # without the fix the fake CLI would hang forever
+        out = await _run(runtime, _ctx(workdir))
+    elapsed = time.monotonic() - started
+
+    end = out[-1]
+    assert isinstance(end, events.TurnEnd) and end.status == "failed"
+    assert end.error is not None and "codex login" in end.error
+    assert elapsed < 6, elapsed

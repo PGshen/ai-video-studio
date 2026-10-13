@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -167,3 +168,37 @@ async def test_concurrent_turns_do_not_share_tokens(tool_ctx: ToolContext) -> No
                 second.url, json={}, headers={"Authorization": f"Bearer {first.env[TOKEN_ENV]}"}
             )
     assert crossed.status_code == 401
+
+
+async def test_exit_does_not_wait_for_a_running_tool(tool_ctx: ToolContext) -> None:
+    """Stop during a long tool call (render preview, music synthesis): codex exits on SIGINT within
+    seconds, so leaving the turn's server must cancel the call instead of waiting it out."""
+    import asyncio
+    import time
+
+    progress: list[str] = []
+
+    async def slow(ctx: ToolContext, args: _EchoArgs) -> ToolResult:
+        progress.append("started")
+        await asyncio.sleep(10)
+        progress.append("finished")
+        return ToolResult(text="done")
+
+    server = TurnToolServer([_spec("slow", slow)], tool_ctx)
+    config = await server.__aenter__()
+
+    async def call() -> None:
+        async with _client(config) as session:
+            await session.call_tool("slow", {"text": "x"})
+
+    client = asyncio.create_task(call())
+    while not progress:
+        await asyncio.sleep(0.05)
+    client.cancel()
+    started = time.monotonic()
+    await server.__aexit__(None, None, None)
+    elapsed = time.monotonic() - started
+    with contextlib.suppress(BaseException):
+        await client
+    assert elapsed < 4, elapsed
+    assert progress == ["started"]

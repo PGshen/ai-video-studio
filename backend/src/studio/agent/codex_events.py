@@ -4,6 +4,8 @@
 - `command_execution` → `shell`、`file_change` → `apply_patch`、`mcp_tool_call` → 业务工具名；
   `item.started` 产出 `ToolCall`、`item.completed` 产出 `ToolResult`（没见到 started 时先补
   `ToolCall`）。`call_id` 加本轮前缀：codex 的 item id 每次进程都从 `item_0` 数起。
+- 顶层 `error` 事件里出现认证失败（401）时记下原因并置 `auth_failed`：codex 会重试约 80 秒，
+  运行时据此提前结束本轮（整分支评审 Important 1）。
 - `turn.started` 之前的 `error` item 是配置警告（未识别的键、模型元数据缺失），产出
   `Notice(runtime_warning)` 让用户看到——桌面版 CLI 自动升级后参数失效时靠它发现；之后的
   `error` item 和顶层 `error` 事件（重连等）只记日志，本轮成败只看 `turn.completed`/`turn.failed`。
@@ -45,7 +47,9 @@ class CodexTurn:
     usage: dict[str, int] | None = None
     """`turn.completed.usage`（会话累计值）。"""
     failure: str | None = None
-    """`turn.failed.error.message` 原文。"""
+    """`turn.failed.error.message` 原文（认证失败时是第一条 401 的原文）。"""
+    auth_failed: bool = False
+    """出现过认证失败（401）：codex 还会重试约 80 秒才报 `turn.failed`，运行时据此提前结束本轮。"""
     _open_calls: set[str] = field(default_factory=set)
     _warned_types: set[str] = field(default_factory=set)
 
@@ -63,7 +67,11 @@ def convert_event(obj: Mapping[str, Any], turn: CodexTurn) -> list[events.AgentE
         error = obj.get("error") or {}
         turn.failure = str(error.get("message") or "codex 报告本轮失败")
     elif kind == "error":
-        logger.info("codex: %s", _clip(str(obj.get("message")), _FAILURE_LIMIT))
+        message = str(obj.get("message"))
+        logger.info("codex: %s", _clip(redact(message), _FAILURE_LIMIT))
+        if not turn.auth_failed and any(marker in message for marker in _AUTH_MARKERS):
+            turn.auth_failed = True
+            turn.failure = turn.failure or message
     elif kind in ("item.started", "item.updated", "item.completed"):
         item = obj.get("item") or {}
         return _convert_item(kind, item, turn)

@@ -214,6 +214,15 @@
 - 2026-10-13 — `runtime=codex` 只允许登录模式 — `CODEX_API_KEY` 模式是付费调用，没有授权，也没有实测。
 - 2026-10-13 — 联网阶段对 `codex` 不开 codex 自带的网页搜索，回退到自建联网工具（经 MCP）— 沙箱默认断网，自建工具在后端进程里运行，不受影响；与 OpenAI 非官方 provider 的处理一致。
 
+## 整分支评审（2026-10-13）
+
+新会话评审（Opus），结论"修完再合"：无 Critical；2 条 Important 已修复并有先失败后通过的测试：
+
+- Important 1：未登录时界面约 80 秒无反馈 → 第一条 401 就记下原因并发 SIGINT 结束本轮（`test_login_failure_ends_the_turn_at_the_first_401`）。
+- Important 2：业务工具执行中途停止要等工具跑完 → 本轮 MCP 服务关闭时最多等 1 秒，之后取消进行中的调用（`test_exit_does_not_wait_for_a_running_tool`）。
+
+Minor 暂不处理：TD-96（codex 异常退出且有孤儿命令时读循环挂住）、TD-97（阶段提示摘要记得太早）、非 macOS 上单轮调用不带无隔离开关（并入 TD-94）、打码规则会把长路径换成 `***`、`toml_string` 两份重复实现、`logger.exception` 未打码、账本文件损坏时多计用量。
+
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
@@ -238,4 +247,4 @@
 - AC5：`test_codex_mcp.py`（白名单、调用经 `invoke_tool`、图片、参数错误、令牌、关闭、并发）；真实 codex 调到工具并看到图片（`r2d-turn-tool-server.jsonl`）；冒烟 `test_codex_login` 的 `smoke_image`；浏览器走查里 `check_brief` 调用成功。
 - AC6：隔离实例（api 8010、前端 5174、临时数据目录）设置页 `codex-login`「测试」→「连通 · 34.7s · ok」（`data/evidence/codex-runtime/l4-settings-probe-ok.jpg`）；新建带 key 的 codex 配置 → 422「codex 只支持本机登录（ChatGPT 账号），API key 环境变量须留空」；模型名 `gpt-no-such-model` 测试 → 「The 'gpt-no-such-model' model is not supported when using Codex with a ChatGPT account.」（20.8 秒）。
 - AC7：同一隔离实例，选题阶段 `codex-login` 会话：第一轮写 `topic/brief.md` + 调 `check_brief` + 快照，会话自动命名「简报验收测试」（`l4-turn1-file-tool-snapshot.jpg`）；第二轮执行 `sleep 90` 时点「停止」，1 秒内结束、无残留、`late.txt` 未写（`l4-turn2-cancelled.jpg`）；第三轮在输入框换到 `codex-luna（gpt-6-luna）`，答出第一轮写的代号并知道上一条命令被中断，带「模型已切换」与「含上一轮残余」提示（`l4-turn3-switch-model-after-cancel.jpg`）。
-- AC8：`make check` 全绿（2026-10-13：后端 3443 passed、前端 1337 passed）；Claude/OpenAI 运行时的既有测试未改动。
+- AC8：`make check` 全绿（2026-10-13 评审修复后：后端 3445 passed、前端 1337 passed）；Claude/OpenAI 运行时的既有测试未改动。

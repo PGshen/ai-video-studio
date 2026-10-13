@@ -237,6 +237,7 @@ class CodexRuntime:
                 )
                 stderr_task = asyncio.create_task(_drain(child, stderr_tail))
                 watcher = asyncio.create_task(self._stop_on_cancel(ctx, child))
+                auth_stop: asyncio.Task[None] | None = None
                 try:
                     await _feed(child, message)
                     async for obj in _json_lines(child):
@@ -247,10 +248,17 @@ class CodexRuntime:
                             continue
                         for event in convert_event(obj, turn):
                             yield event
+                        if turn.auth_failed and auth_stop is None:
+                            # codex would retry the 401 for ~80 s before giving up (codex.md).
+                            auth_stop = asyncio.create_task(
+                                _stop(child, grace_s=self._cancel_grace_s, platform=self._platform)
+                            )
                     await child.wait()
                     await stderr_task
                 finally:
                     watcher.cancel()
+                    if auth_stop is not None:
+                        auth_stop.cancel()
         except Exception as exc:
             logger.exception("codex 运行失败")
             if turn.thread_id or ctx.resume_ref:
