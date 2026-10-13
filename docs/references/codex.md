@@ -1,6 +1,6 @@
 # Codex CLI（ChatGPT 本机登录）
 
-用 ChatGPT 订阅登录驱动 Codex 作为第三种运行时的可行性实测，见计划 [codex-login-spike](../plans/active/codex-login-spike.md)。本文件只记录实测过的行为；结论和取舍见计划的 T5 与随后的 ADR。
+用 ChatGPT 订阅登录驱动 Codex 作为第三种运行时的可行性实测，见计划 [codex-login-spike](../plans/completed/codex-login-spike.md)。本文件只记录实测过的行为；结论和取舍见计划的 T5 与随后的 ADR。
 
 实测环境：macOS 15（Darwin 24.6），ChatGPT 桌面版自带的 `codex-cli 0.162.0-alpha.17.2`。入口 `/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex` 是一个 shell 包装，真正的可执行文件在同目录 `../CodexCLI.app/Contents/MacOS/codex`。下文的"二进制字符串"指对这个可执行文件 `strings` 后的检索结果。探针脚本和原始证据在 `data/evidence/codex-spike/`（不入库），文件名前缀即下表"来源"里的标签。
 

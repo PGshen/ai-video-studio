@@ -6,11 +6,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | 运行时扩展预研（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [架构设计](../../design/2026-09-26-architecture.md)（运行时抽象 `AgentRuntime`）；[ADR 0008](../../decisions/0008-模型接入方式.md)（Claude 本机登录先例）；[claude-agent-sdk.md](../../references/claude-agent-sdk.md)（登录模式的实测方法） |
 | 分支 | `codex-login-spike`（开工时从 main 切出） |
-| 批准记录 | 2026-10-13：负责人批准计划，选择 Native 执行（本会话内执行） |
+| 批准记录 | 2026-10-13：负责人批准计划，选择 Native 执行（本会话内执行）；2026-10-13：负责人验收通过，决定正式接入时单独安装固定版本的 `@openai/codex` |
 
 ## 目标
 
@@ -132,11 +132,12 @@
 
 ## 下一步
 
-- 负责人验收：审阅 [ADR 0030](../../decisions/0030-Codex本机登录运行时.md) 的结论和四条前提。验收后按 SOP §7 收尾：计划移到 `completed/`，ADR 状态按负责人决定改为「已采纳」或「已废弃」，分支以 `--no-ff` 合并到 main。
+- 无（已完成）。后续工作见 [TODO.md](../TODO.md) 中的「Codex 本机登录运行时」条目。
 
 ## 决策记录
 
 - 2026-10-13 — Final：评审（全新上下文）给出 0 Critical、3 Important、5 Minor，全部按文档修正处理：补做单独的 SIGTERM/SIGINT 取消复测并保存 `ps` 快照、补做 profile 与 MCP 组合实测、补 `make check` 记录、修正证据来源与措辞。没有不予修正的条目。
+- 2026-10-13 — 收尾：负责人验收通过；对 ADR 0030 前提 2 选择单独安装固定版本的 `@openai/codex`。ADR 保持「提议」，因为前提 1、3、4 还没有明确答复 — 如果负责人的验收本意是采纳整个 ADR，改一下状态即可。
 - 2026-10-13 — Ruling：不复制 `auth.json` 到独立 `CODEX_HOME`，登录模式沿用 `~/.codex`（会话落在 `~/.codex/sessions/`）— 与 Claude 登录模式会话落在 `~/.claude/projects/` 的先例一致；复制 OAuth 凭据会让两份 refresh token 互相作废（轮换），还会扩大凭据副本面 — 如果判断错：正式运行时需要另找隔离会话文件的办法（例如定期清理或 `--ephemeral` 加自建历史）。
 - 2026-10-13 — spike 直接以子进程调用 ChatGPT.app 自带的 `codex`，不安装 `@openai/codex` 或 `openai-codex-sdk` — 不引入计划外依赖；`openai-codex-sdk` 来源未核实。
 
@@ -162,4 +163,4 @@
 - AC3：单独复测的取消证据 `t2f-*`、`t2g-*`（含 `ps` 快照）；`t2a`–`t2c`（续会话、换模型、累计用量 9827 → 19692 → 33133）；`t2d-cancel-INT/TERM/KILLPG`（只有 SIGINT 不留孤儿进程，`ps` 观察）；`t2e-after-cancel-*`（三种取消后都能续上，用量计入下一轮）。
 - AC4：`t3a-mcp`（默认要审批，调用失败）、`t3b-mcp-approve`（文本和图片都能用，模型答出左蓝右黄）、`t3d-enabled-tools`（白名单生效）、`t3c-lockdown`（内置多 agent 工具关不掉）。
 - AC5：`t3f-profile-plus-mcp`（profile 不约束 MCP 子进程）、`t4e-view-image-denied`（模型拒绝调用，未验证）；`t4a-workspace-write`（默认读不受限）、`t4b-profile-deny`、`t4c-profile-tmp`（profile 拒读、拒写 tmp、断网）、`t4d-apply-patch`（部分验证）。
-- AC6：`docs/references/codex.md`、`docs/decisions/0030-Codex本机登录运行时.md`、`docs/plans/TODO.md` 新条目；2026-10-13 在分支上 `make check` 全部通过（T5 提交前与评审修正后各一次）。
+- AC6：`docs/references/codex.md`、`docs/decisions/0030-Codex本机登录运行时.md`、`docs/plans/TODO.md` 新条目；2026-10-13 在分支上 `make check` 全部通过（T5 提交前与评审修正后、合并前各一次）。
