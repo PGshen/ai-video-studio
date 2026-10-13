@@ -7,7 +7,8 @@
  * 由插槽填进来；
  * 老 manim 项目的 `animation` 阶段只显示下线提示（Manim 已下线，ADR 0027，项目只读），
  * `narrative` 阶段用 `NarrativeCanvas`（镜头卡片 + 配音播放条 + JSON，M3），
- * 其它阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）。
+ * 其它阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）；有专用画布的阶段也都把 `FileCanvas`
+ * 放进画布的 `files` 插槽，成为一个「文件」标签，方便查看工作区里有哪些文件。
  *
 
  * `busy`（画布/快照时间线是否只读）综合两个信号（T14 审查修复，见
@@ -334,6 +335,13 @@ const canvasBusy = computed(() =>
                       stage="produce"
                     />
                   </template>
+                  <template #files>
+                    <FileCanvas
+                      :project-id="projectId"
+                      :stage="stage"
+                      :busy="canvasBusy"
+                    />
+                  </template>
                   <template #actions>
                     <StageFinalizeButton
                       :project-id="projectId"
@@ -353,6 +361,13 @@ const canvasBusy = computed(() =>
                   :project-id="projectId"
                   :busy="canvasBusy"
                 >
+                  <template #files>
+                    <FileCanvas
+                      :project-id="projectId"
+                      :stage="stage"
+                      :busy="canvasBusy"
+                    />
+                  </template>
                   <template #actions>
                     <StageFinalizeButton
                       :project-id="projectId"
@@ -371,6 +386,13 @@ const canvasBusy = computed(() =>
                   :project-id="projectId"
                   :busy="canvasBusy"
                 >
+                  <template #files>
+                    <FileCanvas
+                      :project-id="projectId"
+                      :stage="stage"
+                      :busy="canvasBusy"
+                    />
+                  </template>
                   <template #actions>
                     <StageFinalizeButton
                       :project-id="projectId"
@@ -389,6 +411,13 @@ const canvasBusy = computed(() =>
                   :project-id="projectId"
                   :busy="canvasBusy"
                 >
+                  <template #files>
+                    <FileCanvas
+                      :project-id="projectId"
+                      :stage="stage"
+                      :busy="canvasBusy"
+                    />
+                  </template>
                   <template #actions>
                     <StageFinalizeButton
                       :project-id="projectId"

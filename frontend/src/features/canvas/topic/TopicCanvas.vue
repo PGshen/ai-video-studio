@@ -5,9 +5,9 @@
  * 标签行右侧是 `check_brief` 检查结果的状态图标、渲染/编辑切换和宿主塞进来的 `actions` 插槽（工作台放快照栏开关，canvas-layout）。状态都从通用文件
  * 端点读，检查结果来自 `GET /projects/{id}/topic/check`（和 `check_brief` 工具同一份逻辑）；
  * 文件变化时 `invalidateWorkspace` 会让检查查询一并失效。渲染/编辑模式由这里持有，
- * 简报和当前笔记共用；换标签、换笔记时回到渲染。
+ * 简报和当前笔记共用；换标签、换笔记时回到渲染。宿主给了 `files` 插槽时末尾多一个「文件」标签（工作台放通用文件画布）。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useSlots, watch } from 'vue'
 import { useFileTreeQuery, useTopicCheckQuery } from '@/composables/queries'
 import BriefStatusIcon from './BriefStatusIcon.vue'
 import EditModeToggle from './EditModeToggle.vue'
@@ -20,8 +20,9 @@ const props = defineProps<{
   busy: boolean
 }>()
 
-type Tab = 'brief' | 'notes'
+type Tab = 'brief' | 'notes' | 'files'
 const tab = ref<Tab>('brief')
+const hasFiles = useSlots().files !== undefined
 const mode = ref<'view' | 'edit'>('view')
 
 const { data: fileTree } = useFileTreeQuery(() => props.projectId)
@@ -73,13 +74,23 @@ watch([tab, selectedNote], () => {
       >
         笔记（{{ notes.length }}）
       </button>
+      <button
+        v-if="hasFiles"
+        type="button"
+        class="rounded px-3 py-1 whitespace-nowrap"
+        :class="tab === 'files' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+        data-testid="tab-files"
+        @click="tab = 'files'"
+      >
+        文件
+      </button>
       <div class="ml-auto flex items-center gap-2">
         <BriefStatusIcon
           :check="check"
           :failed="checkFailed"
         />
         <EditModeToggle
-          v-if="tab === 'brief' || selectedNote"
+          v-if="tab === 'brief' || (tab === 'notes' && selectedNote)"
           v-model:mode="mode"
           :busy="busy"
           :unavailable="tab === 'brief' && briefMissing"
@@ -99,7 +110,7 @@ watch([tab, selectedNote], () => {
     />
 
     <div
-      v-else
+      v-else-if="tab === 'notes'"
       class="grid min-h-0 flex-1 grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-3"
     >
       <ul
@@ -143,6 +154,15 @@ watch([tab, selectedNote], () => {
       >
         从左侧选择一份笔记
       </p>
+    </div>
+
+    <div
+      v-if="hasFiles"
+      v-show="tab === 'files'"
+      class="flex min-h-0 flex-1 flex-col"
+      data-testid="files-panel"
+    >
+      <slot name="files" />
     </div>
   </div>
 </template>

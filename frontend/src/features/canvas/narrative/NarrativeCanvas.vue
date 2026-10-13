@@ -17,8 +17,10 @@
  * - JSON 标签页可编辑：缓冲区/冲突处理用共享的 `composables/conflictState.ts`——
  *   缓冲区干净时直接采用服务器新内容，脏时进入冲突态让用户选择。agent 运行时
  *   （`busy`）画布只读。
+ * - 宿主给了 `files` 插槽（工作台的通用文件画布）时标签行末尾多一个「文件」标签；这时即使
+ *   narrative.json 还没有或解析失败，标签行也照常显示，方便去文件里看。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useSlots, watch } from 'vue'
 import { PauseIcon, PlayIcon } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
@@ -70,8 +72,9 @@ const props = withDefaults(
   { stage: 'narrative' },
 )
 
-type Tab = 'scenes' | 'json'
+type Tab = 'scenes' | 'json' | 'files'
 const tab = ref<Tab>('scenes')
+const hasFiles = useSlots().files !== undefined
 
 // ---- 读文件 ----------------------------------------------------------------
 
@@ -101,6 +104,8 @@ const narrativeParse = computed<{ scenes: NarrativeScene[]; error: string | null
     return { scenes: [], error: errorMessage(error) }
   }
 })
+/** narrative.json 存在且解析成功：镜头/原始 JSON 标签、状态图标和播放按钮才有意义。 */
+const narrativeReady = computed(() => narrativeExists.value && narrativeParse.value.error === null)
 const scenes = computed(() => narrativeParse.value.scenes)
 const sceneIds = computed(() => scenes.value.map((s) => s.id))
 
@@ -273,23 +278,12 @@ async function onSave(): Promise<void> {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <p
-      v-if="fileTree !== undefined && !narrativeExists"
-      class="text-muted-foreground text-sm"
+    <div
+      v-if="hasFiles || narrativeReady"
+      class="flex flex-wrap items-center gap-1 text-sm"
+      data-testid="narrative-tabbar"
     >
-      还没有 narrative/narrative.json。在左侧和 agent 对话，让它写出第一版叙事。
-    </p>
-    <p
-      v-else-if="narrativeParse.error"
-      class="text-destructive text-sm"
-    >
-      解析 narrative.json 失败：{{ narrativeParse.error }}
-    </p>
-    <template v-else-if="narrativeExists">
-      <div
-        class="flex flex-wrap items-center gap-1 text-sm"
-        data-testid="narrative-tabbar"
-      >
+      <template v-if="narrativeReady">
         <button
           type="button"
           class="rounded px-3 py-1 whitespace-nowrap"
@@ -306,7 +300,19 @@ async function onSave(): Promise<void> {
         >
           原始 JSON
         </button>
-        <div class="ml-auto flex items-center gap-2">
+      </template>
+      <button
+        v-if="hasFiles"
+        type="button"
+        class="rounded px-3 py-1 whitespace-nowrap"
+        :class="tab === 'files' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'"
+        data-testid="tab-files"
+        @click="tab = 'files'"
+      >
+        文件
+      </button>
+      <div class="ml-auto flex items-center gap-2">
+        <template v-if="narrativeReady">
           <ReadinessIcon
             :readiness="readiness"
             :scene-count="scenes.length"
@@ -332,183 +338,208 @@ async function onSave(): Promise<void> {
             />
             {{ isPlaying ? '暂停' : '播放' }}
           </Button>
-          <slot name="actions" />
-        </div>
-      </div>
-
-      <div
-        v-if="tab === 'scenes'"
-        class="grid min-h-0 flex-1 grid-cols-[minmax(0,16rem)_minmax(0,1fr)] gap-3"
-      >
-        <SceneCardList
-          :scenes="scenes"
-          :issues="issuesById"
-          :dubbing="dubbingById"
-          :selected-id="selectedId"
-          :playing-id="playingId"
-          @select="onSelectScene"
-        />
-
-        <div class="flex min-h-0 flex-col gap-3 overflow-y-auto text-sm">
-          <p
-            v-if="!selectedScene"
-            class="text-muted-foreground"
-          >
-            从左侧选择一个镜头
-          </p>
-          <template v-else>
-            <section>
-              <h3 class="text-muted-foreground mb-1 text-xs font-medium">
-                旁白
-              </h3>
-              <p>{{ selectedScene.narration || '（空）' }}</p>
-              <h3 class="text-muted-foreground mt-2 mb-1 text-xs font-medium">
-                画面意图
-              </h3>
-              <p>{{ selectedScene.visual_intent || '（空）' }}</p>
-            </section>
-
-            <ul
-              v-if="(issuesById[selectedScene.id] ?? []).length > 0"
-              class="border-destructive bg-destructive/10 rounded border px-3 py-2 text-xs"
-              data-testid="scene-issues"
-            >
-              <li
-                v-for="issue in issuesById[selectedScene.id]"
-                :key="issue"
-              >
-                {{ issue }}
-              </li>
-            </ul>
-
-            <section>
-              <h3 class="text-muted-foreground mb-1 text-xs font-medium">
-                配音
-              </h3>
-              <BeatTimeline
-                v-if="selectedTiming && selectedAudioUrl"
-                :audio-url="selectedAudioUrl"
-                :duration-seconds="selectedTiming.duration_seconds"
-                :timings="selectedTiming.beats"
-                :beats="selectedScene.beats"
-              />
-              <p
-                v-else-if="selectedTiming"
-                class="text-muted-foreground text-xs"
-              >
-                timing.json 里有这个镜头，但找不到音频文件 {{ selectedTiming.audio_path }}。
-              </p>
-              <p
-                v-else
-                class="text-muted-foreground text-xs"
-              >
-                这个镜头还没有配音——让 agent 调用 synthesize_tts。
-              </p>
-              <p
-                v-if="selectedTiming"
-                class="text-muted-foreground mt-1 text-xs"
-              >
-                对齐覆盖率 {{ Math.round(selectedTiming.alignment_coverage * 100) }}%
-              </p>
-            </section>
-
-            <section>
-              <h3 class="text-muted-foreground mb-1 text-xs font-medium">
-                Beats
-              </h3>
-              <ol class="flex flex-col gap-2">
-                <li
-                  v-for="(beat, index) in selectedScene.beats"
-                  :key="index"
-                  class="rounded border px-3 py-2"
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="font-medium">{{ index + 1 }}. {{ beat.cue_text }}</span>
-                    <span class="bg-muted shrink-0 rounded px-1.5 py-0.5 text-xs">
-                      {{ beat.transition || '（无）' }}
-                    </span>
-                  </div>
-                  <p class="text-muted-foreground mt-1 text-xs">
-                    画面：{{ beat.visual_action }}
-                  </p>
-                  <p class="text-muted-foreground text-xs">
-                    重点：{{ beat.emphasis }}
-                  </p>
-                </li>
-              </ol>
-            </section>
-          </template>
-        </div>
-      </div>
-
-      <div
-        v-else
-        class="flex min-h-0 flex-1 flex-col gap-2"
-      >
-        <template v-if="!buffer">
-          <p class="text-muted-foreground text-sm">
-            加载中…
-          </p>
         </template>
-        <template v-else>
-          <div
-            v-if="buffer.conflict"
-            class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
-          >
-            <span>narrative.json 在你编辑期间被更新了（可能是 agent 写的）。</span>
-            <div class="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                @click="onKeepMine"
-              >
-                保留我的修改
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                @click="onLoadLatest"
-              >
-                载入最新
-              </Button>
-            </div>
-          </div>
-          <p
-            v-if="busy"
-            class="text-muted-foreground text-xs"
-          >
-            只读：agent 正在运行
-          </p>
-          <CodeEditor
-            :content="buffer.content"
-            language="json"
-            :readonly="busy"
-            @update:content="onEdit"
+        <slot name="actions" />
+      </div>
+    </div>
+
+    <div
+      v-if="hasFiles"
+      v-show="tab === 'files'"
+      class="flex min-h-0 flex-1 flex-col"
+      data-testid="files-panel"
+    >
+      <slot name="files" />
+    </div>
+
+    <template v-if="tab !== 'files'">
+      <p
+        v-if="fileTree !== undefined && !narrativeExists"
+        class="text-muted-foreground text-sm"
+      >
+        还没有 narrative/narrative.json。在左侧和 agent 对话，让它写出第一版叙事。
+      </p>
+      <p
+        v-else-if="narrativeParse.error"
+        class="text-destructive text-sm"
+      >
+        解析 narrative.json 失败：{{ narrativeParse.error }}
+      </p>
+      <template v-else-if="narrativeExists">
+        <div
+          v-if="tab === 'scenes'"
+          class="grid min-h-0 flex-1 grid-cols-[minmax(0,16rem)_minmax(0,1fr)] gap-3"
+        >
+          <SceneCardList
+            :scenes="scenes"
+            :issues="issuesById"
+            :dubbing="dubbingById"
+            :selected-id="selectedId"
+            :playing-id="playingId"
+            @select="onSelectScene"
           />
-          <div class="flex items-center justify-between">
+
+          <div class="flex min-h-0 flex-col gap-3 overflow-y-auto text-sm">
             <p
-              v-if="saveError"
-              class="text-destructive text-xs"
+              v-if="!selectedScene"
+              class="text-muted-foreground"
             >
-              {{ saveError }}
+              从左侧选择一个镜头
             </p>
-            <span
-              v-else-if="buffer.dirty"
+            <template v-else>
+              <section>
+                <h3 class="text-muted-foreground mb-1 text-xs font-medium">
+                  旁白
+                </h3>
+                <p>{{ selectedScene.narration || '（空）' }}</p>
+                <h3 class="text-muted-foreground mt-2 mb-1 text-xs font-medium">
+                  画面意图
+                </h3>
+                <p>{{ selectedScene.visual_intent || '（空）' }}</p>
+              </section>
+
+              <ul
+                v-if="(issuesById[selectedScene.id] ?? []).length > 0"
+                class="border-destructive bg-destructive/10 rounded border px-3 py-2 text-xs"
+                data-testid="scene-issues"
+              >
+                <li
+                  v-for="issue in issuesById[selectedScene.id]"
+                  :key="issue"
+                >
+                  {{ issue }}
+                </li>
+              </ul>
+
+              <section>
+                <h3 class="text-muted-foreground mb-1 text-xs font-medium">
+                  配音
+                </h3>
+                <BeatTimeline
+                  v-if="selectedTiming && selectedAudioUrl"
+                  :audio-url="selectedAudioUrl"
+                  :duration-seconds="selectedTiming.duration_seconds"
+                  :timings="selectedTiming.beats"
+                  :beats="selectedScene.beats"
+                />
+                <p
+                  v-else-if="selectedTiming"
+                  class="text-muted-foreground text-xs"
+                >
+                  timing.json 里有这个镜头，但找不到音频文件 {{ selectedTiming.audio_path }}。
+                </p>
+                <p
+                  v-else
+                  class="text-muted-foreground text-xs"
+                >
+                  这个镜头还没有配音——让 agent 调用 synthesize_tts。
+                </p>
+                <p
+                  v-if="selectedTiming"
+                  class="text-muted-foreground mt-1 text-xs"
+                >
+                  对齐覆盖率 {{ Math.round(selectedTiming.alignment_coverage * 100) }}%
+                </p>
+              </section>
+
+              <section>
+                <h3 class="text-muted-foreground mb-1 text-xs font-medium">
+                  Beats
+                </h3>
+                <ol class="flex flex-col gap-2">
+                  <li
+                    v-for="(beat, index) in selectedScene.beats"
+                    :key="index"
+                    class="rounded border px-3 py-2"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="font-medium">{{ index + 1 }}. {{ beat.cue_text }}</span>
+                      <span class="bg-muted shrink-0 rounded px-1.5 py-0.5 text-xs">
+                        {{ beat.transition || '（无）' }}
+                      </span>
+                    </div>
+                    <p class="text-muted-foreground mt-1 text-xs">
+                      画面：{{ beat.visual_action }}
+                    </p>
+                    <p class="text-muted-foreground text-xs">
+                      重点：{{ beat.emphasis }}
+                    </p>
+                  </li>
+                </ol>
+              </section>
+            </template>
+          </div>
+        </div>
+
+        <div
+          v-else
+          class="flex min-h-0 flex-1 flex-col gap-2"
+        >
+          <template v-if="!buffer">
+            <p class="text-muted-foreground text-sm">
+              加载中…
+            </p>
+          </template>
+          <template v-else>
+            <div
+              v-if="buffer.conflict"
+              class="border-destructive bg-destructive/10 flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
+            >
+              <span>narrative.json 在你编辑期间被更新了（可能是 agent 写的）。</span>
+              <div class="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  @click="onKeepMine"
+                >
+                  保留我的修改
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  @click="onLoadLatest"
+                >
+                  载入最新
+                </Button>
+              </div>
+            </div>
+            <p
+              v-if="busy"
               class="text-muted-foreground text-xs"
             >
-              有未保存的修改
-            </span>
-            <span v-else />
-            <Button
-              size="sm"
-              :disabled="!buffer.dirty || busy || writeMutation.isPending.value"
-              @click="onSave"
-            >
-              保存
-            </Button>
-          </div>
-        </template>
-      </div>
+              只读：agent 正在运行
+            </p>
+            <CodeEditor
+              :content="buffer.content"
+              language="json"
+              :readonly="busy"
+              @update:content="onEdit"
+            />
+            <div class="flex items-center justify-between">
+              <p
+                v-if="saveError"
+                class="text-destructive text-xs"
+              >
+                {{ saveError }}
+              </p>
+              <span
+                v-else-if="buffer.dirty"
+                class="text-muted-foreground text-xs"
+              >
+                有未保存的修改
+              </span>
+              <span v-else />
+              <Button
+                size="sm"
+                :disabled="!buffer.dirty || busy || writeMutation.isPending.value"
+                @click="onSave"
+              >
+                保存
+              </Button>
+            </div>
+          </template>
+        </div>
+      </template>
     </template>
   </div>
 </template>

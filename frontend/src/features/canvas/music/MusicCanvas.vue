@@ -5,9 +5,10 @@
  * - **脚本**：编辑 `music/compose.py`，保存走普通的文件保存（阶段 `music`）；"渲染"按钮不经 agent，
  *   直接运行脚本并给出报告（旧产物在失败时不动）。有一轮在跑时只读、不能渲染。
  * - **事件**：声明的事件表，点一行回到播放标签并跳到该事件。
- * 三个标签都用 `v-show`，切换标签不会打断播放。定稿按钮等放在 `actions` 槽里。
+ * - **文件**：宿主给了 `files` 插槽时才有（工作台的通用文件画布）。
+ * 标签都用 `v-show`，切换标签不会打断播放。定稿按钮等放在 `actions` 槽里。
  */
-import { computed, nextTick, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, ref, useSlots, watch, watchEffect } from 'vue'
 import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor.vue'
 import { ApiError } from '@/api/http'
@@ -44,7 +45,15 @@ const props = withDefaults(
 )
 const SCRIPT = 'music/compose.py'
 
-const tab = ref<'play' | 'script' | 'events'>('play')
+const tab = ref<'play' | 'script' | 'events' | 'files'>('play')
+/** 宿主给了 `files` 插槽（工作台的通用文件画布）时末尾多一个「文件」标签。 */
+const hasFiles = useSlots().files !== undefined
+const tabItems = computed(() => [
+  { id: 'play', label: '播放' } as const,
+  { id: 'script', label: '脚本' } as const,
+  { id: 'events', label: `事件（${meta.value?.events.length ?? 0}）` } as const,
+  ...(hasFiles ? [{ id: 'files', label: '文件' } as const] : []),
+])
 const player = ref<InstanceType<typeof MusicPlayer> | null>(null)
 
 const { data: meta, error: metaError } = useMusicMetaQuery(() => props.projectId)
@@ -141,11 +150,7 @@ async function onRender(): Promise<void> {
       data-testid="music-tabbar"
     >
       <button
-        v-for="item in [
-          { id: 'play', label: '播放' },
-          { id: 'script', label: '脚本' },
-          { id: 'events', label: `事件（${meta?.events.length ?? 0}）` },
-        ] as const"
+        v-for="item in tabItems"
         :key="item.id"
         type="button"
         class="rounded px-3 py-1 whitespace-nowrap"
@@ -321,6 +326,15 @@ async function onRender(): Promise<void> {
         :events="meta?.events ?? []"
         @seek="onEventSeek"
       />
+    </div>
+
+    <div
+      v-if="hasFiles"
+      v-show="tab === 'files'"
+      class="flex min-h-0 flex-1 flex-col"
+      data-testid="files-panel"
+    >
+      <slot name="files" />
     </div>
   </div>
 </template>

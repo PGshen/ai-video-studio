@@ -112,6 +112,18 @@ describe('MusicCanvas', () => {
     seeks.length = 0
   })
 
+  it('adds a files tab only when the files slot is given', async () => {
+    expect(mountCanvas().find('[data-testid="music-tab-files"]').exists()).toBe(false)
+    const w = mount(MusicCanvas, {
+      props: { projectId: 'p1', busy: false },
+      slots: { files: '<div data-testid="files-stub">files</div>' },
+      global: { stubs },
+    })
+    expect(w.get('[data-testid="music-tab-files"]').text()).toBe('文件')
+    await w.get('[data-testid="music-tab-files"]').trigger('click')
+    expect(w.get('[data-testid="files-stub"]').isVisible()).toBe(true)
+  })
+
   it('has play / script / events tabs and counts the events', () => {
     const text = mountCanvas().find('[data-testid="music-tabbar"]').text()
     expect(text).toContain('播放')

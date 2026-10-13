@@ -206,4 +206,35 @@ describe('NarrativeCanvas', () => {
       expect(audio().src).toContain('c.mp3')
     })
   })
+
+  describe('「文件」标签', () => {
+    const withFiles = () =>
+      mount(NarrativeCanvas, {
+        props: { projectId: 'p1', busy: false },
+        slots: {
+          files: '<div data-testid="files-stub">files</div>',
+          actions: '<button data-testid="extra-action">x</button>',
+        },
+      })
+
+    it('给了 files 插槽时多一个「文件」标签，切过去显示插槽内容', async () => {
+      const w = withFiles()
+      await w.get('[data-testid="tab-files"]').trigger('click')
+      expect(w.find('[data-testid="files-stub"]').exists()).toBe(true)
+    })
+
+    it('还没有 narrative.json 时标签行（含「文件」和 actions）仍然在，可以切到文件', async () => {
+      state.files = []
+      const w = withFiles()
+      expect(w.text()).toContain('还没有 narrative/narrative.json')
+      expect(w.find('[data-testid="extra-action"]').exists()).toBe(true)
+      await w.get('[data-testid="tab-files"]').trigger('click')
+      expect(w.find('[data-testid="files-stub"]').exists()).toBe(true)
+      expect(w.text()).not.toContain('还没有 narrative/narrative.json')
+    })
+
+    it('没给 files 插槽时没有「文件」标签', () => {
+      expect(mountCanvas().find('[data-testid="tab-files"]').exists()).toBe(false)
+    })
+  })
 })
