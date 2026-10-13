@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     OpenAI 不提供 Shell、`render_music` 报错。macOS 上无效（永远用 Seatbelt）。设置页可以覆盖，
     见 `db.repo.settings.effective_allow_unsandboxed_exec`。"""
 
+    codex_bin: Path | None = None
+    """`runtime=codex` 用的 Codex CLI（`STUDIO_CODEX_BIN`）。不设时用 ChatGPT 桌面版自带的 CLI；
+    设了但文件不存在时 `codex` 运行时不注册，不回落（ADR 0030）。"""
+
     render_gpu: bool = True
     """成片、预览和镜头检查出帧时是否用 GPU（`STUDIO_RENDER_GPU`，ADR 0028）。默认开：用完整
     Chromium 的新版 headless，拿得到 GPU 就走 GPU，拿不到时 Chromium 自己回落到 SwiftShader
@@ -93,6 +97,7 @@ class Settings(BaseSettings):
         "openai_model",
         "openai_price_input",
         "openai_price_output",
+        "codex_bin",
         mode="before",
     )
     @classmethod

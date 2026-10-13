@@ -29,6 +29,7 @@
 |---|---|---|
 | ✅ 已验证（2026-10-13） | 不传 `-m` 时（含 `--ignore-user-config`）用 `gpt-6.1-sol`（会话文件 `turn_context.model`）。`-m gpt-6-luna` 正常完成。可选模型见 `~/.codex/models_cache.json` 的 `models[].slug`（`visibility: list` 的有 `gpt-6.1-sol`、`gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`、`gpt-5.6-sol/terra/luna`、`gpt-5.5`） | `t1a-minimal`、`t1b-model-luna` |
 | ✅ 已验证（2026-10-13） | 不存在的模型名：先出一条 `item.completed`（`type: error`，"Model metadata ... not found"），随后 `error` + `turn.failed`，消息为 400 `The '<名字>' model is not supported when using Codex with a ChatGPT account.`；退出码 1，约 22 秒 | `t1c-model-bogus` |
+| ✅ 已验证（2026-10-13） | 思考强度：`-c 'model_reasoning_effort="low"'`（`"high"` 同）被接受，会话 `turn_context.effort` 记为对应值；非法值（如 `"extreme"`）启动时不报错，请求时 400 `invalid_enum_value` 后 `turn.failed`，可选值为 `none`/`minimal`/`low`/`medium`/`high`/…（错误消息列出）。本项目的 `low`/`medium`/`high` 可以原样映射 | `r1g-effort-low`、`r1g-effort-high`、`r1g-effort-extreme`（codex-runtime T1） |
 | ✅ 已验证（2026-10-13） | stderr 经常出现 `failed to refresh available models: request timed out`（每次约 5 秒超时），不影响本轮完成 | 各次运行的 `.stderr.txt` |
 
 ## 事件格式（`codex exec --json`）
