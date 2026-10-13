@@ -4,6 +4,13 @@
 
 实测环境：macOS 15（Darwin 24.6），ChatGPT 桌面版自带的 `codex-cli 0.162.0-alpha.17.2`。入口 `/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex` 是一个 shell 包装，真正的可执行文件在同目录 `../CodexCLI.app/Contents/MacOS/codex`。下文的"二进制字符串"指对这个可执行文件 `strings` 后的检索结果。探针脚本和原始证据在 `data/evidence/codex-spike/`（不入库），文件名前缀即下表"来源"里的标签。
 
+## 结论摘要（2026-10-13）
+
+- ChatGPT 本机登录能以子进程方式驱动 `codex exec --json`，多轮续会话、换模型、取消后续上都可行。
+- 需要收口的地方都有对应办法：关闭注入的上下文（AGENTS.md、skills、插件等）、用 MCP 的 `enabled_tools` 做工具白名单、用 permission profile 做读隔离和写隔离、断网。
+- 做不到或要注意的地方：多 agent 工具关不掉；`developer_instructions` 只在建会话时生效；用量是累计 token、没有成本字段；取消必须用 SIGINT；单轮比 Claude 慢 2–3 倍；CLI 是随 ChatGPT 桌面版更新的 alpha 版，部分配置键来自二进制字符串，没有官方文档。
+- 取舍见 [ADR 0030](../decisions/0030-Codex本机登录运行时.md)。
+
 ## 认证与进程环境
 
 | 状态 | 内容 | 来源 |

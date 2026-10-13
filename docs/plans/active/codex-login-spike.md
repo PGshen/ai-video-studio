@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 运行时扩展预研（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [架构设计](../../design/2026-09-26-architecture.md)（运行时抽象 `AgentRuntime`）；[ADR 0008](../../decisions/0008-模型接入方式.md)（Claude 本机登录先例）；[claude-agent-sdk.md](../../references/claude-agent-sdk.md)（登录模式的实测方法） |
 | 分支 | `codex-login-spike`（开工时从 main 切出） |
@@ -51,12 +51,12 @@
 
 ## 验收标准
 
-- [ ] AC1：一轮最小对话在 ChatGPT 登录下完成，记录：认证来源确认（置空 key 后仍成功）、实际模型名、可用的 `-m` 取值、JSONL 事件类型清单（含用量字段）、单轮耗时。（验证方式：T1 证据 + references 表格）
-- [ ] AC2：`CODEX_HOME` 指向独立目录时登录凭据是否仍可用、会话文件落在哪里——结论明确（对应 Claude 侧 `CLAUDE_CONFIG_DIR` 的坑）。（验证方式：T1 对照实验）
-- [ ] AC3：续会话（`exec resume`）第二轮能复述第一轮内容；中途 SIGINT/SIGTERM 后进程与子进程退出、下一轮能续上；用量是否累计、取消轮的用量是否丢失——结论明确。（验证方式：T2 证据）
-- [ ] AC4：一个 stdio MCP server 提供的业务工具被模型调用，文本结果和图片结果都被模型“看到”（图片用左蓝右黄的 PNG，文字不提颜色）；能否只开放指定工具、关闭原生 web search。（验证方式：T3 证据）
-- [ ] AC5：沙箱结论：`workspace-write` + 断网下，工作区内可写、工作区外写被拒、联网被拒；**读**仓库根、`backend/.env`、`data/` 下其他目录、`~/.ssh` 的结果，以及有无办法拒读（配置项或外包一层 `sandbox-exec`）。`approval_policy=never` 时不出现交互阻塞。（验证方式：T4 证据）
-- [ ] AC6：`docs/references/codex.md` 按 references 现有格式（状态 / 结论 / 来源）记录以上全部结论；ADR 草稿（提议）给出“做 / 不做 / 有条件做”与理由；`docs/plans/TODO.md` 增加正式接入的条目（含范围估计）或不做的说明。（验证方式：文档检查，`make check` 绿）
+- [x] AC1：一轮最小对话在 ChatGPT 登录下完成，记录：认证来源确认（置空 key 后仍成功）、实际模型名、可用的 `-m` 取值、JSONL 事件类型清单（含用量字段）、单轮耗时。（验证方式：T1 证据 + references 表格）
+- [x] AC2：`CODEX_HOME` 指向独立目录时登录凭据是否仍可用、会话文件落在哪里——结论明确（对应 Claude 侧 `CLAUDE_CONFIG_DIR` 的坑）。（验证方式：T1 对照实验）
+- [x] AC3：续会话（`exec resume`）第二轮能复述第一轮内容；中途 SIGINT/SIGTERM 后进程与子进程退出、下一轮能续上；用量是否累计、取消轮的用量是否丢失——结论明确。（验证方式：T2 证据）
+- [x] AC4：一个 stdio MCP server 提供的业务工具被模型调用，文本结果和图片结果都被模型“看到”（图片用左蓝右黄的 PNG，文字不提颜色）；能否只开放指定工具、关闭原生 web search。（验证方式：T3 证据）
+- [x] AC5：沙箱结论：`workspace-write` + 断网下，工作区内可写、工作区外写被拒、联网被拒；**读**仓库根、`backend/.env`、`data/` 下其他目录、`~/.ssh` 的结果，以及有无办法拒读（配置项或外包一层 `sandbox-exec`）。`approval_policy=never` 时不出现交互阻塞。（验证方式：T4 证据）
+- [x] AC6：`docs/references/codex.md` 按 references 现有格式（状态 / 结论 / 来源）记录以上全部结论；ADR 草稿（提议）给出“做 / 不做 / 有条件做”与理由；`docs/plans/TODO.md` 增加正式接入的条目（含范围估计）或不做的说明。（验证方式：文档检查，`make check` 绿）
 
 ## 任务
 
@@ -111,7 +111,7 @@
 - **完成标准**：AC5 的结论写进 `codex.md`。
 - **验证命令**：`make check`
 
-### T5：结论与交接（待开始）
+### T5：结论与交接（完成）
 
 - **目标**：把实测结论变成可决策的文档。
 - **涉及文件**：`docs/references/codex.md`（新建，入库）、`docs/references/README.md`（加索引）、`docs/decisions/0030-<标题>.md`（提议状态）、`docs/plans/TODO.md`。
@@ -128,10 +128,11 @@
 - 2026-10-13 — T2 — 完成：`resume` 可续、换模型可续；用量是会话累计值；取消须用 SIGINT（TERM/KILL 留孤儿命令进程）；取消轮用量计入下一轮累计值
 - 2026-10-13 — T3 — 完成：stdio MCP 可用（需 `default_tools_approval_mode="approve"`），图片可见，`enabled_tools` 可做白名单；`collaboration.*` 等内置工具关不掉；`developer_instructions` 只在建会话时注入
 - 2026-10-13 — T4 — 完成：`workspace-write` 默认读不受限（含 `~/.codex/auth.json`）；`-c` 定义的 permission profile 能拒读仓库根、兄弟项目、凭据目录并收掉 tmp 写入，达到与 Claude 路径相同的隔离
+- 2026-10-13 — T5 — 完成：`codex.md` 结论摘要、ADR 0030（提议，有条件做）、TODO 条目
 
 ## 下一步
 
-- 做 T5：`references/codex.md` 已有 T1–T4 全部实测结论，补一节「结论摘要」；写 `docs/decisions/0030-*.md`（提议状态）；在 `docs/plans/TODO.md` 加正式接入条目；勾选验收标准并填「验证记录」；计划状态改为「待验收」。
+- 负责人验收：审阅 [ADR 0030](../../decisions/0030-Codex本机登录运行时.md) 的结论和四条前提。验收后按 SOP §7 收尾：计划移到 `completed/`，ADR 状态按负责人决定改为「已采纳」或「已废弃」，分支以 `--no-ff` 合并到 main。
 
 ## 决策记录
 
@@ -153,4 +154,11 @@
 
 ## 验证记录
 
-- 无
+证据都在 `data/evidence/codex-spike/`（不入库）：`<标签>.jsonl` 是原始事件，`.stderr.txt` 是 stderr，`.meta.json` 是退出码、耗时和事件类型；会话文件在 `~/.codex/sessions/2026/10/13/`。探针用 `probes/run_exec.py` 运行，参数组合见 `probes/min.zsh`。
+
+- AC1：`t1a-minimal`（登录下一轮完成，`gpt-6.1-sol`）、`t1b-model-luna`、`t1c-model-bogus`；事件类型和用量字段见 `codex.md`「事件格式」。
+- AC2：`t1d-codex-home-empty`（独立 `CODEX_HOME` 读不到登录，约 75 秒后 401）、`t1e`/`t1f`（`OPENAI_API_KEY` 不覆盖登录，`CODEX_API_KEY` 会覆盖）。
+- AC3：`t2a`–`t2c`（续会话、换模型、累计用量 9827 → 19692 → 33133）；`t2d-cancel-INT/TERM/KILLPG`（只有 SIGINT 不留孤儿进程，`ps` 观察）；`t2e-after-cancel-*`（三种取消后都能续上，用量计入下一轮）。
+- AC4：`t3a-mcp`（默认要审批，调用失败）、`t3b-mcp-approve`（文本和图片都能用，模型答出左蓝右黄）、`t3d-enabled-tools`（白名单生效）、`t3c-lockdown`（内置多 agent 工具关不掉）。
+- AC5：`t4a-workspace-write`（默认读不受限）、`t4b-profile-deny`、`t4c-profile-tmp`（profile 拒读、拒写 tmp、断网）、`t4d-apply-patch`（部分验证）。
+- AC6：`docs/references/codex.md`、`docs/decisions/0030-Codex本机登录运行时.md`、`docs/plans/TODO.md` 新条目；`make check` 通过（见下方最终运行）。
