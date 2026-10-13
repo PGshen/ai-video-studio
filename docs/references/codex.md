@@ -63,7 +63,10 @@
 | ✅ 已验证（2026-10-13） | 模型**看得到** MCP 工具返回的图片：左蓝右黄的 PNG（文字不提颜色），模型答出"左半边蓝色、右半边黄色" | `t3b-mcp-approve` |
 | ✅ 已验证（2026-10-13） | `-c 'mcp_servers.<名字>.enabled_tools=["lookup_note"]'` 生效：未开放的 `render_swatch` 模型看不到（模型报告"不存在"），服务器也没收到调用。可以用它实现阶段工具白名单 | `t3d-enabled-tools` |
 | ⚠️ 观察（2026-10-13，未存证） | codex 退出后 stdio MCP server 进程随之退出，没有残留 | `pgrep` 观察 |
-| ⚠️ 待验证 | 接入形态：业务工具需要访问后端的项目、快照等状态。两种形态：① stdio 桥接进程（`python -m <桥接模块>`，经本机 HTTP 回调后端，凭本轮令牌鉴权）；② 后端直接提供 streamable HTTP MCP 端点，codex 用 `url` + `bearer_token_env_var` 连接（不需要额外进程，但要确认 codex 的 HTTP MCP 在登录模式下可用、令牌如何轮换）。两者都未实测 | 方案描述 |
+| ✅ 已验证（2026-10-13） | **streamable HTTP MCP 可用**（登录模式）：`-c 'mcp_servers.<名字>.url="http://127.0.0.1:<端口>/mcp"'` + `-c 'mcp_servers.<名字>.bearer_token_env_var="<变量名>"'`，codex 从子进程环境读令牌，以 `Authorization: Bearer <令牌>` 发请求；工具调用、图片结果与 stdio 形态一致。permission profile（断网、拒读仓库根）下照常连接：MCP 连接由 codex 进程自己发起，不受 profile 约束 | `r2a-http-mcp`（profile 下）、`mcp_calls.log` |
+| ✅ 已验证（2026-10-13） | **令牌错误时默认悄悄去掉这个服务**：服务返回 401，stderr 记 `UnexpectedServerResponse("HTTP 401...")`，本轮照常完成，模型只是看不到这些工具。加 `-c 'mcp_servers.<名字>.required=true'` 后改为启动即失败：退出码非零、stdout **没有任何 JSON 事件**，原因只在 stderr（`required MCP servers failed to initialize`） | `r2b-http-mcp-badtoken`、`r2b-http-mcp-badtoken-required` |
+| ✅ 已验证（2026-10-13） | 续会话时换一个端口和令牌（每轮一个新服务）能正常调用工具：MCP 配置随每次调用传入，不随会话保存 | `r2c-http-mcp-resume` |
+| ✅ 已验证（2026-10-13） | 接入形态选定为**后端每轮内置 HTTP MCP 服务**（`studio.agent.codex_mcp.TurnToolServer`，`mcp` 包的 lowlevel `Server` + 无状态 `StreamableHTTPSessionManager`，uvicorn 监听 `127.0.0.1` 随机端口）；不需要 stdio 桥接进程。用它跑真实 codex：调用工具、拿到图片、模型答对颜色 | `r2d-turn-tool-server.jsonl`（codex-runtime T2） |
 
 ## 注入的上下文与收口
 
