@@ -14,18 +14,18 @@ from studio.db.repo.profiles import (
 )
 
 
-def test_seed_without_fake_runtime_creates_four_profiles(migrated_engine: Engine) -> None:
+def test_seed_without_fake_runtime_creates_five_profiles(migrated_engine: Engine) -> None:
     seed_model_profiles(migrated_engine, enable_fake_runtime=False)
     profiles = list_model_profiles(migrated_engine)
     names = {p.name for p in profiles}
-    assert names == {"claude-sonnet", "claude-login", "gpt", "deepseek"}
+    assert names == {"claude-sonnet", "claude-login", "gpt", "deepseek", "codex-login"}
 
 
 def test_seed_with_fake_runtime_also_creates_fake_profile(migrated_engine: Engine) -> None:
     seed_model_profiles(migrated_engine, enable_fake_runtime=True)
     profiles = list_model_profiles(migrated_engine)
     names = {p.name for p in profiles}
-    assert names == {"fake", "claude-sonnet", "claude-login", "gpt", "deepseek"}
+    assert names == {"fake", "claude-sonnet", "claude-login", "gpt", "deepseek", "codex-login"}
 
 
 def test_seed_is_idempotent(migrated_engine: Engine) -> None:
@@ -33,7 +33,7 @@ def test_seed_is_idempotent(migrated_engine: Engine) -> None:
     seed_model_profiles(migrated_engine, enable_fake_runtime=True)
     profiles = list_model_profiles(migrated_engine)
     names = [p.name for p in profiles]
-    assert len(names) == len(set(names)) == 5
+    assert len(names) == len(set(names)) == 6
 
 
 def test_seed_claude_sonnet_profile_fields(migrated_engine: Engine) -> None:
@@ -52,6 +52,17 @@ def test_seed_claude_login_profile_has_no_api_key_env(migrated_engine: Engine) -
     assert profile.runtime == "claude"
     assert profile.model == "claude-sonnet-5"
     assert not profile.api_key_env
+
+
+def test_seed_codex_login_profile(migrated_engine: Engine) -> None:
+    """ADR 0030: GPT through the local ChatGPT login; no prices (subscription, no cost field)."""
+    seed_model_profiles(migrated_engine, enable_fake_runtime=False)
+    profile = get_model_profile(migrated_engine, "codex-login")
+    assert profile is not None
+    assert (profile.runtime, profile.provider, profile.model) == ("codex", "openai", "gpt-6.1-sol")
+    assert profile.api_key_env is None
+    assert profile.supports_vision is True
+    assert (profile.price_input, profile.price_output) == (None, None)
 
 
 def test_seed_gpt_profile_fields(migrated_engine: Engine) -> None:

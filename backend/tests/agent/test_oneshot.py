@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -147,3 +150,62 @@ async def test_claude_stream_is_closed_when_raising_early(
         await ask_once(_profile("claude"), "s", "m", data_dir=tmp_path, environ={}, workdir="w")
 
     assert closed == [True]
+
+
+# ---- codex（codex-runtime T6） ------------------------------------------------------
+
+_CODEX_SCRIPTS = Path(__file__).parent / "fixtures" / "codex"
+codex_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake CLI")
+
+
+def _codex_env(tmp_path: Path, script: str) -> dict[str, str]:
+    return {
+        "PATH": os.environ.get("PATH", ""),
+        "FAKE_CODEX_SCRIPT": str(_CODEX_SCRIPTS / script),
+        "FAKE_CODEX_RECORD": str(tmp_path / "record.json"),
+    }
+
+
+@codex_only
+async def test_codex_runs_one_ephemeral_turn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_codex_bin: Path
+) -> None:
+    monkeypatch.setattr(oneshot, "codex_binary", lambda: fake_codex_bin)
+    reply = await ask_once(
+        _profile("codex"),
+        "只回复 ok",
+        "ping",
+        data_dir=tmp_path / "data",
+        environ=_codex_env(tmp_path, "minimal.jsonl"),
+        workdir="probe",
+    )
+    assert reply == "ok"
+    record = json.loads((tmp_path / "record.json").read_text(encoding="utf-8"))
+    assert record["stdin"] == "ping"
+    # No session file in ~/.codex/sessions and no ledger entry for a one-off call.
+    assert "--ephemeral" in record["argv"]
+    assert not (tmp_path / "data" / "codex" / "ledger").exists()
+
+
+@codex_only
+async def test_codex_failure_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_codex_bin: Path
+) -> None:
+    monkeypatch.setattr(oneshot, "codex_binary", lambda: fake_codex_bin)
+    with pytest.raises(OneShotError, match="gpt-no-such-model"):
+        await ask_once(
+            _profile("codex"),
+            "s",
+            "ping",
+            data_dir=tmp_path / "data",
+            environ=_codex_env(tmp_path, "model_not_found.jsonl"),
+            workdir="probe",
+        )
+
+
+async def test_codex_without_cli_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(oneshot, "codex_binary", lambda: None)
+    with pytest.raises(OneShotError, match="未找到 Codex CLI"):
+        await ask_once(
+            _profile("codex"), "s", "ping", data_dir=tmp_path, environ={}, workdir="probe"
+        )

@@ -1,6 +1,7 @@
 """Whether and how agent-written commands and code may run (windows-native design §4.2, ADR 0024).
 
-Every execution point — the Claude CLI's Bash/PowerShell tools, the OpenAI native Shell, and
+Every execution point — the Claude CLI's Bash/PowerShell tools, the OpenAI native Shell, codex's
+commands, and
 `render_music` running the agent's synthesis script — asks `exec_mode` with *its own* sandbox
 availability, so no caller branches on `sys.platform` by itself:
 
@@ -28,6 +29,11 @@ _CLAUDE_SANDBOX_PLATFORMS = ("darwin", "linux")
 Windows it runs commands unsandboxed (design §4.1)."""
 
 
+_CODEX_SANDBOX_PLATFORMS = ("darwin",)
+"""codex 的 permission profile 只在 macOS 实测过（codex.md）；其他平台按无隔离开关处理
+（ADR 0030 前提 4）。"""
+
+
 def exec_mode(*, platform: str, sandbox_available: bool, allow_unsandboxed: bool) -> ExecMode:
     """The decision table of design §4.2. macOS never runs unsandboxed: the switch cannot be
     used to turn isolation off there, even if `sandbox-exec` were missing."""
@@ -40,6 +46,10 @@ def exec_mode(*, platform: str, sandbox_available: bool, allow_unsandboxed: bool
 
 def claude_sandbox_available(platform: str | None = None) -> bool:
     return (platform or sys.platform) in _CLAUDE_SANDBOX_PLATFORMS
+
+
+def codex_sandbox_available(platform: str | None = None) -> bool:
+    return (platform or sys.platform) in _CODEX_SANDBOX_PLATFORMS
 
 
 def host_exec_mode(allow_unsandboxed: bool, *, platform: str | None = None) -> ExecMode:

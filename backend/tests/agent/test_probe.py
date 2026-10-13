@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from studio.agent.oneshot import OneShotError
-from studio.agent.probe import ERROR_MAX_CHARS, make_probe
+from studio.agent.probe import CODEX_PROBE_TIMEOUT_SECONDS, ERROR_MAX_CHARS, make_probe
 from studio.db.repo.profiles import ModelProfileValue
 
 _BASE = ModelProfileValue(
@@ -89,6 +90,22 @@ async def test_timeout(tmp_path: Path) -> None:
 
     assert result.ok is False
     assert result.error is not None and "超时" in result.error
+
+
+async def test_codex_gets_a_longer_timeout(tmp_path: Path) -> None:
+    """codex 单轮最小请求就要 28–44 秒（codex.md），认证失败要约 80 秒才报错。"""
+    ask = _Ask("ok", delay=0.2)
+    probe = make_probe(tmp_path, environ={}, ask=ask, timeout=0.05, codex_timeout=1.0)
+
+    claude = await probe(_BASE)
+    codex = await probe(dataclasses.replace(_BASE, runtime="codex", provider="openai"))
+
+    assert claude.ok is False and claude.error is not None and "超时" in claude.error
+    assert codex.ok is True and codex.reply == "ok"
+
+
+def test_default_codex_timeout_covers_a_failed_login() -> None:
+    assert CODEX_PROBE_TIMEOUT_SECONDS >= 120
 
 
 async def test_empty_reply_is_failure(tmp_path: Path) -> None:

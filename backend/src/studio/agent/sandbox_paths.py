@@ -1,4 +1,5 @@
-"""两条沙箱路径（Claude Bash、OpenAI Shell）共用的拒读清单里“主目录敏感位置”的部分（TD-27）。
+"""三条沙箱路径（Claude Bash、OpenAI Shell、codex permission profile）共用
+的拒读清单里“主目录敏感位置”的部分（TD-27）。
 
 仓库根和 `data_dir` 由各运行时自己传入；这里只补主目录下几处存放凭据的目录，
 免得提示注入让 agent 用 `cat ~/.ssh/id_*` 之类把内容经工具结果带出来。
@@ -17,6 +18,8 @@ _SENSITIVE_HOME_SUBDIRS = (
     ".kube",
     ".docker",
     "Library/Keychains",
+    # ChatGPT login of the codex runtime (auth.json holds OAuth tokens, ADR 0030).
+    ".codex",
 )
 
 

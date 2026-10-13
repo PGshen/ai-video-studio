@@ -84,6 +84,9 @@ logger = logging.getLogger(__name__)
 
 
 def _native_web_supported(profile: ModelProfileValue) -> bool:
+    if profile.runtime == "codex":
+        # The codex runtime keeps its own web search off (sandbox offline, codex-runtime plan).
+        return False
     return not (profile.runtime == "openai" and profile.provider != "openai")
 
 
@@ -315,7 +318,8 @@ class TurnRunner:
         优先，没设置时用环境变量 `STUDIO_WEB_MODE`。`tools`：阶段自带的自建
         联网工具原样保留，运行时不开原生联网；`native`：滤掉自建联网工具，允许联网的阶段开原生联网。
         `native` 但模型走不了原生联网（经 LiteLLM 的非官方 OpenAI 兼容模型，OpenAI 运行时只在官方
-        `provider == "openai"` 时加托管搜索）时回退到自建工具，否则这一轮完全没有联网能力。"""
+        `provider == "openai"` 时加托管搜索；codex 不开自带搜索）时回退到自建工具，否则这一轮
+        完全没有联网能力。"""
         tools = job.stage.tools()
         web_mode = effective_web_mode(self._engine, self._settings.web_mode)
         if web_mode == "native" and _native_web_supported(job.profile):

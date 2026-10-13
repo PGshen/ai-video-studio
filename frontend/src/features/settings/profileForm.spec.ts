@@ -3,8 +3,11 @@ import type { ModelProfileOut } from '@/types/api'
 import {
   emptyProfileForm,
   formFromProfile,
+  isLoginOnly,
+  keyEnvPlaceholder,
   toCreateBody,
   toPatchBody,
+  USER_RUNTIMES,
   validateProfileForm,
   zeroBudgetWarning,
   type ProfileFormValues,
@@ -131,6 +134,29 @@ describe('validateProfileForm（与后端 db/repo/profiles.py 同一组规则）
     expect(
       validateProfileForm(form({ runtime: 'claude', api_key_env: '' }), 'create').api_key_env,
     ).toBeUndefined()
+  })
+
+  it('codex 只能用本机登录：不填 key 合法，填了报错', () => {
+    expect(
+      validateProfileForm(form({ runtime: 'codex', api_key_env: '' }), 'create').api_key_env,
+    ).toBeUndefined()
+    expect(
+      validateProfileForm(form({ runtime: 'codex', api_key_env: 'OPENAI_API_KEY' }), 'create')
+        .api_key_env,
+    ).toContain('codex 只支持本机登录')
+  })
+
+  it('codex 的 key 输入框不用填，提示使用本机 ChatGPT 登录', () => {
+    expect(keyEnvPlaceholder('codex')).toContain('ChatGPT 登录')
+    expect(keyEnvPlaceholder('openai')).toContain('OPENAI_API_KEY')
+    expect(isLoginOnly('codex')).toBe(true)
+    expect(isLoginOnly('claude')).toBe(false)
+  })
+
+  it('codex 是界面里可以新建的运行时', () => {
+    expect(USER_RUNTIMES).toContain('codex')
+    expect(validateProfileForm(form({ runtime: 'codex', api_key_env: '' }), 'create').runtime)
+      .toBeUndefined()
   })
 
   it.each(['-0.1', 'abc', 'Infinity', 'NaN'])('单价 %j 不合法', (value) => {

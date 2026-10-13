@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 零散需求（不在架构设计 §10 的编号里程碑中） |
 | 设计依据 | [ADR 0030](../../decisions/0030-Codex本机登录运行时.md)（已采纳，四条前提已接受）；已验证行为见 [codex.md](../../references/codex.md)；运行时分层沿用 [架构设计 §4.1–§4.3](../../design/2026-09-26-architecture.md) |
 | 分支 | `codex-runtime` |
@@ -62,14 +62,14 @@
 
 ## 验收标准
 
-- [ ] AC1：本机找得到桌面版自带的 CLI，`STUDIO_CODEX_BIN` 能覆盖；都找不到时 `codex` 运行时不注册，设置页测试显示可读的原因；配置警告（未识别的键）进日志并在界面提示。（验证：单元测试 + 设置 `STUDIO_CODEX_BIN` 为不存在的路径后的接口测试）
-- [ ] AC2：参数构造、事件映射、累计用量求差（含取消后 `unsettled` 并入下一轮）、系统提示变更、多 agent 工具检测、配置警告与真错误的区分、`error` 事件不直接判失败，都有单元测试，用录制的 JSONL 回放（不调真实模型）。（验证：`make check`）
-- [ ] AC3：取消：SIGINT 后 codex 在宽限期内退出、本轮 `cancelled`、没有残留命令进程；SIGINT 不响应时强杀并清理孤儿进程组；被取消的会话下一轮能续上。（验证：单元测试用假 CLI 脚本；冒烟 `codex_login_cancel_then_turn` 加 `ps` 检查）
-- [ ] AC4：隔离：模型执行的命令读不到兄弟项目、`backend/.env`、仓库 `AGENTS.md`、`~/.ssh`、`~/.codex/auth.json`，写不出工作区，`/tmp` 不可写，断网；工作区可读写。`view_image` 对拒读路径的行为有一个直接的测试结论（拦截 / 不拦截并登记风险）。（验证：冒烟 `codex_login_sandbox_read`，输出只有 OK/DENIED）
-- [ ] AC5：业务工具：阶段白名单内的工具可调用、图片结果模型看得到、白名单外的工具模型看不到；工具写文件经 `record_tool_write` 记账，轮末 guard 不误还原。（验证：单元测试 + 冒烟 `codex_login_tools`）
-- [ ] AC6：设置页可以新建 `codex` 配置（填 API key 环境变量时报错），列表「测试」对 `codex-login` 显示成功、耗时和回复；把模型名改成不存在的，显示 400 原因。（验证：浏览器截图）
-- [ ] AC7：真实走一遍：选题或叙事阶段用 `codex-login` 新建会话，两轮对话（第二轮依赖第一轮内容）、一次业务工具调用、一次改工作区文件并生成快照、一次中途取消再继续、一次换到 `gpt-6-luna`；会话自动命名正常。（验证：浏览器截图 + api 日志摘录）
-- [ ] AC8：Claude、OpenAI 两个运行时行为不变，现有测试原样通过；`make check` 全绿。
+- [x] AC1：本机找得到桌面版自带的 CLI，`STUDIO_CODEX_BIN` 能覆盖；都找不到时 `codex` 运行时不注册，设置页测试显示可读的原因；配置警告（未识别的键）进日志并在界面提示。（验证：单元测试 + 设置 `STUDIO_CODEX_BIN` 为不存在的路径后的接口测试）
+- [x] AC2：参数构造、事件映射、累计用量求差（含取消后 `unsettled` 并入下一轮）、系统提示变更、多 agent 工具检测、配置警告与真错误的区分、`error` 事件不直接判失败，都有单元测试，用录制的 JSONL 回放（不调真实模型）。（验证：`make check`）
+- [x] AC3：取消：SIGINT 后 codex 在宽限期内退出、本轮 `cancelled`、没有残留命令进程；SIGINT 不响应时强杀并清理孤儿进程组；被取消的会话下一轮能续上。（验证：单元测试用假 CLI 脚本；冒烟 `codex_login_cancel_then_turn` 加 `ps` 检查）
+- [x] AC4：隔离：模型执行的命令读不到兄弟项目、`backend/.env`、仓库 `AGENTS.md`、`~/.ssh`、`~/.codex/auth.json`，写不出工作区，`/tmp` 不可写，断网；工作区可读写。`view_image` 对拒读路径的行为有一个直接的测试结论（拦截 / 不拦截并登记风险）。（验证：冒烟 `codex_login_sandbox_read`，输出只有 OK/DENIED）
+- [x] AC5：业务工具：阶段白名单内的工具可调用、图片结果模型看得到、白名单外的工具模型看不到；工具写文件经 `record_tool_write` 记账，轮末 guard 不误还原。（验证：单元测试 + 冒烟 `codex_login_tools`）
+- [x] AC6：设置页可以新建 `codex` 配置（填 API key 环境变量时报错），列表「测试」对 `codex-login` 显示成功、耗时和回复；把模型名改成不存在的，显示 400 原因。（验证：浏览器截图）
+- [x] AC7：真实走一遍：选题或叙事阶段用 `codex-login` 新建会话，两轮对话（第二轮依赖第一轮内容）、一次业务工具调用、一次改工作区文件并生成快照、一次中途取消再继续、一次换到 `gpt-6-luna`；会话自动命名正常。（验证：浏览器截图 + api 日志摘录）
+- [x] AC8：Claude、OpenAI 两个运行时行为不变，现有测试原样通过；`make check` 全绿。
 
 ## 评审重点
 
@@ -94,7 +94,7 @@
 - **完成标准**：上述测试通过；思考强度结论写进 codex.md。
 - **验证命令**：`make check`
 
-### T2：业务工具的 MCP 接法（实测选型 + 实现）（待开始）
+### T2：业务工具的 MCP 接法（实测选型 + 实现）（完成）
 
 - **目标**：把本轮的 `ToolSpec` 列表暴露给 codex，调用经 `invoke_tool` 走现有的校验与截断；选定并实现一种接法。
 - **候选**：
@@ -110,7 +110,7 @@
 - **完成标准**：上述测试通过；一次真实 codex 调用（极小提示）成功调到一个工具并看到图片。
 - **验证命令**：`make check`
 
-### T3：`CodexRuntime` 主体（待开始）
+### T3：`CodexRuntime` 主体（完成）
 
 - **目标**：实现 `AgentRuntime`：一轮 = 一个 `codex exec --json` 子进程，产出现有的 `AgentEvent` 序列。
 - **涉及文件**：`backend/src/studio/agent/codex_args.py`（新，纯函数：参数构造）、`codex_events.py`（新：JSONL → `AgentEvent`）、`codex_runtime.py`（新：进程、账本、`register_codex`）、`codex_env.py`（新：子进程环境）、`backend/src/studio/main.py`（注册）、`backend/tests/agent/test_codex_args.py`、`test_codex_events.py`、`test_codex_runtime.py`、`backend/tests/agent/fixtures/codex/*.jsonl`（从 spike 证据裁剪、去掉任何身份信息）、假 CLI 脚本 `backend/tests/agent/fixtures/fake_codex.py`。
@@ -126,7 +126,7 @@
 - **完成标准**：上述测试通过；`fake`/Claude/OpenAI 的测试不变。
 - **验证命令**：`make check`
 
-### T4：取消与进程清理（待开始）
+### T4：取消与进程清理（完成）
 
 - **目标**：取消可靠、不留孤儿进程。
 - **涉及文件**：`backend/src/studio/agent/codex_runtime.py`、`backend/src/studio/agent/codex_procs.py`（新：列出某进程的全部后代及其进程组）、`backend/tests/agent/test_codex_cancel.py`、`test_codex_procs.py`。
@@ -139,7 +139,7 @@
 - **完成标准**：上述测试通过；测试结束后没有残留 `sleep` 进程（测试里断言）。
 - **验证命令**：`make check`
 
-### T5：permission profile 与隔离（待开始）
+### T5：permission profile 与隔离（完成）
 
 - **目标**：模型执行的命令只能读写本轮工作区，读不到其他项目和凭据，默认断网。
 - **涉及文件**：`backend/src/studio/agent/codex_sandbox.py`（新：生成 profile 的 `-c` 参数）、`backend/src/studio/agent/sandbox_paths.py`（拒读清单加 `~/.codex`，Claude/OpenAI 路径一并受益）、`backend/src/studio/agent/exec_policy.py`（`codex_sandbox_available(platform)`）、`codex_args.py`、`backend/tests/agent/test_codex_sandbox.py`、`backend/tests/smoke/test_smoke.py`、`docs/references/codex.md`。
@@ -151,7 +151,7 @@
 - **完成标准**：单元测试通过；冒烟结果满足 AC4。
 - **验证命令**：`make check`；`make smoke SMOKE_ARGS="-k codex_login_sandbox"`
 
-### T6：模型配置、设置页与周边接入（待开始）
+### T6：模型配置、设置页与周边接入（完成）
 
 - **目标**：用户能在界面上建、测、用 `codex` 配置；周边功能对 `codex` 有明确行为。
 - **涉及文件**：
@@ -161,7 +161,7 @@
 - **完成标准**：上述测试通过；`make dev` 下设置页能看到 `codex-login` 并测试成功（截图留到 T7 一起做）。
 - **验证命令**：`make check`
 
-### T7：冒烟、文档与实测验收（待开始）
+### T7：冒烟、文档与实测验收（完成）
 
 - **目标**：真实模型下跑通，文档和质量记录到位。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`（`test_codex_login`、`test_codex_login_cancel_then_turn`、`test_codex_login_tools`，以及 T5 的 `test_codex_login_sandbox_read`；CLI 未安装或未登录时 skip 并说明原因）、`scripts/tasks.py`（冒烟白名单环境如需放行 `STUDIO_CODEX_BIN`）、`docs/references/codex.md`、`docs/runbooks/dev-setup.md`（安装与 `codex login`）、`docs/runbooks/verification.md`（codex 冒烟用法）、`docs/quality/QUALITY.md`、`docs/quality/tech-debt.md`（多 agent 工具、Windows 未测等）、`docs/plans/TODO.md`（Windows 实测）、`docs/ARCHITECTURE.md`（模块地图加 codex 相关模块）。
@@ -176,25 +176,59 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 2026-10-13 — T1 — 改用桌面版 CLI（负责人决定）；`codex_cli.py`（定位、版本）、`STUDIO_CODEX_BIN`；思考强度实测通过（`r1g-*`）
+- 2026-10-13 — T1 — 改用桌面版 CLI（负责人决定）；`codex_cli.py`（定位、版本）、`STUDIO_CODEX_BIN`；思考强度实测通过（`r1g-*`）（03a10cf）
+- 2026-10-13 — T2 — 实测选定方案 A（每轮内置 HTTP MCP）；`codex_mcp.TurnToolServer`；真实 codex 调到工具并看到图片（`r2a`–`r2d`）（9c1cbda）
+- 2026-10-13 — T3 — `codex_args`/`codex_events`/`codex_env`/`codex_runtime`，`events.Notice`；真实 CLI 跑两轮（含业务工具、续会话、提示更新）通过（6396fa6）
+- 2026-10-13 — T4 — SIGINT → 宽限 15 秒 → 强杀并清理命令进程组（`codex_procs.py`）；真实 CLI 取消 1.9 秒、无残留，续会话带上残余用量（`r4a-runtime-cancel.txt`）（e757891）
+- 2026-10-13 — T5 — `codex_sandbox.py`（permission profile）、`exec_policy.codex_sandbox_available`、拒读清单加 `~/.codex`；冒烟 `codex_login_sandbox_read`、`codex_login_view_image_through_symlink` 通过（`view_image` 受拒读约束）（bd8aaaa）
+- 2026-10-13 — T6 — `runtime=codex`（只允许本机登录）、内置 `codex-login`；oneshot（`--ephemeral`）、连通性测试与自动命名超时 120 秒、联网回退自建工具、附件说明；设置页 codex 时禁用 key 输入（759c49d）
+- 2026-10-13 — T7 — codex 冒烟 4 条通过；隔离实例浏览器走查 AC6、AC7 通过；过滤换模型时 codex 必出的英文警告；文档（runbook、ARCHITECTURE、QUALITY、tech-debt TD-93–95、TODO）
 
 ## 下一步
 
-- 从 T2 开始：先写一个最小的 streamable HTTP MCP 服务（`mcp` 包），用 spike 探针 `data/evidence/codex-spike/probes/run_exec.py` 让 codex 以 `url` + `bearer_token_env_var` 连接，确认登录模式下能调用、令牌生效、图片透传，再决定接法。
+- 全部任务完成，等整分支评审与负责人验收；验收通过后按 SOP 收尾（计划移到 `completed/`）并合并到 main。
 
 ## 决策记录
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
+- 2026-10-13 — T2 选方案 A（每轮内置 HTTP MCP 服务），不做 stdio 桥接 — 实测登录模式与 permission profile 下都可用，续会话换端口令牌也可用；不需要额外进程和回调通道，handler 直接拿本轮 `ToolContext`。
+- 2026-10-13 — codex 侧 `required=true` — 不加时令牌或服务出错会被悄悄忽略，模型只是看不到工具；加了之后启动即失败（只有 stderr 有原因，T3 要把 stderr 尾部带进错误）。
+- 2026-10-13 — `tool_timeout_sec=900` — 渲染预览、配乐合成要跑几分钟；900 秒高于工具自身最长的超时（Shell 上限 600 秒），超时由工具自己报，codex 这层只兜底。
+- 2026-10-13 — T3：提示词改从 stdin 传（`-`），图片用 `--image=<路径>` — 系统提示与前言可能很长；`-i` 是可变参数，会吞掉位置参数（实测 `r3a`/`r3b`）。
+- 2026-10-13 — T3：新增 `events.Notice(kind, message)`，TurnRunner 落库为 `notice` — 计划要求 codex 配置警告"界面上可见"，现有事件里没有运行时可用的提示类型；前端加 `runtime_warning` 的标签。
+- 2026-10-13 — T3：只有 `turn.started` 之前的 `error` item 产出提示，之后的（WebSocket 回落 HTTPS 等传输层消息）只记日志 — 前者是配置问题，后者是噪音。
+- 2026-10-13 — T3：子进程环境额外去掉 `STUDIO_` 前缀的变量，保留 `CODEX_HOME` — 前者是本应用的配置，与 codex 无关；后者决定去哪里读登录。
+- 2026-10-13 — T3：账本没有提示摘要（例如老会话）时不发更新块，直接记下当前摘要 — 无从判断是否变过。
+- 2026-10-13 — T4：取消时在发 SIGINT **之前**记下 codex 全部后代的进程组，codex 退出后（不论是否强杀）都对这些组补一次 SIGKILL — codex 退出后孤儿的父进程变成 1，事后找不到；孤儿还握着 stdout 管道，不清理的话读循环会一直等到命令自己结束。
+- 2026-10-13 — T5：没有可用沙箱且无隔离开关关闭时，codex 本轮直接失败（不像 Claude 那样只去掉命令工具）— codex 的文件编辑（apply_patch）也走同一套权限，去掉命令执行后几乎什么都做不了。
+- 2026-10-13 — T5：冒烟在 T6 加内置配置之前用临时的 `_codex_profile` 直接建配置行。
+- 2026-10-13 — T6：内置 `codex-login` 不填单价 — 订阅额度，codex 也不报成本；代价是每轮会有一条"本轮成本未计价"提示（与其他缺单价的配置一致，如实反映）。
+- 2026-10-13 — T6：codex 的单轮调用复用 `CodexRuntime`（`ephemeral=True`：加 `--ephemeral`、不记账），而不是另写一套 — 环境清理、隔离、取消都一致；单轮调用在 `<data_dir>/codex/oneshot/<用途>/` 下运行。
+- 2026-10-13 — T6：附件说明对 codex 不设读文件的大小上限（它用 shell 读），只对非图片的二进制文件提示用 shell 提取文本。
+- 2026-10-13 — T7：计划里单列的 `test_codex_login_tools` 并进 `test_codex_login`（第一轮就调用图片业务工具并断言模型看到图片）；工具写文件的记账由单元测试覆盖。
+- 2026-10-13 — T7：浏览器走查发现换模型续会话时 codex 必出一条英文警告，与 TurnRunner 的"模型已切换"提示重复，改为只记日志（`codex_events._BENIGN_WARNINGS`）。
+- 2026-10-13 — 参数校验只在 `invoke_tool` 做一次（MCP 层 `validate_input=False`），错误文案与其他运行时一致。
+
 - 2026-10-13 — **CLI 改用 ChatGPT 桌面版自带的**（负责人决定，ADR 0030 前提 2 改定）— 计划原定在 `tools/codex/` 安装 `@openai/codex@0.162.1`；T1 开始安装时发现 npm 包解压约 340 MB（与桌面版自带的 322 MB 相当），下载约 8 分钟只下了 43 MB。改用桌面版后不再有 npm 新依赖，也不需要在新版本上复验（实测用的就是这个版本）；T1 缩为"定位 + 补测思考强度"。
 - 2026-10-13 — `runtime=codex` 只允许登录模式 — `CODEX_API_KEY` 模式是付费调用，没有授权，也没有实测。
 - 2026-10-13 — 联网阶段对 `codex` 不开 codex 自带的网页搜索，回退到自建联网工具（经 MCP）— 沙箱默认断网，自建工具在后端进程里运行，不受影响；与 OpenAI 非官方 provider 的处理一致。
+
+## 整分支评审（2026-10-13）
+
+新会话评审（Opus），结论"修完再合"：无 Critical；2 条 Important 已修复并有先失败后通过的测试：
+
+- Important 1：未登录时界面约 80 秒无反馈 → 第一条 401 就记下原因并发 SIGINT 结束本轮（`test_login_failure_ends_the_turn_at_the_first_401`）。
+- Important 2：业务工具执行中途停止要等工具跑完 → 本轮 MCP 服务关闭时最多等 1 秒，之后取消进行中的调用（`test_exit_does_not_wait_for_a_running_tool`）。
+
+Minor 暂不处理：TD-96（codex 异常退出且有孤儿命令时读循环挂住）、TD-97（阶段提示摘要记得太早）、非 macOS 上单轮调用不带无隔离开关（并入 TD-94）、打码规则会把长路径换成 `***`、`toml_string` 两份重复实现、`logger.exception` 未打码、账本文件损坏时多计用量。
 
 ## 意外与发现
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 无
+- 2026-10-13 — T3：续会话时把更新后的阶段说明放进用户消息，codex 收到了但模型不一定照做（说明改成"用法语回答"，模型仍用英文）。用户消息的优先级低于建会话时的 `developer_instructions`。机制保留（总比静默用旧提示好），已写进 codex.md；阶段说明大改时新建会话更可靠。
+- 2026-10-13 — T4：Windows 上的取消用 `CTRL_BREAK_EVENT`（子进程有自己的进程组），没有实测；强杀走 `taskkill /T`。
 
 ## 阻塞
 
@@ -206,4 +240,11 @@
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 无
+- AC1：`test_codex_cli.py`（桌面版候选路径、`STUDIO_CODEX_BIN` 优先且不回落、都不存在）、`test_codex_runtime.py::test_register_codex_only_when_the_cli_is_found`；配置警告进时间线：`test_codex_events.py::test_config_warning_before_turn_start_becomes_a_notice`、`test_runner.py::test_runtime_notice_is_persisted`。
+- AC2：`test_codex_args.py`、`test_codex_events.py`（回放 `fixtures/codex/` 的 8 份实测 JSONL）、`test_codex_runtime.py`（假 CLI：累计求差、`unsettled` 残余、提示变更、超长单行、异常退出 stderr 打码）。
+- AC3：`test_codex_cancel.py`（SIGINT 响应 / 忽略后强杀并清理独立进程组）；冒烟 `test_codex_login_cancel_then_turn` 通过（无残留 `sleep`，下一轮 `cost_carryover`）；真实 CLI 取消 1.9 秒（`data/evidence/codex-spike/r4a-runtime-cancel.txt`）；浏览器里点「停止」1 秒内结束，无残留。
+- AC4：冒烟 `test_codex_login_sandbox_read`（工作区可读写；`.env`、`AGENTS.md`、其他项目、数据目录、`~/.codex/auth.json`、`~/.ssh` 不可读；仓库根、`/tmp` 不可写；断网）；`test_codex_login_view_image_through_symlink`：`view_image` 读拒读文件返回 Operation not permitted，工作区内对照图正常。证据 `data/evidence/codex-runtime/`。
+- AC5：`test_codex_mcp.py`（白名单、调用经 `invoke_tool`、图片、参数错误、令牌、关闭、并发）；真实 codex 调到工具并看到图片（`r2d-turn-tool-server.jsonl`）；冒烟 `test_codex_login` 的 `smoke_image`；浏览器走查里 `check_brief` 调用成功。
+- AC6：隔离实例（api 8010、前端 5174、临时数据目录）设置页 `codex-login`「测试」→「连通 · 34.7s · ok」（`data/evidence/codex-runtime/l4-settings-probe-ok.jpg`）；新建带 key 的 codex 配置 → 422「codex 只支持本机登录（ChatGPT 账号），API key 环境变量须留空」；模型名 `gpt-no-such-model` 测试 → 「The 'gpt-no-such-model' model is not supported when using Codex with a ChatGPT account.」（20.8 秒）。
+- AC7：同一隔离实例，选题阶段 `codex-login` 会话：第一轮写 `topic/brief.md` + 调 `check_brief` + 快照，会话自动命名「简报验收测试」（`l4-turn1-file-tool-snapshot.jpg`）；第二轮执行 `sleep 90` 时点「停止」，1 秒内结束、无残留、`late.txt` 未写（`l4-turn2-cancelled.jpg`）；第三轮在输入框换到 `codex-luna（gpt-6-luna）`，答出第一轮写的代号并知道上一条命令被中断，带「模型已切换」与「含上一轮残余」提示（`l4-turn3-switch-model-after-cancel.jpg`）。
+- AC8：`make check` 全绿（2026-10-13 评审修复后：后端 3445 passed、前端 1337 passed）；Claude/OpenAI 运行时的既有测试未改动。

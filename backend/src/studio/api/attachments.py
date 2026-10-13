@@ -136,6 +136,9 @@ def _human_size(size: int) -> str:
 def _unreadable(record: AttachmentRecord, runtime: str) -> bool:
     """修订 R2：读工具读不了（或可能读不全）这个文件。"""
     assert record.path is not None
+    if runtime == "codex":
+        # codex reads files with shell commands: no size cap, but binaries need extracting.
+        return record.binary and record.kind != "image"
     if runtime == "openai" and record.binary:
         return True
     if Path(record.path).suffix.lower() in _PDF_AND_IMAGE_SUFFIXES or record.kind == "image":
@@ -155,6 +158,11 @@ def file_note(records: list[AttachmentRecord], runtime: str) -> str:
         if _unreadable(record, runtime):
             if runtime == "openai":
                 line += "；读工具可能无法直接读取，读不到时请如实告诉用户"
+            elif runtime == "codex":
+                line += (
+                    "；这是二进制文件，可以用 shell 命令提取文本"
+                    "（例如 pdftotext，如果本机安装了的话），读不到时请如实告诉用户"
+                )
             else:
                 line += (
                     "；Read 可能无法直接读取，可以尝试用 Bash 提取文本"
