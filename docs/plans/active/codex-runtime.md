@@ -20,8 +20,8 @@
 
 **包含：**
 
-- 单独安装固定版本的 Codex CLI：`@openai/codex@0.162.1`（npm `latest`，2026-10-09 发布），装在仓库内 `tools/codex/`，`make setup` 一并安装；**不用** ChatGPT 桌面版自带的 alpha 版。
-- 在 0.162.1 上复验 spike 的关键结论（spike 用的是 `0.162.0-alpha.17.2`），差异写进 `codex.md`。
+- 使用 ChatGPT 桌面版自带的 Codex CLI（spike 实测的就是它，`0.162.0-alpha.17.2`）；`STUDIO_CODEX_BIN` 可以改用别的 CLI。版本漂移由配置警告提示和冒烟里的版本对比兜底（ADR 0030 前提 2，2026-10-13 改定）。
+- 补测 spike 没测的思考强度参数。
 - 业务工具经 MCP 提供给 codex；先实测两种接法再选定（ADR 0030「业务工具」）。
 - `CodexRuntime`：启动 `codex exec --json`、事件映射、续会话、累计用量求差、阶段系统提示的注入与变更处理、图片输入。
 - 取消（SIGINT → 宽限 → 强杀 + 孤儿清理）。
@@ -42,12 +42,11 @@
 
 - **安全**：`~/.codex/auth.json` 只读，任何日志、证据、测试输出、错误信息里都不出现其中的 token；不修改 `~/.codex/config.toml`；不复制 `auth.json`；`CODEX_HOME` 保持默认。
 - **付费调用**：只用 ChatGPT 登录跑真实模型（不产生 API 费用，负责人已在 ADR 0030 接受，**本计划预先授权**，不限次数，但每次冒烟尽量用极小提示以节省订阅额度）。不设置 `CODEX_API_KEY`，不用任何 OpenAI API key 调 codex。
-- **新依赖（本计划写明，仅此两项）**：
-  - npm `@openai/codex` **精确版本 `0.162.1`**，独立的 `tools/codex/package.json` + 锁文件，不进 `frontend/` 的依赖。
+- **新依赖（本计划写明，仅此一项）**：
   - Python `mcp>=1.30,<2` 写进 `backend/pyproject.toml`（目前已作为 `claude-agent-sdk` 的传递依赖装着 1.30.0；业务代码要直接 import 它，所以显式声明）。只有 T2 选定"后端内置 HTTP MCP"时才需要 HTTP 服务端相关模块。
-- **CLI 定位**：`STUDIO_CODEX_BIN` 设了就用它，否则用 `tools/codex/node_modules/.bin/codex`（Windows 为 `codex.cmd`）；两者都没有时 `codex` 运行时不注册（与 Claude CLI 找不到时的处理一致），设置页测试给出"未安装，运行 make setup"。**不**回落到 PATH 上或桌面版里的 codex。
+- **CLI 定位**：`STUDIO_CODEX_BIN` 设了就用它（文件不存在时不回落）；否则用 ChatGPT 桌面版自带的 `/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`（或 `~/Applications/` 下同一路径，仅 macOS）；都没有时 `codex` 运行时不注册，设置页测试给出"未找到 Codex CLI：安装 ChatGPT 桌面版或设置 STUDIO_CODEX_BIN"。不搜 PATH。
 - **子进程环境**：置空所有 `OPENAI_*`、`CODEX_*`、`AZURE_OPENAI*`、`ANTHROPIC_*`、`CLAUDE_CODE_*` 及名字像密钥的变量（`KEY`/`TOKEN`/`SECRET`/`PASSWORD`/`CREDENTIAL`）；与 spike 探针一致。
-- **上下文收口**：每次启动都带 `--ignore-user-config`、`--skip-git-repo-check` 和 codex.md「本节的最小上下文参数组合」（在 0.162.1 上复验后以复验结果为准）。
+- **上下文收口**：每次启动都带 `--ignore-user-config`、`--skip-git-repo-check` 和 codex.md「本节的最小上下文参数组合」。
 - **超时**：codex 认证失败要约 80 秒才报错；连通性测试超时 120 秒（Claude/OpenAI 仍是 30 秒）。
 - **工作约定**：测试先行；`make check` 绿；一个任务至少一个 commit，`<type>(<scope>): <中文说明>`；不改 `docs/design/`。
 
@@ -63,7 +62,7 @@
 
 ## 验收标准
 
-- [ ] AC1：`make setup` 在干净环境装好 `tools/codex`，`tools/codex/node_modules/.bin/codex --version` 输出 `codex-cli 0.162.1`；未安装时 `codex` 运行时不注册，设置页测试显示可读的原因。（验证：tasks 测试 + 手动删目录后跑一次 api 测试）
+- [ ] AC1：本机找得到桌面版自带的 CLI，`STUDIO_CODEX_BIN` 能覆盖；都找不到时 `codex` 运行时不注册，设置页测试显示可读的原因；配置警告（未识别的键）进日志并在界面提示。（验证：单元测试 + 设置 `STUDIO_CODEX_BIN` 为不存在的路径后的接口测试）
 - [ ] AC2：参数构造、事件映射、累计用量求差（含取消后 `unsettled` 并入下一轮）、系统提示变更、多 agent 工具检测、配置警告与真错误的区分、`error` 事件不直接判失败，都有单元测试，用录制的 JSONL 回放（不调真实模型）。（验证：`make check`）
 - [ ] AC3：取消：SIGINT 后 codex 在宽限期内退出、本轮 `cancelled`、没有残留命令进程；SIGINT 不响应时强杀并清理孤儿进程组；被取消的会话下一轮能续上。（验证：单元测试用假 CLI 脚本；冒烟 `codex_login_cancel_then_turn` 加 `ps` 检查）
 - [ ] AC4：隔离：模型执行的命令读不到兄弟项目、`backend/.env`、仓库 `AGENTS.md`、`~/.ssh`、`~/.codex/auth.json`，写不出工作区，`/tmp` 不可写，断网；工作区可读写。`view_image` 对拒读路径的行为有一个直接的测试结论（拦截 / 不拦截并登记风险）。（验证：冒烟 `codex_login_sandbox_read`，输出只有 OK/DENIED）
@@ -86,16 +85,13 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：安装固定版本 CLI、定位与复验（进行中）
+### T1：CLI 定位与补测（完成）
 
-- **目标**：仓库内装好 `@openai/codex@0.162.1`，后端能找到它；在这个版本上复验 spike 的关键结论，确认后续任务的参数组合可用。
-- **涉及文件**：`tools/codex/package.json`、`tools/codex/pnpm-lock.yaml`（新）、`.gitignore`（`tools/codex/node_modules`）、`scripts/tasks.py`（`cmd_setup` 增加一步 `pnpm install --dir tools/codex`）、`scripts/tests/`（对应测试）、`backend/src/studio/config.py`（`codex_bin`）、`backend/src/studio/agent/codex_cli.py`（新：`find_codex(settings, platform) -> Path | None`、`codex_version(bin) -> str`）、`backend/tests/agent/test_codex_cli.py`、`docs/references/codex.md`、`docs/runbooks/dev-setup.md`。
-- **接口与要点**：
-  - `find_codex` 只看 `STUDIO_CODEX_BIN` 和 `tools/codex/node_modules/.bin/codex[.cmd]`，不搜 PATH、不看 `/Applications/ChatGPT.app`。
-  - 复验清单（探针沿用 `data/evidence/codex-spike/probes/`，证据前缀 `r1*`，不入库）：最小上下文参数组合不报"未识别"；`resume` 与 `-m` 换模型；SIGINT 取消；permission profile（拒读、`:tmpdir`/`:slash_tmp`）；MCP `default_tools_approval_mode`、`enabled_tools`；`model_reasoning_effort=low/medium/high` 是否被接受（spike 未验）。复验结果按 codex.md 的格式补"0.162.1 复验"列或行，差异写进本计划「意外与发现」。
-  - 复验发现某项在 0.162.1 不成立且没有替代手段 → 按 SOP §6 停下来问。
-- **测试**：`find_codex` 的四种情况（环境变量、仓库内安装、Windows `.cmd`、都没有）；`cmd_setup` 步骤列表包含 codex 安装。
-- **完成标准**：`codex --version` 为 0.162.1；复验清单逐项有结论写进 codex.md。
+- **目标**：后端能找到要用的 Codex CLI；补测 spike 没测的思考强度参数。
+- **涉及文件**：`backend/src/studio/config.py`（`codex_bin`）、`backend/src/studio/agent/codex_cli.py`（新：`desktop_candidates(platform, home) -> list[Path]`、`find_codex(override, candidates) -> Path | None`、`codex_version(bin) -> str`、`VERIFIED_VERSION`）、`backend/tests/agent/test_codex_cli.py`、`backend/tests/test_config.py`、`docs/references/codex.md`、`docs/runbooks/dev-setup.md`、ADR 0030（前提 2 改定）。
+- **接口与要点**：`find_codex` 只看 `STUDIO_CODEX_BIN` 和桌面版位置，不搜 PATH；`VERIFIED_VERSION` 是 codex.md 实测所用版本，T7 冒烟拿它对比。思考强度用 `-c model_reasoning_effort="<值>"` 实测（证据前缀 `r1g`）。
+- **测试**：桌面版候选路径（macOS / 其他平台为空）；`override` 优先、`override` 不存在不回落、取第一个存在的候选、都不存在；`codex_version` 解析与异常；`STUDIO_CODEX_BIN` 留空等于没设置。
+- **完成标准**：上述测试通过；思考强度结论写进 codex.md。
 - **验证命令**：`make check`
 
 ### T2：业务工具的 MCP 接法（实测选型 + 实现）（待开始）
@@ -119,8 +115,8 @@
 - **目标**：实现 `AgentRuntime`：一轮 = 一个 `codex exec --json` 子进程，产出现有的 `AgentEvent` 序列。
 - **涉及文件**：`backend/src/studio/agent/codex_args.py`（新，纯函数：参数构造）、`codex_events.py`（新：JSONL → `AgentEvent`）、`codex_runtime.py`（新：进程、账本、`register_codex`）、`codex_env.py`（新：子进程环境）、`backend/src/studio/main.py`（注册）、`backend/tests/agent/test_codex_args.py`、`test_codex_events.py`、`test_codex_runtime.py`、`backend/tests/agent/fixtures/codex/*.jsonl`（从 spike 证据裁剪、去掉任何身份信息）、假 CLI 脚本 `backend/tests/agent/fixtures/fake_codex.py`。
 - **接口与要点**：
-  - 参数：新会话 `exec <通用参数> -m <model> -c developer_instructions=<系统提示> "<消息>"`；续会话 `exec <exec 级参数> resume <thread_id> <resume 级参数> "<消息>"`（参数位置见 codex.md「续会话」）；`-C <workdir>`；effort 映射到 T1 复验过的键；图片写到 `<data_dir>/codex/tmp/<turn>/` 后用 `-i` 传入，轮末删除。
-  - 事件映射：`agent_message` → `TextBlock`；`reasoning`（若有）→ `ThinkingBlock`；`command_execution`/`file_change`/`mcp_tool_call` 的 `item.started`/`item.completed` → `ToolCall`/`ToolResult`（步数由 TurnRunner 照常计数）；`collaboration.*` 等多 agent 调用 → 记 `notice` 并不执行额外处理（系统提示末尾追加"不要派生子 agent"）；`turn.started` 之前的 `item.completed(type=error)` 视为配置警告（记日志，不失败）；`error` 事件只记日志，以 `turn.failed`/退出码为准；`turn.completed` → `Usage` + `TurnEnd(completed)`。
+  - 参数：新会话 `exec <通用参数> -m <model> -c developer_instructions=<系统提示> "<消息>"`；续会话 `exec <exec 级参数> resume <thread_id> <resume 级参数> "<消息>"`（参数位置见 codex.md「续会话」）；`-C <workdir>`；effort 映射到 `-c model_reasoning_effort="<low|medium|high>"`（T1 已实测）；图片写到 `<data_dir>/codex/tmp/<turn>/` 后用 `-i` 传入，轮末删除。
+  - 事件映射：`agent_message` → `TextBlock`；`reasoning`（若有）→ `ThinkingBlock`；`command_execution`/`file_change`/`mcp_tool_call` 的 `item.started`/`item.completed` → `ToolCall`/`ToolResult`（步数由 TurnRunner 照常计数）；`collaboration.*` 等多 agent 调用 → 记 `notice` 并不执行额外处理（系统提示末尾追加"不要派生子 agent"）；`turn.started` 之前的 `item.completed(type=error)` 视为配置警告（记日志并产出一条提示事件，界面上可见，不失败；桌面版 CLI 升级后参数失效时靠它发现）；`error` 事件只记日志，以 `turn.failed`/退出码为准；`turn.completed` → `Usage` + `TurnEnd(completed)`。
   - 用量：`turn.completed.usage` 是会话累计值，按账本求差；没拿到 `turn.completed` 时标 `unsettled`，下一轮差值含残余并标 `includes_carryover`（与 `ClaudeRuntime._turn_cost` 同一语义）。`Usage.auth="login"`，成本按配置单价估算，没有单价则为空。
   - 系统提示变更：账本存建会话时系统提示的哈希；续会话时哈希不同 → 在本轮用户消息前加一段"阶段说明已更新"并附新提示全文，然后更新哈希。
   - 错误：未登录/401 的错误文本规整成"Codex 未登录或登录已失效，请在终端运行 codex login"；stderr 尾部打码后进 `TurnEnd.error`（去掉看起来像 token 的长串）。
@@ -170,7 +166,7 @@
 - **目标**：真实模型下跑通，文档和质量记录到位。
 - **涉及文件**：`backend/tests/smoke/test_smoke.py`（`test_codex_login`、`test_codex_login_cancel_then_turn`、`test_codex_login_tools`，以及 T5 的 `test_codex_login_sandbox_read`；CLI 未安装或未登录时 skip 并说明原因）、`scripts/tasks.py`（冒烟白名单环境如需放行 `STUDIO_CODEX_BIN`）、`docs/references/codex.md`、`docs/runbooks/dev-setup.md`（安装与 `codex login`）、`docs/runbooks/verification.md`（codex 冒烟用法）、`docs/quality/QUALITY.md`、`docs/quality/tech-debt.md`（多 agent 工具、Windows 未测等）、`docs/plans/TODO.md`（Windows 实测）、`docs/ARCHITECTURE.md`（模块地图加 codex 相关模块）。
 - **接口与要点**：
-  - 冒烟版本漂移检查：`test_codex_login` 先断言 `codex --version` 与 `tools/codex/package.json` 的版本一致。
+  - 冒烟版本漂移检查：`test_codex_login` 记录 `codex --version`，与 `codex_cli.VERIFIED_VERSION` 不同时在输出里提醒复验（不判失败：桌面版会自动更新）。
   - AC6、AC7 用 `make dev` + 浏览器实测并截图，填「验证记录」。
 - **测试**：上述冒烟用例。
 - **完成标准**：AC1–AC8 都有证据。
@@ -180,18 +176,17 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-10-13 — T1 — 改用桌面版 CLI（负责人决定）；`codex_cli.py`（定位、版本）、`STUDIO_CODEX_BIN`；思考强度实测通过（`r1g-*`）
 
 ## 下一步
 
-- 等负责人批准计划。批准后建分支 `codex-runtime`，把状态改为「执行中」，从 T1 开始：先建 `tools/codex/package.json`（精确版本 `0.162.1`），装好后用 spike 探针（`data/evidence/codex-spike/probes/run_exec.py`，用 `STUDIO_CODEX_BIN` 指向新装的 CLI）逐项复验。
+- 从 T2 开始：先写一个最小的 streamable HTTP MCP 服务（`mcp` 包），用 spike 探针 `data/evidence/codex-spike/probes/run_exec.py` 让 codex 以 `url` + `bearer_token_env_var` 连接，确认登录模式下能调用、令牌生效、图片透传，再决定接法。
 
 ## 决策记录
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
-- 2026-10-13 — 固定版本选 `0.162.1`（npm `latest`，2026-10-09 发布）— 最新的正式版，与 spike 用的 `0.162.0-alpha.17.2` 同一主线；alpha 线不考虑。
-- 2026-10-13 — CLI 装在仓库内 `tools/codex/`，独立的 `package.json`，不并入 `frontend/` — 前端依赖升级不应带动 codex 版本；路径固定便于后端定位，也不受用户全局 npm 安装影响。
+- 2026-10-13 — **CLI 改用 ChatGPT 桌面版自带的**（负责人决定，ADR 0030 前提 2 改定）— 计划原定在 `tools/codex/` 安装 `@openai/codex@0.162.1`；T1 开始安装时发现 npm 包解压约 340 MB（与桌面版自带的 322 MB 相当），下载约 8 分钟只下了 43 MB。改用桌面版后不再有 npm 新依赖，也不需要在新版本上复验（实测用的就是这个版本）；T1 缩为"定位 + 补测思考强度"。
 - 2026-10-13 — `runtime=codex` 只允许登录模式 — `CODEX_API_KEY` 模式是付费调用，没有授权，也没有实测。
 - 2026-10-13 — 联网阶段对 `codex` 不开 codex 自带的网页搜索，回退到自建联网工具（经 MCP）— 沙箱默认断网，自建工具在后端进程里运行，不受影响；与 OpenAI 非官方 provider 的处理一致。
 
