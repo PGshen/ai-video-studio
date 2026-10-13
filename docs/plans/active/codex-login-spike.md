@@ -98,7 +98,7 @@
 - **完成标准**：AC4 的结论写进 `codex.md`。
 - **验证命令**：`make check`
 
-### T4：沙箱与权限（待开始）
+### T4：沙箱与权限（完成）
 
 - **目标**：确认 Codex 自带沙箱能否满足本项目的隔离要求（设计 §4.1、ADR 0009：只写工作区、无外网、拒读仓库与 `data_dir`、拒读凭据目录）。
 - **涉及文件**：`probes/run_sandbox.py`（不入库）；证据 `t4-*.jsonl`。
@@ -127,10 +127,11 @@
 - 2026-10-13 — T1 — 完成：登录可用、事件格式、模型、`CODEX_HOME`/key 覆盖对照、注入上下文收口；结论写进 `references/codex.md`
 - 2026-10-13 — T2 — 完成：`resume` 可续、换模型可续；用量是会话累计值；取消须用 SIGINT（TERM/KILL 留孤儿命令进程）；取消轮用量计入下一轮累计值
 - 2026-10-13 — T3 — 完成：stdio MCP 可用（需 `default_tools_approval_mode="approve"`），图片可见，`enabled_tools` 可做白名单；`collaboration.*` 等内置工具关不掉；`developer_instructions` 只在建会话时注入
+- 2026-10-13 — T4 — 完成：`workspace-write` 默认读不受限（含 `~/.codex/auth.json`）；`-c` 定义的 permission profile 能拒读仓库根、兄弟项目、凭据目录并收掉 tmp 写入，达到与 Claude 路径相同的隔离
 
 ## 下一步
 
-- 做 T4：`source probes/min.zsh` 得到 `$M`，加 `-s workspace-write -c sandbox_workspace_write.network_access=false`（`sandbox_workspace_write` 还有 `writable_roots`、`exclude_tmpdir_env_var`、`exclude_slash_tmp`）。工作区放 `ws-t4`，再建一个兄弟目录 `ws-t4-other/secret.txt` 当作"数据目录里的其他项目"；提示词要写明是本仓库作者授权的隔离测试。然后试两条拒读补救：codex 配置项（先在 `codex-strings.txt` 里找 `deny_read`/`readable_roots`/`permission_profile` 一类的键）和外包 `sandbox-exec`。
+- 做 T5：`references/codex.md` 已有 T1–T4 全部实测结论，补一节「结论摘要」；写 `docs/decisions/0030-*.md`（提议状态）；在 `docs/plans/TODO.md` 加正式接入条目；勾选验收标准并填「验证记录」；计划状态改为「待验收」。
 
 ## 决策记录
 
@@ -139,6 +140,7 @@
 
 ## 意外与发现
 
+- 2026-10-13 — T4：Codex 的 `workspace-write` 默认可以读 `~/.codex/auth.json`，也就是 ChatGPT 登录的 OAuth token，提示注入时风险比 Claude 路径更高；用 permission profile 拒读 `~/.codex` 后，codex 自身照常工作（只限制模型执行的命令）。计划原先预期要外包 `sandbox-exec`，实际不需要。
 - 2026-10-13 — T3：MCP 工具默认要审批，`approval_policy=never` 下会直接失败，必须给服务器配 `default_tools_approval_mode="approve"`；多 agent 的 `collaboration.*` 工具由模型目录决定，配置关不掉——正式接入要么接受（子 agent 继承同一沙箱），要么在 developer 指令里禁止并在事件流里发现 `collaboration` 调用就中止本轮。
 - 2026-10-13 — T2：codex 把模型执行的命令放在独立进程组里，SIGTERM/SIGKILL 取消会留下孤儿进程（实验后已手动清理）。正式运行时取消必须先发 SIGINT 等它收尾，超时再强杀，并且要另想办法兜底清理命令进程（例如记录 `command_execution` 的进程或外包一层沙箱进程）。
 - 2026-10-13 — 即使 `--ignore-user-config`，Codex 仍会注入仓库根的 `AGENTS.md`（从工作区往上找）、用户级 skills 列表（含开发用的 superpowers）、多 agent 角色段。前两项可用 `-c` 关闭；多 agent 段和 `collaboration.*` 工具用 feature 开关关不掉，留到 T3 继续找办法。详见 `references/codex.md`。
