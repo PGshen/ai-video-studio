@@ -24,7 +24,7 @@ ChatGPT 登录的 OAuth token 公开 API 不接受，把它挪给 Agents SDK 属
 - **认证**：模型配置 `api_key_env` 为空即登录模式，与 `claude-login` 一致；子进程环境置空 `CODEX_API_KEY`（它会覆盖登录）及其他 `OPENAI_*`/密钥类变量；`CODEX_HOME` 保持默认（复制凭据会让 refresh token 互相作废）。会话文件落在 `~/.codex/sessions/`。
 - **上下文收口**：固定加 `--ignore-user-config` 与 references 中的最小上下文参数组合（关闭仓库 `AGENTS.md`、用户 skills、插件、记忆、网页搜索等）；阶段系统提示经 `developer_instructions` 注入。它只在建会话时生效，所以 codex 会话与阶段一一对应。
 - **业务工具**：经 MCP 提供，服务器配置 `default_tools_approval_mode="approve"`（否则直接失败），用 `enabled_tools` 做阶段白名单。stdio 桥接进程和后端直接提供 HTTP MCP 端点两种形态，在正式计划的第一个任务里实测后选定。
-- **沙箱**：用 `-c` 定义 permission profile（`extends=":workspace"`，拒读仓库根、`data_dir`、凭据目录，放回当前工作区为可写，`:tmpdir`/`:slash_tmp` 只读），不传 `-s`。拒读路径复用 `agent/sandbox_paths.py`。默认断网；需要联网的阶段另议。
+- **沙箱**：用 `-c` 定义 permission profile（`extends=":workspace"`，拒读仓库根、`data_dir`、凭据目录，放回当前工作区为可写，`:tmpdir`/`:slash_tmp` 只读），不传 `-s`。拒读路径复用 `agent/sandbox_paths.py`。默认断网；需要联网的阶段另议。profile 只约束模型执行的命令，MCP 子进程不受约束（实测）；`view_image` 等进程内读文件工具是否受拒读约束无法经由模型验证，正式计划要补一个直接的测试。
 - **取消**：先发 SIGINT（codex 会收掉自己启动的命令进程），宽限后再强杀；codex 把命令放在独立进程组，强杀会留下孤儿，需要兜底清理。
 - **用量**：`turn.completed.usage` 是会话累计 token，按差值记本轮；没有成本字段，登录模式只记 token。取消轮的消耗计入下一轮累计值，沿用 ClaudeRuntime 的 `unsettled` 处理。
 
@@ -32,7 +32,7 @@ ChatGPT 登录的 OAuth token 公开 API 不接受，把它挪给 Agents SDK 属
 
 1. **合规**：第三方工具使用 ChatGPT 登录是否可接受，由负责人判断（同 ADR 0008）。
 2. **CLI 来源与版本**：实测用的是 ChatGPT 桌面版自带的 alpha 版 CLI，它随桌面版自动更新；不少配置键是从二进制字符串里找到的，并没有官方文档。正式接入要么接受这一点，并在 `make smoke` 里加一个 codex 冒烟来发现版本漂移；要么单独安装固定版本的 `@openai/codex`（新依赖）。
-3. **体验差异**：单轮最小请求 28–44 秒，约为 Claude 本机登录的 2–3 倍；多 agent 工具（`collaboration.*`）关不掉，只能在提示里禁止，并在事件流里检测。
+3. **体验差异**：单轮最小请求 28–44 秒，约为 Claude 本机登录的 2–3 倍；多 agent 工具（`collaboration.*`）关不掉（`--disable multi_agent` 只额外加了一段“不要主动派生子 agent”的说明），只能在提示里禁止，并在事件流里检测。
 4. **Windows**：没有实测；permission profile 在 Windows 上的效果未知，按 [ADR 0024](0024-无隔离执行开关.md) 的无隔离开关处理。
 
 ## 考虑过的其他方案

@@ -136,6 +136,7 @@
 
 ## 决策记录
 
+- 2026-10-13 — Final：评审（全新上下文）给出 0 Critical、3 Important、5 Minor，全部按文档修正处理：补做单独的 SIGTERM/SIGINT 取消复测并保存 `ps` 快照、补做 profile 与 MCP 组合实测、补 `make check` 记录、修正证据来源与措辞。没有不予修正的条目。
 - 2026-10-13 — Ruling：不复制 `auth.json` 到独立 `CODEX_HOME`，登录模式沿用 `~/.codex`（会话落在 `~/.codex/sessions/`）— 与 Claude 登录模式会话落在 `~/.claude/projects/` 的先例一致；复制 OAuth 凭据会让两份 refresh token 互相作废（轮换），还会扩大凭据副本面 — 如果判断错：正式运行时需要另找隔离会话文件的办法（例如定期清理或 `--ephemeral` 加自建历史）。
 - 2026-10-13 — spike 直接以子进程调用 ChatGPT.app 自带的 `codex`，不安装 `@openai/codex` 或 `openai-codex-sdk` — 不引入计划外依赖；`openai-codex-sdk` 来源未核实。
 
@@ -158,7 +159,7 @@
 
 - AC1：`t1a-minimal`（登录下一轮完成，`gpt-6.1-sol`）、`t1b-model-luna`、`t1c-model-bogus`；事件类型和用量字段见 `codex.md`「事件格式」。
 - AC2：`t1d-codex-home-empty`（独立 `CODEX_HOME` 读不到登录，约 75 秒后 401）、`t1e`/`t1f`（`OPENAI_API_KEY` 不覆盖登录，`CODEX_API_KEY` 会覆盖）。
-- AC3：`t2a`–`t2c`（续会话、换模型、累计用量 9827 → 19692 → 33133）；`t2d-cancel-INT/TERM/KILLPG`（只有 SIGINT 不留孤儿进程，`ps` 观察）；`t2e-after-cancel-*`（三种取消后都能续上，用量计入下一轮）。
+- AC3：单独复测的取消证据 `t2f-*`、`t2g-*`（含 `ps` 快照）；`t2a`–`t2c`（续会话、换模型、累计用量 9827 → 19692 → 33133）；`t2d-cancel-INT/TERM/KILLPG`（只有 SIGINT 不留孤儿进程，`ps` 观察）；`t2e-after-cancel-*`（三种取消后都能续上，用量计入下一轮）。
 - AC4：`t3a-mcp`（默认要审批，调用失败）、`t3b-mcp-approve`（文本和图片都能用，模型答出左蓝右黄）、`t3d-enabled-tools`（白名单生效）、`t3c-lockdown`（内置多 agent 工具关不掉）。
-- AC5：`t4a-workspace-write`（默认读不受限）、`t4b-profile-deny`、`t4c-profile-tmp`（profile 拒读、拒写 tmp、断网）、`t4d-apply-patch`（部分验证）。
-- AC6：`docs/references/codex.md`、`docs/decisions/0030-Codex本机登录运行时.md`、`docs/plans/TODO.md` 新条目；`make check` 通过（见下方最终运行）。
+- AC5：`t3f-profile-plus-mcp`（profile 不约束 MCP 子进程）、`t4e-view-image-denied`（模型拒绝调用，未验证）；`t4a-workspace-write`（默认读不受限）、`t4b-profile-deny`、`t4c-profile-tmp`（profile 拒读、拒写 tmp、断网）、`t4d-apply-patch`（部分验证）。
+- AC6：`docs/references/codex.md`、`docs/decisions/0030-Codex本机登录运行时.md`、`docs/plans/TODO.md` 新条目；2026-10-13 在分支上 `make check` 全部通过（T5 提交前与评审修正后各一次）。
