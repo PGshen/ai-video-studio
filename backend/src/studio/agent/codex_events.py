@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 WARNING_KIND = "runtime_warning"
 _IGNORED_ITEMS = frozenset({"todo_list"})
+_BENIGN_WARNINGS = ("This session was recorded with model",)
+"""已知无害的配置警告：换模型续会话（ADR 0012）时必出，TurnRunner 已有自己的"模型已切换"提示。"""
 _FAILURE_LIMIT = 500
 _AUTH_HINT = "Codex 未登录或登录已失效：请在终端运行 codex login（选 ChatGPT 登录）后重试。"
 _AUTH_MARKERS = ("401 Unauthorized", "Missing bearer", "invalid_api_key", "Incorrect API key")
@@ -78,7 +80,7 @@ def _convert_item(kind: str, item: Mapping[str, Any], turn: CodexTurn) -> list[e
         return [events.ThinkingBlock(text)] if done and text.strip() else []
     if item_type == "error":
         message = str(item.get("message") or "")
-        if done and not turn.turn_started:
+        if done and not turn.turn_started and not message.startswith(_BENIGN_WARNINGS):
             return [events.Notice(WARNING_KIND, message)]
         logger.info("codex: %s", _clip(message, _FAILURE_LIMIT))
         return []

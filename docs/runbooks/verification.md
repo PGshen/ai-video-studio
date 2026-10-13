@@ -39,6 +39,7 @@ cd backend && uv run pytest -m slow tests/engines/test_html_video.py tests/engin
 - 用例（`backend/tests/smoke/test_smoke.py`），每种运行时/认证方式一个，都经 `TurnRunner` 在临时数据目录里跑真实的 turn：
   - `test_claude_api_key`：需要 `ANTHROPIC_API_KEY`（模型配置 `claude-sonnet`）；另跑一轮恢复会话，验证 API key 模式的会话存储（R4）。
   - `test_claude_login`：本机已登录的 Claude Code 订阅账号（`claude-login`），找不到 `claude` CLI 或设了 `STUDIO_SMOKE_SKIP_LOGIN=1` 时跳过；三轮：最小对话 → 恢复会话 + Bash 沙箱探测（R3、R4）→ 叙事阶段尝试写 `upstream/`（R5）。消耗订阅额度。
+  - `test_codex_login` / `test_codex_login_cancel_then_turn` / `test_codex_login_sandbox_read` / `test_codex_login_view_image_through_symlink`（codex-runtime）：本机 ChatGPT 登录的 codex 运行时（`codex-login`，ADR 0030），用 ChatGPT 桌面版自带的 CLI（或 `STUDIO_CODEX_BIN`）；找不到 CLI、没有 `~/.codex/auth.json` 或设了 `STUDIO_SMOKE_SKIP_LOGIN=1` 时跳过。依次验证：最小对话（写文件 + 图片工具）与续会话、记录 CLI 版本（与 `codex_cli.VERIFIED_VERSION` 不同时给出警告，提醒复验）；命令执行中停止（无残留进程、下一轮带上残余用量）；permission profile 的读写隔离与断网；`view_image` 受拒读约束。消耗订阅额度，不产生 API 费用。证据写到 `data/evidence/codex-runtime/`，会话文件留在 `~/.codex/sessions/`。命令：`make smoke SMOKE_ARGS="-k codex"`（约 4 分钟）。
   - `test_openai_responses`：需要 `OPENAI_API_KEY`（`gpt`；设了 `STUDIO_OPENAI_BASE_URL` 时是对应网关的 key）。
   - `test_deepseek_litellm`：需要 `DEEPSEEK_API_KEY`（`deepseek`，LiteLLM 路径）；图片是否被看到只记录、不断言（R2）。
   - `test_volcengine_tts`（M3）：需要 `VOLCENGINE_TTS_API_KEY`（无 `STUDIO_` 前缀）。不经 `TurnRunner`，直接调 `VolcengineTTSEngine.synthesize` 合成一句很短的中文（真实付费，费用很小），断言音频非空、时长合理、逐字时间戳非空，再跑 `align_scene_beats` 检查覆盖率在 0–1 且 beat 起点单调。证据写到 `data/evidence/m3-narrative/smoke/`。命令：`make smoke SMOKE_ARGS="-k volcengine_tts"`。

@@ -15,8 +15,10 @@ import contextlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import uuid
+import warnings
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -477,25 +479,82 @@ def _skip_unless_codex() -> None:
         pytest.skip("没有 ~/.codex/auth.json（ChatGPT 未登录），跳过 codex 用例")
 
 
-def _codex_profile(h: SmokeHarness, *, model: str = "gpt-6.1-sol", suffix: str = "") -> str:
-    """codex 本机登录的模型配置（T6 加内置配置 `codex-login` 之前，直接建一行）。"""
-    from studio.db.engine import session_scope
-    from studio.db.models import ModelProfile
+def _codex_profile(h: SmokeHarness) -> str:
+    return h.profile("codex-login", max_steps_per_turn=MAX_STEPS)
 
-    with session_scope(h.engine) as db:
-        row = ModelProfile(
-            name=f"smoke-codex-login{suffix}",
-            provider="openai",
-            model=model,
-            runtime="codex",
-            base_url=None,
-            api_key_env=None,
-            supports_vision=True,
-            max_steps_per_turn=MAX_STEPS,
+
+async def test_codex_login(harness: SmokeHarness) -> None:
+    """AC10-style turn (file + image tool) on the ChatGPT login, then a resumed turn that
+    recalls it. Also records the CLI version: the desktop app updates it on its own (ADR 0030
+    precondition 2), so a different version is a reminder to re-run the codex smoke cases."""
+    _skip_unless_codex()
+    from studio.agent.codex_cli import VERIFIED_VERSION, codex_version
+
+    binary = _codex_cli()
+    assert binary is not None
+    version = await codex_version(binary)
+    evidence: dict[str, Any] = {"cli": str(binary), "version": version}
+    if version != VERIFIED_VERSION:
+        warnings.warn(
+            f"Codex CLI 版本 {version} 与实测版本 {VERIFIED_VERSION} 不同："
+            "请确认 codex 冒烟全部通过，"
+            "再更新 codex_cli.VERIFIED_VERSION 与 docs/references/codex.md",
+            stacklevel=1,
         )
-        db.add(row)
-        db.flush()
-        return row.id
+    session_id = harness.session(_codex_profile(harness), "codex")
+    try:
+        first = await harness.turn(session_id, SMOKE_PROMPT)
+        evidence["turn1"] = outcome_summary(first)
+        _assert_smoke_turn(harness, first, expect_vision=True)
+        assert not first.notices("runtime_warning"), first.notices("runtime_warning")
+        session = get_session(harness.engine, session_id)
+        assert session is not None and session.sdk_ref
+        thread = session.sdk_ref
+        evidence["session_files"] = [
+            str(p) for p in (Path.home() / ".codex" / "sessions").glob(f"*/*/*/*{thread}.jsonl")
+        ]
+        assert evidence["session_files"]
+
+        second = await harness.turn(session_id, RECALL_PROMPT)
+        evidence["turn2"] = outcome_summary(second)
+        assert second.turn.status == "done", second.turn.error
+        assert mentions_colours(second.text), second.text
+        assert second.turn.usage is not None and second.turn.usage["input_tokens"] > 0
+        session = get_session(harness.engine, session_id)
+        assert session is not None and session.sdk_ref == thread
+    finally:
+        record_evidence("codex-login", evidence, CODEX_EVIDENCE_DIR)
+
+
+async def test_codex_login_cancel_then_turn(harness: SmokeHarness) -> None:
+    """Stop button during a running command: codex gets SIGINT, the command process goes away,
+    and the next turn resumes the session with the stopped turn's usage carried over."""
+    _skip_unless_codex()
+    session_id = harness.session(_codex_profile(harness), "codex")
+    evidence: dict[str, Any] = {}
+    try:
+        cancelled = await harness.turn_cancelled_at_tool_call(
+            session_id,
+            "这是自动化测试。执行 shell 命令 `sleep 120 && echo finished > topic/done.txt`，"
+            "等它结束后回复 DONE。",
+        )
+        evidence["cancelled"] = outcome_summary(cancelled)
+        assert cancelled.turn.status == "cancelled", cancelled.turn.error
+        leftover = subprocess.run(
+            ["pgrep", "-f", "sleep 120"], capture_output=True, text=True, check=False
+        ).stdout.strip()
+        evidence["leftover_pids"] = leftover
+        assert not leftover, leftover
+        assert not (harness.workdir / "topic" / "done.txt").exists()
+
+        after = await harness.turn(
+            session_id, "上一条命令被中断了吗？只回答“是”或“否”，不要调用工具。"
+        )
+        evidence["after"] = outcome_summary(after)
+        assert after.turn.status == "done", after.turn.error
+        assert after.notices("cost_carryover"), [e.payload for e in after.events]
+    finally:
+        record_evidence("codex-login-cancel", evidence, CODEX_EVIDENCE_DIR)
 
 
 async def test_codex_login_sandbox_read() -> None:
@@ -586,13 +645,13 @@ async def test_codex_login_view_image_through_symlink() -> None:
     try:
         target = h.data_dir / "projects" / "other-project" / "swatch.png"
         target.parent.mkdir(parents=True)
-        target.write_bytes(make_two_colour_png(64, 32, (255, 0, 0), (0, 160, 0)))  # red | green
+        target.write_bytes(make_two_colour_png(256, 128, (255, 0, 0), (0, 160, 0)))  # red | green
         link = h.workdir / "topic" / "swatch.png"
         link.parent.mkdir(parents=True, exist_ok=True)
         link.symlink_to(target)
         # Control: a real file in the workspace, so a refusal above is the deny list, not the tool.
         (h.workdir / "topic" / "plain.png").write_bytes(
-            make_two_colour_png(64, 32, SMOKE_COLOURS["blue"], SMOKE_COLOURS["yellow"])
+            make_two_colour_png(256, 128, SMOKE_COLOURS["blue"], SMOKE_COLOURS["yellow"])
         )
 
         session_id = h.session(_codex_profile(h), "codex")
@@ -605,7 +664,8 @@ async def test_codex_login_view_image_through_symlink() -> None:
         text = outcome.text.lower()
         evidence["turn"] = outcome_summary(outcome)
         evidence["text"] = outcome.text
-        evidence["control_described"] = mentions_colours(outcome.text)
+        # The control only has to be seen (any of its colours named); exact vision is not the point.
+        evidence["control_described"] = any(w in text for w in ("blue", "蓝", "yellow", "黄"))
         evidence["denied_described"] = ("红" in text or "red" in text) and (
             "绿" in text or "green" in text
         )

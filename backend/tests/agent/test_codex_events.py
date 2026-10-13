@@ -186,3 +186,17 @@ def test_redact_hides_token_like_strings() -> None:
     redacted = redact(text)
     assert jwt not in redacted and "sk-proj-abcdefghijklmnopqrstuvwxyz" not in redacted
     assert "auth failed for" in redacted and "ok words" in redacted
+
+
+def test_model_switch_warning_is_not_shown() -> None:
+    """Resuming with another model (ADR 0012 switch) always makes codex warn; the runner already
+    shows its own "model switched" notice, so this one is only logged."""
+    turn = CodexTurn(workdir=WORKDIR, call_prefix="t1")
+    item = {
+        "id": "item_0",
+        "type": "error",
+        "message": "This session was recorded with model `gpt-6.1-sol` but is resuming with "
+        "`gpt-6-luna`. Consider switching back to `gpt-6.1-sol` as it may affect Codex "
+        "performance.",
+    }
+    assert convert_event({"type": "item.completed", "item": item}, turn) == []
