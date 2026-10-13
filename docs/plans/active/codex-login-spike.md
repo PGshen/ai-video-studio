@@ -85,7 +85,7 @@
 - **完成标准**：AC3 的结论写进 `codex.md`。
 - **验证命令**：`make check`
 
-### T3：业务工具经 MCP（待开始）
+### T3：业务工具经 MCP（完成）
 
 - **目标**：确认本项目的 `ToolSpec` 能以 stdio MCP server 的形式给 Codex 用。这是接入成本最大的差异：Claude 路径是 SDK 进程内 MCP，Codex 需要独立进程（或 HTTP MCP）。
 - **涉及文件**：`probes/mcp_server.py`（不入库，用仓库已有依赖实现最小 stdio MCP server：一个返回文本的工具、一个返回 PNG 图片的工具）、`probes/run_mcp.py`。
@@ -126,10 +126,11 @@
 
 - 2026-10-13 — T1 — 完成：登录可用、事件格式、模型、`CODEX_HOME`/key 覆盖对照、注入上下文收口；结论写进 `references/codex.md`
 - 2026-10-13 — T2 — 完成：`resume` 可续、换模型可续；用量是会话累计值；取消须用 SIGINT（TERM/KILL 留孤儿命令进程）；取消轮用量计入下一轮累计值
+- 2026-10-13 — T3 — 完成：stdio MCP 可用（需 `default_tools_approval_mode="approve"`），图片可见，`enabled_tools` 可做白名单；`collaboration.*` 等内置工具关不掉；`developer_instructions` 只在建会话时注入
 
 ## 下一步
 
-- 做 T3：写 `data/evidence/codex-spike/probes/mcp_server.py`（先确认 `backend/.venv` 里有 `mcp` 包，用 `backend/.venv/bin/python` 运行它），用 `-c 'mcp_servers.studio.command="..."'`、`-c 'mcp_servers.studio.args=[...]'` 传入；探针参数用 `source probes/min.zsh` 得到的 `$M` 数组。同时试关掉 `collaboration.*`/`request_user_input` 工具（二进制里有 `ToolsToml`、`enabled_tools`），以及续会话时 `developer_instructions` 是否重复注入。
+- 做 T4：`source probes/min.zsh` 得到 `$M`，加 `-s workspace-write -c sandbox_workspace_write.network_access=false`（`sandbox_workspace_write` 还有 `writable_roots`、`exclude_tmpdir_env_var`、`exclude_slash_tmp`）。工作区放 `ws-t4`，再建一个兄弟目录 `ws-t4-other/secret.txt` 当作"数据目录里的其他项目"；提示词要写明是本仓库作者授权的隔离测试。然后试两条拒读补救：codex 配置项（先在 `codex-strings.txt` 里找 `deny_read`/`readable_roots`/`permission_profile` 一类的键）和外包 `sandbox-exec`。
 
 ## 决策记录
 
@@ -138,6 +139,7 @@
 
 ## 意外与发现
 
+- 2026-10-13 — T3：MCP 工具默认要审批，`approval_policy=never` 下会直接失败，必须给服务器配 `default_tools_approval_mode="approve"`；多 agent 的 `collaboration.*` 工具由模型目录决定，配置关不掉——正式接入要么接受（子 agent 继承同一沙箱），要么在 developer 指令里禁止并在事件流里发现 `collaboration` 调用就中止本轮。
 - 2026-10-13 — T2：codex 把模型执行的命令放在独立进程组里，SIGTERM/SIGKILL 取消会留下孤儿进程（实验后已手动清理）。正式运行时取消必须先发 SIGINT 等它收尾，超时再强杀，并且要另想办法兜底清理命令进程（例如记录 `command_execution` 的进程或外包一层沙箱进程）。
 - 2026-10-13 — 即使 `--ignore-user-config`，Codex 仍会注入仓库根的 `AGENTS.md`（从工作区往上找）、用户级 skills 列表（含开发用的 superpowers）、多 agent 角色段。前两项可用 `-c` 关闭；多 agent 段和 `collaboration.*` 工具用 feature 开关关不掉，留到 T3 继续找办法。详见 `references/codex.md`。
 - 2026-10-13 — `CODEX_API_KEY` 会覆盖登录，`OPENAI_API_KEY` 不会；无凭据时要重试约 75–85 秒才失败，正式运行时需要自己的超时。

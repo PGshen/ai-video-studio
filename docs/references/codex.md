@@ -45,7 +45,23 @@
 | ✅ 已验证（2026-10-13） | **取消用 SIGINT**：命令执行中发 SIGINT，codex 约 2.4 秒后退出（退出码 1），**会收掉自己启动的命令进程**；SIGTERM（退出码 -15）和杀进程组（SIGKILL，-9）都会留下孤儿命令进程（`/bin/zsh -c ...` 和其子进程，父进程变成 1）——codex 把命令放在**独立的进程组**里，杀 codex 所在进程组够不着。三种方式都**没有** `turn.completed`/用量事件 | `t2d-cancel-INT/TERM/KILLPG`，`ps` 观察 |
 | ✅ 已验证（2026-10-13） | 被取消的会话（三种方式）都能 `resume` 续上，模型知道上一条命令被中断；续上那一轮的累计用量**包含被取消那一轮的消耗**（例如 SIGKILL 后下一轮 `input_tokens` 19885，约为两次模型调用）。所以 ClaudeRuntime 的"没拿到结果就标 `unsettled`，下一轮差值含上一轮残余"可以照搬 | `t2e-after-cancel-*` |
 
+## 业务工具（MCP）
+
+| 状态 | 内容 | 来源 |
+|---|---|---|
+| ✅ 已验证（2026-10-13） | stdio MCP server 用 `-c 'mcp_servers.<名字>.command="<可执行文件>"'`、`-c 'mcp_servers.<名字>.args=["..."]'` 传入即可，不需要改 `config.toml`。服务器配置的其他字段（二进制字符串 `RawMcpServerConfig`）：`env`、`env_vars`、`cwd`、`url`、`bearer_token_env_var`、`http_headers`、`startup_timeout_sec`、`tool_timeout_sec`、`enabled_tools`、`disabled_tools`、`default_tools_approval_mode`、`required` 等 | `t3a-mcp`、`t3b-mcp-approve` |
+| ✅ 已验证（2026-10-13） | **MCP 工具默认需要审批**：`approval_policy=never` 下调用直接失败（`item.completed` 的 `mcp_tool_call.error.message` 为 `MCP tool call requires approval, but approval policy is never`，服务器收不到调用）。要加 `-c 'mcp_servers.<名字>.default_tools_approval_mode="approve"'`（取值见二进制字符串 `AppToolApproval`：`auto`/`writes`/`approve`） | `t3a-mcp` 对比 `t3b-mcp-approve` |
+| ✅ 已验证（2026-10-13） | 事件：`item.started`/`item.completed`，`item.type: mcp_tool_call`，字段 `server`、`tool`（不带前缀的工具名）、`arguments`、`result.content`（MCP content 原样，图片为 `{"type":"image","data":<base64>,"mimeType":"image/png"}`）、`result.structured_content`、`error`、`status`（`in_progress`/`completed`/`failed`） | `t3b-mcp-approve` |
+| ✅ 已验证（2026-10-13） | 模型**看得到** MCP 工具返回的图片：左蓝右黄的 PNG（文字不提颜色），模型答出"左半边蓝色、右半边黄色" | `t3b-mcp-approve` |
+| ✅ 已验证（2026-10-13） | `-c 'mcp_servers.<名字>.enabled_tools=["lookup_note"]'` 生效：未开放的 `render_swatch` 模型看不到（模型报告"不存在"），服务器也没收到调用。可以用它实现阶段工具白名单 | `t3d-enabled-tools` |
+| ✅ 已验证（2026-10-13） | codex 退出后 stdio MCP server 进程随之退出，没有残留 | `pgrep` 观察 |
+| ⚠️ 待验证 | 接入形态：业务工具需要访问后端的项目、快照等状态。两种形态：① stdio 桥接进程（`python -m <桥接模块>`，经本机 HTTP 回调后端，凭本轮令牌鉴权）；② 后端直接提供 streamable HTTP MCP 端点，codex 用 `url` + `bearer_token_env_var` 连接（不需要额外进程，但要确认 codex 的 HTTP MCP 在登录模式下可用、令牌如何轮换）。两者都未实测 | 方案描述 |
+
 ## 注入的上下文与收口
+
+| 状态 | 内容 | 来源 |
+|---|---|---|
+| ✅ 已验证（2026-10-13） | **`developer_instructions` 只在新建会话时注入**：`resume` 时传入新的 `developer_instructions` 不会出现在会话里，模型仍只看到建会话时的那一条。所以阶段系统提示固定在会话创建时；同一会话中途换阶段或改提示词，需要新建会话或把变化放进用户消息 | `t3e-resume-devinstr` |
 
 默认情况下，Codex 会把很多与本项目无关的内容注入每一轮。下表是逐项关闭的结果（会话文件里 `response_item` 的 developer/user 消息）。
 
@@ -57,7 +73,8 @@
 | ✅ 已验证（2026-10-13） | `-c 'developer_instructions="..."'` 作为第一条 developer 消息注入——阶段系统提示可以走这里 | `t1i-minimal-context2` |
 | ✅ 已验证（2026-10-13） | **多 agent 关不掉**：`--disable multi_agent --disable multi_agent_v2 -c agents.max_depth=0` 之后仍有 `<multi_agent_role>` 段（约 2.4K 字符）和 `spawn_agent`、`send_message`、`wait_agent` 等工具；`agents.max_threads=0` 被拒（`max_concurrent_threads_per_session must be at least 1`） | `t1j-minimal-context3` |
 | ✅ 已验证（2026-10-13） | 收口后模型自述的工具：`exec_command`、`write_stdin`、`apply_patch`、`view_image`、`list_mcp_resources`/`list_mcp_resource_templates`/`read_mcp_resource`、`request_user_input`(+`_async`)、`wait`、`exec`、`clock.sleep`、`clock__curr_time`、`collaboration.*`。`-c 'web_search="disabled"'` 后不再有网页搜索 | `t1j-minimal-context3` |
-| ⚠️ 待验证（T3） | 能否进一步去掉 `collaboration.*`、`request_user_input` 等工具（二进制里有 `ToolsToml` 及 `enabled_tools` 字段名，用法未知）；`model_instructions_file` 能否替换约 2.2 万字符的基础指令 | 计划 T3 |
+| ✅ 已验证（2026-10-13） | 收口后模型看到的工具名带命名空间（`functions.exec`/`functions.wait` 是 code mode，`tools.*` 是内置工具，`collaboration.*` 是多 agent），由模型目录的 `tool_mode` 决定。`--disable code_mode_host` 会让 code mode "fail closed"（`item.completed` 错误，工具列表不变），**不能用**；`tools.update_plan`、`tools.experimental_request_user_input` 是结构体，传布尔值会让 codex 启动即失败（`invalid type: boolean`）；`-c tools.update_plan.enabled=false` 被接受。结论：**这个版本无法通过配置去掉 `collaboration.*`、`functions.request_user_input`**；`request_user_input` 在 exec 模式下本来就不支持（二进制字符串 `request_user_input is not supported in exec mode`） | `t3c-lockdown` |
+| ⚠️ 待验证 | `model_instructions_file` 能否替换约 2.2 万字符的基础指令（二进制里有此键，未实测；替换后工具使用说明可能丢失） | 二进制字符串 |
 
 本节的最小上下文参数组合（T2 之后的探针统一使用）：
 
