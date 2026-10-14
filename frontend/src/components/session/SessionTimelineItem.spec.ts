@@ -119,6 +119,14 @@ describe('用户消息', () => {
     expect(w.get('[data-testid="user-time"]').text()).toBe('22:53')
   })
 
+  it('保留用户输入的换行（气泡按 pre-wrap 排版）', async () => {
+    const w = await render(user({ text: '1. 第一行\n2. 第二行' }))
+
+    const bubble = w.get('[data-testid="user-text"]')
+    expect(bubble.element.textContent).toBe('1. 第一行\n2. 第二行')
+    expect(bubble.classes()).toContain('whitespace-pre-wrap')
+  })
+
   it('乐观占位还没有 turn 时用发送时间', async () => {
     const w = await render(user({ at: new Date(2026, 0, 1, 7, 5).toISOString() }))
 

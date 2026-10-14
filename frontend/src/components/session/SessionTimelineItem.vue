@@ -42,7 +42,12 @@ const userTime = computed(() => {
       v-if="item.text"
       from="user"
     >
-      <MessageContent>{{ item.text }}</MessageContent>
+      <MessageContent
+        class="whitespace-pre-wrap break-words"
+        data-testid="user-text"
+      >
+        {{ item.text }}
+      </MessageContent>
     </Message>
     <MessageAttachments
       :server="turns?.get(item.turnId)?.attachments"
