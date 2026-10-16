@@ -106,7 +106,7 @@
 - **完成标准**：上述测试通过；现有运行时测试不改断言即通过。
 - **验证命令**：`make check`
 
-### T4：Claude 运行时（待开始）
+### T4：Claude 运行时（完成）
 
 - **目标**：`system_prompt is None` 时用 `claude_code` preset；`open` 的内置工具集；`exec_network` 时沙箱放开出站。
 - **涉及文件**：`backend/src/studio/agent/claude_runtime.py`、`backend/src/studio/agent/claude_scope.py`（`sandbox_settings(..., network: bool = False)`）、可能的 `backend/src/studio/agent/sandbox_paths.py`（白名单回退）、`backend/tests/agent/test_claude_runtime.py`、`docs/references/claude-agent-sdk.md`。
@@ -196,15 +196,19 @@
 
 - 2026-10-16 — T3 — 协议 `system_prompt() -> str | None`、`exec_network`；所有阶段与测试替身补 `exec_network = False`；三个运行时遇到 `None` 暂时抛 `NotImplementedError`（D2）；make check 绿
 
+- 2026-10-16 — T4 — Claude：`None` → `claude_code` preset；`sandbox_settings(network=True)` 加 `allowedDomains=["*"]`；实测结论进 references（D3、D4）；make check 绿
+
 ## 下一步
 
-- T4：Claude 运行时。先做实测（scratchpad 脚本，本机 Claude 登录）：`network.allowedDomains=["*"]` 是否放行、内置 CLI 的工具名单；再写 `tests/agent/test_claude_runtime.py` 的失败测试（preset、open 工具集、`sandbox_settings(network=True)`、现有阶段参数不变），去掉 `claude_runtime._options` 里的 `NotImplementedError`。
+- T5：OpenAI 运行时与 Seatbelt。先读 Agents SDK 源码确认 `Agent(instructions=None)` 合法；写 `tests/agent/test_shell_sandbox.py`（`seatbelt_profile(..., network=True)` 去掉 `deny network*`、保留三条逃逸规则；回环 HTTP 服务器的真实执行测试）与 `test_openai_runtime.py`（`instructions is None`）的失败测试；去掉 `openai_runtime.run_turn` 里的 `NotImplementedError`。
 
 ## 决策记录
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
 - D1（2026-10-16，写计划时）— `animation_stage_of` 对 `open` 返回 `OPEN_STAGE`，由 `require_live_animation_stage` 统一拒绝（409），而不是设计 §6 写的"返回 `None`"。理由：现有函数返回 `str` 且以 Manim 下线阶段为兜底，改成可空会波及所有调用方；集中在一个检查点拒绝更不容易漏，文案也更准确（不会误报"Manim 已下线"）。不改变设计意图（`open` 没有渲染、`finalize-render`、场景检查）。
+- D3（2026-10-16，T4）— 完全自由阶段的 Claude 内置工具**沿用现有的显式列表**（Read/Write/Edit/Glob/Grep/Bash，`allow_web` 时加 WebSearch/WebFetch），不扩展、不用 tools preset，也不需要 `disallowed_tools` 名单。理由：实测本机 CLI 2.1.283 的 preset 工具名单里没有 Glob/Grep/TodoWrite/MultiEdit，多出来的是 Cron/Worktree/Workflow/SendMessage/Skill 等依赖宿主 UI 或会改变会话的工具，事件流和画布都接不住；系统提示词已经是 Claude Code 默认，这些工具缺席时模型会退回用 Bash。代价：子 agent（`Task`）不可用；以后需要时按需加入列表并验证事件流。
+- D4（2026-10-16，T4）— Claude 沙箱联网用 `network.allowedDomains=["*"]`（实测可行），不需要域名白名单回退，`sandbox_paths` 不加 `OPEN_NETWORK_DOMAINS`。
 - D2（2026-10-16，写计划时）— T3 中三个运行时遇到 `system_prompt=None` 先显式抛 `NotImplementedError`，T4–T6 逐个实现。理由：每个任务结束都要 `make check` 绿，又不能让 `None` 被悄悄当成空串传下去。
 
 ## 意外与发现

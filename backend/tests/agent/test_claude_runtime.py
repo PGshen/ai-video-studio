@@ -217,9 +217,11 @@ def _ctx(
     record_tool_write: Callable[[str, str], None] = _noop_record,
     effort: Effort | None = None,
     allow_unsandboxed_exec: bool = False,
+    system_prompt: str | None = "系统提示词",
+    exec_network: bool = False,
 ) -> TurnContext:
     return TurnContext(
-        system_prompt="系统提示词",
+        system_prompt=system_prompt,
         user_input=user_input or UserInput(text="你好"),
         tools=tools or [],
         workdir=workdir,
@@ -234,6 +236,7 @@ def _ctx(
         allow_web=allow_web,
         effort=effort,
         allow_unsandboxed_exec=allow_unsandboxed_exec,
+        exec_network=exec_network,
     )
 
 
@@ -283,6 +286,18 @@ class TestOptions:
         assert options.hooks is not None and "PreToolUse" in options.hooks
         assert clients.last.prompts == ["你好"]
         assert clients.last.disconnected
+
+    async def test_runtime_default_prompt_uses_the_claude_code_preset(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """open-mode 设计 §5.1：`None` → Claude Code 自带系统提示词，不追加内容。"""
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir, system_prompt=None))
+
+        options = clients.last.options
+        assert options.system_prompt == {"type": "preset", "preset": "claude_code"}
+        assert options.tools == ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
+        assert options.hooks is not None and "PreToolUse" in options.hooks
 
     async def test_web_tools_only_when_allowed(self, workdir: Path, data_dir: Path) -> None:
         clients = Clients()
@@ -1289,6 +1304,33 @@ class TestSandbox:
                 "allowRead": [str(workdir.resolve())],
             },
         }
+
+    def test_network_opens_outbound_and_keeps_filesystem(self, tmp_path: Path) -> None:
+        """open-mode 设计 §5.2：`allowedDomains=["*"]` 放行全部出站（2026-10-16 实测）。"""
+        repo = tmp_path / "repo"
+        data = repo / "data"
+        workdir = data / "projects" / "p1"
+        workdir.mkdir(parents=True)
+
+        offline = sandbox_settings(workdir, repo, data)
+        online = sandbox_settings(workdir, repo, data, network=True)
+
+        assert "network" not in offline
+        assert online.get("network") == {"allowedDomains": ["*"]}
+        assert {k: v for k, v in online.items() if k != "network"} == offline
+
+    async def test_exec_network_reaches_the_turn_sandbox(
+        self, tmp_path: Path, workdir: Path, data_dir: Path
+    ) -> None:
+        clients = Clients()
+        repo = tmp_path / "repo"
+        runtime = ClaudeRuntime(
+            data_dir, repo_root=repo, client_factory=clients, environ=_ENVIRON, platform="darwin"
+        )
+        await _run(runtime, _ctx(workdir, exec_network=True))
+
+        sandbox = clients.last.options.sandbox
+        assert sandbox == sandbox_settings(workdir, repo, data_dir, network=True)
 
     def test_paths_are_resolved(self, tmp_path: Path) -> None:
         real = tmp_path / "real"
