@@ -125,3 +125,7 @@
     @apply font-sans;
     }
 }
+/* 模态（reka-ui）打开时 body 是 pointer-events: none；markdown 库的弹层 teleport 到 body 下，需要显式恢复。 */
+#stream-markdown-overlay {
+  pointer-events: auto;
+}

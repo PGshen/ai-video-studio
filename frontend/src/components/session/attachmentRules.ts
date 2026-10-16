@@ -8,7 +8,7 @@ export type AttachmentAccept = 'all' | 'images'
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_IMAGES = 6
-export const MAX_FILE_BYTES = 20 * 1024 * 1024
+export const MAX_FILE_BYTES = 30 * 1024 * 1024
 export const MAX_FILES = 10
 /** Claude 的 Read 能打开的图片/PDF 上限。 */
 export const READ_IMAGE_BYTES = 300_000
