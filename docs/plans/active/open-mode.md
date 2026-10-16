@@ -128,7 +128,7 @@
 - **完成标准**：上述测试通过。
 - **验证命令**：`make check`
 
-### T6：Codex 运行时（待开始）
+### T6：Codex 运行时（完成）
 
 - **目标**：`system_prompt is None` 时不传阶段指令、不触发 `PROMPT_UPDATE`；`exec_network` 时沙箱联网。
 - **涉及文件**：`backend/src/studio/agent/codex_runtime.py`（`prompt_digest(prompt: str | None)`，`None` 返回固定值 `"default"`；`_message` 在 `None` 时不拼 `PROMPT_UPDATE`）、`backend/src/studio/agent/codex_args.py`（`build_args(system_prompt: str | None, ...)`，`None` 时不加指令参数）、`backend/src/studio/agent/codex_sandbox.py`（`permission_args(..., network: bool = False)`、`sandbox_args(..., network: bool = False)`）、`backend/tests/agent/test_codex_args.py`、`test_codex_runtime.py`、`test_codex_sandbox.py`、`docs/references/codex.md`。
@@ -200,9 +200,11 @@
 
 - 2026-10-16 — T5 — OpenAI：`None` → 不发 instructions；`seatbelt_profile(network=True)`、`LocalShellExecutor(network=)`；回环真实执行测试；make check 绿
 
+- 2026-10-16 — T6 — Codex：`None` 时 `developer_instructions` 只剩"不要派生子 agent"一句（D5）；`prompt_digest(None)="default"`、不拼 `PROMPT_UPDATE`；`permissions.studio.network.enabled=true`（实测）；make check 绿
+
 ## 下一步
 
-- T6：Codex 运行时。先在本机 codex 上实测 permissions profile 打开网络的配置键（`curl https://example.com`），结论写进 `references/codex.md`；再写 `tests/agent/test_codex_args.py`、`test_codex_runtime.py`、`test_codex_sandbox.py` 的失败测试（`None` 时不传指令、`prompt_digest(None)`、不拼 `PROMPT_UPDATE`、`network=True` 的参数）；去掉 `codex_runtime` 里的两处 `NotImplementedError`。
+- T7：`tts` 工具、`open` 阶段与完成流程。先写 `tests/stages/test_open_stage.py`、`tests/stages/test_tts_tool.py`、`tests/api/test_open_flow.py` 的失败测试；从 `stages/common/narration/synthesize_tts.py` 抽出共用的 TTS 调用与音色语速读取。
 
 ## 决策记录
 
@@ -211,6 +213,7 @@
 - D1（2026-10-16，写计划时）— `animation_stage_of` 对 `open` 返回 `OPEN_STAGE`，由 `require_live_animation_stage` 统一拒绝（409），而不是设计 §6 写的"返回 `None`"。理由：现有函数返回 `str` 且以 Manim 下线阶段为兜底，改成可空会波及所有调用方；集中在一个检查点拒绝更不容易漏，文案也更准确（不会误报"Manim 已下线"）。不改变设计意图（`open` 没有渲染、`finalize-render`、场景检查）。
 - D3（2026-10-16，T4）— 完全自由阶段的 Claude 内置工具**沿用现有的显式列表**（Read/Write/Edit/Glob/Grep/Bash，`allow_web` 时加 WebSearch/WebFetch），不扩展、不用 tools preset，也不需要 `disallowed_tools` 名单。理由：实测本机 CLI 2.1.283 的 preset 工具名单里没有 Glob/Grep/TodoWrite/MultiEdit，多出来的是 Cron/Worktree/Workflow/SendMessage/Skill 等依赖宿主 UI 或会改变会话的工具，事件流和画布都接不住；系统提示词已经是 Claude Code 默认，这些工具缺席时模型会退回用 Bash。代价：子 agent（`Task`）不可用；以后需要时按需加入列表并验证事件流。
 - D4（2026-10-16，T4）— Claude 沙箱联网用 `network.allowedDomains=["*"]`（实测可行），不需要域名白名单回退，`sandbox_paths` 不加 `OPEN_NETWORK_DOMAINS`。
+- D5（2026-10-16，T6）— Codex 在 `system_prompt is None` 时仍传 `developer_instructions`，内容只有现有的"不要派生子 agent、不要用协作工具"一句。理由：这个 codex 版本关不掉 `collaboration.*` 工具（references/codex.md），子 agent 的事件本项目接不住；这句话是运行时的接入约束，不是阶段提示词。代价：与设计 §5.1"不传阶段指令"字面上略有出入，但不含任何阶段内容。
 - D2（2026-10-16，写计划时）— T3 中三个运行时遇到 `system_prompt=None` 先显式抛 `NotImplementedError`，T4–T6 逐个实现。理由：每个任务结束都要 `make check` 绿，又不能让 `None` 被悄悄当成空串传下去。
 
 ## 意外与发现

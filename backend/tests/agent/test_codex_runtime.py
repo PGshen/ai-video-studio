@@ -79,12 +79,13 @@ def _ctx(
     workdir: Path,
     *,
     resume_ref: str | None = None,
-    system_prompt: str = "阶段提示 v1",
+    system_prompt: str | None = "阶段提示 v1",
     text: str = "你好",
     images: list[events.ImageData] | None = None,
     tools: list[ToolSpec] | None = None,
     profile: ModelProfileValue = PROFILE,
     cancel_token: CancelToken | None = None,
+    exec_network: bool = False,
 ) -> TurnContext:
     return TurnContext(
         system_prompt=system_prompt,
@@ -100,6 +101,7 @@ def _ctx(
         stage="topic",
         record_tool_write=lambda *_: None,
         effort="medium",
+        exec_network=exec_network,
     )
 
 
@@ -255,6 +257,36 @@ async def test_changed_system_prompt_is_sent_with_the_message(
     assert stdin.index("阶段提示 v2") < stdin.index("你好")
     entry = ledger.get(thread)
     assert entry is not None and entry.prompt_digest == prompt_digest("阶段提示 v2")
+
+
+def test_prompt_digest_of_the_runtime_default_is_stable() -> None:
+    assert prompt_digest(None) == prompt_digest(None)
+    assert prompt_digest(None) != prompt_digest("")
+
+
+async def test_runtime_default_prompt_never_sends_a_prompt_update(
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
+) -> None:
+    """open-mode 设计 §5.1：`None` 的会话续轮时不在消息前拼 `PROMPT_UPDATE`。"""
+    thread = _thread("minimal.jsonl")
+    ledger = CodexLedger(tmp_path / "data" / "codex" / "ledger")
+    ledger.set_prompt(thread, prompt_digest(None))
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
+
+    await _run(runtime, _ctx(workdir, resume_ref=thread, system_prompt=None))
+
+    assert _record(tmp_path)["stdin"] == "你好"
+
+
+async def test_exec_network_opens_the_profile_network(
+    tmp_path: Path, fake_codex_bin: Path, workdir: Path
+) -> None:
+    runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
+
+    await _run(runtime, _ctx(workdir, exec_network=True))
+
+    argv = _record(tmp_path)["argv"]
+    assert "permissions.studio.network.enabled=true" in argv
 
 
 async def test_very_long_output_line(tmp_path: Path, fake_codex_bin: Path, workdir: Path) -> None:

@@ -70,7 +70,13 @@ _THREAD_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,128}$")
 _USAGE_KEYS = ("input_tokens", "cached_input_tokens", "output_tokens")
 
 
-def prompt_digest(prompt: str) -> str:
+RUNTIME_DEFAULT_DIGEST = "default"
+"""`prompt_digest(None)`：会话用 codex 自带指令（open-mode 设计 §5.1），与任何 sha256 都不同。"""
+
+
+def prompt_digest(prompt: str | None) -> str:
+    if prompt is None:
+        return RUNTIME_DEFAULT_DIGEST
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
@@ -180,7 +186,9 @@ class CodexRuntime:
             sandbox_available=codex_sandbox_available(self._platform),
             allow_unsandboxed=ctx.allow_unsandboxed_exec,
         )
-        return sandbox_args(mode, ctx.workdir, self._repo_root, self._data_dir)
+        return sandbox_args(
+            mode, ctx.workdir, self._repo_root, self._data_dir, network=ctx.exec_network
+        )
 
     async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
         if ctx.cancel_token.is_cancelled:
@@ -196,9 +204,6 @@ class CodexRuntime:
             )
             return
 
-        if ctx.system_prompt is None:
-            raise NotImplementedError("运行时默认提示词尚未实现")
-        system_prompt: str = ctx.system_prompt
         sandbox = self._sandbox_args(ctx)
         if sandbox is None:
             yield events.TurnEnd(
@@ -222,7 +227,7 @@ class CodexRuntime:
                     workdir=turn.workdir,
                     model=ctx.model_profile.model,
                     resume_ref=ctx.resume_ref,
-                    system_prompt=system_prompt,
+                    system_prompt=ctx.system_prompt,
                     effort=ctx.effort,
                     image_paths=image_paths,
                     extra=[*mcp.args(), *sandbox, *(["--ephemeral"] if self._ephemeral else [])],
@@ -283,13 +288,16 @@ class CodexRuntime:
 
     def _message(self, ctx: TurnContext) -> tuple[str, str]:
         """本轮写进 stdin 的消息，以及本轮之后会话生效的阶段提示摘要。"""
-        if ctx.system_prompt is None:
-            raise NotImplementedError("运行时默认提示词尚未实现")
         digest = prompt_digest(ctx.system_prompt)
         text = ctx.user_input.text
         if ctx.resume_ref is not None:
             entry = self._ledger.get(ctx.resume_ref)
-            if entry is not None and entry.prompt_digest not in (None, digest):
+            # A session's stage never changes, so a None prompt never needs an update block.
+            if (
+                ctx.system_prompt is not None
+                and entry is not None
+                and entry.prompt_digest not in (None, digest)
+            ):
                 text = PROMPT_UPDATE.format(prompt=ctx.system_prompt) + text
         return text, digest
 

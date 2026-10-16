@@ -20,7 +20,12 @@ PROFILE_NAME = "studio"
 
 
 def permission_args(
-    workdir: Path, repo_root: Path, data_dir: Path, *, home: Path | None = None
+    workdir: Path,
+    repo_root: Path,
+    data_dir: Path,
+    *,
+    home: Path | None = None,
+    network: bool = False,
 ) -> list[str]:
     entries: dict[str, str] = {}
     for denied in (repo_root.resolve(), data_dir.resolve(), *sensitive_home_dirs(home)):
@@ -32,7 +37,7 @@ def permission_args(
         f"{toml_string(path)}={toml_string(level)}" for path, level in entries.items()
     )
     prefix = f"permissions.{PROFILE_NAME}."
-    return [
+    args = [
         "-c",
         f"{prefix}extends={toml_string(':workspace')}",
         "-c",
@@ -40,14 +45,24 @@ def permission_args(
         "-c",
         f"default_permissions={toml_string(PROFILE_NAME)}",
     ]
+    if network:
+        # open-mode design §5.2; verified on 0.162.0-alpha.17.2 (codex.md).
+        args += ["-c", f"{prefix}network.enabled=true"]
+    return args
 
 
 def sandbox_args(
-    mode: ExecMode, workdir: Path, repo_root: Path, data_dir: Path, *, home: Path | None = None
+    mode: ExecMode,
+    workdir: Path,
+    repo_root: Path,
+    data_dir: Path,
+    *,
+    home: Path | None = None,
+    network: bool = False,
 ) -> list[str] | None:
     """按 `exec_policy.exec_mode` 的结果给参数；`disabled` 返回 `None`（本轮不能执行命令）。"""
     if mode == "sandboxed":
-        return permission_args(workdir, repo_root, data_dir, home=home)
+        return permission_args(workdir, repo_root, data_dir, home=home, network=network)
     if mode == "unsandboxed":
         return ["-s", "danger-full-access"]
     return None
