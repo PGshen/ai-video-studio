@@ -40,6 +40,17 @@ def sandbox_available(platform: str | None = None, sandbox_exec: Path = SANDBOX_
     return platform == "darwin" and sandbox_exec.is_file()
 
 
+def network_cache_env(workdir: Path) -> dict[str, str]:
+    """命令可联网时（`exec_network`）给包管理器的缓存目录：放进工作区的 `.cache/`（沙箱允许写、
+    不进快照）。默认的 `~/.npm` 等在沙箱里写不了，第一次 `npm install` 必然 EPERM（ADR 0031）。"""
+    cache = workdir.resolve() / ".cache"
+    return {
+        "npm_config_cache": str(cache / "npm"),
+        "PIP_CACHE_DIR": str(cache / "pip"),
+        "XDG_CACHE_HOME": str(cache / "xdg"),
+    }
+
+
 def sandbox_tmpdir(workdir: Path) -> Path:
     """沙箱内 `TMPDIR`：工作区的 `.cache/tmp`（`.cache/` 不参与快照、不对前端列出）。"""
     return workdir / ".cache" / "tmp"
@@ -53,6 +64,12 @@ def _quote(path: Path) -> str:
 
 def _subpaths(paths: Sequence[Path]) -> str:
     return " ".join(f"(subpath {_quote(path)})" for path in paths)
+
+
+DNS_SOCKET_RULE = (
+    '(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))'
+)
+"""With the network on, unix sockets stay denied except mDNSResponder's (name resolution)."""
 
 
 def seatbelt_profile(
@@ -72,7 +89,18 @@ def seatbelt_profile(
     rules = [
         "(version 1)",
         "(allow default)",
-        *([] if network else ["(deny network*)"]),
+        *(
+            # Network on, but never loopback or unix sockets: the studio API on 127.0.0.1 has no
+            # auth (another project's files, model profiles and keys; ADR 0031 review).
+            [
+                '(deny network* (remote ip "localhost:*"))',
+                "(deny network* (remote unix-socket))",
+                # DNS goes through mDNSResponder's socket; later rules win.
+                DNS_SOCKET_RULE,
+            ]
+            if network
+            else ["(deny network*)"]
+        ),
         # `(allow default)` 下 mach IPC 默认放行：`lsappinfo front`/`open`/
         # `osascript` 能经 mach-lookup 联系 launchservicesd、把 URL 交给未被
         # 沙箱管住的默认浏览器打开，或发送 Apple Event，绕开上面的

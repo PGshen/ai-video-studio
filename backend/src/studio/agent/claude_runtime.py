@@ -86,6 +86,7 @@ from studio.agent.claude_web import (
 )
 from studio.agent.exec_policy import ExecMode, claude_sandbox_available, exec_mode
 from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext
+from studio.agent.shell_sandbox import network_cache_env
 from studio.config import Settings
 from studio.config import repo_root as default_repo_root
 
@@ -302,7 +303,7 @@ class ClaudeRuntime:
             setting_sources=[],
             permission_mode="acceptEdits",
             resume=ctx.resume_ref,
-            env=env,
+            env=env | (network_cache_env(workdir) if ctx.exec_network else {}),
             hooks=hooks,
             # Only the sandboxed mode passes `sandbox`: on Windows `enabled` + `failIfUnavailable`
             # would make the CLI refuse to start (design §4.3).

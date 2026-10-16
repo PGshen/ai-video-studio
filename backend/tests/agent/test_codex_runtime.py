@@ -278,15 +278,17 @@ async def test_runtime_default_prompt_never_sends_a_prompt_update(
     assert _record(tmp_path)["stdin"] == "你好"
 
 
-async def test_exec_network_opens_the_profile_network(
+async def test_exec_network_never_opens_the_codex_network(
     tmp_path: Path, fake_codex_bin: Path, workdir: Path
 ) -> None:
+    """Codex 的 `network.enabled` 连本机回环一起放开（2026-10-16 实测），
+    而本机 studio API 没有认证：失败关闭，完全自由阶段在 Codex 下命令仍断网（ADR 0031 评审）。"""
     runtime = _runtime(tmp_path, fake_codex_bin, _environ(tmp_path, "minimal.jsonl"))
 
     await _run(runtime, _ctx(workdir, exec_network=True))
 
     argv = _record(tmp_path)["argv"]
-    assert "permissions.studio.network.enabled=true" in argv
+    assert not any("network.enabled" in arg for arg in argv), argv
 
 
 async def test_very_long_output_line(tmp_path: Path, fake_codex_bin: Path, workdir: Path) -> None:

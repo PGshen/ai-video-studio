@@ -1316,7 +1316,10 @@ class TestSandbox:
         online = sandbox_settings(workdir, repo, data, network=True)
 
         assert "network" not in offline
-        assert online.get("network") == {"allowedDomains": ["*"]}
+        assert online.get("network") == {
+            "allowedDomains": ["*"],
+            "deniedDomains": ["localhost", "127.0.0.1", "::1", "0.0.0.0"],
+        }
         assert {k: v for k, v in online.items() if k != "network"} == offline
 
     async def test_exec_network_reaches_the_turn_sandbox(
@@ -1331,6 +1334,22 @@ class TestSandbox:
 
         sandbox = clients.last.options.sandbox
         assert sandbox == sandbox_settings(workdir, repo, data_dir, network=True)
+
+    async def test_exec_network_points_package_caches_into_the_workspace(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """沙箱只许写工作区：npm/pip 默认写家目录里的缓存会 EPERM（ADR 0031 评审 I1）。"""
+        clients = Clients()
+        await _run(_runtime(data_dir, clients), _ctx(workdir, exec_network=True))
+        env = clients.last.options.env
+        cache = workdir.resolve() / ".cache"
+        assert env["npm_config_cache"] == str(cache / "npm")
+        assert env["PIP_CACHE_DIR"] == str(cache / "pip")
+        assert env["XDG_CACHE_HOME"] == str(cache / "xdg")
+
+        offline = Clients()
+        await _run(_runtime(data_dir, offline), _ctx(workdir))
+        assert "npm_config_cache" not in offline.last.options.env
 
     def test_paths_are_resolved(self, tmp_path: Path) -> None:
         real = tmp_path / "real"

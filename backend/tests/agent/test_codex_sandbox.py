@@ -80,23 +80,6 @@ def test_sandbox_args_by_exec_mode(tmp_path: Path) -> None:
     assert sandbox_args("disabled", workdir, repo, data, home=home) is None
 
 
-def test_network_opens_the_profile_network_only(tmp_path: Path) -> None:
-    """open-mode 设计 §5.2：`permissions.<profile>.network.enabled=true`（2026-10-16 实测）。"""
-    repo, data, workdir, home = _layout(tmp_path)
-    offline = permission_args(workdir, repo, data, home=home)
-    online = permission_args(workdir, repo, data, home=home, network=True)
-
-    key = f"permissions.{PROFILE_NAME}.network.enabled"
-    assert key not in _overrides(offline)
-    assert _overrides(online)[key] is True
-    assert {k: v for k, v in _overrides(online).items() if k != key} == _overrides(offline)
-    assert sandbox_args("sandboxed", workdir, repo, data, home=home, network=True) == online
-    assert sandbox_args("unsandboxed", workdir, repo, data, home=home, network=True) == [
-        "-s",
-        "danger-full-access",
-    ]
-
-
 def test_only_macos_has_a_verified_codex_sandbox() -> None:
     assert codex_sandbox_available("darwin")
     assert not codex_sandbox_available("win32")

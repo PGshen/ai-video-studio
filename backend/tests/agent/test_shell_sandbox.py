@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import http.server
 import os
+import subprocess
 import sys
 import threading
 import uuid
@@ -22,6 +23,7 @@ from studio.agent.openai_runtime import native_shell_supported
 from studio.agent.sandbox_paths import sensitive_home_dirs
 from studio.agent.shell import LocalShellExecutor
 from studio.agent.shell_sandbox import (
+    DNS_SOCKET_RULE,
     SANDBOX_EXEC,
     sandbox_available,
     sandbox_tmpdir,
@@ -100,8 +102,16 @@ class TestSeatbeltProfile:
         online = _lines(seatbelt_profile(workdir, [tmp_path / "repo"], network=True))
 
         assert "(deny network*)" not in online
-        assert [line for line in offline if line != "(deny network*)"] == online
+        loopback = [
+            '(deny network* (remote ip "localhost:*"))',
+            "(deny network* (remote unix-socket))",
+            DNS_SOCKET_RULE,
+        ]
+        assert [line for line in online if line not in loopback] == [
+            line for line in offline if line != "(deny network*)"
+        ]
         for rule in (
+            *loopback,
             '(deny mach-lookup (global-name "com.apple.coreservices.launchservicesd"))',
             "(deny appleevent-send)",
             '(deny process-exec (literal "/usr/bin/open") (literal "/usr/bin/osascript"))',
@@ -165,6 +175,15 @@ class TestSandboxAvailable:
 
 
 # ---- real sandbox-exec runs (macOS only) ---------------------------------------
+
+
+class _NoContent(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(204)
+        self.end_headers()
+
+    def log_message(self, format: str, *args: object) -> None:
+        return None
 
 
 def _request(commands: list[str]) -> ShellCommandRequest:
@@ -289,25 +308,48 @@ class TestSandboxedExecution:
         code, _, _ = await _sh(layout, "curl -sS -m 5 -o /dev/null http://1.1.1.1")
         assert code != 0
 
-    async def test_network_flag_reaches_a_loopback_server(self, layout: _Layout) -> None:
-        """open-mode 设计 §5.2：`network=True` 时沙箱内能连上本机测试服务器，读隔离不变。"""
-        server = http.server.ThreadingHTTPServer(
-            ("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler
-        )
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        url = f"http://127.0.0.1:{server.server_address[1]}/"
-        curl = f"curl -sS -m 5 -o /dev/null -w '%{{http_code}}' {url}"
+    async def test_network_flag_still_refuses_loopback(self, layout: _Layout) -> None:
+        """放开网络后仍连不上本机回环：本机的 studio API 没有认证，连上就能读别的项目、改模型配置
+        （ADR 0031 评审发现）。读隔离同样不变。"""
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _NoContent)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        port = server.server_address[1]
         try:
-            offline = await _sh(layout, curl)
-            online = await _sh(layout, curl, network=True)
+            results = [
+                await _sh(layout, f"curl -sS -m 5 -o /dev/null {url}", network=True)
+                for url in (
+                    f"http://127.0.0.1:{port}/",
+                    f"http://localhost:{port}/",
+                    f"http://127.0.0.2:{port}/",
+                )
+            ]
             env_read = await _sh(layout, f"cat {layout.repo / 'backend' / '.env'}", network=True)
         finally:
             server.shutdown()
             server.server_close()
-        assert offline[0] != 0
-        assert online[0] == 0 and online[1] in ("200", "404")
+        assert all(code != 0 for code, _, _ in results), results
         assert env_read[0] != 0 and "sk-secret" not in env_read[1]
+
+    async def test_network_flag_reaches_the_internet(self, layout: _Layout) -> None:
+        """`network=True` 时能访问外网；宿主机本身访问不了时跳过（离线环境）。"""
+        curl = "curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com"
+        host = subprocess.run(curl, shell=True, capture_output=True, text=True, check=False)
+        if host.returncode != 0:
+            pytest.skip("宿主机访问不了 example.com")
+        offline = await _sh(layout, curl)
+        online = await _sh(layout, curl, network=True)
+        assert offline[0] != 0
+        assert online[0] == 0 and online[1] == "200"
+
+    async def test_network_points_package_caches_into_the_workspace(self, layout: _Layout) -> None:
+        code, out, _ = await _sh(
+            layout, 'echo "$npm_config_cache|$PIP_CACHE_DIR|$XDG_CACHE_HOME"', network=True
+        )
+        cache = layout.workdir.resolve() / ".cache"
+        assert code == 0
+        assert out.strip() == f"{cache / 'npm'}|{cache / 'pip'}|{cache / 'xdg'}"
+        _, offline, _ = await _sh(layout, 'echo "$npm_config_cache"')
+        assert offline.strip() == ""
 
     async def test_launchservices_mach_lookup_denied(self, layout: _Layout) -> None:
         """`lsappinfo front` 靠 mach-lookup 联系 launchservicesd 才能拿到真实的

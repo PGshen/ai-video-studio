@@ -2,8 +2,9 @@
 
 The workspace starts with only `style/` and `project.md`, there is no stage prompt (Claude Code's
 own system prompt), and Bash may use the network. Claude (local login) must make a short HTML
-animation and export it to mp4 by itself; Codex (local ChatGPT login) only checks that its sandboxed
-commands reach the network.
+animation and export it to mp4 by itself. Codex (local ChatGPT login) checks the opposite: its
+`network.enabled` would also open loopback (the unauthenticated studio API), so open mode keeps
+Codex commands offline (ADR 0031 review) and the curl must fail.
 """
 
 from __future__ import annotations
@@ -103,7 +104,7 @@ async def test_open_mode_claude_login(tmp_path: Path) -> None:
         harness.engine.dispose()
 
 
-async def test_open_mode_codex_login(tmp_path: Path) -> None:
+async def test_open_mode_codex_login_stays_offline(tmp_path: Path) -> None:
     _skip_unless_codex()
     harness = build_harness(tmp_path, real_stages=True, free=OPEN_KIND, open_theme=_THEME)
     evidence: dict[str, Any] = {}
@@ -114,7 +115,7 @@ async def test_open_mode_codex_login(tmp_path: Path) -> None:
         evidence["turn"] = outcome_summary(outcome)
         evidence["text"] = outcome.text
         assert outcome.turn.status == "done", outcome.turn.error
-        assert "200" in outcome.text, outcome.text
+        assert "200" not in outcome.text, outcome.text
     finally:
         record_evidence("open-mode-codex-login", evidence, OPEN_EVIDENCE_DIR)
         harness.engine.dispose()

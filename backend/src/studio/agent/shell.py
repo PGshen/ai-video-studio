@@ -22,7 +22,12 @@ from pathlib import Path
 from agents import ShellCallOutcome, ShellCommandOutput, ShellCommandRequest, ShellResult
 
 from studio import proc as procs
-from studio.agent.shell_sandbox import SANDBOX_EXEC, sandbox_tmpdir, seatbelt_profile
+from studio.agent.shell_sandbox import (
+    SANDBOX_EXEC,
+    network_cache_env,
+    sandbox_tmpdir,
+    seatbelt_profile,
+)
 
 SHELL_DEFAULT_TIMEOUT_S = 120.0
 SHELL_MAX_TIMEOUT_S = 600.0
@@ -217,7 +222,10 @@ class LocalShellExecutor:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=procs.child_env(_shell_env(self._environ, self._tmpdir)),
+            env=procs.child_env(
+                _shell_env(self._environ, self._tmpdir)
+                | (network_cache_env(self._workdir) if self._network else {})
+            ),
             **procs.spawn_kwargs(),
         )
         overflowed = False

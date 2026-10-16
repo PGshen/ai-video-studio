@@ -43,6 +43,9 @@ class StudioSandboxSettings(SandboxSettings, total=False):
     filesystem: Required[SandboxFilesystem]
 
 
+LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "::1", "0.0.0.0"]
+
+
 def sandbox_settings(
     workdir: Path,
     repo_root: Path,
@@ -59,8 +62,8 @@ def sandbox_settings(
     其他项目的工作区、`studio.db`、`backend/.env` 仍读不到。路径全部解析成真实路径
     （macOS 的 `/var` → `/private/var` 之类）。R3（T15 实测）：工作区外写入、外网都被拦住。
 
-    `network=True`（只有完全自由阶段，open-mode 设计 §5.2）：`allowedDomains=["*"]` 放行全部出站
-    （2026-10-16 实测），读写范围不变。
+    `network=True`（只有完全自由阶段，open-mode 设计 §5.2）：`allowedDomains=["*"]` 放行外网出站、
+    `deniedDomains` 拒绝回环（2026-10-16 实测：外网 200，回环连不上），读写范围不变。
     """
     settings: StudioSandboxSettings = {
         "enabled": True,
@@ -77,7 +80,9 @@ def sandbox_settings(
         },
     }
     if network:
-        settings["network"] = {"allowedDomains": ["*"]}
+        # The CLI's proxy already refuses loopback (2026-10-16); deny it explicitly too: the studio
+        # API on 127.0.0.1 has no auth (ADR 0031 review).
+        settings["network"] = {"allowedDomains": ["*"], "deniedDomains": LOOPBACK_HOSTS}
     return settings
 
 

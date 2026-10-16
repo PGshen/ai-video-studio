@@ -186,9 +186,9 @@ class CodexRuntime:
             sandbox_available=codex_sandbox_available(self._platform),
             allow_unsandboxed=ctx.allow_unsandboxed_exec,
         )
-        return sandbox_args(
-            mode, ctx.workdir, self._repo_root, self._data_dir, network=ctx.exec_network
-        )
+        # `ctx.exec_network` is deliberately ignored: codex's `network.enabled` also opens
+        # loopback, where the studio API has no auth (ADR 0031 review). Fail closed.
+        return sandbox_args(mode, ctx.workdir, self._repo_root, self._data_dir)
 
     async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
         if ctx.cancel_token.is_cancelled:

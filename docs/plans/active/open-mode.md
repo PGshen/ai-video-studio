@@ -210,9 +210,11 @@
 
 - 2026-10-16 — T10 — 冒烟（Claude、Codex 本机登录）通过；L4 走完并截图；修复创建项目后详情缓存缺 `stages`（L4 发现）；ADR 0031、ARCHITECTURE、glossary、QUALITY、tech-debt（TD-98）、TODO 同步；make check 绿
 
+- 2026-10-16 — 分支评审修复：C1（回环，D10）、I1（缓存目录，D11），各自先写失败测试；make check 绿；Codex 冒烟重跑通过
+
 ## 下一步
 
-- 独立评审者检查整个分支（`git merge-base main HEAD`..HEAD），逐条处理发现；然后请负责人验收。验收后按 SOP §7 收尾：计划移到 `completed/`（同时把 TODO「已完成」里的链接改成 `completed/open-mode.md`、ADR 0031 的计划链接同步），rebase 到 main、`make check`、`--no-ff` 合并。
+- 评审与修复已完成，等负责人验收。延后的小问题见「评审延后的小问题」。验收后：独立评审者检查整个分支（`git merge-base main HEAD`..HEAD），逐条处理发现；然后请负责人验收。验收后按 SOP §7 收尾：计划移到 `completed/`（同时把 TODO「已完成」里的链接改成 `completed/open-mode.md`、ADR 0031 的计划链接同步），rebase 到 main、`make check`、`--no-ff` 合并。
 
 ## 决策记录
 
@@ -226,14 +228,27 @@
 - D7（2026-10-16，T7）— 场景检查接口（GET `.../scene-checks`）对 `open` 项目不返回 409，而是照现有逻辑返回"未检查"（`_CHECKED_STAGES` 不含 `open`）：它是只读查询，不算渲染路径。`html-preview` 对 `open` 项目因为没有时间轴返回 409（现有 `TimelineError` 分支），前端也不会调用它。
 - D8（2026-10-16，T8）— 项目卡片不另加「完全自由」徽章：卡片上的阶段徽章取 `STAGE_TITLES[current_stage]`，对 `open` 项目已经是「完全自由」，再加一个是重复；「自由」徽章只给 `mode === 'free'`，两者自然区分。`KIND_SUMMARY` 对 `open` 只返回「完全自由」，不提占位的形态字段。`VideoKindPicker` 默认模式改为三种都列，选题卡的创建对话框因此自动出现这张卡。
 - D9（2026-10-16，T9）— 计划里的 `OpenCanvasHeader` 改为整个画布组件 `features/canvas/open/OpenCanvas.vue`（头部 + `files` 插槽 + `actions` 插槽），工作台把 `FileCanvas` 经 `files` 插槽传进去：ESLint 禁止 features 之间互相 import，其它阶段画布的「文件」标签也是这样传的；组件可以单独测试，不必挂载整页。「标记完成」不弹确认框（没有下游、随时能重新打开）。`FileCanvas` 之前不把 `.html` 当文本（显示"二进制文件"），这里把 `html`/`htm`/`css` 加进文本扩展名，HTML 才能切到源码编辑。
+- D10（2026-10-16，分支评审 C1）— **命令联网不许访问本机回环**：评审发现只去掉 `(deny network*)` 后沙箱能直连本机没有认证的 studio API（读别的项目、改模型配置外泄 key）。Seatbelt 改为拒绝 `localhost:*` 与 unix socket（放回 mDNSResponder 供 DNS）；Claude 实测本来就连不上回环，仍显式加 `deniedDomains`；**Codex 失败关闭、不开网络**——它的 `network.enabled` 连回环一起放开，域名拒绝规则不生效（实测）。这是相对设计 §2/§5.2「三个运行时都放开联网」的收窄，已写进 ADR 0031；代价：Codex 下完全自由阶段装不了依赖。
+- D11（2026-10-16，分支评审 I1）— 命令可联网时，npm/pip/XDG 缓存指向工作区 `.cache/`（`agent.shell_sandbox.network_cache_env`，Claude 与 OpenAI Shell 都用）：沙箱只许写工作区，默认的 `~/.npm` 第一次 `npm install` 必然 EPERM；`.cache/` 不进快照。
 - D2（2026-10-16，写计划时）— T3 中三个运行时遇到 `system_prompt=None` 先显式抛 `NotImplementedError`，T4–T6 逐个实现。理由：每个任务结束都要 `make check` 绿，又不能让 `None` 被悄悄当成空串传下去。
 
 ## 意外与发现
 
 - 2026-10-16（T10 L4）— **创建项目后工作台头 3 秒拿到的项目详情没有 `stages`**：`useCreateProjectMutation` 把创建接口返回的列表形态 `ProjectOut` 直接 `setQueryData` 进了详情缓存，`OpenCanvas` 读 `stages.find` 时崩溃（StageNav 只报 prop 警告，所以以前没暴露）。已改为只让详情查询失效重拉（`queries.spec.ts` 有复现测试）。
-- 2026-10-16（T10 冒烟）— Claude 沙箱里 `npm` 默认写 `~/.npm` 缓存会 EPERM（沙箱只允许写工作区）；agent 自己改用工作区内的缓存后成功。暂不处理：以后若常见，可以在 `exec_network` 阶段给命令环境设 `npm_config_cache=<工作区>/.cache/npm`（`.cache/` 不进快照）。
+- 2026-10-16（T10 冒烟）— Claude 沙箱里 `npm` 默认写 `~/.npm` 缓存会 EPERM（沙箱只允许写工作区）；agent 自己改用工作区内的缓存后成功。评审后已处理（D11）。
+- 2026-10-16（分支评审）— Seatbelt 拒绝全部 unix socket 会让 DNS 解析失败（curl 退出码 6），要放回 `/private/var/run/mDNSResponder`；本机 `198.18.0.1` 一类代理虚拟网卡上的服务器宿主机自己都连不通，所以外网可达性的真实执行测试用 `example.com`、宿主机访问不了时跳过。
 - 2026-10-16（T10 L4）— Claude Code preset 下 agent 用英文汇报（用户消息是中文）。这是 Claude Code 默认提示词的行为，没有阶段提示词时不会被纠正；负责人如果在意，可以在消息里说明或在 `project.md` 写一句语言要求。
 - 2026-10-16（T2）— guard 的 `_find_symlinks` 会删掉工作区里所有符号链接，`npm install` 生成的 `node_modules/.bin/*` 会被当成越界还原掉；计划只写了快照与文件树，这里一并让它跳过依赖目录（有测试 `test_dependency_dirs_keep_their_symlinks_and_files`）。`prune_empty_dirs` 同理，不清理依赖目录里的空目录。
+
+## 评审延后的小问题
+
+2026-10-16 分支评审的 Minor，未进修复环节，留给负责人决定：
+
+- M1：`api/html_preview.py`、`worker.py` 仍按占位形态字段处理 `open` 项目（应先按 `mode == "open"` 拒绝）；现在因为没有时间轴文件才碰巧 409。
+- M2：`tts` 的路径检查没有先做 `match_existing_case`，macOS 上 `Uploads/x.mp3` 会通过检查、写进 `uploads/` 后被 guard 删掉，工具回报与结果不一致。
+- M3：guard 跳过依赖目录时连「依赖目录本身是符号链接」也跳过了（目前没有可利用的读取路径）。
+- M4：Claude Code preset 可能把 studio 仓库的版本控制状态带进上下文（未实测）；工作区里出现版本库目录会进快照。
+- M5：HTML 预览模式下也会拉取整份文本；源码有未保存修改时切到预览没有提示。
 
 ## 阻塞
 
@@ -243,7 +258,7 @@
 
 - AC1–AC5、AC8：每个任务结束时 `make check` 全绿（最后一次 2026-10-16，T10 提交前）；对应测试文件见各 AC。
 - AC6（真实模型冒烟，2026-10-16）：
-  - `make smoke SMOKE_ARGS="-k open_mode_codex"` → 1 passed（55 秒）：Codex 本机登录，沙箱内 `curl https://example.com` 返回 `200`。
+  - `make smoke SMOKE_ARGS="-k open_mode_codex"` → 1 passed（55 秒）：Codex 本机登录，沙箱内 `curl https://example.com` 返回 `200`。**评审修复（D10）后**改为断言 Codex 命令断网：重跑 1 passed（30 秒），curl 输出 `000`。
   - `make smoke SMOKE_ARGS="-k open_mode_claude"` → 1 passed（619 秒）：Claude 本机登录，一轮完成；Bash 里 `npm view left-pad version` 第二次得到 `1.3.0`（第一次 EPERM，见「意外与发现」）；agent 写了 `title/index.html`、`scene.js`、`render.js`，在工作区装了依赖（`package.json`），导出 `title/out.mp4`（ffprobe 8.0 秒）。证据：`data/evidence/open-mode/smoke/*.json`、`open-claude.mp4`（git 忽略）。
   - 系统提示词为 Claude Code 默认：单测断言传给 SDK 的是 `claude_code` preset；L4 中 agent 的回复风格（英文汇报、Claude Code 式的工具用法）与 preset 一致。
 - AC7（L4，2026-10-16，worktree 内 `api`:8010 + `vite`:5183，Claude 本机登录）：截图在 [open-mode-l4/](open-mode-l4/)。
