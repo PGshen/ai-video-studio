@@ -43,6 +43,7 @@
 | TD-94 | 2026-10-13 | `agent/exec_policy.py: codex_sandbox_available`、`agent/codex_sandbox.py` | codex 的 permission profile 只在 macOS 实测过；其他平台一律视为没有沙箱，无隔离开关关闭时 codex 整轮不能运行，打开时以 `danger-full-access` 运行。Windows 上 SIGINT 改用 `CTRL_BREAK_EVENT`，也未实测 | Windows/Linux 上用 codex 只能无隔离执行，取消行为未知 | 在 Windows（及 Linux）上实测 codex 的沙箱与取消，确认可用后把平台加进 `_CODEX_SANDBOX_PLATFORMS`；另外单轮调用（连通性测试、自动命名）没有带上无隔离开关的值，这些平台上即使开了开关也会失败 | codex-runtime（ADR 0030 前提 4） |
 | TD-96 | 2026-10-13 | `agent/codex_runtime.py: _json_lines` | codex 自己异常退出（panic、被系统杀掉）时如果还有命令在跑，孤儿进程握着 stdout，读循环等不到 EOF；`descendant_groups` 也已找不到它们。点停止后要等 TurnRunner 的宽限期强制取消任务才结束，孤儿命令继续运行 | 罕见情况下一轮卡到宽限期，残留命令进程 | 并发等 `child.wait()`，进程退出后读循环只再等一个短宽限期；启动时记下 codex 的进程组以便事后清理 | codex-runtime 整分支评审 Minor 2 |
 | TD-97 | 2026-10-13 | `agent/codex_runtime.py`（`set_prompt` 的时机） | 收到 `thread.started` 就记下新的阶段提示摘要；若随后在 `turn.started` 之前取消或失败，新提示可能没进会话历史，下一轮也不会再补发 | 窄窗口：阶段说明更新后第一轮恰好在开始前失败，模型继续用旧说明 | 改为拿到 `turn.completed` 之后再记摘要 | codex-runtime 整分支评审 Minor 1 |
+| TD-98 | 2026-10-16 | `workspace/snapshot.py`、`stages.open` | 完全自由项目里 agent 会反复生成视频、图片等大文件，每一版都进快照库（按内容去重，但每版内容不同）；依赖目录已排除（ADR 0031），产物没有 | 长期使用后 `data/blobs` 增长 | 观察实际增长；需要时给快照扫描加单文件大小上限或按扩展名排除，并在前端标明未进快照 | open-mode 设计 §10 |
 | TD-95 | 2026-10-13 | `db/repo/profiles.py`（内置 `codex-login`）、`agent/turn_events.py` | `codex-login` 没有单价（订阅额度，codex 不报成本），每一轮都会出一条"本轮成本未计价"提示 | 时间线里每轮多一条黄色提示，信息量很低 | 对 `auth == "login"` 且没有单价的用量只记 token、不发提示；或者每个会话只提示一次 | codex-runtime T7 浏览器走查 |
 
 ## 已处理

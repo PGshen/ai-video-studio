@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | 完全自由模式（非编号） |
 | 设计依据 | [完全自由模式设计](../../design/2026-10-15-open-mode.md)（2026-10-16 负责人批准） |
 | 分支 | `feat/open-mode`（从 `main` 的 `dc05403` 切出，设计文档已在其上） |
@@ -56,14 +56,14 @@
 
 ## 验收标准
 
-- [ ] AC1：`POST /projects` 用 `mode=open` 创建项目（带或不带 `idea_id`、`theme`），工作区只有 `style/**` 与 `project.md`，内容符合设计 §3.2；带形态字段返回 422 且没有副作用；`GET /api/video-kinds` 出现「完全自由」卡片。（验证：`tests/stages/test_pipeline.py`、`tests/api/test_projects.py`、`tests/api/test_video_kinds.py`）
-- [ ] AC2：任意深度的 `node_modules`、`.venv`、`__pycache__` 不进快照与文件树，回滚不触碰它们。（验证：`tests/workspace/test_snapshot.py`、`tests/workspace/test_files.py`）
-- [ ] AC3：`open` 阶段下三个运行时都使用默认提示词、Bash/Shell 可联网；现有阶段的运行时参数不变。（验证：`tests/agent/test_claude_runtime.py`、`test_openai_runtime.py`、`test_codex_runtime.py`、`test_codex_sandbox.py`、`test_shell_sandbox.py`）
-- [ ] AC4：`open` 阶段的可写范围、工具清单、前言内容符合设计 §4；`tts` 按设计 §4.2 工作；完成 / 重新打开设置与清除项目完成标记；渲染类接口拒绝 `open`。（验证：`tests/stages/test_open_stage.py`、`tests/stages/test_tts_tool.py`、`tests/api/test_open_flow.py`）
-- [ ] AC5：前端可以新建「完全自由」项目（含主题输入）；工作台只显示 `FileCanvas` 与完成按钮，不显示阶段条；`FileCanvas` 对 `.html` 提供预览 / 源码切换。（验证：vitest 用例）
-- [ ] AC6：真实模型冒烟：Claude 本机登录下，`open` 项目做出 `out.mp4`，Bash 联网成功，系统提示词为 Claude Code 默认；Codex 本机登录验证提示词与联网。（验证：`make smoke SMOKE_ARGS="-k open"`）
-- [ ] AC7：L4：浏览器里新建 → 对话 → 预览 HTML、播放 mp4 → 标记完成 → 重新打开，附截图。
-- [ ] AC8：`make check` 全绿；ADR 0031、ARCHITECTURE、glossary、references、QUALITY、TODO 已同步。
+- [x] AC1：`POST /projects` 用 `mode=open` 创建项目（带或不带 `idea_id`、`theme`），工作区只有 `style/**` 与 `project.md`，内容符合设计 §3.2；带形态字段返回 422 且没有副作用；`GET /api/video-kinds` 出现「完全自由」卡片。（验证：`tests/stages/test_pipeline.py`、`tests/api/test_projects.py`、`tests/api/test_video_kinds.py`）
+- [x] AC2：任意深度的 `node_modules`、`.venv`、`__pycache__` 不进快照与文件树，回滚不触碰它们。（验证：`tests/workspace/test_snapshot.py`、`tests/workspace/test_files.py`）
+- [x] AC3：`open` 阶段下三个运行时都使用默认提示词、Bash/Shell 可联网；现有阶段的运行时参数不变。（验证：`tests/agent/test_claude_runtime.py`、`test_openai_runtime.py`、`test_codex_runtime.py`、`test_codex_sandbox.py`、`test_shell_sandbox.py`）
+- [x] AC4：`open` 阶段的可写范围、工具清单、前言内容符合设计 §4；`tts` 按设计 §4.2 工作；完成 / 重新打开设置与清除项目完成标记；渲染类接口拒绝 `open`。（验证：`tests/stages/test_open_stage.py`、`tests/stages/test_tts_tool.py`、`tests/api/test_open_flow.py`）
+- [x] AC5：前端可以新建「完全自由」项目（含主题输入）；工作台只显示 `FileCanvas` 与完成按钮，不显示阶段条；`FileCanvas` 对 `.html` 提供预览 / 源码切换。（验证：vitest 用例）
+- [x] AC6：真实模型冒烟：Claude 本机登录下，`open` 项目做出 `out.mp4`，Bash 联网成功，系统提示词为 Claude Code 默认；Codex 本机登录验证提示词与联网。（验证：`make smoke SMOKE_ARGS="-k open"`）
+- [x] AC7：L4：浏览器里新建 → 对话 → 预览 HTML、播放 mp4 → 标记完成 → 重新打开，附截图。
+- [x] AC8：`make check` 全绿；ADR 0031、ARCHITECTURE、glossary、references、QUALITY、TODO 已同步。
 
 ## 任务
 
@@ -172,7 +172,7 @@
 - **完成标准**：上述测试通过。
 - **验证命令**：`make check`
 
-### T10：冒烟、L4 验收与文档（待开始）
+### T10：冒烟、L4 验收与文档（完成）
 
 - **目标**：真实模型与浏览器验证；文档同步。
 - **涉及文件**：`backend/tests/smoke/test_open_mode_smoke.py`（新，`-k open` 可选中；Claude 用例用本机登录，Codex 用例用本机 ChatGPT 登录，缺登录时按现有冒烟惯例跳过）、`docs/decisions/0031-完全自由模式.md`、`docs/ARCHITECTURE.md`、`docs/glossary.md`、`docs/quality/QUALITY.md`、`docs/quality/tech-debt.md`（视频反复生成撑大快照库，设计 §10）、`docs/plans/TODO.md`、`docs/runbooks/verification.md`（若冒烟命令有新增）。
@@ -208,9 +208,11 @@
 
 - 2026-10-16 — T9 — 前端工作台：`OpenCanvas`（标记 + 标记完成/重新打开 + `files`/`actions` 插槽）、`StageNav` 的「完全自由模式」、`FileCanvas` 的 HTML 预览/源码切换与 403 文案、`.html/.htm/.css` 改为文本文件（D9）；make check 绿
 
+- 2026-10-16 — T10 — 冒烟（Claude、Codex 本机登录）通过；L4 走完并截图；修复创建项目后详情缓存缺 `stages`（L4 发现）；ADR 0031、ARCHITECTURE、glossary、QUALITY、tech-debt（TD-98）、TODO 同步；make check 绿
+
 ## 下一步
 
-- T10：冒烟、L4 验收与文档。写 `backend/tests/smoke/test_open_mode_smoke.py`（Claude 本机登录：HTML 动画 + ffmpeg 导出 `out.mp4` + `npm view`；Codex 本机登录：`curl -sI https://example.com`），跑 `make smoke SMOKE_ARGS="-k open"`；`make dev` 走 L4 并截图；写 ADR 0031，同步 ARCHITECTURE、glossary、QUALITY、tech-debt、TODO。
+- 独立评审者检查整个分支（`git merge-base main HEAD`..HEAD），逐条处理发现；然后请负责人验收。验收后按 SOP §7 收尾：计划移到 `completed/`（同时把 TODO「已完成」里的链接改成 `completed/open-mode.md`、ADR 0031 的计划链接同步），rebase 到 main、`make check`、`--no-ff` 合并。
 
 ## 决策记录
 
@@ -228,6 +230,9 @@
 
 ## 意外与发现
 
+- 2026-10-16（T10 L4）— **创建项目后工作台头 3 秒拿到的项目详情没有 `stages`**：`useCreateProjectMutation` 把创建接口返回的列表形态 `ProjectOut` 直接 `setQueryData` 进了详情缓存，`OpenCanvas` 读 `stages.find` 时崩溃（StageNav 只报 prop 警告，所以以前没暴露）。已改为只让详情查询失效重拉（`queries.spec.ts` 有复现测试）。
+- 2026-10-16（T10 冒烟）— Claude 沙箱里 `npm` 默认写 `~/.npm` 缓存会 EPERM（沙箱只允许写工作区）；agent 自己改用工作区内的缓存后成功。暂不处理：以后若常见，可以在 `exec_network` 阶段给命令环境设 `npm_config_cache=<工作区>/.cache/npm`（`.cache/` 不进快照）。
+- 2026-10-16（T10 L4）— Claude Code preset 下 agent 用英文汇报（用户消息是中文）。这是 Claude Code 默认提示词的行为，没有阶段提示词时不会被纠正；负责人如果在意，可以在消息里说明或在 `project.md` 写一句语言要求。
 - 2026-10-16（T2）— guard 的 `_find_symlinks` 会删掉工作区里所有符号链接，`npm install` 生成的 `node_modules/.bin/*` 会被当成越界还原掉；计划只写了快照与文件树，这里一并让它跳过依赖目录（有测试 `test_dependency_dirs_keep_their_symlinks_and_files`）。`prune_empty_dirs` 同理，不清理依赖目录里的空目录。
 
 ## 阻塞
@@ -236,4 +241,15 @@
 
 ## 验证记录
 
-- 无
+- AC1–AC5、AC8：每个任务结束时 `make check` 全绿（最后一次 2026-10-16，T10 提交前）；对应测试文件见各 AC。
+- AC6（真实模型冒烟，2026-10-16）：
+  - `make smoke SMOKE_ARGS="-k open_mode_codex"` → 1 passed（55 秒）：Codex 本机登录，沙箱内 `curl https://example.com` 返回 `200`。
+  - `make smoke SMOKE_ARGS="-k open_mode_claude"` → 1 passed（619 秒）：Claude 本机登录，一轮完成；Bash 里 `npm view left-pad version` 第二次得到 `1.3.0`（第一次 EPERM，见「意外与发现」）；agent 写了 `title/index.html`、`scene.js`、`render.js`，在工作区装了依赖（`package.json`），导出 `title/out.mp4`（ffprobe 8.0 秒）。证据：`data/evidence/open-mode/smoke/*.json`、`open-claude.mp4`（git 忽略）。
+  - 系统提示词为 Claude Code 默认：单测断言传给 SDK 的是 `claude_code` preset；L4 中 agent 的回复风格（英文汇报、Claude Code 式的工具用法）与 preset 一致。
+- AC7（L4，2026-10-16，worktree 内 `api`:8010 + `vite`:5183，Claude 本机登录）：截图在 [open-mode-l4/](open-mode-l4/)。
+  1. 项目页「新建项目」出现「完全自由」卡片与主题框（`1-new-dialog.jpg`）；
+  2. 创建后工作台：左侧「完全自由模式」，画布只有文件树（`style/STYLE.md`、`project.md`）与「标记完成」（`2-workbench.jpg`）；
+  3. 对话一轮（2 分 37 秒）：文件树随 agent 写入实时出现 `title/index.html`、`out.mp4`、png（`3-agent-working.jpg`）；
+  4. 选中 `out.mp4`：`<video>` readyState 4、时长 6 秒、640×360（`4-mp4-preview.jpg`）；
+  5. 「标记完成」后 `GET /projects/{id}` 为 `status=completed`、`open` 阶段 `finalized`，按钮变为「重新打开」；点「重新打开」后回到 `active`（`5-reopened.jpg`）。
+  - HTML 预览：iframe 正确指向原始文件端点，但**内置浏览器面板把子框架导航拦截了**（`net::ERR_BLOCKED_BY_CLIENT`），画面空白；同一地址直接打开时页面正常渲染（深色背景、canvas、标题文字）。iframe 的 `src`、`sandbox` 由单测锁定，与已有的 `HtmlPreviewPane` 写法一致。真实浏览器里的观感需要负责人验收时看一眼。
