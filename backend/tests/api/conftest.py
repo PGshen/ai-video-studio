@@ -96,6 +96,7 @@ class FakeStage:
 
     allow_web = False
     workspaceless = False
+    exec_network = False
 
     def __init__(self, name: str, reads: list[str], artifact_dir: str) -> None:
         self.name = name

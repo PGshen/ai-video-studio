@@ -26,6 +26,7 @@ class TopicStage:
     allow_web = True
     """本阶段允许联网；具体用自建工具还是原生工具由 `STUDIO_WEB_MODE` 决定（ADR 0010）。"""
     workspaceless = False
+    exec_network = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")

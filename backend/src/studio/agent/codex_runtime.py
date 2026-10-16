@@ -196,6 +196,9 @@ class CodexRuntime:
             )
             return
 
+        if ctx.system_prompt is None:
+            raise NotImplementedError("运行时默认提示词尚未实现")
+        system_prompt: str = ctx.system_prompt
         sandbox = self._sandbox_args(ctx)
         if sandbox is None:
             yield events.TurnEnd(
@@ -219,7 +222,7 @@ class CodexRuntime:
                     workdir=turn.workdir,
                     model=ctx.model_profile.model,
                     resume_ref=ctx.resume_ref,
-                    system_prompt=ctx.system_prompt,
+                    system_prompt=system_prompt,
                     effort=ctx.effort,
                     image_paths=image_paths,
                     extra=[*mcp.args(), *sandbox, *(["--ephemeral"] if self._ephemeral else [])],
@@ -280,6 +283,8 @@ class CodexRuntime:
 
     def _message(self, ctx: TurnContext) -> tuple[str, str]:
         """本轮写进 stdin 的消息，以及本轮之后会话生效的阶段提示摘要。"""
+        if ctx.system_prompt is None:
+            raise NotImplementedError("运行时默认提示词尚未实现")
         digest = prompt_digest(ctx.system_prompt)
         text = ctx.user_input.text
         if ctx.resume_ref is not None:

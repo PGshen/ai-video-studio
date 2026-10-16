@@ -94,7 +94,7 @@
 - **完成标准**：上述测试通过；现有快照、回滚、guard 测试不变。
 - **验证命令**：`make check`
 
-### T3：阶段协议扩展（待开始）
+### T3：阶段协议扩展（完成）
 
 - **目标**：协议能表达"用运行时默认提示词"和"命令可联网"，现有阶段不受影响。
 - **涉及文件**：`backend/src/studio/agent/stage.py`、`backend/src/studio/agent/runtime.py`（`TurnContext.system_prompt: str | None`、新增 `exec_network: bool = False` 并透传进 `tool_context()`）、`backend/src/studio/agent/tools.py`（`ToolContext.exec_network: bool = False`）、`backend/src/studio/agent/runner.py`（三处构造 `TurnContext` 时传 `exec_network=job.stage.exec_network`）、`backend/src/studio/agent/fake.py`（若读 `system_prompt`）、所有现有阶段类（加 `exec_network = False`）、`backend/tests/agent/test_stage.py`、`backend/tests/agent/test_runner.py`。
@@ -194,9 +194,11 @@
 
 - 2026-10-16 — T2 — `EXCLUDED_DIR_NAMES` + `layout.in_excluded_dir`；快照扫描、文件树、guard 的符号链接清理、空目录清理都跳过依赖目录；make check 绿
 
+- 2026-10-16 — T3 — 协议 `system_prompt() -> str | None`、`exec_network`；所有阶段与测试替身补 `exec_network = False`；三个运行时遇到 `None` 暂时抛 `NotImplementedError`（D2）；make check 绿
+
 ## 下一步
 
-- T3：阶段协议 `system_prompt() -> str | None` 与 `exec_network`；先在 `tests/agent/test_runner.py` 写"runner 把 `exec_network` 传进 TurnContext/ToolContext"的失败测试。
+- T4：Claude 运行时。先做实测（scratchpad 脚本，本机 Claude 登录）：`network.allowedDomains=["*"]` 是否放行、内置 CLI 的工具名单；再写 `tests/agent/test_claude_runtime.py` 的失败测试（preset、open 工具集、`sandbox_settings(network=True)`、现有阶段参数不变），去掉 `claude_runtime._options` 里的 `NotImplementedError`。
 
 ## 决策记录
 

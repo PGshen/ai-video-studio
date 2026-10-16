@@ -248,6 +248,7 @@ def test_gather_uses_scene_summary_only_for_narrative_edge(
 class _FakeStage:
     allow_web = False
     workspaceless = False
+    exec_network = False
 
     def __init__(self, name: str, dirs: list[str], reads: list[str] | None = None) -> None:
         self.name = name

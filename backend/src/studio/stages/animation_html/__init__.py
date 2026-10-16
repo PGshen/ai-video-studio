@@ -40,6 +40,7 @@ class AnimationHtmlStage:
     name = "animation_html"
     allow_web = False
     workspaceless = False
+    exec_network = False
 
     def system_prompt(self) -> str:
         return compose_prompt(*_PROMPT_PARTS)

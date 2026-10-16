@@ -23,6 +23,7 @@ class StyleStage:
     name = "style"
     allow_web = False
     workspaceless = True
+    exec_network = False
     """没有项目；工作目录由会话的 `subject_id`（风格 id）决定。"""
 
     def system_prompt(self) -> str:

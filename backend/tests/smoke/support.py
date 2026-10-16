@@ -129,6 +129,7 @@ class SmokeStage:
 
     allow_web = False
     workspaceless = False
+    exec_network = False
 
     def finalize_blockers(self, workdir: Path) -> list[str]:
         return []
@@ -137,7 +138,7 @@ class SmokeStage:
         self._base = base
         self.name = base.name
 
-    def system_prompt(self) -> str:
+    def system_prompt(self) -> str | None:
         return self._base.system_prompt()
 
     def tools(self) -> list[ToolSpec]:

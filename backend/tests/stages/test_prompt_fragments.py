@@ -30,6 +30,7 @@ def test_staged_prompts_embed_their_shared_fragments(
     stage: StageDefinition, heading: str, fragments: list[str]
 ) -> None:
     prompt = stage.system_prompt()
+    assert prompt is not None
     assert prompt.startswith(heading)
     for name in fragments:
         assert fragment(name).read_text(encoding="utf-8") in prompt, name

@@ -378,6 +378,8 @@ class OpenAIRuntime:
             yield events.TurnEnd(resume_ref=ctx.resume_ref, status="failed", error=str(exc))
             return
 
+        if ctx.system_prompt is None:
+            raise NotImplementedError("运行时默认提示词尚未实现")
         turn = _Turn(profile=ctx.model_profile, workdir=ctx.workdir)
         agent = Agent(
             name="studio",

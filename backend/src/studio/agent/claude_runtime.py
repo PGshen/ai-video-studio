@@ -250,6 +250,8 @@ class ClaudeRuntime:
     def _options(
         self, ctx: TurnContext, auth: events.AuthMode, env: dict[str, str]
     ) -> ClaudeAgentOptions:
+        if ctx.system_prompt is None:
+            raise NotImplementedError("运行时默认提示词尚未实现")
         mode = exec_mode(
             platform=self._platform,
             sandbox_available=claude_sandbox_available(self._platform),

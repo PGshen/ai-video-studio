@@ -81,7 +81,8 @@ class TurnContext:
     不各自构造（TD-17）。
     """
 
-    system_prompt: str
+    system_prompt: str | None
+    """`None`：用运行时默认提示词（见 `StageDefinition.system_prompt`）。"""
     user_input: UserInput
     tools: list[ToolSpec]
     workdir: Path
@@ -111,6 +112,8 @@ class TurnContext:
     allow_unsandboxed_exec: bool = False
     """本轮开始时读到的「无隔离执行」开关（ADR 0024）：各执行点据此和自己有没有 sandbox
     问 `exec_policy.exec_mode`。本轮之内不变。"""
+    exec_network: bool = False
+    """本轮执行的命令能否联网；TurnRunner 从 `StageDefinition.exec_network` 取值。"""
 
     def tool_context(self) -> ToolContext:
         """业务工具 handler 的上下文；三个运行时都从这里取，不各自构造（TD-17）。"""
@@ -124,6 +127,7 @@ class TurnContext:
             turn_id=self.turn_id,
             upstream_stages=self.upstream_stages,
             allow_unsandboxed_exec=self.allow_unsandboxed_exec,
+            exec_network=self.exec_network,
         )
 
 
