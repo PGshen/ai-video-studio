@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { editorLanguage, isTextFile, mediaKind } from './fileKind'
+import { editorLanguage, isHtmlFile, isTextFile, mediaKind } from './fileKind'
 
 describe('isTextFile / editorLanguage', () => {
   it.each([
@@ -43,5 +43,20 @@ describe('mediaKind', () => {
 
   it.each(['notes/a.md', 'logo.svg', 'data.bin', 'README'])('%s 不可媒体预览', (path) => {
     expect(mediaKind(path)).toBeNull()
+  })
+})
+
+describe('isHtmlFile（open-mode 设计 §7：HTML 可预览，也可当源码编辑）', () => {
+  it.each(['index.html', 'a/b/page.HTM', 'scene.htm'])('%s 是 HTML', (path) => {
+    expect(isHtmlFile(path)).toBe(true)
+    expect(isTextFile(path)).toBe(true)
+  })
+
+  it.each(['index.html.md', 'html', 'style.css', 'a.js'])('%s 不是 HTML', (path) => {
+    expect(isHtmlFile(path)).toBe(false)
+  })
+
+  it('样式表是文本文件', () => {
+    expect(isTextFile('style.css')).toBe(true)
   })
 })

@@ -23,13 +23,14 @@ const props = defineProps<{
   currentStage: string
   /** 竖栏折叠：只显示图标，名称和说明放进悬停提示。 */
   collapsed?: boolean
-  /** 项目类型；自由项目只有一个阶段，不显示阶段条（free-mode 设计 §6.2）。 */
+  /** 项目类型；自由与完全自由项目只有一个阶段，不显示阶段条（free-mode 设计 §6.2、open-mode §7）。 */
   kind?: ProjectKindOut
 }>()
 
-const freeLabel = computed(() =>
-  props.kind?.mode === 'free' ? `自由模式 · ${freeFormLabel(props.kind)}` : null,
-)
+const freeLabel = computed(() => {
+  if (props.kind?.mode === 'open') return '完全自由模式'
+  return props.kind?.mode === 'free' ? `自由模式 · ${freeFormLabel(props.kind)}` : null
+})
 
 const router = useRouter()
 

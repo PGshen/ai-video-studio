@@ -12,4 +12,5 @@ export const STAGES_WITH_OWN_ACTIONS: readonly string[] = [
   'animation_html',
   'free_explainer',
   'free_produce',
+  'open',
 ]

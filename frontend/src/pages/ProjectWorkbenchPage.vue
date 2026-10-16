@@ -5,6 +5,7 @@
  * `animation_html`/`produce` 阶段用 `HtmlAnimationCanvas`（镜头列表 + 代码编辑器，见该目录）；
  * 自由项目唯一的阶段（`free_explainer`/`free_produce`，free-mode 设计 §6.2）也用它，叙事、配乐、文件
  * 由插槽填进来；
+ * 完全自由项目（`open`，open-mode 设计 §7）用 `OpenCanvas`：只有文件画布和「标记完成」；
  * 老 manim 项目的 `animation` 阶段只显示下线提示（Manim 已下线，ADR 0027，项目只读），
  * `narrative` 阶段用 `NarrativeCanvas`（镜头卡片 + 配音播放条 + JSON，M3），
  * 其它阶段仍用 M1 的通用 `FileCanvas`（文件树 + 编辑器）；有专用画布的阶段也都把 `FileCanvas`
@@ -58,6 +59,7 @@ import ImportMusicCanvas from '@/features/canvas/music/ImportMusicCanvas.vue'
 import MusicCanvas from '@/features/canvas/music/MusicCanvas.vue'
 import { isImportMusic } from '@/features/canvas/music/importView'
 import NarrativeCanvas from '@/features/canvas/narrative/NarrativeCanvas.vue'
+import OpenCanvas from '@/features/canvas/open/OpenCanvas.vue'
 import TopicCanvas from '@/features/canvas/topic/TopicCanvas.vue'
 
 const route = useRoute()
@@ -406,6 +408,27 @@ const canvasBusy = computed(() =>
                     />
                   </template>
                 </NarrativeCanvas>
+                <OpenCanvas
+                  v-else-if="stage === 'open'"
+                  :project-id="projectId"
+                  :stages="project.stages"
+                  :busy="canvasBusy"
+                >
+                  <template #files>
+                    <FileCanvas
+                      :project-id="projectId"
+                      :stage="stage"
+                      :busy="canvasBusy"
+                    />
+                  </template>
+                  <template #actions>
+                    <RailToggleButton
+                      v-if="!stacked"
+                      :collapsed="snapshotsHidden"
+                      @toggle="toggleRail"
+                    />
+                  </template>
+                </OpenCanvas>
                 <TopicCanvas
                   v-else-if="stage === 'topic'"
                   :project-id="projectId"

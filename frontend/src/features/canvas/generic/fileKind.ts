@@ -35,6 +35,10 @@ const TEXT_EXTENSIONS = new Set([
   'toml',
   'ini',
   'cfg',
+  // open-mode: agents write web pages; HTML is previewed in FileCanvas and editable as source.
+  'html',
+  'htm',
+  'css',
 ])
 
 function extensionOf(path: string): string {
@@ -46,6 +50,11 @@ function extensionOf(path: string): string {
 
 export function isTextFile(path: string): boolean {
   return TEXT_EXTENSIONS.has(extensionOf(path))
+}
+
+export function isHtmlFile(path: string): boolean {
+  const ext = extensionOf(path)
+  return ext === 'html' || ext === 'htm'
 }
 
 export function editorLanguage(path: string): EditorLanguage {
