@@ -16,6 +16,7 @@ export const DEFAULT_PROFILE_STAGES = [
   { key: 'animation_html', label: '动画' },
   { key: 'free_explainer', label: '自由讲解' },
   { key: 'free_produce', label: '自由创作（短片、MV）' },
+  { key: 'open', label: '完全自由' },
   { key: 'style', label: '风格对话' },
 ] as const
 

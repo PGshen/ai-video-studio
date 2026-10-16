@@ -36,6 +36,7 @@ STAGES: Final = (
     "animation_html",
     "free_explainer",
     "free_produce",
+    "open",
     "style",
 )
 WEB_MODES: Final = ("tools", "native")

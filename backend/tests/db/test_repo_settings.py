@@ -32,6 +32,13 @@ def test_retired_stage_defaults_are_ignored_on_read(migrated_engine: Engine) -> 
         update_settings(migrated_engine, {"stage_default_profile": {"animation": "p2"}})
 
 
+def test_open_stage_default_round_trips(migrated_engine: Engine) -> None:
+    """完全自由阶段（open-mode）也能设默认模型：缺了它，新建会话会退回到第一个可用模型。"""
+    update_settings(migrated_engine, {"stage_default_profile": {"open": "p1"}})
+
+    assert get_all_settings(migrated_engine).stage_default_profile == {"open": "p1"}
+
+
 def test_defaults_when_nothing_is_stored(migrated_engine: Engine) -> None:
     value = get_all_settings(migrated_engine)
 

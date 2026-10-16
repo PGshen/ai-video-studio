@@ -12,6 +12,7 @@ import {
   webModeNotes,
   webModeSourceText,
 } from './settingsView'
+import { STAGE_TITLES } from '@/composables/stageTitles'
 
 function profile(overrides: Partial<ModelProfileOut>): ModelProfileOut {
   return {
@@ -63,8 +64,16 @@ describe('DEFAULT_PROFILE_STAGES', () => {
       'animation_html',
       'free_explainer',
       'free_produce',
+      'open',
       'style',
     ])
+  })
+
+  it('覆盖 STAGE_TITLES 里每个能开会话的阶段（新增阶段漏了这里，新建会话会退回到第一个可用模型）', () => {
+    const listed = new Set<string>(DEFAULT_PROFILE_STAGES.map((s) => s.key))
+    // `animation` is the retired Manim stage: read-only, no new sessions (ADR 0027).
+    const missing = Object.keys(STAGE_TITLES).filter((key) => key !== 'animation' && !listed.has(key))
+    expect(missing).toEqual([])
   })
 })
 
