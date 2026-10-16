@@ -185,6 +185,23 @@ class TestGuard:
         assert (workdir / "output" / "link.mp4").is_symlink()
         assert report.restored == []
 
+    def test_dependency_dirs_keep_their_symlinks_and_files(
+        self, blobs: BlobStore, workdir: Path
+    ) -> None:
+        """open-mode 设计 §4.0：`npm install` 会建 `node_modules/.bin/*` 符号链接，guard 不碰。"""
+        scope = WriteScope(writable=["*"], tool_managed=[])
+        bin_dir = workdir / "app" / "node_modules" / ".bin"
+        _write(workdir / "app" / "node_modules" / "pkg" / "cli.js", "dep")
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "pkg").symlink_to("../pkg/cli.js")
+        (workdir / ".venv" / "lib").mkdir(parents=True)
+
+        report = guard(workdir, {}, {}, scope, blobs, tool_writes={})
+
+        assert (bin_dir / "pkg").is_symlink()
+        assert (workdir / ".venv" / "lib").is_dir()
+        assert report.restored == []
+
     def test_restore_does_not_write_through_symlinked_directory(
         self, blobs: BlobStore, workdir: Path, tmp_path: Path
     ) -> None:

@@ -25,6 +25,7 @@ from studio.db.repo.snapshots import (
 )
 from studio.workspace.blobs import BlobStore
 from studio.workspace.layout import (
+    EXCLUDED_DIR_NAMES,
     EXCLUDED_TOP_DIRS,
     PathEscapesWorkdir,
     project_dir,
@@ -115,6 +116,7 @@ def _scan_with_content(workdir: Path | str) -> tuple[Manifest, dict[str, bytes]]
         root_path = Path(root)
         if root_path == workdir:
             dirnames[:] = [name for name in dirnames if name not in EXCLUDED_TOP_DIRS]
+        dirnames[:] = [name for name in dirnames if name not in EXCLUDED_DIR_NAMES]
 
         for filename in filenames:
             file_path = root_path / filename

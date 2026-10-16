@@ -85,7 +85,7 @@
 - **完成标准**：上述测试通过；现有自由模式与多阶段创建测试不变。
 - **验证命令**：`make check`
 
-### T2：依赖目录不进快照与文件树（待开始）
+### T2：依赖目录不进快照与文件树（完成）
 
 - **目标**：设计 §4.0。
 - **涉及文件**：`backend/src/studio/workspace/layout.py`（新常量 `EXCLUDED_DIR_NAMES = {"node_modules", ".venv", "__pycache__"}`）、`backend/src/studio/workspace/snapshot.py`（扫描时 `dirnames` 过滤；回滚时跳过这些目录及其内容）、`backend/src/studio/workspace/files.py`（`list_tree` 跳过；`read`/`write` 不另加限制）、`backend/src/studio/workspace/scope.py`（若越界防线的扫描与快照扫描不共用一个函数，同步跳过，避免 guard 去还原 `node_modules`）、`backend/tests/workspace/test_snapshot.py`、`backend/tests/workspace/test_files.py`。
@@ -192,9 +192,11 @@
 - 2026-10-16 — 计划草稿完成，负责人批准，选择内联执行
 - 2026-10-16 — T1 — `OPEN_KIND`/`OPEN_STAGE`、预设卡片、`theme` 与 `project.md`、video-kinds 标题；make check 绿
 
+- 2026-10-16 — T2 — `EXCLUDED_DIR_NAMES` + `layout.in_excluded_dir`；快照扫描、文件树、guard 的符号链接清理、空目录清理都跳过依赖目录；make check 绿
+
 ## 下一步
 
-- T2：在 `backend/src/studio/workspace/layout.py` 加 `EXCLUDED_DIR_NAMES`，先写 `tests/workspace/test_snapshot.py`、`test_files.py` 的失败测试（深层 `node_modules` 不进清单、回滚不触碰、同名文件照常进清单）。
+- T3：阶段协议 `system_prompt() -> str | None` 与 `exec_network`；先在 `tests/agent/test_runner.py` 写"runner 把 `exec_network` 传进 TurnContext/ToolContext"的失败测试。
 
 ## 决策记录
 
@@ -205,7 +207,7 @@
 
 ## 意外与发现
 
-- 无
+- 2026-10-16（T2）— guard 的 `_find_symlinks` 会删掉工作区里所有符号链接，`npm install` 生成的 `node_modules/.bin/*` 会被当成越界还原掉；计划只写了快照与文件树，这里一并让它跳过依赖目录（有测试 `test_dependency_dirs_keep_their_symlinks_and_files`）。`prune_empty_dirs` 同理，不清理依赖目录里的空目录。
 
 ## 阻塞
 

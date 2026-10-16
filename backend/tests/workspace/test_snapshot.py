@@ -7,7 +7,7 @@ from sqlalchemy import Engine
 
 from studio.db.repo.snapshots import insert_snapshot, list_snapshots
 from studio.workspace.blobs import BlobStore
-from studio.workspace.layout import EXCLUDED_TOP_DIRS
+from studio.workspace.layout import EXCLUDED_DIR_NAMES, EXCLUDED_TOP_DIRS
 from studio.workspace.snapshot import (
     create_snapshot,
     diff,
@@ -46,6 +46,21 @@ class TestScan:
         manifest = scan(workdir)
 
         assert set(manifest) == {"topic/brief.md"}
+
+    def test_excludes_dependency_dirs_at_any_depth(self, workdir: Path) -> None:
+        """open-mode 设计 §4.0：依赖目录不进快照，名字精确匹配，只匹配目录。"""
+        assert EXCLUDED_DIR_NAMES == {"node_modules", ".venv", "__pycache__"}
+        _write(workdir / "a" / "b" / "node_modules" / "x.js", "dep")
+        _write(workdir / "node_modules" / "y.js", "dep")
+        _write(workdir / ".venv" / "bin" / "python", "py")
+        _write(workdir / "src" / "__pycache__" / "m.pyc", b"pyc")
+        _write(workdir / "node_modules.md", "a note")
+        _write(workdir / "notes" / "venv" / "a.md", "kept")
+        _write(workdir / "a" / "my_node_modules" / "z.js", "kept")
+
+        manifest = scan(workdir)
+
+        assert set(manifest) == {"node_modules.md", "notes/venv/a.md", "a/my_node_modules/z.js"}
 
     def test_ignores_symlinks(self, workdir: Path) -> None:
         _write(workdir / "topic" / "brief.md", "hello")
@@ -245,6 +260,25 @@ class TestRollback:
         rollback(engine, blobs, project_id, snap1.id)
 
         assert (workdir / ".cache" / "keep.txt").read_text(encoding="utf-8") == "cache"
+
+    def test_does_not_touch_dependency_dirs(
+        self, engine: Engine, blobs: BlobStore, project_id: str, workdir: Path
+    ) -> None:
+        _write(workdir / "a.md", "v1")
+        snap1 = create_snapshot(engine, blobs, project_id, reason="user_edit")
+
+        _write(workdir / "app" / "node_modules" / "pkg" / "index.js", "dep")
+        (workdir / "app" / "node_modules" / "empty").mkdir()
+        _write(workdir / ".venv" / "bin" / "python", "py")
+        _write(workdir / "a.md", "v2")
+        create_snapshot(engine, blobs, project_id, reason="turn")
+
+        rollback(engine, blobs, project_id, snap1.id)
+
+        assert (workdir / "a.md").read_text(encoding="utf-8") == "v1"
+        assert (workdir / "app" / "node_modules" / "pkg" / "index.js").is_file()
+        assert (workdir / "app" / "node_modules" / "empty").is_dir()
+        assert (workdir / ".venv" / "bin" / "python").is_file()
 
     def test_rollback_can_itself_be_rolled_back(
         self, engine: Engine, blobs: BlobStore, project_id: str, workdir: Path
