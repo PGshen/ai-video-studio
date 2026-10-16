@@ -14,4 +14,8 @@ describe('STAGE_TITLES', () => {
     expect(STAGE_TITLES.animation_html).toBe('动画（HTML5）')
     expect(STAGE_TITLES).not.toHaveProperty('beatsheet')
   })
+
+  it('names the open-mode stage', () => {
+    expect(STAGE_TITLES.open).toBe('完全自由')
+  })
 })

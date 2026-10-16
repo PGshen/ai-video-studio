@@ -22,7 +22,7 @@ import VideoKindPicker from '@/components/VideoKindPicker.vue'
 import { useCreateProjectMutation, useStylesQuery, useVideoKindsQuery } from '@/composables/queries'
 import { DEFAULT_EFFORT, type Effort } from '@/composables/effortChoice'
 import { initialStyleId, styleIdForRequest } from '@/composables/styleChoice'
-import { initialSelection, selectedKind as kindFor } from '@/composables/videoKindChoice'
+import { initialSelection, kindFields, selectedKind as kindFor } from '@/composables/videoKindChoice'
 import type { IdeaOut, MusicSource } from '@/types/api'
 
 const props = defineProps<{ idea: IdeaOut | null }>()
@@ -73,10 +73,7 @@ async function submit(): Promise<void> {
     title: trimmed,
     idea_id: props.idea.id,
     style_preset_id: styleIdForRequest(styleId.value),
-    engine: kind.engine,
-    narration: kind.narration,
-    music_source: kind.music_source,
-    mode: kind.mode,
+    ...kindFields(kind),
     settings: { effort: effort.value },
   })
   open.value = false

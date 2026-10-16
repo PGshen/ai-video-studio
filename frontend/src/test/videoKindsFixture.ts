@@ -1,6 +1,6 @@
 /**
  * 测试用的 `GET /api/video-kinds` 响应：HTML 讲解（html/true/none）与音乐视频（html/false/import）可用，
- * 其余分阶段配置按"阶段尚未实现"禁用；自由模式（free-mode）的四种配置都可用。
+ * 其余分阶段配置按"阶段尚未实现"禁用；自由模式（free-mode）的四种配置与完全自由（open-mode）都可用。
  */
 import type { KindOptionOut, PresetOut, VideoKindsOut } from '@/types/api'
 
@@ -73,6 +73,13 @@ export const VIDEO_KINDS_FIXTURE: VideoKindsOut = {
       music_choices: ['import'],
       default: { engine: 'html', narration: false, music_source: 'import', mode: 'free' },
     },
+    {
+      video_kind: 'open',
+      label: '完全自由',
+      description: '没有结构和检查，像直接用 Claude Code 一样',
+      music_choices: ['none'],
+      default: { engine: 'html', narration: false, music_source: 'none', mode: 'open' },
+    },
   ] satisfies PresetOut[],
   kinds: [
     kind('explainer_html', 'html', true, 'none', [...EXPLAINER, 'animation_html'], true),
@@ -84,5 +91,6 @@ export const VIDEO_KINDS_FIXTURE: VideoKindsOut = {
     kind('explainer_html', 'html', true, 'synth', ['free_explainer'], true, 'free'),
     kind('motion_reel', 'html', false, 'synth', ['free_produce'], true, 'free'),
     kind('music_video', 'html', false, 'import', ['free_produce'], true, 'free'),
+    kind('open', 'html', false, 'none', ['open'], true, 'open'),
   ],
 }

@@ -11,6 +11,7 @@ import type {
   Mode,
   MusicSource,
   PresetOut,
+  ProjectCreate,
   ProjectKindOut,
   VideoKind,
   VideoKindsOut,
@@ -21,6 +22,7 @@ const VIDEO_KIND_LABELS: Record<VideoKind, string> = {
   explainer_html: '知识讲解（HTML）',
   motion_reel: '动态图形短片',
   music_video: '音乐 MV',
+  open: '完全自由',
 }
 
 export const MUSIC_LABELS: Record<MusicSource, string> = {
@@ -92,6 +94,22 @@ export function selectedKind(
   return preset ? findKind(data.kinds, preset, music) : undefined
 }
 
+/**
+ * 创建请求里的类型字段：完全自由只给 `mode`（后端拒绝它带形态字段，open-mode 设计 §3.2），
+ * 其它模式给出完整的 engine/narration/music_source/mode。
+ */
+export function kindFields(
+  kind: KindOptionOut,
+): Pick<ProjectCreate, 'engine' | 'narration' | 'music_source' | 'mode'> {
+  if (kind.mode === 'open') return { mode: 'open' }
+  return {
+    engine: kind.engine,
+    narration: kind.narration,
+    music_source: kind.music_source,
+    mode: kind.mode,
+  }
+}
+
 /** 流水线展示："选题 → 叙事 → 动画"。 */
 export function pipelineText(pipeline: string[]): string {
   return pipeline.map((id) => STAGE_TITLES[id] ?? id).join(' → ')
@@ -99,6 +117,8 @@ export function pipelineText(pipeline: string[]): string {
 
 /** 项目的类型摘要，例如"知识讲解（HTML）· 有旁白 · 无配乐"。 */
 export function KIND_SUMMARY(kind: ProjectKindOut): string {
+  // Open-mode form fields are placeholders (open-mode design §3.1): say nothing about them.
+  if (kind.mode === 'open') return VIDEO_KIND_LABELS.open
   const label = VIDEO_KIND_LABELS[kind.video_kind] ?? kind.video_kind
   // 全角右括号后不加空格（"知识讲解（HTML）· 有旁白"），其余用 " · " 分隔。
   const sep = label.endsWith('）') ? '· ' : ' · '

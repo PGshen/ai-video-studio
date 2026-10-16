@@ -5,6 +5,7 @@ import {
   initialSelection,
   freeFormLabel,
   KIND_SUMMARY,
+  kindFields,
   presetAvailability,
   presetKey,
   presetsFor,
@@ -56,6 +57,7 @@ describe('videoKindChoice', () => {
       'free-explainer_html',
       'free-motion_reel',
       'free-music_video',
+      'open',
     ])
   })
 
@@ -90,6 +92,31 @@ describe('videoKindChoice', () => {
         pipeline: ['free_produce'],
       }),
     ).toBe('自由模式 · 动态图形短片 · 无旁白 · 合成配乐')
+  })
+
+  it('KIND_SUMMARY 对完全自由项目只写「完全自由」（形态字段是占位）', () => {
+    expect(
+      KIND_SUMMARY({
+        video_kind: 'open',
+        engine: 'html',
+        narration: false,
+        music_source: 'none',
+        mode: 'open',
+        pipeline: ['open'],
+      }),
+    ).toBe('完全自由')
+  })
+
+  it('kindFields：完全自由只给 mode，其余模式给出完整形态', () => {
+    const open = findKind(DATA.kinds, preset('open'), 'none')!
+    expect(kindFields(open)).toEqual({ mode: 'open' })
+    const reel = findKind(DATA.kinds, preset('free-motion_reel'), 'synth')!
+    expect(kindFields(reel)).toEqual({
+      engine: 'html',
+      narration: false,
+      music_source: 'synth',
+      mode: 'free',
+    })
   })
 
   it('KIND_SUMMARY 拼出类型、旁白、配乐', () => {

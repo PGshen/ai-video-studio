@@ -9,4 +9,5 @@ export const STAGE_TITLES: Record<string, string> = {
   animation_html: '动画（HTML5）',
   free_explainer: '自由讲解',
   free_produce: '自由创作',
+  open: '完全自由',
 }

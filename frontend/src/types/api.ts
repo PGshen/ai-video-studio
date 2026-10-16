@@ -17,15 +17,20 @@ export interface ProjectCreate {
   music_source?: MusicSource
   /** `free`：自由模式，单阶段项目（free-mode 设计 §3）；缺省为 `staged`，要与上面三项一起给出。 */
   mode?: Mode
+  /** 完全自由项目的主题描述（写进 `project.md`，最多 2000 字）；其它模式忽略。 */
+  theme?: string
 }
 
-/** `staged`：按阶段推进的项目；`free`：自由模式，只有一个对话阶段（创建后只读）。 */
-export type Mode = 'staged' | 'free'
+/**
+ * `staged`：按阶段推进的项目；`free`：自由模式，只有一个对话阶段；`open`：完全自由模式（open-mode），
+ * 没有形态、提示词和检查。创建后只读。
+ */
+export type Mode = 'staged' | 'free' | 'open'
 
 /** `manim` 只出现在已下线的老项目上（只读，ADR 0027），新项目只能是 `html`。 */
 export type Engine = 'manim' | 'html'
 export type MusicSource = 'none' | 'synth' | 'import'
-export type VideoKind = 'explainer_manim' | 'explainer_html' | 'motion_reel' | 'music_video'
+export type VideoKind = 'explainer_manim' | 'explainer_html' | 'motion_reel' | 'music_video' | 'open'
 
 /** 项目的视频类型（创建后只读）；`pipeline` 是该项目的阶段 id 顺序。 */
 export interface ProjectKindOut {

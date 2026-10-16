@@ -150,7 +150,7 @@
 - **完成标准**：上述测试通过；`video-kinds` 中「完全自由」变为可用。
 - **验证命令**：`make check`
 
-### T8：前端创建入口与标记（待开始）
+### T8：前端创建入口与标记（完成）
 
 - **目标**：能从项目页与选题卡创建「完全自由」项目；各处认识 `open`。
 - **涉及文件**：`frontend/src/features/projects/NewFreeProjectDialog.vue`（+ spec）、`frontend/src/features/ideas/CreateProjectDialog.vue`（+ spec，若需要为 `open` 卡片隐藏配乐选择与传 `theme`）、`frontend/src/composables/videoKindChoice.ts`、`frontend/src/composables/stageTitles.ts`（+ spec）、`frontend/src/features/projects/ProjectCard.vue`、`frontend/src/features/projects/projectView.ts`（+ spec）、`frontend/src/api/types.ts` 或等价类型文件（`mode` 加 `'open'`、`ProjectCreate.theme`）、`frontend/src/test/videoKindsFixture.ts`。
@@ -204,9 +204,11 @@
 
 - 2026-10-16 — T7 — `tts` 工具（`stages/common/narration/tts.py`）、`stages.common.open_scope`、`stages.open` 注册；`open` 定稿即标记项目完成、重新打开清除；渲染与 `finalize-render` 返回 409（D1、D6、D7）；make check 绿
 
+- 2026-10-16 — T8 — 前端：`Mode`/`VideoKind` 加 `open`、`kindFields`、两个创建对话框（新建对话框多主题框）、`STAGE_TITLES.open`、`KIND_SUMMARY`（D8）；make check 绿
+
 ## 下一步
 
-- T8：前端创建入口与标记。先写 `NewFreeProjectDialog.spec.ts`（选「完全自由」后请求体 `{mode:"open", title, theme?}`、主题框出现、配乐控件隐藏）与 `stageTitles.spec.ts` 的失败用例。
+- T9：前端工作台与 HTML 预览。先写 `fileKind.spec.ts`（`isHtmlFile`）、`OpenCanvasHeader.spec.ts`（完成 / 重新打开）、`FileCanvas` 的 HTML 预览用例与 `ProjectWorkbenchPage` 的 `open` 分支用例。
 
 ## 决策记录
 
@@ -218,6 +220,7 @@
 - D5（2026-10-16，T6）— Codex 在 `system_prompt is None` 时仍传 `developer_instructions`，内容只有现有的"不要派生子 agent、不要用协作工具"一句。理由：这个 codex 版本关不掉 `collaboration.*` 工具（references/codex.md），子 agent 的事件本项目接不住；这句话是运行时的接入约束，不是阶段提示词。代价：与设计 §5.1"不传阶段指令"字面上略有出入，但不含任何阶段内容。
 - D6（2026-10-16，T7）— `tts` 只接受 `.mp3`（计划写的是 `.mp3`/`.wav`）。理由：TTS 引擎只产出 mp3 字节，转成 wav 要再调 ffmpeg，agent 需要 wav 时可以自己在 Bash 里转。可写判断用新模块 `stages.common.open_scope.OPEN_WRITE_SCOPE`（`open` 阶段与 `tts` 共用），因为 `ToolContext` 不带可写范围、`common` 也不能 import 具体阶段。`open` 阶段的工具除 `tts` 外还带自建 `web_search`/`fetch_url`：只在 `tools` 联网模式下保留（native 模式 runner 会滤掉），否则 `tools` 模式下完全自由阶段没有联网工具。
 - D7（2026-10-16，T7）— 场景检查接口（GET `.../scene-checks`）对 `open` 项目不返回 409，而是照现有逻辑返回"未检查"（`_CHECKED_STAGES` 不含 `open`）：它是只读查询，不算渲染路径。`html-preview` 对 `open` 项目因为没有时间轴返回 409（现有 `TimelineError` 分支），前端也不会调用它。
+- D8（2026-10-16，T8）— 项目卡片不另加「完全自由」徽章：卡片上的阶段徽章取 `STAGE_TITLES[current_stage]`，对 `open` 项目已经是「完全自由」，再加一个是重复；「自由」徽章只给 `mode === 'free'`，两者自然区分。`KIND_SUMMARY` 对 `open` 只返回「完全自由」，不提占位的形态字段。`VideoKindPicker` 默认模式改为三种都列，选题卡的创建对话框因此自动出现这张卡。
 - D2（2026-10-16，写计划时）— T3 中三个运行时遇到 `system_prompt=None` 先显式抛 `NotImplementedError`，T4–T6 逐个实现。理由：每个任务结束都要 `make check` 绿，又不能让 `None` 被悄悄当成空串传下去。
 
 ## 意外与发现

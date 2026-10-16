@@ -50,13 +50,14 @@ beforeEach(() => {
 })
 
 describe('NewFreeProjectDialog', () => {
-  it('只列出三种自由形态，默认选中自由讲解', async () => {
+  it('只列出三种自由形态和完全自由，默认选中自由讲解', async () => {
     const wrapper = await mountOpen()
     const cards = [...document.body.querySelectorAll('[data-testid^="kind-card-"]')]
     expect(cards.map((c) => c.getAttribute('data-testid'))).toEqual([
       'kind-card-free-explainer_html',
       'kind-card-free-motion_reel',
       'kind-card-free-music_video',
+      'kind-card-open',
     ])
     expect($('[data-testid="kind-card-free-explainer_html"]').getAttribute('aria-pressed')).toBe(
       'true',
@@ -93,6 +94,44 @@ describe('NewFreeProjectDialog', () => {
     })
     expect(body).not.toHaveProperty('idea_id')
     expect(state.push).toHaveBeenCalledWith('/projects/p1/free_explainer')
+    wrapper.unmount()
+  })
+
+  it('选完全自由：出现主题框、没有配乐选择，请求体只有 mode=open 与主题，不带形态字段', async () => {
+    state.mutateAsync.mockResolvedValue({ id: 'p2', current_stage: 'open' })
+    const wrapper = await mountOpen()
+    expect(document.body.querySelector('#new-free-project-theme')).toBeNull()
+    $<HTMLButtonElement>('[data-testid="kind-card-open"]').click()
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="music-select"]')).toBeNull()
+    await typeTitle('标题动画')
+    const theme = $<HTMLTextAreaElement>('#new-free-project-theme')
+    expect(theme.maxLength).toBe(2000)
+    theme.value = '  光的折射  '
+    theme.dispatchEvent(new Event('input'))
+    await flushPromises()
+
+    submitButton().click()
+    await flushPromises()
+
+    const body = state.mutateAsync.mock.calls[0][0]
+    expect(body).toMatchObject({ title: '标题动画', mode: 'open', theme: '光的折射' })
+    for (const key of ['engine', 'narration', 'music_source']) expect(body).not.toHaveProperty(key)
+    expect(state.push).toHaveBeenCalledWith('/projects/p2/open')
+    wrapper.unmount()
+  })
+
+  it('完全自由不填主题时请求体不带 theme', async () => {
+    state.mutateAsync.mockResolvedValue({ id: 'p3', current_stage: 'open' })
+    const wrapper = await mountOpen()
+    $<HTMLButtonElement>('[data-testid="kind-card-open"]').click()
+    await flushPromises()
+    await typeTitle('t')
+
+    submitButton().click()
+    await flushPromises()
+
+    expect(state.mutateAsync.mock.calls[0][0]).not.toHaveProperty('theme')
     wrapper.unmount()
   })
 })

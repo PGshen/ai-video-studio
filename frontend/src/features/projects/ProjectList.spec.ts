@@ -25,7 +25,7 @@ vi.mock('./NewFreeProjectDialog.vue', () => ({
 
 import ProjectList from './ProjectList.vue'
 
-function project(id: string, mode: 'staged' | 'free', stage: string): ProjectOut {
+function project(id: string, mode: 'staged' | 'free' | 'open', stage: string): ProjectOut {
   return {
     id,
     title: `项目 ${id}`,
@@ -72,5 +72,14 @@ describe('ProjectList', () => {
     expect(wrapper.get('[data-testid="project-card-b"]').find('[data-testid="free-badge"]').exists()).toBe(
       false,
     )
+  })
+
+  it('完全自由项目的卡片阶段名是「完全自由」，不带「自由」标记', async () => {
+    state.projects = [project('c', 'open', 'open')]
+    const wrapper = mount(ProjectList)
+    await flushPromises()
+    const card = wrapper.get('[data-testid="project-card-c"]')
+    expect(card.text()).toContain('完全自由')
+    expect(card.find('[data-testid="free-badge"]').exists()).toBe(false)
   })
 })
