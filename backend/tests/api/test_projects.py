@@ -1211,11 +1211,6 @@ class TestCreateOpenProjects:
 
         assert response.status_code == 422
 
-    async def test_unregistered_open_stage_is_422(self, api_env: ApiEnv) -> None:
-        response = await api_env.client.post("/api/projects", json={"title": "t", "mode": "open"})
-
-        assert response.status_code == 422
-
     async def test_theme_is_ignored_for_other_modes(self, api_env: ApiEnv) -> None:
         response = await api_env.client.post("/api/projects", json={"title": "t", "theme": "x"})
 

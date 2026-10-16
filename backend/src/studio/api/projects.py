@@ -58,6 +58,7 @@ from studio.db.repo.projects import (
     delete_project,
     get_project,
     list_projects,
+    mark_project_completed,
     set_project_status,
     update_project_settings,
 )
@@ -72,6 +73,7 @@ from studio.stages.pipeline import (
     KIND_SETTING_KEYS,
     LEGACY_KIND,
     OPEN_KIND,
+    OPEN_STAGE,
     ProjectKind,
     kind_errors,
     kind_from_settings,
@@ -546,6 +548,10 @@ async def finalize_stage_endpoint(
         value = finalize(engine, blobs, registry, project_id, stage)
     except StageFlowError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if stage == OPEN_STAGE:
+        # An open-mode project has no render: finalizing its only stage *is* finishing it
+        # (open-mode design §6). `reopen` clears the mark via the `animation_stage` branch.
+        mark_project_completed(engine, project_id)
     return _stage_out(value)
 
 

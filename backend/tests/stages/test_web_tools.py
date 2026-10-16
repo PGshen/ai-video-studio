@@ -107,8 +107,20 @@ async def _fetch(ctx: ToolContext, url: str, **args: object) -> ToolResult:
 
 
 def test_tools_are_scoped_to_brainstorm_and_topic() -> None:
-    assert WEB_SEARCH_TOOL.stages == {"brainstorm", "topic", "free_explainer", "free_produce"}
-    assert FETCH_URL_TOOL.stages == {"brainstorm", "topic", "free_explainer", "free_produce"}
+    assert WEB_SEARCH_TOOL.stages == {
+        "brainstorm",
+        "topic",
+        "free_explainer",
+        "free_produce",
+        "open",
+    }
+    assert FETCH_URL_TOOL.stages == {
+        "brainstorm",
+        "topic",
+        "free_explainer",
+        "free_produce",
+        "open",
+    }
     assert {WEB_SEARCH_TOOL.name, FETCH_URL_TOOL.name} == {"web_search", "fetch_url"}
     assert WEB_SEARCH_TOOL.web and FETCH_URL_TOOL.web  # filtered out in native mode
 

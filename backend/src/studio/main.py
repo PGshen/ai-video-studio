@@ -56,6 +56,7 @@ from studio.stages.free_explainer import STAGE as FREE_EXPLAINER_STAGE
 from studio.stages.free_produce import STAGE as FREE_PRODUCE_STAGE
 from studio.stages.music import STAGE as MUSIC_STAGE
 from studio.stages.narrative import STAGE as NARRATIVE_STAGE
+from studio.stages.open import STAGE as OPEN_STAGE
 from studio.stages.produce import STAGE as PRODUCE_STAGE
 from studio.stages.style import STAGE as STYLE_STAGE
 from studio.stages.topic import STAGE as TOPIC_STAGE
@@ -82,6 +83,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         PRODUCE_STAGE,
         FREE_EXPLAINER_STAGE,
         FREE_PRODUCE_STAGE,
+        OPEN_STAGE,
         STYLE_STAGE,
     ):
         registry.register(stage)

@@ -69,7 +69,7 @@ def _write_text(ctx: ToolContext, relpath: str, text: str) -> None:
     ctx.record_tool_write(relpath, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
 
-def _project_voice_and_speed(ctx: ToolContext) -> tuple[str, float]:
+def project_voice_and_speed(ctx: ToolContext) -> tuple[str, float]:
     project = get_project(ctx.engine, ctx.require_project()) if ctx.engine is not None else None
     settings = project.settings if project is not None else {}
     return (
@@ -95,7 +95,7 @@ async def _handler(ctx: ToolContext, args: SynthesizeTtsArgs) -> ToolResult:
             )
         target_ids = list(args.scene_ids)
 
-    voice, speed = _project_voice_and_speed(ctx)
+    voice, speed = project_voice_and_speed(ctx)
     engine = _ENGINE_FACTORY(list_voices(ctx.engine) if ctx.engine is not None else [])
 
     timing_doc = _read_timing_doc(ctx)

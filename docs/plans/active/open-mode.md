@@ -137,7 +137,7 @@
 - **完成标准**：上述测试通过；references 已更新。
 - **验证命令**：`make check`
 
-### T7：`tts` 工具、`open` 阶段与完成流程（待开始）
+### T7：`tts` 工具、`open` 阶段与完成流程（完成）
 
 - **目标**：注册 `open` 阶段；`tts` 可用；完成 / 重新打开维护项目完成标记；渲染类接口拒绝 `open`。
 - **涉及文件**：`backend/src/studio/stages/common/narration/tts.py`（新）、`backend/src/studio/stages/common/narration/synthesize_tts.py`（抽出共用的 TTS 调用与 `_project_voice_and_speed`，行为不变）、`backend/src/studio/stages/open/__init__.py`（新）、`backend/src/studio/main.py`（注册）、`backend/src/studio/api/projects.py`（`finalize`/`reopen` 端点对 `open` 设置 / 清除 `completed_at`）、`backend/src/studio/api/animation_stage.py`（见下）、`backend/tests/stages/test_open_stage.py`、`backend/tests/stages/test_tts_tool.py`、`backend/tests/api/test_open_flow.py`、`.importlinter`（若需为 `stages.open` 加契约条目）。
@@ -202,9 +202,11 @@
 
 - 2026-10-16 — T6 — Codex：`None` 时 `developer_instructions` 只剩"不要派生子 agent"一句（D5）；`prompt_digest(None)="default"`、不拼 `PROMPT_UPDATE`；`permissions.studio.network.enabled=true`（实测）；make check 绿
 
+- 2026-10-16 — T7 — `tts` 工具（`stages/common/narration/tts.py`）、`stages.common.open_scope`、`stages.open` 注册；`open` 定稿即标记项目完成、重新打开清除；渲染与 `finalize-render` 返回 409（D1、D6、D7）；make check 绿
+
 ## 下一步
 
-- T7：`tts` 工具、`open` 阶段与完成流程。先写 `tests/stages/test_open_stage.py`、`tests/stages/test_tts_tool.py`、`tests/api/test_open_flow.py` 的失败测试；从 `stages/common/narration/synthesize_tts.py` 抽出共用的 TTS 调用与音色语速读取。
+- T8：前端创建入口与标记。先写 `NewFreeProjectDialog.spec.ts`（选「完全自由」后请求体 `{mode:"open", title, theme?}`、主题框出现、配乐控件隐藏）与 `stageTitles.spec.ts` 的失败用例。
 
 ## 决策记录
 
@@ -214,6 +216,8 @@
 - D3（2026-10-16，T4）— 完全自由阶段的 Claude 内置工具**沿用现有的显式列表**（Read/Write/Edit/Glob/Grep/Bash，`allow_web` 时加 WebSearch/WebFetch），不扩展、不用 tools preset，也不需要 `disallowed_tools` 名单。理由：实测本机 CLI 2.1.283 的 preset 工具名单里没有 Glob/Grep/TodoWrite/MultiEdit，多出来的是 Cron/Worktree/Workflow/SendMessage/Skill 等依赖宿主 UI 或会改变会话的工具，事件流和画布都接不住；系统提示词已经是 Claude Code 默认，这些工具缺席时模型会退回用 Bash。代价：子 agent（`Task`）不可用；以后需要时按需加入列表并验证事件流。
 - D4（2026-10-16，T4）— Claude 沙箱联网用 `network.allowedDomains=["*"]`（实测可行），不需要域名白名单回退，`sandbox_paths` 不加 `OPEN_NETWORK_DOMAINS`。
 - D5（2026-10-16，T6）— Codex 在 `system_prompt is None` 时仍传 `developer_instructions`，内容只有现有的"不要派生子 agent、不要用协作工具"一句。理由：这个 codex 版本关不掉 `collaboration.*` 工具（references/codex.md），子 agent 的事件本项目接不住；这句话是运行时的接入约束，不是阶段提示词。代价：与设计 §5.1"不传阶段指令"字面上略有出入，但不含任何阶段内容。
+- D6（2026-10-16，T7）— `tts` 只接受 `.mp3`（计划写的是 `.mp3`/`.wav`）。理由：TTS 引擎只产出 mp3 字节，转成 wav 要再调 ffmpeg，agent 需要 wav 时可以自己在 Bash 里转。可写判断用新模块 `stages.common.open_scope.OPEN_WRITE_SCOPE`（`open` 阶段与 `tts` 共用），因为 `ToolContext` 不带可写范围、`common` 也不能 import 具体阶段。`open` 阶段的工具除 `tts` 外还带自建 `web_search`/`fetch_url`：只在 `tools` 联网模式下保留（native 模式 runner 会滤掉），否则 `tools` 模式下完全自由阶段没有联网工具。
+- D7（2026-10-16，T7）— 场景检查接口（GET `.../scene-checks`）对 `open` 项目不返回 409，而是照现有逻辑返回"未检查"（`_CHECKED_STAGES` 不含 `open`）：它是只读查询，不算渲染路径。`html-preview` 对 `open` 项目因为没有时间轴返回 409（现有 `TimelineError` 分支），前端也不会调用它。
 - D2（2026-10-16，写计划时）— T3 中三个运行时遇到 `system_prompt=None` 先显式抛 `NotImplementedError`，T4–T6 逐个实现。理由：每个任务结束都要 `make check` 绿，又不能让 `None` 被悄悄当成空串传下去。
 
 ## 意外与发现
