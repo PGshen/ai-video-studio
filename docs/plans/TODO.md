@@ -37,7 +37,7 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
-| 2026-10-16 | 完全自由模式：运行时默认提示词、命令可联网、只给 `tts`、画布只有「文件」（含 HTML 预览）、定稿即完成（ADR 0031） | [open-mode.md](active/open-mode.md) |
+| 2026-10-16 | 完全自由模式：运行时默认提示词、命令可联网、只给 `tts`、画布只有「文件」（含 HTML 预览）、定稿即完成（ADR 0031） | [open-mode.md](completed/open-mode.md) |
 | 2026-10-12 | 自由模式：项目页直接创建的单阶段项目（自由讲解、自由短片、自由 MV），整区可写、联网、预览与成片照常（ADR 0029；负责人 2026-10-12 验收） | [free-mode.md](completed/free-mode.md) |
 | 2026-10-12 | free-mode 遗留的四条 TODO：叙事提示词的场景文件改为 `.js`；时间轴缺文件提示按来源区分（顶层说下一步，`upstream/` 说阶段）；自由 MV 成片定稿后不能换歌和改歌词；文件接口按磁盘上的真实名字（不区分大小写）做范围检查 | [free-mode.md](completed/free-mode.md) D11 |
 | 2026-10-11 | 原生支持 Windows（Windows 上能用也能开发；负责人 2026-10-11 验收） | [windows-native.md](completed/windows-native.md) |

@@ -44,6 +44,11 @@
 | TD-96 | 2026-10-13 | `agent/codex_runtime.py: _json_lines` | codex 自己异常退出（panic、被系统杀掉）时如果还有命令在跑，孤儿进程握着 stdout，读循环等不到 EOF；`descendant_groups` 也已找不到它们。点停止后要等 TurnRunner 的宽限期强制取消任务才结束，孤儿命令继续运行 | 罕见情况下一轮卡到宽限期，残留命令进程 | 并发等 `child.wait()`，进程退出后读循环只再等一个短宽限期；启动时记下 codex 的进程组以便事后清理 | codex-runtime 整分支评审 Minor 2 |
 | TD-97 | 2026-10-13 | `agent/codex_runtime.py`（`set_prompt` 的时机） | 收到 `thread.started` 就记下新的阶段提示摘要；若随后在 `turn.started` 之前取消或失败，新提示可能没进会话历史，下一轮也不会再补发 | 窄窗口：阶段说明更新后第一轮恰好在开始前失败，模型继续用旧说明 | 改为拿到 `turn.completed` 之后再记摘要 | codex-runtime 整分支评审 Minor 1 |
 | TD-98 | 2026-10-16 | `workspace/snapshot.py`、`stages.open` | 完全自由项目里 agent 会反复生成视频、图片等大文件，每一版都进快照库（按内容去重，但每版内容不同）；依赖目录已排除（ADR 0031），产物没有 | 长期使用后 `data/blobs` 增长 | 观察实际增长；需要时给快照扫描加单文件大小上限或按扩展名排除，并在前端标明未进快照 | open-mode 设计 §10 |
+| TD-99 | 2026-10-16 | `api/html_preview.py: _load`、`worker.py` | 仍按占位形态字段处理完全自由项目，没有先按 `mode == "open"` 拒绝；现在因为没有时间轴文件才碰巧 409 | agent 恰好写出 `animation/shots.json` 与场景时预览接口会开始工作，与设计 §3.1 不符 | `_load` 开头对 `open` 项目返回 409 并补测试 | open-mode 分支评审（2026-10-16） M1 |
+| TD-100 | 2026-10-16 | `stages/common/narration/tts.py: _target` | 路径检查前没有调用 `match_existing_case` | macOS 上 `Uploads/x.mp3` 通过检查、写进 `uploads/` 后被 guard 删掉，工具回报与结果不一致 | 先 `match_existing_case` 再判断可写，补大小写测试 | open-mode 分支评审（2026-10-16） M2 |
+| TD-101 | 2026-10-16 | `workspace/scope.py: _find_symlinks` | 按名字跳过依赖目录时，依赖目录本身是符号链接也跳过 | 任何阶段都能留下 `x/node_modules -> 外部目录` 的链接（目前没有可利用的读取路径） | 先判断 `is_symlink` 再按名字过滤 | open-mode 分支评审（2026-10-16） M3 |
+| TD-102 | 2026-10-16 | `stages.open`、Claude `claude_code` preset | preset 可能把 studio 仓库的版本控制状态注入上下文（未实测）；工作区里出现版本库目录会进快照 | agent 可能被引导去用版本控制，违反「工作区不用 git」 | 冒烟时检查 init/系统提示词；必要时把版本库目录加进排除名单 | open-mode 分支评审（2026-10-16） M4 |
+| TD-103 | 2026-10-16 | `frontend/src/features/canvas/generic/FileCanvas.vue` | HTML 预览模式下仍拉取整份文本；源码有未保存修改时切到预览没有提示 | 多一次请求；用户以为预览的是未保存的版本 | 预览模式不拉文本；有未保存修改时提示 | open-mode 分支评审（2026-10-16） M5 |
 | TD-95 | 2026-10-13 | `db/repo/profiles.py`（内置 `codex-login`）、`agent/turn_events.py` | `codex-login` 没有单价（订阅额度，codex 不报成本），每一轮都会出一条"本轮成本未计价"提示 | 时间线里每轮多一条黄色提示，信息量很低 | 对 `auth == "login"` 且没有单价的用量只记 token、不发提示；或者每个会话只提示一次 | codex-runtime T7 浏览器走查 |
 
 ## 已处理

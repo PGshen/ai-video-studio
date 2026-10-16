@@ -6,11 +6,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | 完全自由模式（非编号） |
 | 设计依据 | [完全自由模式设计](../../design/2026-10-15-open-mode.md)（2026-10-16 负责人批准） |
 | 分支 | `feat/open-mode`（从 `main` 的 `dc05403` 切出，设计文档已在其上） |
-| 批准记录 | 2026-10-16：负责人批准设计；2026-10-16：负责人批准计划 |
+| 批准记录 | 2026-10-16：负责人批准设计；2026-10-16：负责人批准计划；2026-10-16：负责人验收通过 |
 | 执行方式 | 本会话内联（Native），完成后一个独立评审检查整个分支；worktree `.claude/worktrees/open-mode` |
 
 ## 目标
@@ -179,7 +179,7 @@
 - **接口与要点**：
   - Claude 冒烟：创建 `open` 项目，消息"按 style 做一个 10 秒的标题动画，用 HTML 写，最后用 ffmpeg 导出 `out.mp4`；开始前先运行 `npm view left-pad version` 并告诉我结果"。断言：工作区有 `out.mp4` 且 ffprobe 时长 > 0；工具结果里 `npm view` 成功；会话 init 消息里 `tools` 含 TodoWrite、不含禁用工具（佐证 preset 与工具集）。
   - Codex 冒烟：消息"运行 `curl -sI https://example.com` 并告诉我状态码"，断言回复含 `200`。
-  - L4：`make dev`，浏览器走设计 §8 的手动验收，截图存 `docs/plans/active/open-mode-l4/`（收尾时随计划移动）。
+  - L4：`make dev`，浏览器走设计 §8 的手动验收，截图存 `docs/plans/completed/open-mode-l4/`（收尾时已随计划移动）。
   - ADR 0031 内容见设计 §9；ARCHITECTURE 模块表加 `stages.open`、`stages.common.narration.tts`，更新阶段协议说明与 `workspace` 排除规则。
 - **测试**：冒烟本身。
 - **完成标准**：AC6、AC7 有证据；AC8 文档项全部完成。
@@ -210,11 +210,12 @@
 
 - 2026-10-16 — T10 — 冒烟（Claude、Codex 本机登录）通过；L4 走完并截图；修复创建项目后详情缓存缺 `stages`（L4 发现）；ADR 0031、ARCHITECTURE、glossary、QUALITY、tech-debt（TD-98）、TODO 同步；make check 绿
 
+- 2026-10-16 — 负责人验收通过；收尾：计划移到 completed、延后小问题登记技术债、合并到 main
 - 2026-10-16 — 分支评审修复：C1（回环，D10）、I1（缓存目录，D11），各自先写失败测试；make check 绿；Codex 冒烟重跑通过
 
 ## 下一步
 
-- 评审与修复已完成，等负责人验收。延后的小问题见「评审延后的小问题」。验收后：独立评审者检查整个分支（`git merge-base main HEAD`..HEAD），逐条处理发现；然后请负责人验收。验收后按 SOP §7 收尾：计划移到 `completed/`（同时把 TODO「已完成」里的链接改成 `completed/open-mode.md`、ADR 0031 的计划链接同步），rebase 到 main、`make check`、`--no-ff` 合并。
+- 无。计划已完成并合并到 main；延后的小问题已登记为 TD-99～TD-103。
 
 ## 决策记录
 
@@ -242,7 +243,7 @@
 
 ## 评审延后的小问题
 
-2026-10-16 分支评审的 Minor，未进修复环节，留给负责人决定：
+2026-10-16 分支评审的 Minor，未进修复环节；负责人验收时没有要求处理，已登记为 TD-99～TD-103：
 
 - M1：`api/html_preview.py`、`worker.py` 仍按占位形态字段处理 `open` 项目（应先按 `mode == "open"` 拒绝）；现在因为没有时间轴文件才碰巧 409。
 - M2：`tts` 的路径检查没有先做 `match_existing_case`，macOS 上 `Uploads/x.mp3` 会通过检查、写进 `uploads/` 后被 guard 删掉，工具回报与结果不一致。
