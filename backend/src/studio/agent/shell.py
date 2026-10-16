@@ -155,10 +155,12 @@ class LocalShellExecutor:
         deny_read: Sequence[Path] = (),
         sandbox_exec: Path = SANDBOX_EXEC,
         sandboxed: bool = True,
+        network: bool = False,
     ) -> None:
         self._workdir = workdir
         self._tmpdir = sandbox_tmpdir(workdir.resolve())
-        self._profile = seatbelt_profile(workdir, deny_read)
+        self._network = network
+        self._profile = seatbelt_profile(workdir, deny_read, network=network)
         self._sandbox_exec = sandbox_exec
         self._sandboxed = sandboxed
         self._environ = environ if environ is not None else os.environ
@@ -170,6 +172,11 @@ class LocalShellExecutor:
     def sandboxed(self) -> bool:
         """`False` only in the ADR 0024 `unsandboxed` mode."""
         return self._sandboxed
+
+    @property
+    def network(self) -> bool:
+        """Sandboxed commands may use the network (open-mode design §5.2)."""
+        return self._network
 
     def _argv(self, command: str) -> list[str]:
         if self._sandboxed:

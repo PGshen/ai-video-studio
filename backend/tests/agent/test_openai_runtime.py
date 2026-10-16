@@ -125,9 +125,11 @@ def _ctx(
     user_input: UserInput | None = None,
     effort: Effort | None = None,
     allow_unsandboxed_exec: bool = False,
+    system_prompt: str | None = "系统提示词",
+    exec_network: bool = False,
 ) -> TurnContext:
     return TurnContext(
-        system_prompt="系统提示词",
+        system_prompt=system_prompt,
         user_input=user_input or UserInput(text="你好"),
         tools=tools or [],
         workdir=workdir,
@@ -142,6 +144,7 @@ def _ctx(
         allow_web=allow_web,
         effort=effort,
         allow_unsandboxed_exec=allow_unsandboxed_exec,
+        exec_network=exec_network,
     )
 
 
@@ -401,6 +404,17 @@ class TestEventConversion:
         assert call.input[-1]["content"] == "你好"
         assert models.keys == ["sk-openai"]
 
+    async def test_runtime_default_prompt_sends_no_instructions(
+        self, workdir: Path, data_dir: Path
+    ) -> None:
+        """open-mode 设计 §5.1：Agents SDK 没有默认提示词，`None` → 不发 instructions。"""
+        models = Models([[assistant_message("ok")]])
+        await _run(_runtime(data_dir, models), _ctx(workdir, system_prompt=None))
+
+        (call,) = models.calls
+        assert call.system_instructions is None
+        assert call.input[-1]["content"] == "你好"
+
     async def test_user_images_become_input_image_items(
         self, workdir: Path, data_dir: Path
     ) -> None:
@@ -518,11 +532,29 @@ class TestShellExecModes:
         platform: str,
         allow: bool,
         profile: ModelProfileValue = _OPENAI,
+        exec_network: bool = False,
     ) -> LocalShellExecutor | None:
         models = Models([[assistant_message("ok")]])
         runtime = _runtime(data_dir, models, sandbox=sandbox, platform=platform)
-        await _run(runtime, _ctx(workdir, profile=profile, allow_unsandboxed_exec=allow))
+        ctx = _ctx(
+            workdir, profile=profile, allow_unsandboxed_exec=allow, exec_network=exec_network
+        )
+        await _run(runtime, ctx)
         return _shell_executor(models.calls[0].tools)
+
+    @pytest.mark.parametrize("exec_network", [False, True])
+    async def test_exec_network_reaches_the_shell(
+        self, workdir: Path, data_dir: Path, exec_network: bool
+    ) -> None:
+        executor = await self._executor(
+            workdir,
+            data_dir,
+            sandbox=True,
+            platform="darwin",
+            allow=False,
+            exec_network=exec_network,
+        )
+        assert executor is not None and executor.network is exec_network
 
     @pytest.mark.parametrize("allow", [False, True])
     async def test_sandboxed_wraps_in_seatbelt(

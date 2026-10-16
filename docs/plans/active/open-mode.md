@@ -119,7 +119,7 @@
 - **完成标准**：上述测试通过；references 已更新。
 - **验证命令**：`make check`；实测脚本的输出摘要记进「意外与发现」。
 
-### T5：OpenAI 运行时与 Seatbelt（待开始）
+### T5：OpenAI 运行时与 Seatbelt（完成）
 
 - **目标**：`system_prompt is None` 时 `instructions=None`；`exec_network` 时 Shell 可联网。
 - **涉及文件**：`backend/src/studio/agent/openai_runtime.py`、`backend/src/studio/agent/shell_sandbox.py`（`seatbelt_profile(workdir, deny_read, *, network: bool = False)`）、`backend/src/studio/agent/shell.py`（executor 从 ctx 取 `exec_network`）、`backend/tests/agent/test_openai_runtime.py`、`backend/tests/agent/test_shell_sandbox.py`、`docs/references/openai-agents-sdk.md`。
@@ -198,9 +198,11 @@
 
 - 2026-10-16 — T4 — Claude：`None` → `claude_code` preset；`sandbox_settings(network=True)` 加 `allowedDomains=["*"]`；实测结论进 references（D3、D4）；make check 绿
 
+- 2026-10-16 — T5 — OpenAI：`None` → 不发 instructions；`seatbelt_profile(network=True)`、`LocalShellExecutor(network=)`；回环真实执行测试；make check 绿
+
 ## 下一步
 
-- T5：OpenAI 运行时与 Seatbelt。先读 Agents SDK 源码确认 `Agent(instructions=None)` 合法；写 `tests/agent/test_shell_sandbox.py`（`seatbelt_profile(..., network=True)` 去掉 `deny network*`、保留三条逃逸规则；回环 HTTP 服务器的真实执行测试）与 `test_openai_runtime.py`（`instructions is None`）的失败测试；去掉 `openai_runtime.run_turn` 里的 `NotImplementedError`。
+- T6：Codex 运行时。先在本机 codex 上实测 permissions profile 打开网络的配置键（`curl https://example.com`），结论写进 `references/codex.md`；再写 `tests/agent/test_codex_args.py`、`test_codex_runtime.py`、`test_codex_sandbox.py` 的失败测试（`None` 时不传指令、`prompt_digest(None)`、不拼 `PROMPT_UPDATE`、`network=True` 的参数）；去掉 `codex_runtime` 里的两处 `NotImplementedError`。
 
 ## 决策记录
 

@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 import dataclasses
+import http.server
 import os
 import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -88,6 +90,23 @@ class TestSeatbeltProfile:
             '(subpath "/dev/fd")',
         ):
             assert literal in lines[allow_write]
+
+    @seatbelt_profile_text
+    def test_network_only_drops_the_network_rule(self, tmp_path: Path) -> None:
+        """open-mode 设计 §5.2：放开网络，三条逃逸规则与读写规则都保留。"""
+        workdir = tmp_path / "w"
+        workdir.mkdir()
+        offline = _lines(seatbelt_profile(workdir, [tmp_path / "repo"]))
+        online = _lines(seatbelt_profile(workdir, [tmp_path / "repo"], network=True))
+
+        assert "(deny network*)" not in online
+        assert [line for line in offline if line != "(deny network*)"] == online
+        for rule in (
+            '(deny mach-lookup (global-name "com.apple.coreservices.launchservicesd"))',
+            "(deny appleevent-send)",
+            '(deny process-exec (literal "/usr/bin/open") (literal "/usr/bin/osascript"))',
+        ):
+            assert rule in online
 
     @seatbelt_profile_text
     def test_paths_are_realpaths(self, tmp_path: Path) -> None:
@@ -180,9 +199,15 @@ def layout(tmp_path: Path) -> _Layout:
     return _Layout(repo=repo, data=data, workdir=workdir, sibling=sibling)
 
 
-async def _sh(layout: _Layout, command: str) -> tuple[int | None, str, str]:
+async def _sh(
+    layout: _Layout, command: str, *, network: bool = False
+) -> tuple[int | None, str, str]:
     executor = LocalShellExecutor(
-        layout.workdir, set(), deny_read=[layout.repo, layout.data], environ=os.environ
+        layout.workdir,
+        set(),
+        deny_read=[layout.repo, layout.data],
+        environ=os.environ,
+        network=network,
     )
     result: ShellResult = await executor(_request([command]))
     (output,) = result.output
@@ -263,6 +288,26 @@ class TestSandboxedExecution:
         assert code != 0
         code, _, _ = await _sh(layout, "curl -sS -m 5 -o /dev/null http://1.1.1.1")
         assert code != 0
+
+    async def test_network_flag_reaches_a_loopback_server(self, layout: _Layout) -> None:
+        """open-mode 设计 §5.2：`network=True` 时沙箱内能连上本机测试服务器，读隔离不变。"""
+        server = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        url = f"http://127.0.0.1:{server.server_address[1]}/"
+        curl = f"curl -sS -m 5 -o /dev/null -w '%{{http_code}}' {url}"
+        try:
+            offline = await _sh(layout, curl)
+            online = await _sh(layout, curl, network=True)
+            env_read = await _sh(layout, f"cat {layout.repo / 'backend' / '.env'}", network=True)
+        finally:
+            server.shutdown()
+            server.server_close()
+        assert offline[0] != 0
+        assert online[0] == 0 and online[1] in ("200", "404")
+        assert env_read[0] != 0 and "sk-secret" not in env_read[1]
 
     async def test_launchservices_mach_lookup_denied(self, layout: _Layout) -> None:
         """`lsappinfo front` 靠 mach-lookup 联系 launchservicesd 才能拿到真实的

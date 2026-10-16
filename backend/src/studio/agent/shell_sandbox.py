@@ -56,17 +56,23 @@ def _subpaths(paths: Sequence[Path]) -> str:
 
 
 def seatbelt_profile(
-    workdir: Path, deny_read: Sequence[Path], *, allow_read: Sequence[Path] = ()
+    workdir: Path,
+    deny_read: Sequence[Path],
+    *,
+    allow_read: Sequence[Path] = (),
+    network: bool = False,
 ) -> str:
     """生成本轮 Shell 的 Seatbelt 配置（SBPL）。`deny_read` 通常是 `[仓库根, data_dir]`。
 
     `allow_read` 是在拒读之后额外放回的只读路径（例如运行合成脚本需要的虚拟环境，它在仓库内）。
+    `network=True`（只有完全自由阶段，open-mode 设计 §5.2）只去掉 `(deny network*)`：下面三条
+    防的是借沙箱外进程逃逸，不只是联网，照样保留；读写规则不变。
     """
     work = workdir.resolve()
     rules = [
         "(version 1)",
         "(allow default)",
-        "(deny network*)",
+        *([] if network else ["(deny network*)"]),
         # `(allow default)` 下 mach IPC 默认放行：`lsappinfo front`/`open`/
         # `osascript` 能经 mach-lookup 联系 launchservicesd、把 URL 交给未被
         # 沙箱管住的默认浏览器打开，或发送 Apple Event，绕开上面的

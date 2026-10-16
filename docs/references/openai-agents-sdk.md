@@ -43,6 +43,8 @@
 | ✅ 已验证（2026-10-02，`make smoke`，经 OpenRouter，对话页重做 T4） | **多轮回放 `reasoning` 条目被接受**（解决上面「部分验证」里的未验证项）：第一轮产生了 reasoning 条目，第二轮经 `SQLiteSession` 回放（`store=False` + `reasoning.encrypted_content`）正常完成，没有 "Item not found" | 同上用例的第二轮（`thinking-openai-responses-turn2.json`，`status=done`） |
 | ✅ 已验证（2026-10-02，源码） | LiteLLM 的 chat-completions 路径会**忽略** `ModelSettings.reasoning.summary` 并在每次调用时打警告，只把 `reasoning.effort` 当 `reasoning_effort` 传；因此本项目在 LiteLLM 路径不设 `reasoning`。provider 自己流出的 reasoning（chatcmpl 流处理器会产出同名的 `response.reasoning_summary_text.delta`）仍会透传。DeepSeek 经 LiteLLM 是否真有 reasoning 流**未实测** | `agents/extensions/models/litellm_model.py: _get_reasoning_effort`、`agents/models/chatcmpl_stream_handler.py` |
 | 未验证（2026-10-02，TD-47） | 官方端点 `api.openai.com` 对非推理模型（如 `gpt-4.1`、`gpt-4o`）是否拒绝 `reasoning.summary` 没有用真实 key 验证；出于谨慎，`model_settings` 只对名字匹配 `^(o\\d|gpt-[5-9])` 的官方端点模型请求摘要，其余不带 `reasoning`（网关路径沿用总是请求，OpenRouter 已实测接受） | 评审指出的风险；未实测 |
+| ✅ 已验证（2026-10-16，0.22.3，源码 + 单测） | `Agent.instructions` 的类型是 `str | Callable | None`，默认 `None`；为 `None` 时模型调用的 `system_instructions` 就是 `None`（不发系统提示词）。完全自由阶段靠它实现"不加任何提示词"——Agents SDK 没有 Claude Code 那样的默认提示词 | `agents/agent.py: Agent.instructions`；`tests/agent/test_openai_runtime.py::test_runtime_default_prompt_sends_no_instructions` |
+| ✅ 已验证（2026-10-16，macOS Darwin 24.6） | Seatbelt 配置去掉 `(deny network*)` 后，沙箱内 `curl` 能连上本机回环 HTTP 服务器；拒读规则照旧生效（读不到仓库里的 `.env`） | `tests/agent/test_shell_sandbox.py::test_network_flag_reaches_a_loopback_server` |
 
 ## 本项目的用法（T10）
 
