@@ -82,6 +82,28 @@ describe('StageNav 的自由模式', () => {
     expect(wrapper.get('[data-testid="free-mode-label"]').text()).toBe('自由模式 · 讲解（带背景乐）')
   })
 
+  it('完全自由项目不显示阶段条，只标注「完全自由模式」', () => {
+    const wrapper = mount(StageNav, {
+      props: {
+        projectId: 'p1',
+        currentStage: 'open',
+        stages: [
+          { stage: 'open', status: 'active', finalized_snapshot_id: null, based_on: {}, finalized_at: null },
+        ],
+        kind: {
+          video_kind: 'open',
+          engine: 'html',
+          narration: false,
+          music_source: 'none',
+          mode: 'open',
+          pipeline: ['open'],
+        },
+      },
+    })
+    expect(wrapper.find('nav[aria-label="阶段"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="free-mode-label"]').text()).toBe('完全自由模式')
+  })
+
   it('分阶段项目照常显示阶段条', () => {
     const wrapper = mountNav()
     expect(wrapper.find('nav[aria-label="阶段"]').exists()).toBe(true)

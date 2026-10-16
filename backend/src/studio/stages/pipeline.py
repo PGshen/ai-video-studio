@@ -11,12 +11,13 @@ from typing import Any, Literal, cast
 
 Engine = Literal["manim", "html"]
 MusicSource = Literal["none", "synth", "import"]
-VideoKind = Literal["explainer_manim", "explainer_html", "motion_reel", "music_video"]
-Mode = Literal["staged", "free"]
+VideoKind = Literal["explainer_manim", "explainer_html", "motion_reel", "music_video", "open"]
+Mode = Literal["staged", "free", "open"]
 
 FREE_EXPLAINER_STAGE = "free_explainer"
 FREE_PRODUCE_STAGE = "free_produce"
 FREE_STAGES: tuple[str, ...] = (FREE_EXPLAINER_STAGE, FREE_PRODUCE_STAGE)
+OPEN_STAGE = "open"
 
 KIND_SETTING_KEYS: tuple[str, ...] = (
     "video_kind",
@@ -43,8 +44,14 @@ LEGACY_KIND = ProjectKind(engine="manim", narration=True, music_source="none")
 # Kind for creation requests that give no kind fields.
 DEFAULT_KIND = ProjectKind(engine="html", narration=True, music_source="none")
 
+# The only kind of an open-mode project (open-mode design §3.1). Its form fields are
+# placeholders that only satisfy the data shape: branch on `mode == "open"`, never on them.
+OPEN_KIND = ProjectKind(engine="html", narration=False, music_source="none", mode="open")
+
 
 def kind_errors(kind: ProjectKind) -> list[str]:
+    if kind.mode == "open":
+        return [] if kind == OPEN_KIND else ["完全自由项目没有形态配置"]
     errors: list[str] = []
     if not kind.narration and kind.music_source == "none":
         errors.append("无旁白的项目必须配乐（music_source 不能为 none）")
@@ -56,6 +63,8 @@ def kind_errors(kind: ProjectKind) -> list[str]:
 
 
 def video_kind_of(kind: ProjectKind) -> VideoKind:
+    if kind.mode == "open":
+        return "open"
     if kind.narration:
         return "explainer_html" if kind.engine == "html" else "explainer_manim"
     return "music_video" if kind.music_source == "import" else "motion_reel"
@@ -65,6 +74,8 @@ def build_pipeline(kind: ProjectKind) -> list[str]:
     errors = kind_errors(kind)
     if errors:
         raise ValueError("；".join(errors))
+    if kind.mode == "open":
+        return [OPEN_STAGE]
     if kind.mode == "free":
         return [FREE_EXPLAINER_STAGE if kind.narration else FREE_PRODUCE_STAGE]
     video_kind = video_kind_of(kind)
@@ -86,6 +97,7 @@ def valid_kinds() -> list[ProjectKind]:
     kinds += [ProjectKind("html", True, source, "free") for source in ("none", "synth")]
     kinds.append(ProjectKind("html", False, "synth", "free"))
     kinds.append(ProjectKind("html", False, "import", "free"))
+    kinds.append(OPEN_KIND)
     return kinds
 
 
@@ -141,13 +153,25 @@ PRESETS: tuple[Preset, ...] = (
         music_choices=("import",),
         default=ProjectKind("html", False, "import", "free"),
     ),
+    Preset(
+        video_kind="open",
+        label="完全自由",
+        description=(
+            "没有结构和检查，像直接用 Claude Code 一样在工作区里随意创作；产物都在「文件」里预览。"
+        ),
+        music_choices=("none",),
+        default=OPEN_KIND,
+    ),
 )
 
 
 def kind_from_settings(settings: Mapping[str, Any]) -> ProjectKind:
     """Legacy kind when fields are missing or hold values outside their allowed set.
 
-    A missing or unknown `mode` reads as `staged`: projects created before free mode carry none."""
+    A missing or unknown `mode` reads as `staged`: projects created before free mode carry none.
+    `mode == "open"` wins over the form fields, which are placeholders for open projects."""
+    if settings.get("mode") == "open":
+        return OPEN_KIND
     engine = settings.get("engine")
     narration = settings.get("narration")
     music_source = settings.get("music_source")

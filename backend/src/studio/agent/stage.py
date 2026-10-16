@@ -26,8 +26,14 @@ class StageDefinition(Protocol):
     """没有项目、没有工作区的阶段（头脑风暴，设计 §3.1）：会话 `project_id` 为空，TurnRunner 走
     「无工作区」模式——没有快照、`upstream/`、越界检查，cwd 是每轮重置的 scratch 目录。其余阶段
     必须有项目。"""
+    exec_network: bool
+    """本阶段 agent 执行的命令（Claude Bash、OpenAI Shell、Codex 命令）能否联网（open-mode 设计
+    §5.2）。只放开网络，读写隔离不变；只有完全自由阶段为真。"""
 
-    def system_prompt(self) -> str: ...
+    def system_prompt(self) -> str | None:
+        """阶段提示词；`None` 表示使用运行时自己的默认提示词、不追加任何内容（open-mode 设计 §5.1：
+        Claude 用 `claude_code` preset，Codex 用 CLI 自带指令，OpenAI 的 instructions 为空）。"""
+        ...
 
     def tools(self) -> list[ToolSpec]: ...
 

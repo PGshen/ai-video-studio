@@ -340,6 +340,7 @@ class OpenAIRuntime:
                     environ=self._environ,
                     deny_read=self._shell_deny_read,
                     sandboxed=shell_mode == "sandboxed",
+                    network=ctx.exec_network,
                 )
                 native.append(ShellTool(executor=executor))
             else:
@@ -381,6 +382,7 @@ class OpenAIRuntime:
         turn = _Turn(profile=ctx.model_profile, workdir=ctx.workdir)
         agent = Agent(
             name="studio",
+            # None: no instructions at all; the Agents SDK has no default prompt (open-mode §5.1).
             instructions=ctx.system_prompt,
             model=model,
             model_settings=model_settings(ctx.model_profile, ctx.effort),

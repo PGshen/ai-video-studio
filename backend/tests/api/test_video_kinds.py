@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .conftest import ApiEnv, register_free_stages, register_reel_stages
+from .conftest import ApiEnv, register_free_stages, register_open_stage, register_reel_stages
 
 
 async def test_default_registry_makes_the_three_presets_available(api_env: ApiEnv) -> None:
@@ -17,6 +17,7 @@ async def test_default_registry_makes_the_three_presets_available(api_env: ApiEn
         ("explainer_html", "自由讲解"),
         ("motion_reel", "自由短片"),
         ("music_video", "自由 MV"),
+        ("open", "完全自由"),
     ]
     assert body["presets"][3]["default"]["mode"] == "free"
     assert body["presets"][3]["music_choices"] == ["none", "synth"]
@@ -112,6 +113,28 @@ async def test_kinds_become_available_when_stages_registered(api_env: ApiEnv) ->
     }
     assert by_kind[("html", False, "synth")]["available"] is True
     assert by_kind[("html", True, "none")]["available"] is True
+
+
+def test_open_kind_is_unavailable_until_its_stage_is_registered() -> None:
+    from studio.agent.stage import StageRegistry
+    from studio.api.video_kinds import unavailable_reason
+
+    reason = unavailable_reason(["open"], StageRegistry(), "none", "html", False)
+
+    assert reason == "「完全自由」阶段尚未实现"
+
+
+async def test_open_kind_is_listed_and_available_once_registered(api_env: ApiEnv) -> None:
+    register_open_stage(api_env.app.state.registry)
+
+    body = (await api_env.client.get("/api/video-kinds")).json()
+
+    opened = [k for k in body["kinds"] if k["mode"] == "open"]
+    assert [(k["video_kind"], k["pipeline"], k["available"]) for k in opened] == [
+        ("open", ["open"], True)
+    ]
+    assert body["presets"][-1]["default"]["mode"] == "open"
+    assert body["presets"][-1]["music_choices"] == ["none"]
 
 
 async def test_free_kinds_are_listed_and_follow_stage_registration(api_env: ApiEnv) -> None:

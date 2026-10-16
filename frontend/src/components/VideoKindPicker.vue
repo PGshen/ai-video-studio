@@ -20,7 +20,7 @@ import {
 import type { Mode, MusicSource, PresetOut, VideoKindsOut } from '@/types/api'
 
 const props = withDefaults(defineProps<{ data: VideoKindsOut; modes?: Mode[] }>(), {
-  modes: () => ['staged', 'free'],
+  modes: () => ['staged', 'free', 'open'],
 })
 const preset = defineModel<string>('preset', { required: true })
 const music = defineModel<MusicSource>('music', { required: true })
@@ -28,6 +28,7 @@ const music = defineModel<MusicSource>('music', { required: true })
 const GROUP_LABELS: Record<Mode, string> = {
   staged: '分阶段（选题 → 叙事 → 动画，逐步定稿）',
   free: '自由（一个对话里完成全部，不分阶段）',
+  open: '完全自由（没有结构和检查，直接在工作区里创作）',
 }
 
 const scoped = computed(() => presetsFor(props.data, props.modes))

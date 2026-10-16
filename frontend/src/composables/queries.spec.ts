@@ -9,6 +9,7 @@ import {
   invalidateWorkspace,
   jobRefetchIntervalMs,
   queryKeys,
+  useCreateProjectMutation,
   useUploadMusicSourceMutation,
 } from '@/composables/queries'
 
@@ -178,5 +179,33 @@ describe('useUploadMusicSourceMutation', () => {
     expect(keys).toContainEqual(['projects', 'p1', 'music', 'meta'])
     expect(keys).toContainEqual(['projects', 'p1', 'animation', 'html-preview-meta'])
     expect(keys).toContainEqual(['projects', 'p1', 'files'])
+  })
+})
+
+describe('useCreateProjectMutation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('不把列表形态的项目（没有 stages/busy）塞进项目详情缓存，只让它重新拉取', async () => {
+    const created = { id: 'p9', title: 't', current_stage: 'open' }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(created), { status: 201 })),
+    )
+    const queryClient = new QueryClient()
+    let mutation!: ReturnType<typeof useCreateProjectMutation>
+    const Probe = defineComponent({
+      setup() {
+        mutation = useCreateProjectMutation()
+        return () => null
+      },
+    })
+    mount(Probe, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } })
+
+    await mutation.mutateAsync({ title: 't', mode: 'open' })
+    await flushPromises()
+
+    expect(queryClient.getQueryData(queryKeys.project('p9'))).toBeUndefined()
   })
 })

@@ -12,10 +12,22 @@ from pathlib import Path
 
 EXCLUDED_TOP_DIRS = {".cache", "output", "upstream"}
 
+EXCLUDED_DIR_NAMES = {"node_modules", ".venv", "__pycache__"}
+"""任意深度上、名字恰好是这些的**目录**不参与快照、不列进文件树、guard 和回滚都不碰
+（open-mode 设计 §4.0：agent 会在工作区里装依赖）。与 `EXCLUDED_TOP_DIRS` 语义相同。"""
+
 HIDDEN_TOP_DIRS = EXCLUDED_TOP_DIRS - {"upstream"}
 """对 agent/前端只读接口隐藏的顶层目录：`upstream/` 仍然可见（只读展示上游
 产物），`.cache/`、`output/` 不是"工作区内容"，不应该被 `list_tree`/`read_text`
 或 `/api/projects/{id}/files` 列出或读到（TD-5）。"""
+
+
+def in_excluded_dir(rel_parts: tuple[str, ...]) -> bool:
+    """工作区相对路径（按段）是否落在排除目录里：顶层的 `EXCLUDED_TOP_DIRS`，或任意一段是
+    `EXCLUDED_DIR_NAMES`。传入的是目录的路径段；文件请传它所在目录的路径段。"""
+    if rel_parts and rel_parts[0] in EXCLUDED_TOP_DIRS:
+        return True
+    return any(part in EXCLUDED_DIR_NAMES for part in rel_parts)
 
 
 def project_dir(data_dir: Path | str, project_id: str) -> Path:
@@ -59,8 +71,7 @@ def prune_empty_dirs(workdir: Path) -> None:
         path = Path(dirpath)
         if path == workdir:
             continue
-        rel_parts = path.relative_to(workdir).parts
-        if rel_parts and rel_parts[0] in EXCLUDED_TOP_DIRS:
+        if in_excluded_dir(path.relative_to(workdir).parts):
             continue
         try:
             next(path.iterdir())

@@ -49,6 +49,7 @@ class FreeProduceStage:
     name = "free_produce"
     allow_web = True
     workspaceless = False
+    exec_network = False
 
     def system_prompt(self) -> str:
         return compose_prompt(*_PROMPT_PARTS)

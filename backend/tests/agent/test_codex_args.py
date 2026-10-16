@@ -47,6 +47,20 @@ def test_new_session() -> None:
     assert args[-1] == "-"
 
 
+def test_runtime_default_prompt_sends_only_the_runtime_note() -> None:
+    """open-mode 设计 §5.1：`None` → 不传阶段指令；关不掉的协作工具仍要在提示里禁止。"""
+    args = build_args(
+        workdir=WORKDIR,
+        model="gpt-6.1-sol",
+        resume_ref=None,
+        system_prompt=None,
+        effort=None,
+        image_paths=[],
+        extra=[],
+    )
+    assert _overrides(args)["developer_instructions"] == NO_SUBAGENTS_NOTE.strip()
+
+
 def test_lockdown_args_are_always_present() -> None:
     args = build_args(
         workdir=WORKDIR,

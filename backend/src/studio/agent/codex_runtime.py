@@ -70,7 +70,13 @@ _THREAD_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,128}$")
 _USAGE_KEYS = ("input_tokens", "cached_input_tokens", "output_tokens")
 
 
-def prompt_digest(prompt: str) -> str:
+RUNTIME_DEFAULT_DIGEST = "default"
+"""`prompt_digest(None)`：会话用 codex 自带指令（open-mode 设计 §5.1），与任何 sha256 都不同。"""
+
+
+def prompt_digest(prompt: str | None) -> str:
+    if prompt is None:
+        return RUNTIME_DEFAULT_DIGEST
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
@@ -180,6 +186,8 @@ class CodexRuntime:
             sandbox_available=codex_sandbox_available(self._platform),
             allow_unsandboxed=ctx.allow_unsandboxed_exec,
         )
+        # `ctx.exec_network` is deliberately ignored: codex's `network.enabled` also opens
+        # loopback, where the studio API has no auth (ADR 0031 review). Fail closed.
         return sandbox_args(mode, ctx.workdir, self._repo_root, self._data_dir)
 
     async def run_turn(self, ctx: TurnContext) -> AsyncIterator[events.AgentEvent]:
@@ -284,7 +292,12 @@ class CodexRuntime:
         text = ctx.user_input.text
         if ctx.resume_ref is not None:
             entry = self._ledger.get(ctx.resume_ref)
-            if entry is not None and entry.prompt_digest not in (None, digest):
+            # A session's stage never changes, so a None prompt never needs an update block.
+            if (
+                ctx.system_prompt is not None
+                and entry is not None
+                and entry.prompt_digest not in (None, digest)
+            ):
                 text = PROMPT_UPDATE.format(prompt=ctx.system_prompt) + text
         return text, digest
 

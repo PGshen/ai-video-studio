@@ -55,7 +55,7 @@ def build_args(
     workdir: Path,
     model: str,
     resume_ref: str | None,
-    system_prompt: str,
+    system_prompt: str | None,
     effort: Effort | None,
     image_paths: Sequence[Path],
     extra: Sequence[str],
@@ -76,7 +76,12 @@ def build_args(
     if effort is not None:
         args += ["-c", f"model_reasoning_effort={toml_string(effort)}"]
     if resume_ref is None:
-        instructions = system_prompt + NO_SUBAGENTS_NOTE
+        # None: codex's own instructions only (open-mode design §5.1); the note stays because
+        # this version cannot turn the collaboration tools off.
+        if system_prompt is None:
+            instructions = NO_SUBAGENTS_NOTE.strip()
+        else:
+            instructions = system_prompt + NO_SUBAGENTS_NOTE
         args += ["-c", f"developer_instructions={toml_string(instructions)}"]
     args += list(extra)
     if resume_ref is not None:

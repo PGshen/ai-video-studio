@@ -6,12 +6,12 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 已完成 |
 | 里程碑 | 完全自由模式（非编号） |
 | 设计依据 | [完全自由模式设计](../../design/2026-10-15-open-mode.md)（2026-10-16 负责人批准） |
 | 分支 | `feat/open-mode`（从 `main` 的 `dc05403` 切出，设计文档已在其上） |
-| 批准记录 | 2026-10-16：负责人批准设计；计划待批准 |
-| 执行方式 | 待负责人选择 |
+| 批准记录 | 2026-10-16：负责人批准设计；2026-10-16：负责人批准计划；2026-10-16：负责人验收通过 |
+| 执行方式 | 本会话内联（Native），完成后一个独立评审检查整个分支；worktree `.claude/worktrees/open-mode` |
 
 ## 目标
 
@@ -56,20 +56,20 @@
 
 ## 验收标准
 
-- [ ] AC1：`POST /projects` 用 `mode=open` 创建项目（带或不带 `idea_id`、`theme`），工作区只有 `style/**` 与 `project.md`，内容符合设计 §3.2；带形态字段返回 422 且没有副作用；`GET /api/video-kinds` 出现「完全自由」卡片。（验证：`tests/stages/test_pipeline.py`、`tests/api/test_projects.py`、`tests/api/test_video_kinds.py`）
-- [ ] AC2：任意深度的 `node_modules`、`.venv`、`__pycache__` 不进快照与文件树，回滚不触碰它们。（验证：`tests/workspace/test_snapshot.py`、`tests/workspace/test_files.py`）
-- [ ] AC3：`open` 阶段下三个运行时都使用默认提示词、Bash/Shell 可联网；现有阶段的运行时参数不变。（验证：`tests/agent/test_claude_runtime.py`、`test_openai_runtime.py`、`test_codex_runtime.py`、`test_codex_sandbox.py`、`test_shell_sandbox.py`）
-- [ ] AC4：`open` 阶段的可写范围、工具清单、前言内容符合设计 §4；`tts` 按设计 §4.2 工作；完成 / 重新打开设置与清除项目完成标记；渲染类接口拒绝 `open`。（验证：`tests/stages/test_open_stage.py`、`tests/stages/test_tts_tool.py`、`tests/api/test_open_flow.py`）
-- [ ] AC5：前端可以新建「完全自由」项目（含主题输入）；工作台只显示 `FileCanvas` 与完成按钮，不显示阶段条；`FileCanvas` 对 `.html` 提供预览 / 源码切换。（验证：vitest 用例）
-- [ ] AC6：真实模型冒烟：Claude 本机登录下，`open` 项目做出 `out.mp4`，Bash 联网成功，系统提示词为 Claude Code 默认；Codex 本机登录验证提示词与联网。（验证：`make smoke SMOKE_ARGS="-k open"`）
-- [ ] AC7：L4：浏览器里新建 → 对话 → 预览 HTML、播放 mp4 → 标记完成 → 重新打开，附截图。
-- [ ] AC8：`make check` 全绿；ADR 0031、ARCHITECTURE、glossary、references、QUALITY、TODO 已同步。
+- [x] AC1：`POST /projects` 用 `mode=open` 创建项目（带或不带 `idea_id`、`theme`），工作区只有 `style/**` 与 `project.md`，内容符合设计 §3.2；带形态字段返回 422 且没有副作用；`GET /api/video-kinds` 出现「完全自由」卡片。（验证：`tests/stages/test_pipeline.py`、`tests/api/test_projects.py`、`tests/api/test_video_kinds.py`）
+- [x] AC2：任意深度的 `node_modules`、`.venv`、`__pycache__` 不进快照与文件树，回滚不触碰它们。（验证：`tests/workspace/test_snapshot.py`、`tests/workspace/test_files.py`）
+- [x] AC3：`open` 阶段下三个运行时都使用默认提示词、Bash/Shell 可联网；现有阶段的运行时参数不变。（验证：`tests/agent/test_claude_runtime.py`、`test_openai_runtime.py`、`test_codex_runtime.py`、`test_codex_sandbox.py`、`test_shell_sandbox.py`）
+- [x] AC4：`open` 阶段的可写范围、工具清单、前言内容符合设计 §4；`tts` 按设计 §4.2 工作；完成 / 重新打开设置与清除项目完成标记；渲染类接口拒绝 `open`。（验证：`tests/stages/test_open_stage.py`、`tests/stages/test_tts_tool.py`、`tests/api/test_open_flow.py`）
+- [x] AC5：前端可以新建「完全自由」项目（含主题输入）；工作台只显示 `FileCanvas` 与完成按钮，不显示阶段条；`FileCanvas` 对 `.html` 提供预览 / 源码切换。（验证：vitest 用例）
+- [x] AC6：真实模型冒烟：Claude 本机登录下，`open` 项目做出 `out.mp4`，Bash 联网成功，系统提示词为 Claude Code 默认；Codex 本机登录验证提示词与联网。（验证：`make smoke SMOKE_ARGS="-k open"`）
+- [x] AC7：L4：浏览器里新建 → 对话 → 预览 HTML、播放 mp4 → 标记完成 → 重新打开，附截图。
+- [x] AC8：`make check` 全绿；ADR 0031、ARCHITECTURE、glossary、references、QUALITY、TODO 已同步。
 
 ## 任务
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：项目模型与创建接口（待开始）
+### T1：项目模型与创建接口（完成）
 
 - **目标**：`open` 进入项目类型；能创建 `open` 项目，初始文件只有 `style/**` 与 `project.md`。此时 `open` 阶段还没注册，`video-kinds` 显示为不可用、创建返回 422（现有"未注册阶段"逻辑），T7 注册后自动变为可用；测试里用一个注册了假 `open` 阶段的 registry 覆盖创建成功的路径。
 - **涉及文件**：`backend/src/studio/stages/pipeline.py`、`backend/src/studio/api/schemas.py`（`ProjectCreate.mode` 加 `"open"`、新增 `theme: str | None`，`max_length=2000`）、`backend/src/studio/api/projects.py`、`backend/src/studio/api/video_kinds.py`（`STAGE_TITLES["open"] = "完全自由"`）、`backend/tests/stages/test_pipeline.py`、`backend/tests/api/test_projects.py`、`backend/tests/api/test_video_kinds.py`。
@@ -85,7 +85,7 @@
 - **完成标准**：上述测试通过；现有自由模式与多阶段创建测试不变。
 - **验证命令**：`make check`
 
-### T2：依赖目录不进快照与文件树（待开始）
+### T2：依赖目录不进快照与文件树（完成）
 
 - **目标**：设计 §4.0。
 - **涉及文件**：`backend/src/studio/workspace/layout.py`（新常量 `EXCLUDED_DIR_NAMES = {"node_modules", ".venv", "__pycache__"}`）、`backend/src/studio/workspace/snapshot.py`（扫描时 `dirnames` 过滤；回滚时跳过这些目录及其内容）、`backend/src/studio/workspace/files.py`（`list_tree` 跳过；`read`/`write` 不另加限制）、`backend/src/studio/workspace/scope.py`（若越界防线的扫描与快照扫描不共用一个函数，同步跳过，避免 guard 去还原 `node_modules`）、`backend/tests/workspace/test_snapshot.py`、`backend/tests/workspace/test_files.py`。
@@ -94,7 +94,7 @@
 - **完成标准**：上述测试通过；现有快照、回滚、guard 测试不变。
 - **验证命令**：`make check`
 
-### T3：阶段协议扩展（待开始）
+### T3：阶段协议扩展（完成）
 
 - **目标**：协议能表达"用运行时默认提示词"和"命令可联网"，现有阶段不受影响。
 - **涉及文件**：`backend/src/studio/agent/stage.py`、`backend/src/studio/agent/runtime.py`（`TurnContext.system_prompt: str | None`、新增 `exec_network: bool = False` 并透传进 `tool_context()`）、`backend/src/studio/agent/tools.py`（`ToolContext.exec_network: bool = False`）、`backend/src/studio/agent/runner.py`（三处构造 `TurnContext` 时传 `exec_network=job.stage.exec_network`）、`backend/src/studio/agent/fake.py`（若读 `system_prompt`）、所有现有阶段类（加 `exec_network = False`）、`backend/tests/agent/test_stage.py`、`backend/tests/agent/test_runner.py`。
@@ -106,7 +106,7 @@
 - **完成标准**：上述测试通过；现有运行时测试不改断言即通过。
 - **验证命令**：`make check`
 
-### T4：Claude 运行时（待开始）
+### T4：Claude 运行时（完成）
 
 - **目标**：`system_prompt is None` 时用 `claude_code` preset；`open` 的内置工具集；`exec_network` 时沙箱放开出站。
 - **涉及文件**：`backend/src/studio/agent/claude_runtime.py`、`backend/src/studio/agent/claude_scope.py`（`sandbox_settings(..., network: bool = False)`）、可能的 `backend/src/studio/agent/sandbox_paths.py`（白名单回退）、`backend/tests/agent/test_claude_runtime.py`、`docs/references/claude-agent-sdk.md`。
@@ -119,7 +119,7 @@
 - **完成标准**：上述测试通过；references 已更新。
 - **验证命令**：`make check`；实测脚本的输出摘要记进「意外与发现」。
 
-### T5：OpenAI 运行时与 Seatbelt（待开始）
+### T5：OpenAI 运行时与 Seatbelt（完成）
 
 - **目标**：`system_prompt is None` 时 `instructions=None`；`exec_network` 时 Shell 可联网。
 - **涉及文件**：`backend/src/studio/agent/openai_runtime.py`、`backend/src/studio/agent/shell_sandbox.py`（`seatbelt_profile(workdir, deny_read, *, network: bool = False)`）、`backend/src/studio/agent/shell.py`（executor 从 ctx 取 `exec_network`）、`backend/tests/agent/test_openai_runtime.py`、`backend/tests/agent/test_shell_sandbox.py`、`docs/references/openai-agents-sdk.md`。
@@ -128,7 +128,7 @@
 - **完成标准**：上述测试通过。
 - **验证命令**：`make check`
 
-### T6：Codex 运行时（待开始）
+### T6：Codex 运行时（完成）
 
 - **目标**：`system_prompt is None` 时不传阶段指令、不触发 `PROMPT_UPDATE`；`exec_network` 时沙箱联网。
 - **涉及文件**：`backend/src/studio/agent/codex_runtime.py`（`prompt_digest(prompt: str | None)`，`None` 返回固定值 `"default"`；`_message` 在 `None` 时不拼 `PROMPT_UPDATE`）、`backend/src/studio/agent/codex_args.py`（`build_args(system_prompt: str | None, ...)`，`None` 时不加指令参数）、`backend/src/studio/agent/codex_sandbox.py`（`permission_args(..., network: bool = False)`、`sandbox_args(..., network: bool = False)`）、`backend/tests/agent/test_codex_args.py`、`test_codex_runtime.py`、`test_codex_sandbox.py`、`docs/references/codex.md`。
@@ -137,7 +137,7 @@
 - **完成标准**：上述测试通过；references 已更新。
 - **验证命令**：`make check`
 
-### T7：`tts` 工具、`open` 阶段与完成流程（待开始）
+### T7：`tts` 工具、`open` 阶段与完成流程（完成）
 
 - **目标**：注册 `open` 阶段；`tts` 可用；完成 / 重新打开维护项目完成标记；渲染类接口拒绝 `open`。
 - **涉及文件**：`backend/src/studio/stages/common/narration/tts.py`（新）、`backend/src/studio/stages/common/narration/synthesize_tts.py`（抽出共用的 TTS 调用与 `_project_voice_and_speed`，行为不变）、`backend/src/studio/stages/open/__init__.py`（新）、`backend/src/studio/main.py`（注册）、`backend/src/studio/api/projects.py`（`finalize`/`reopen` 端点对 `open` 设置 / 清除 `completed_at`）、`backend/src/studio/api/animation_stage.py`（见下）、`backend/tests/stages/test_open_stage.py`、`backend/tests/stages/test_tts_tool.py`、`backend/tests/api/test_open_flow.py`、`.importlinter`（若需为 `stages.open` 加契约条目）。
@@ -150,7 +150,7 @@
 - **完成标准**：上述测试通过；`video-kinds` 中「完全自由」变为可用。
 - **验证命令**：`make check`
 
-### T8：前端创建入口与标记（待开始）
+### T8：前端创建入口与标记（完成）
 
 - **目标**：能从项目页与选题卡创建「完全自由」项目；各处认识 `open`。
 - **涉及文件**：`frontend/src/features/projects/NewFreeProjectDialog.vue`（+ spec）、`frontend/src/features/ideas/CreateProjectDialog.vue`（+ spec，若需要为 `open` 卡片隐藏配乐选择与传 `theme`）、`frontend/src/composables/videoKindChoice.ts`、`frontend/src/composables/stageTitles.ts`（+ spec）、`frontend/src/features/projects/ProjectCard.vue`、`frontend/src/features/projects/projectView.ts`（+ spec）、`frontend/src/api/types.ts` 或等价类型文件（`mode` 加 `'open'`、`ProjectCreate.theme`）、`frontend/src/test/videoKindsFixture.ts`。
@@ -159,7 +159,7 @@
 - **完成标准**：上述测试通过。
 - **验证命令**：`make check`
 
-### T9：前端工作台与 HTML 预览（待开始）
+### T9：前端工作台与 HTML 预览（完成）
 
 - **目标**：`open` 工作台只有 `FileCanvas` 与完成按钮；`FileCanvas` 预览 HTML。
 - **涉及文件**：`frontend/src/pages/ProjectWorkbenchPage.vue`、`frontend/src/features/workbench/StageNav.vue`（+ spec）、`frontend/src/features/canvas/generic/FileCanvas.vue`、`frontend/src/features/canvas/generic/fileKind.ts`（+ spec，新增 `isHtmlFile(path)`）、新组件 `frontend/src/features/canvas/open/OpenCanvasHeader.vue`（+ spec：标记 + 「标记完成 / 重新打开」，调用现有 finalize / reopen mutation）、`ProjectWorkbenchPage` 顶部注释与 `STAGES_WITH_OWN_ACTIONS`。
@@ -172,14 +172,14 @@
 - **完成标准**：上述测试通过。
 - **验证命令**：`make check`
 
-### T10：冒烟、L4 验收与文档（待开始）
+### T10：冒烟、L4 验收与文档（完成）
 
 - **目标**：真实模型与浏览器验证；文档同步。
 - **涉及文件**：`backend/tests/smoke/test_open_mode_smoke.py`（新，`-k open` 可选中；Claude 用例用本机登录，Codex 用例用本机 ChatGPT 登录，缺登录时按现有冒烟惯例跳过）、`docs/decisions/0031-完全自由模式.md`、`docs/ARCHITECTURE.md`、`docs/glossary.md`、`docs/quality/QUALITY.md`、`docs/quality/tech-debt.md`（视频反复生成撑大快照库，设计 §10）、`docs/plans/TODO.md`、`docs/runbooks/verification.md`（若冒烟命令有新增）。
 - **接口与要点**：
   - Claude 冒烟：创建 `open` 项目，消息"按 style 做一个 10 秒的标题动画，用 HTML 写，最后用 ffmpeg 导出 `out.mp4`；开始前先运行 `npm view left-pad version` 并告诉我结果"。断言：工作区有 `out.mp4` 且 ffprobe 时长 > 0；工具结果里 `npm view` 成功；会话 init 消息里 `tools` 含 TodoWrite、不含禁用工具（佐证 preset 与工具集）。
   - Codex 冒烟：消息"运行 `curl -sI https://example.com` 并告诉我状态码"，断言回复含 `200`。
-  - L4：`make dev`，浏览器走设计 §8 的手动验收，截图存 `docs/plans/active/open-mode-l4/`（收尾时随计划移动）。
+  - L4：`make dev`，浏览器走设计 §8 的手动验收，截图存 `docs/plans/completed/open-mode-l4/`（收尾时已随计划移动）。
   - ADR 0031 内容见设计 §9；ARCHITECTURE 模块表加 `stages.open`、`stages.common.narration.tts`，更新阶段协议说明与 `workspace` 排除规则。
 - **测试**：冒烟本身。
 - **完成标准**：AC6、AC7 有证据；AC8 文档项全部完成。
@@ -189,22 +189,67 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 2026-10-16 — 计划草稿完成，待负责人批准
+- 2026-10-16 — 计划草稿完成，负责人批准，选择内联执行
+- 2026-10-16 — T1 — `OPEN_KIND`/`OPEN_STAGE`、预设卡片、`theme` 与 `project.md`、video-kinds 标题；make check 绿
+
+- 2026-10-16 — T2 — `EXCLUDED_DIR_NAMES` + `layout.in_excluded_dir`；快照扫描、文件树、guard 的符号链接清理、空目录清理都跳过依赖目录；make check 绿
+
+- 2026-10-16 — T3 — 协议 `system_prompt() -> str | None`、`exec_network`；所有阶段与测试替身补 `exec_network = False`；三个运行时遇到 `None` 暂时抛 `NotImplementedError`（D2）；make check 绿
+
+- 2026-10-16 — T4 — Claude：`None` → `claude_code` preset；`sandbox_settings(network=True)` 加 `allowedDomains=["*"]`；实测结论进 references（D3、D4）；make check 绿
+
+- 2026-10-16 — T5 — OpenAI：`None` → 不发 instructions；`seatbelt_profile(network=True)`、`LocalShellExecutor(network=)`；回环真实执行测试；make check 绿
+
+- 2026-10-16 — T6 — Codex：`None` 时 `developer_instructions` 只剩"不要派生子 agent"一句（D5）；`prompt_digest(None)="default"`、不拼 `PROMPT_UPDATE`；`permissions.studio.network.enabled=true`（实测）；make check 绿
+
+- 2026-10-16 — T7 — `tts` 工具（`stages/common/narration/tts.py`）、`stages.common.open_scope`、`stages.open` 注册；`open` 定稿即标记项目完成、重新打开清除；渲染与 `finalize-render` 返回 409（D1、D6、D7）；make check 绿
+
+- 2026-10-16 — T8 — 前端：`Mode`/`VideoKind` 加 `open`、`kindFields`、两个创建对话框（新建对话框多主题框）、`STAGE_TITLES.open`、`KIND_SUMMARY`（D8）；make check 绿
+
+- 2026-10-16 — T9 — 前端工作台：`OpenCanvas`（标记 + 标记完成/重新打开 + `files`/`actions` 插槽）、`StageNav` 的「完全自由模式」、`FileCanvas` 的 HTML 预览/源码切换与 403 文案、`.html/.htm/.css` 改为文本文件（D9）；make check 绿
+
+- 2026-10-16 — T10 — 冒烟（Claude、Codex 本机登录）通过；L4 走完并截图；修复创建项目后详情缓存缺 `stages`（L4 发现）；ADR 0031、ARCHITECTURE、glossary、QUALITY、tech-debt（TD-98）、TODO 同步；make check 绿
+
+- 2026-10-16 — 负责人验收通过；收尾：计划移到 completed、延后小问题登记技术债、合并到 main
+- 2026-10-16 — 分支评审修复：C1（回环，D10）、I1（缓存目录，D11），各自先写失败测试；make check 绿；Codex 冒烟重跑通过
 
 ## 下一步
 
-- 负责人批准计划并选择执行方式后：从 `main` 切 `feat/open-mode` 分支，把本计划状态改为「执行中」，从 T1 开始（先写 `tests/stages/test_pipeline.py` 中 `OPEN_KIND` 相关的失败测试）。
+- 无。计划已完成并合并到 main；延后的小问题已登记为 TD-99～TD-103。
 
 ## 决策记录
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
 - D1（2026-10-16，写计划时）— `animation_stage_of` 对 `open` 返回 `OPEN_STAGE`，由 `require_live_animation_stage` 统一拒绝（409），而不是设计 §6 写的"返回 `None`"。理由：现有函数返回 `str` 且以 Manim 下线阶段为兜底，改成可空会波及所有调用方；集中在一个检查点拒绝更不容易漏，文案也更准确（不会误报"Manim 已下线"）。不改变设计意图（`open` 没有渲染、`finalize-render`、场景检查）。
+- D3（2026-10-16，T4）— 完全自由阶段的 Claude 内置工具**沿用现有的显式列表**（Read/Write/Edit/Glob/Grep/Bash，`allow_web` 时加 WebSearch/WebFetch），不扩展、不用 tools preset，也不需要 `disallowed_tools` 名单。理由：实测本机 CLI 2.1.283 的 preset 工具名单里没有 Glob/Grep/TodoWrite/MultiEdit，多出来的是 Cron/Worktree/Workflow/SendMessage/Skill 等依赖宿主 UI 或会改变会话的工具，事件流和画布都接不住；系统提示词已经是 Claude Code 默认，这些工具缺席时模型会退回用 Bash。代价：子 agent（`Task`）不可用；以后需要时按需加入列表并验证事件流。
+- D4（2026-10-16，T4）— Claude 沙箱联网用 `network.allowedDomains=["*"]`（实测可行），不需要域名白名单回退，`sandbox_paths` 不加 `OPEN_NETWORK_DOMAINS`。
+- D5（2026-10-16，T6）— Codex 在 `system_prompt is None` 时仍传 `developer_instructions`，内容只有现有的"不要派生子 agent、不要用协作工具"一句。理由：这个 codex 版本关不掉 `collaboration.*` 工具（references/codex.md），子 agent 的事件本项目接不住；这句话是运行时的接入约束，不是阶段提示词。代价：与设计 §5.1"不传阶段指令"字面上略有出入，但不含任何阶段内容。
+- D6（2026-10-16，T7）— `tts` 只接受 `.mp3`（计划写的是 `.mp3`/`.wav`）。理由：TTS 引擎只产出 mp3 字节，转成 wav 要再调 ffmpeg，agent 需要 wav 时可以自己在 Bash 里转。可写判断用新模块 `stages.common.open_scope.OPEN_WRITE_SCOPE`（`open` 阶段与 `tts` 共用），因为 `ToolContext` 不带可写范围、`common` 也不能 import 具体阶段。`open` 阶段的工具除 `tts` 外还带自建 `web_search`/`fetch_url`：只在 `tools` 联网模式下保留（native 模式 runner 会滤掉），否则 `tools` 模式下完全自由阶段没有联网工具。
+- D7（2026-10-16，T7）— 场景检查接口（GET `.../scene-checks`）对 `open` 项目不返回 409，而是照现有逻辑返回"未检查"（`_CHECKED_STAGES` 不含 `open`）：它是只读查询，不算渲染路径。`html-preview` 对 `open` 项目因为没有时间轴返回 409（现有 `TimelineError` 分支），前端也不会调用它。
+- D8（2026-10-16，T8）— 项目卡片不另加「完全自由」徽章：卡片上的阶段徽章取 `STAGE_TITLES[current_stage]`，对 `open` 项目已经是「完全自由」，再加一个是重复；「自由」徽章只给 `mode === 'free'`，两者自然区分。`KIND_SUMMARY` 对 `open` 只返回「完全自由」，不提占位的形态字段。`VideoKindPicker` 默认模式改为三种都列，选题卡的创建对话框因此自动出现这张卡。
+- D9（2026-10-16，T9）— 计划里的 `OpenCanvasHeader` 改为整个画布组件 `features/canvas/open/OpenCanvas.vue`（头部 + `files` 插槽 + `actions` 插槽），工作台把 `FileCanvas` 经 `files` 插槽传进去：ESLint 禁止 features 之间互相 import，其它阶段画布的「文件」标签也是这样传的；组件可以单独测试，不必挂载整页。「标记完成」不弹确认框（没有下游、随时能重新打开）。`FileCanvas` 之前不把 `.html` 当文本（显示"二进制文件"），这里把 `html`/`htm`/`css` 加进文本扩展名，HTML 才能切到源码编辑。
+- D10（2026-10-16，分支评审 C1）— **命令联网不许访问本机回环**：评审发现只去掉 `(deny network*)` 后沙箱能直连本机没有认证的 studio API（读别的项目、改模型配置外泄 key）。Seatbelt 改为拒绝 `localhost:*` 与 unix socket（放回 mDNSResponder 供 DNS）；Claude 实测本来就连不上回环，仍显式加 `deniedDomains`；**Codex 失败关闭、不开网络**——它的 `network.enabled` 连回环一起放开，域名拒绝规则不生效（实测）。这是相对设计 §2/§5.2「三个运行时都放开联网」的收窄，已写进 ADR 0031；代价：Codex 下完全自由阶段装不了依赖。
+- D11（2026-10-16，分支评审 I1）— 命令可联网时，npm/pip/XDG 缓存指向工作区 `.cache/`（`agent.shell_sandbox.network_cache_env`，Claude 与 OpenAI Shell 都用）：沙箱只许写工作区，默认的 `~/.npm` 第一次 `npm install` 必然 EPERM；`.cache/` 不进快照。
 - D2（2026-10-16，写计划时）— T3 中三个运行时遇到 `system_prompt=None` 先显式抛 `NotImplementedError`，T4–T6 逐个实现。理由：每个任务结束都要 `make check` 绿，又不能让 `None` 被悄悄当成空串传下去。
 
 ## 意外与发现
 
-- 无
+- 2026-10-16（T10 L4）— **创建项目后工作台头 3 秒拿到的项目详情没有 `stages`**：`useCreateProjectMutation` 把创建接口返回的列表形态 `ProjectOut` 直接 `setQueryData` 进了详情缓存，`OpenCanvas` 读 `stages.find` 时崩溃（StageNav 只报 prop 警告，所以以前没暴露）。已改为只让详情查询失效重拉（`queries.spec.ts` 有复现测试）。
+- 2026-10-16（T10 冒烟）— Claude 沙箱里 `npm` 默认写 `~/.npm` 缓存会 EPERM（沙箱只允许写工作区）；agent 自己改用工作区内的缓存后成功。评审后已处理（D11）。
+- 2026-10-16（分支评审）— Seatbelt 拒绝全部 unix socket 会让 DNS 解析失败（curl 退出码 6），要放回 `/private/var/run/mDNSResponder`；本机 `198.18.0.1` 一类代理虚拟网卡上的服务器宿主机自己都连不通，所以外网可达性的真实执行测试用 `example.com`、宿主机访问不了时跳过。
+- 2026-10-16（T10 L4）— Claude Code preset 下 agent 用英文汇报（用户消息是中文）。这是 Claude Code 默认提示词的行为，没有阶段提示词时不会被纠正；负责人如果在意，可以在消息里说明或在 `project.md` 写一句语言要求。
+- 2026-10-16（T2）— guard 的 `_find_symlinks` 会删掉工作区里所有符号链接，`npm install` 生成的 `node_modules/.bin/*` 会被当成越界还原掉；计划只写了快照与文件树，这里一并让它跳过依赖目录（有测试 `test_dependency_dirs_keep_their_symlinks_and_files`）。`prune_empty_dirs` 同理，不清理依赖目录里的空目录。
+
+## 评审延后的小问题
+
+2026-10-16 分支评审的 Minor，未进修复环节；负责人验收时没有要求处理，已登记为 TD-99～TD-103：
+
+- M1：`api/html_preview.py`、`worker.py` 仍按占位形态字段处理 `open` 项目（应先按 `mode == "open"` 拒绝）；现在因为没有时间轴文件才碰巧 409。
+- M2：`tts` 的路径检查没有先做 `match_existing_case`，macOS 上 `Uploads/x.mp3` 会通过检查、写进 `uploads/` 后被 guard 删掉，工具回报与结果不一致。
+- M3：guard 跳过依赖目录时连「依赖目录本身是符号链接」也跳过了（目前没有可利用的读取路径）。
+- M4：Claude Code preset 可能把 studio 仓库的版本控制状态带进上下文（未实测）；工作区里出现版本库目录会进快照。
+- M5：HTML 预览模式下也会拉取整份文本；源码有未保存修改时切到预览没有提示。
 
 ## 阻塞
 
@@ -212,4 +257,15 @@
 
 ## 验证记录
 
-- 无
+- AC1–AC5、AC8：每个任务结束时 `make check` 全绿（最后一次 2026-10-16，T10 提交前）；对应测试文件见各 AC。
+- AC6（真实模型冒烟，2026-10-16）：
+  - `make smoke SMOKE_ARGS="-k open_mode_codex"` → 1 passed（55 秒）：Codex 本机登录，沙箱内 `curl https://example.com` 返回 `200`。**评审修复（D10）后**改为断言 Codex 命令断网：重跑 1 passed（30 秒），curl 输出 `000`。
+  - `make smoke SMOKE_ARGS="-k open_mode_claude"` → 1 passed（619 秒）：Claude 本机登录，一轮完成；Bash 里 `npm view left-pad version` 第二次得到 `1.3.0`（第一次 EPERM，见「意外与发现」）；agent 写了 `title/index.html`、`scene.js`、`render.js`，在工作区装了依赖（`package.json`），导出 `title/out.mp4`（ffprobe 8.0 秒）。证据：`data/evidence/open-mode/smoke/*.json`、`open-claude.mp4`（git 忽略）。
+  - 系统提示词为 Claude Code 默认：单测断言传给 SDK 的是 `claude_code` preset；L4 中 agent 的回复风格（英文汇报、Claude Code 式的工具用法）与 preset 一致。
+- AC7（L4，2026-10-16，worktree 内 `api`:8010 + `vite`:5183，Claude 本机登录）：截图在 [open-mode-l4/](open-mode-l4/)。
+  1. 项目页「新建项目」出现「完全自由」卡片与主题框（`1-new-dialog.jpg`）；
+  2. 创建后工作台：左侧「完全自由模式」，画布只有文件树（`style/STYLE.md`、`project.md`）与「标记完成」（`2-workbench.jpg`）；
+  3. 对话一轮（2 分 37 秒）：文件树随 agent 写入实时出现 `title/index.html`、`out.mp4`、png（`3-agent-working.jpg`）；
+  4. 选中 `out.mp4`：`<video>` readyState 4、时长 6 秒、640×360（`4-mp4-preview.jpg`）；
+  5. 「标记完成」后 `GET /projects/{id}` 为 `status=completed`、`open` 阶段 `finalized`，按钮变为「重新打开」；点「重新打开」后回到 `active`（`5-reopened.jpg`）。
+  - HTML 预览：iframe 正确指向原始文件端点，但**内置浏览器面板把子框架导航拦截了**（`net::ERR_BLOCKED_BY_CLIENT`），画面空白；同一地址直接打开时页面正常渲染（深色背景、canvas、标题文字）。iframe 的 `src`、`sandbox` 由单测锁定，与已有的 `HtmlPreviewPane` 写法一致。真实浏览器里的观感需要负责人验收时看一眼。

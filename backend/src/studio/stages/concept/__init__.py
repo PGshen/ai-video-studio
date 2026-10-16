@@ -40,6 +40,7 @@ class ConceptStage:
     name = "concept"
     allow_web = True
     workspaceless = False
+    exec_network = False
 
     def system_prompt(self) -> str:
         return _PROMPT_PATH.read_text(encoding="utf-8")

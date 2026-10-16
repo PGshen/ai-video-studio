@@ -59,7 +59,7 @@ from claude_agent_sdk import (
     ResultMessage,
     create_sdk_mcp_server,
 )
-from claude_agent_sdk.types import HookEvent, McpServerConfig
+from claude_agent_sdk.types import HookEvent, McpServerConfig, SystemPromptPreset
 
 from studio.agent import events
 from studio.agent.claude_env import MissingApiKeyError, build_env
@@ -86,6 +86,7 @@ from studio.agent.claude_web import (
 )
 from studio.agent.exec_policy import ExecMode, claude_sandbox_available, exec_mode
 from studio.agent.runtime import CancelToken, RuntimeFactory, TurnContext
+from studio.agent.shell_sandbox import network_cache_env
 from studio.config import Settings
 from studio.config import repo_root as default_repo_root
 
@@ -95,6 +96,8 @@ MAX_BUFFER_BYTES = 8 * 1024 * 1024
 """SDK 读 CLI 单行 JSON 的缓冲区上限（默认 1 MiB）。CLI 把工具结果里的图片写两份，真实会话里一行
 就到了 1 054 050 字节；提高上限是兜底，第一道防线仍是 `agent.tools` 与 `stages.common.picture`
 的预算。已经带着超限消息的历史会话也靠它继续（追加轮会重放这条历史）。"""
+
+CLAUDE_CODE_PROMPT: SystemPromptPreset = {"type": "preset", "preset": "claude_code"}
 
 BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 WEB_TOOLS = ["WebSearch", "WebFetch"]
@@ -290,7 +293,8 @@ class ClaudeRuntime:
         return ClaudeAgentOptions(
             model=ctx.model_profile.model,
             cwd=ctx.workdir,
-            system_prompt=ctx.system_prompt,
+            # None: Claude Code's own system prompt, nothing appended (open-mode design §5.1).
+            system_prompt=(CLAUDE_CODE_PROMPT if ctx.system_prompt is None else ctx.system_prompt),
             tools=tools,
             allowed_tools=tools + mcp_tool_names,
             disallowed_tools=disallowed,
@@ -299,12 +303,12 @@ class ClaudeRuntime:
             setting_sources=[],
             permission_mode="acceptEdits",
             resume=ctx.resume_ref,
-            env=env,
+            env=env | (network_cache_env(workdir) if ctx.exec_network else {}),
             hooks=hooks,
             # Only the sandboxed mode passes `sandbox`: on Windows `enabled` + `failIfUnavailable`
             # would make the CLI refuse to start (design §4.3).
             sandbox=(
-                sandbox_settings(workdir, self._repo_root, self._data_dir)
+                sandbox_settings(workdir, self._repo_root, self._data_dir, network=ctx.exec_network)
                 if mode == "sandboxed"
                 else None
             ),

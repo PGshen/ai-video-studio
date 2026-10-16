@@ -22,7 +22,12 @@ from pathlib import Path
 from agents import ShellCallOutcome, ShellCommandOutput, ShellCommandRequest, ShellResult
 
 from studio import proc as procs
-from studio.agent.shell_sandbox import SANDBOX_EXEC, sandbox_tmpdir, seatbelt_profile
+from studio.agent.shell_sandbox import (
+    SANDBOX_EXEC,
+    network_cache_env,
+    sandbox_tmpdir,
+    seatbelt_profile,
+)
 
 SHELL_DEFAULT_TIMEOUT_S = 120.0
 SHELL_MAX_TIMEOUT_S = 600.0
@@ -155,10 +160,12 @@ class LocalShellExecutor:
         deny_read: Sequence[Path] = (),
         sandbox_exec: Path = SANDBOX_EXEC,
         sandboxed: bool = True,
+        network: bool = False,
     ) -> None:
         self._workdir = workdir
         self._tmpdir = sandbox_tmpdir(workdir.resolve())
-        self._profile = seatbelt_profile(workdir, deny_read)
+        self._network = network
+        self._profile = seatbelt_profile(workdir, deny_read, network=network)
         self._sandbox_exec = sandbox_exec
         self._sandboxed = sandboxed
         self._environ = environ if environ is not None else os.environ
@@ -170,6 +177,11 @@ class LocalShellExecutor:
     def sandboxed(self) -> bool:
         """`False` only in the ADR 0024 `unsandboxed` mode."""
         return self._sandboxed
+
+    @property
+    def network(self) -> bool:
+        """Sandboxed commands may use the network (open-mode design §5.2)."""
+        return self._network
 
     def _argv(self, command: str) -> list[str]:
         if self._sandboxed:
@@ -210,7 +222,10 @@ class LocalShellExecutor:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=procs.child_env(_shell_env(self._environ, self._tmpdir)),
+            env=procs.child_env(
+                _shell_env(self._environ, self._tmpdir)
+                | (network_cache_env(self._workdir) if self._network else {})
+            ),
             **procs.spawn_kwargs(),
         )
         overflowed = False

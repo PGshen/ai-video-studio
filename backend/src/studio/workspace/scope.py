@@ -20,7 +20,7 @@ from pathlib import Path
 
 from studio import fsretry
 from studio.workspace.blobs import BlobStore
-from studio.workspace.layout import EXCLUDED_TOP_DIRS
+from studio.workspace.layout import EXCLUDED_DIR_NAMES, EXCLUDED_TOP_DIRS, in_excluded_dir
 from studio.workspace.snapshot import Manifest
 
 UPLOADS_DIR = "uploads"
@@ -108,6 +108,8 @@ def _find_symlinks(workdir: Path) -> list[Path]:
         root_path = Path(root)
         if root_path == workdir:
             dirnames[:] = [name for name in dirnames if name not in EXCLUDED_TOP_DIRS]
+        # Dependency dirs keep their symlinks (`node_modules/.bin/*`): layout.EXCLUDED_DIR_NAMES.
+        dirnames[:] = [name for name in dirnames if name not in EXCLUDED_DIR_NAMES]
 
         kept_dirnames = []
         for dirname in dirnames:
@@ -135,8 +137,7 @@ def _prune_empty_ancestors(workdir: Path, restored: list[str]) -> None:
     for relpath in restored:
         parent = (workdir / relpath).parent
         while parent != workdir:
-            rel_parts = parent.relative_to(workdir).parts
-            if rel_parts and rel_parts[0] in EXCLUDED_TOP_DIRS:
+            if in_excluded_dir(parent.relative_to(workdir).parts):
                 break
             try:
                 next(parent.iterdir())

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from studio.agent.runtime import Effort
 from studio.stages.pipeline import Engine, Mode, MusicSource, VideoKind
@@ -27,7 +27,10 @@ class ProjectCreate(BaseModel):
     music_source: MusicSource | None = None
     """项目类型配置：三者都不给 = 默认（HTML 讲解）；只给一部分 → 422。"""
     mode: Mode = "staged"
-    """`free`：自由模式，单阶段项目（free-mode 设计 §3）；要与上面三项一起给出。"""
+    """`free`：自由模式，单阶段项目（free-mode 设计 §3）；要与上面三项一起给出。
+    `open`：完全自由模式（open-mode 设计 §3.2），不接受上面三项。"""
+    theme: str | None = Field(default=None, max_length=2000)
+    """完全自由项目的主题描述，写进 `project.md`；其它模式忽略。"""
 
 
 class ProjectSettingsPatch(BaseModel):

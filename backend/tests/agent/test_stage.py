@@ -17,6 +17,7 @@ class _StubStage:
     name = "stub"
     allow_web = False
     workspaceless = False
+    exec_network = False
 
     def __init__(self, name: str = "stub", reads: list[str] | None = None) -> None:
         self.name = name

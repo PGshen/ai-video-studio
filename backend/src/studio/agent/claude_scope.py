@@ -43,8 +43,16 @@ class StudioSandboxSettings(SandboxSettings, total=False):
     filesystem: Required[SandboxFilesystem]
 
 
+LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "::1", "0.0.0.0"]
+
+
 def sandbox_settings(
-    workdir: Path, repo_root: Path, data_dir: Path, *, home: Path | None = None
+    workdir: Path,
+    repo_root: Path,
+    data_dir: Path,
+    *,
+    home: Path | None = None,
+    network: bool = False,
 ) -> StudioSandboxSettings:
     """本轮的 Bash sandbox（TD-1）：拒读仓库、数据目录和主目录下的凭据目录
     （`sandbox_paths.sensitive_home_dirs`，TD-27），再放回当前工作区。
@@ -53,8 +61,11 @@ def sandbox_settings(
     docs/references/claude-agent-sdk.md），所以拒读父目录后能放回其下的工作区；
     其他项目的工作区、`studio.db`、`backend/.env` 仍读不到。路径全部解析成真实路径
     （macOS 的 `/var` → `/private/var` 之类）。R3（T15 实测）：工作区外写入、外网都被拦住。
+
+    `network=True`（只有完全自由阶段，open-mode 设计 §5.2）：`allowedDomains=["*"]` 放行外网出站、
+    `deniedDomains` 拒绝回环（2026-10-16 实测：外网 200，回环连不上），读写范围不变。
     """
-    return {
+    settings: StudioSandboxSettings = {
         "enabled": True,
         "autoAllowBashIfSandboxed": True,
         # Without this the model can opt out per command via dangerouslyDisableSandbox.
@@ -68,6 +79,11 @@ def sandbox_settings(
             "allowRead": [str(workdir.resolve())],
         },
     }
+    if network:
+        # The CLI's proxy already refuses loopback (2026-10-16); deny it explicitly too: the studio
+        # API on 127.0.0.1 has no auth (ADR 0031 review).
+        settings["network"] = {"allowedDomains": ["*"], "deniedDomains": LOOPBACK_HOSTS}
+    return settings
 
 
 _PADDING = "\ufeff"

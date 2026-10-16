@@ -111,6 +111,21 @@ describe('CreateProjectDialog 视频类型', () => {
     wrapper.unmount()
   })
 
+  it('选中完全自由后请求体是 mode=open + idea_id，不带形态字段', async () => {
+    state.mutateAsync.mockResolvedValue({ id: 'p12', current_stage: 'open' })
+    const wrapper = await mountOpen()
+    const card = document.body.querySelector('[data-testid="kind-card-open"]') as HTMLButtonElement
+    card.click()
+    await flushPromises()
+    submitButton().click()
+    await flushPromises()
+    const body = state.mutateAsync.mock.calls[0][0]
+    expect(body).toMatchObject({ mode: 'open', idea_id: 'i1' })
+    for (const key of ['engine', 'narration', 'music_source']) expect(body).not.toHaveProperty(key)
+    expect(state.push).toHaveBeenCalledWith('/projects/p12/open')
+    wrapper.unmount()
+  })
+
   it('video-kinds 加载失败时显示错误并禁用提交', async () => {
     state.kindsError = true
     const wrapper = await mountOpen()

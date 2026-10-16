@@ -14,6 +14,8 @@
  *   转成中文提示，不静默失败。
  * - 当前打开的文件从文件树消失（回滚/被删）：`missingFile.ts` 决定关闭
  *   编辑器还是保留只读内容（追加修复 G1，2026-09-28）。
+ * - HTML（open-mode 设计 §7）：默认「预览」，用 `<iframe sandbox="allow-scripts">` 加载原始文件端点
+ *   （不给同源，页面里的脚本拿不到应用的 cookie 与接口；相对路径按同一工作区解析）；「源码」就是编辑器。
  */
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -24,7 +26,7 @@ import CodeEditor from '@/components/CodeEditor.vue'
 import FileTree from './FileTree.vue'
 import { computeReadonly } from './editorReadonly'
 import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from '@/composables/conflictState'
-import { editorLanguage, isTextFile, mediaKind } from './fileKind'
+import { editorLanguage, isHtmlFile, isTextFile, mediaKind } from './fileKind'
 import { computeMissingFileAction } from './missingFile'
 
 const props = defineProps<{
@@ -42,6 +44,13 @@ const selectedEntry = computed(
 )
 const isTextSelected = computed(() => selectedPath.value !== null && isTextFile(selectedPath.value))
 const selectedMedia = computed(() => (selectedPath.value ? mediaKind(selectedPath.value) : null))
+const isHtmlSelected = computed(() => selectedPath.value !== null && isHtmlFile(selectedPath.value))
+/** HTML 文件的视图：切换文件时回到预览，不持久化。 */
+const htmlView = ref<'preview' | 'source'>('preview')
+watch(selectedPath, () => {
+  htmlView.value = 'preview'
+})
+const showHtmlPreview = computed(() => isHtmlSelected.value && htmlView.value === 'preview')
 
 // 媒体地址带版本号，避免浏览器沿用旧内容：文件树每次因 `workspace_changed`
 // 重新拉取都会更新 `dataUpdatedAt`。图片跟着刷新；音频/视频只在切换文件
@@ -50,12 +59,14 @@ const mediaVersion = ref(0)
 watch(
   [selectedPath, treeUpdatedAt],
   ([, updatedAt], [prevPath]) => {
-    if (selectedMedia.value === 'image' || selectedPath.value !== prevPath) mediaVersion.value = updatedAt
+    // Images and HTML previews follow every workspace change; audio/video only on file switch.
+    const live = selectedMedia.value === 'image' || isHtmlSelected.value
+    if (live || selectedPath.value !== prevPath) mediaVersion.value = updatedAt
   },
   { immediate: true },
 )
 const mediaUrl = computed(() =>
-  selectedPath.value && selectedMedia.value
+  selectedPath.value && (selectedMedia.value || isHtmlSelected.value)
     ? workspaceFileUrl(props.projectId, selectedPath.value, String(mediaVersion.value))
     : null,
 )
@@ -110,7 +121,7 @@ const saveError = ref<string | null>(null)
 
 function describeError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 403) return '保存失败：不在当前阶段的可写范围内'
+    if (error.status === 403) return '保存失败：不在可写范围内'
     if (error.status === 409) return '保存失败：项目正在运行中的一轮，请稍后再试'
     return typeof error.detail === 'string' ? error.detail : error.message
   }
@@ -157,6 +168,32 @@ function onLoadLatest(): void {
     />
 
     <div class="flex min-h-0 flex-col gap-2">
+      <div
+        v-if="isHtmlSelected && !fileMissing"
+        class="flex shrink-0 items-center gap-1"
+      >
+        <p class="text-muted-foreground mr-auto truncate text-xs">
+          {{ selectedPath }}
+        </p>
+        <Button
+          size="sm"
+          :variant="htmlView === 'preview' ? 'secondary' : 'ghost'"
+          class="h-7"
+          data-testid="html-view-preview"
+          @click="htmlView = 'preview'"
+        >
+          预览
+        </Button>
+        <Button
+          size="sm"
+          :variant="htmlView === 'source' ? 'secondary' : 'ghost'"
+          class="h-7"
+          data-testid="html-view-source"
+          @click="htmlView = 'source'"
+        >
+          源码
+        </Button>
+      </div>
       <template v-if="!selectedPath">
         <p class="text-muted-foreground text-sm">
           从左侧选择一个文件
@@ -170,6 +207,16 @@ function onLoadLatest(): void {
           :content="buffer.content"
           :language="currentLanguage"
           readonly
+        />
+      </template>
+      <template v-else-if="showHtmlPreview && mediaUrl">
+        <iframe
+          :key="mediaUrl"
+          :src="mediaUrl"
+          :title="selectedPath ?? undefined"
+          sandbox="allow-scripts"
+          class="min-h-80 w-full flex-1 rounded border bg-white"
+          data-testid="html-preview"
         />
       </template>
       <template v-else-if="selectedMedia && mediaUrl">

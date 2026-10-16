@@ -15,18 +15,21 @@ from fastapi import HTTPException
 from sqlalchemy import Engine
 
 from studio.db.repo.projects import get_project
-from studio.stages.pipeline import FREE_STAGES
+from studio.stages.pipeline import FREE_STAGES, OPEN_STAGE
 
 RETIRED_MANIM_STAGE = "animation"
 """老 manim 项目的出片阶段：不再注册，不能渲染或定稿。"""
 HTML_STAGE = "animation_html"
 PRODUCE_STAGE = "produce"
+OPEN_NO_RENDER_DETAIL = "完全自由项目没有成片渲染"
 MANIM_RETIRED_DETAIL = "Manim 动画已下线，老项目只能查看，不能再对话、渲染或定稿成片"
 
 
 def animation_stage_of(settings: Mapping[str, Any]) -> str:
     pipeline = settings.get("pipeline")
     if isinstance(pipeline, list):
+        if OPEN_STAGE in pipeline:  # no rendering at all; `require_live_animation_stage` refuses it
+            return OPEN_STAGE
         for free_stage in FREE_STAGES:  # a free project's only stage does the rendering too
             if free_stage in pipeline:
                 return free_stage
@@ -47,4 +50,6 @@ def require_live_animation_stage(engine: Engine, project_id: str) -> str:
     stage = animation_stage(engine, project_id)
     if stage == RETIRED_MANIM_STAGE:
         raise HTTPException(status_code=409, detail=MANIM_RETIRED_DETAIL)
+    if stage == OPEN_STAGE:
+        raise HTTPException(status_code=409, detail=OPEN_NO_RENDER_DETAIL)
     return stage

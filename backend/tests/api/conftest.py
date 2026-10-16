@@ -96,6 +96,7 @@ class FakeStage:
 
     allow_web = False
     workspaceless = False
+    exec_network = False
 
     def __init__(self, name: str, reads: list[str], artifact_dir: str) -> None:
         self.name = name
@@ -133,6 +134,10 @@ def register_free_stages(registry: StageRegistry) -> None:
         FakeStage("free_produce", [], "music"),
     ):
         registry.register(stage)
+
+
+def register_open_stage(registry: StageRegistry) -> None:
+    registry.register(FakeStage("open", [], "notes"))
 
 
 def register_reel_stages(registry: StageRegistry) -> None:

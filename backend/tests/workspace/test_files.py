@@ -96,6 +96,15 @@ class TestListTree:
 
         assert result == ["topic/brief.md", "upstream/topic/brief.md"]
 
+    def test_hides_dependency_dirs_at_any_depth(self, workdir: Path) -> None:
+        _write(workdir / "app" / "node_modules" / "x.js", "dep")
+        _write(workdir / ".venv" / "bin" / "python", "py")
+        _write(workdir / "src" / "__pycache__" / "m.pyc", "pyc")
+        _write(workdir / "src" / "m.py", "code")
+        _write(workdir / "node_modules.md", "note")
+
+        assert list_tree(workdir) == ["node_modules.md", "src/m.py"]
+
 
 class TestReadText:
     def test_reads_existing_file(self, workdir: Path) -> None:

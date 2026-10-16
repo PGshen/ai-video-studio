@@ -562,6 +562,38 @@ class TestAllowWeb:
         assert [ctx.allow_web for ctx in h.contexts] == [True, False]
 
 
+class TestExecNetwork:
+    """open-mode 设计 §5.2：命令能否联网由阶段决定，透传进 TurnContext 与 ToolContext。"""
+
+    async def test_defaults_to_offline(self, env: StudioEnv) -> None:
+        h = _make_harness(env)
+        await h.run(h.session(stage="topic"), [fake.say("a")])
+        (ctx,) = h.contexts
+        assert ctx.exec_network is False
+        assert ctx.tool_context().exec_network is False
+
+    async def test_follows_stage_definition(self, env: StudioEnv) -> None:
+        class _Networked(_DelegatingStage):
+            exec_network = True
+
+        h = _make_harness(env)
+        h.env.registry.register(_Networked(h.env.registry.get("topic")))
+        await h.run(h.session(stage="topic"), [fake.say("a")])
+        (ctx,) = h.contexts
+        assert ctx.exec_network is True
+        assert ctx.tool_context().exec_network is True
+
+    async def test_runtime_default_prompt_is_passed_through_as_none(self, env: StudioEnv) -> None:
+        class _Native(_DelegatingStage):
+            def system_prompt(self) -> str | None:
+                return None
+
+        h = _make_harness(env)
+        h.env.registry.register(_Native(h.env.registry.get("topic")))
+        await h.run(h.session(stage="topic"), [fake.say("a")])
+        assert [ctx.system_prompt for ctx in h.contexts] == [None]
+
+
 class TestExecSwitch:
     """ADR 0024: the unsandboxed-exec switch is read once when a turn starts."""
 
@@ -778,6 +810,7 @@ class TestGuard:
 
             allow_web = False
             workspaceless = False
+            exec_network = False
 
             def finalize_blockers(self, workdir: Path) -> list[str]:
                 return []
@@ -835,6 +868,7 @@ class TestGuard:
             name = "topic"
             allow_web = False
             workspaceless = False
+            exec_network = False
 
             def finalize_blockers(self, workdir: Path) -> list[str]:
                 return []
@@ -893,6 +927,7 @@ class TestToolResultImages:
             name = "topic"
             allow_web = False
             workspaceless = False
+            exec_network = False
 
             def finalize_blockers(self, workdir: Path) -> list[str]:
                 return []
@@ -1375,6 +1410,7 @@ class _DelegatingStage:
 
     allow_web = False
     workspaceless = False
+    exec_network = False
 
     def __init__(self, base: Any, *, name: str | None = None, reads: list[str] | None = None):
         self._base = base
@@ -1391,7 +1427,7 @@ class _DelegatingStage:
     def finalize_blockers(self, workdir: Path) -> list[str]:
         return []
 
-    def system_prompt(self) -> str:
+    def system_prompt(self) -> str | None:
         return "p"
 
     def tools(self) -> list[ToolSpec]:

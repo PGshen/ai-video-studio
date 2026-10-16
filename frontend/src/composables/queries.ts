@@ -117,7 +117,9 @@ export function useCreateProjectMutation() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
       // 卡片上显示「已创建 N 个项目」，创建后要刷新。
       void queryClient.invalidateQueries({ queryKey: queryKeys.ideasAll() })
-      queryClient.setQueryData(queryKeys.project(project.id), project)
+      // Not `setQueryData`: the create response is a list-shaped `ProjectOut` without the detail
+      // fields (`stages`, `busy`), and canvases read `stages` right after navigating here.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id), exact: true })
     },
   })
 }

@@ -70,6 +70,8 @@ class ToolContext:
     `suggest_upstream_change` 只允许向它们提建议。"""
     allow_unsandboxed_exec: bool = False
     """本轮的「无隔离执行」开关（ADR 0024），`render_music` 据此决定没有 sandbox 时能不能运行。"""
+    exec_network: bool = False
+    """本轮执行的命令能否联网（`StageDefinition.exec_network`）。"""
 
     def require_project(self) -> str:
         """项目阶段的工具用：没有项目（无项目会话）时抛 `RuntimeError`，
