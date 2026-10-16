@@ -35,6 +35,7 @@ STAGE_TITLES: dict[str, str] = {
     "animation_html": "动画",
     "free_explainer": "自由讲解",
     "free_produce": "自由创作",
+    "open": "完全自由",
 }
 
 

@@ -4,6 +4,8 @@ from studio.stages.pipeline import (
     DEFAULT_KIND,
     KIND_SETTING_KEYS,
     LEGACY_KIND,
+    OPEN_KIND,
+    OPEN_STAGE,
     PRESETS,
     ProjectKind,
     build_pipeline,
@@ -64,11 +66,11 @@ def test_video_kind_of() -> None:
 
 def test_valid_kinds() -> None:
     kinds = valid_kinds()
-    assert len(kinds) == 9
-    assert len(set(kinds)) == 9
+    assert len(kinds) == 10
+    assert len(set(kinds)) == 10
     assert all(k.engine == "html" for k in kinds)
     assert all(kind_errors(k) == [] for k in kinds)
-    assert [k for k in kinds] == [c[0] for c in CASES + FREE_CASES]
+    assert [k for k in kinds] == [c[0] for c in CASES + FREE_CASES] + [OPEN_KIND]
 
 
 def test_mode_defaults_to_staged() -> None:
@@ -132,6 +134,7 @@ def test_presets() -> None:
         ("explainer_html", "free"),
         ("motion_reel", "free"),
         ("music_video", "free"),
+        ("open", "open"),
     ]
     free_explainer = PRESETS[3]
     assert free_explainer.music_choices == ("none", "synth")
@@ -140,3 +143,37 @@ def test_presets() -> None:
         assert video_kind_of(preset.default) == preset.video_kind
         assert preset.default.music_source in preset.music_choices
         assert preset.label and preset.description
+
+
+# ---- open mode (open-mode design §3.1) ----
+
+
+def test_open_kind_has_a_single_open_stage() -> None:
+    assert OPEN_KIND == ProjectKind("html", False, "none", "open")
+    assert build_pipeline(OPEN_KIND) == [OPEN_STAGE] == ["open"]
+    assert video_kind_of(OPEN_KIND) == "open"
+    assert kind_errors(OPEN_KIND) == []
+    assert OPEN_KIND in valid_kinds()
+
+
+def test_open_mode_rejects_form_fields() -> None:
+    assert kind_errors(ProjectKind("html", True, "none", "open")) == ["完全自由项目没有形态配置"]
+
+
+def test_kind_from_settings_reads_open_before_form_fields() -> None:
+    assert kind_from_settings({"mode": "open"}) == OPEN_KIND
+    assert kind_from_settings({"mode": "open", "engine": "manim", "narration": "x"}) == OPEN_KIND
+    assert kind_from_settings(kind_settings(OPEN_KIND)) == OPEN_KIND
+
+
+def test_bogus_or_missing_mode_never_reads_as_open() -> None:
+    good = {"engine": "html", "narration": False, "music_source": "synth"}
+    assert kind_from_settings({**good, "mode": "bogus"}).mode == "staged"
+    assert kind_from_settings(good).mode == "staged"
+
+
+def test_open_preset_card() -> None:
+    preset = PRESETS[-1]
+    assert preset.label == "完全自由"
+    assert preset.default == OPEN_KIND
+    assert preset.music_choices == ("none",)

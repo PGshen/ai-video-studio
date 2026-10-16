@@ -23,7 +23,7 @@ from studio.styles import store as style_store
 from studio.styles.layout import style_dir
 from studio.workspace import files
 
-from .conftest import ApiEnv, assert_detail, register_free_stages
+from .conftest import ApiEnv, assert_detail, register_free_stages, register_open_stage
 
 
 def _row_counts(api_env: ApiEnv) -> tuple[int, int, int]:
@@ -1099,3 +1099,125 @@ class TestCreateFreeProjects:
         body = response.json()
         assert body["kind"]["mode"] == "staged"
         assert body["settings"]["pipeline"] == ["topic", "narrative", "animation_html"]
+
+
+class TestCreateOpenProjects:
+    """open-mode 设计 §3.2：工作区只有 `style/**` 与顶层 `project.md`。"""
+
+    async def _create(self, api_env: ApiEnv, **body: object) -> Response:
+        register_open_stage(api_env.app.state.registry)
+        return await api_env.client.post(
+            "/api/projects", json={"title": "开放", "mode": "open", **body}
+        )
+
+    def _project_md(self, api_env: ApiEnv, project_id: str) -> str:
+        return (api_env.workdir(project_id) / "project.md").read_text(encoding="utf-8")
+
+    async def test_open_project_has_a_single_open_stage(self, api_env: ApiEnv) -> None:
+        response = await self._create(api_env)
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["current_stage"] == "open"
+        assert body["kind"]["mode"] == "open"
+        assert body["kind"]["video_kind"] == "open"
+        assert body["kind"]["pipeline"] == ["open"]
+        stages = list_stages(api_env.app.state.engine, body["id"])
+        assert [(s.stage, s.status) for s in stages] == [("open", "active")]
+
+    async def test_workspace_only_has_style_and_project_md(self, api_env: ApiEnv) -> None:
+        response = await self._create(api_env, theme="光的折射")
+
+        assert response.status_code == 201, response.text
+        workdir = api_env.workdir(response.json()["id"])
+        tree = files.list_tree(workdir)
+        assert [p for p in tree if not p.startswith("style/")] == ["project.md"]
+        assert "style/STYLE.md" in tree
+
+    async def test_project_md_carries_title_theme_and_style(self, api_env: ApiEnv) -> None:
+        response = await self._create(api_env, theme="光的折射\n\n给中学生看")
+
+        text = self._project_md(api_env, response.json()["id"])
+        assert text.startswith("# 开放\n")
+        assert "## 主题\n\n光的折射\n\n给中学生看\n" in text
+        assert "## 风格" in text
+        assert "`style/STYLE.md`（未选择风格）" in text
+
+    async def test_project_md_names_the_chosen_style(self, api_env: ApiEnv) -> None:
+        detail = style_store.import_style(
+            api_env.data_dir,
+            {
+                "STYLE.md": STYLE_ENTRY,
+                "references/color-scheme.md": "主色：暖白",
+                "exemplars/exemplar-1.json": "{}",
+            },
+        )
+
+        response = await self._create(api_env, style_preset_id=detail.id)
+
+        assert response.status_code == 201, response.text
+        assert "`style/STYLE.md`（暖纸双色）" in self._project_md(api_env, response.json()["id"])
+
+    async def test_project_md_without_theme(self, api_env: ApiEnv) -> None:
+        response = await self._create(api_env)
+
+        assert "## 主题\n\n（未填写）\n" in self._project_md(api_env, response.json()["id"])
+
+    async def test_idea_card_becomes_the_theme_without_notes(self, api_env: ApiEnv) -> None:
+        from studio.db.repo.ideas import create_idea
+
+        idea = create_idea(
+            api_env.app.state.engine, title="想法", pitch="一句话卖点", counterintuitive="反直觉"
+        )
+
+        response = await self._create(api_env, idea_id=idea.id)
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["idea_id"] == idea.id
+        workdir = api_env.workdir(body["id"])
+        assert not (workdir / "notes").exists()
+        text = self._project_md(api_env, body["id"])
+        assert "一句话卖点" in text
+        assert "反直觉" in text
+
+    async def test_explicit_theme_wins_over_idea_card(self, api_env: ApiEnv) -> None:
+        from studio.db.repo.ideas import create_idea
+
+        idea = create_idea(api_env.app.state.engine, title="想法", pitch="卡片卖点")
+
+        response = await self._create(api_env, idea_id=idea.id, theme="我自己写的主题")
+
+        text = self._project_md(api_env, response.json()["id"])
+        assert "我自己写的主题" in text
+        assert "卡片卖点" not in text
+
+    @pytest.mark.parametrize(
+        "form", [{"narration": True}, {"engine": "html"}, {"music_source": "none"}]
+    )
+    async def test_form_fields_are_422_without_side_effects(
+        self, api_env: ApiEnv, form: dict[str, object]
+    ) -> None:
+        before = _row_counts(api_env)
+
+        response = await self._create(api_env, **form)
+
+        assert response.status_code == 422
+        assert "完全自由项目没有形态配置" in assert_detail(response)
+        assert _row_counts(api_env) == before
+
+    async def test_overlong_theme_is_422(self, api_env: ApiEnv) -> None:
+        response = await self._create(api_env, theme="长" * 2001)
+
+        assert response.status_code == 422
+
+    async def test_unregistered_open_stage_is_422(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post("/api/projects", json={"title": "t", "mode": "open"})
+
+        assert response.status_code == 422
+
+    async def test_theme_is_ignored_for_other_modes(self, api_env: ApiEnv) -> None:
+        response = await api_env.client.post("/api/projects", json={"title": "t", "theme": "x"})
+
+        assert response.status_code == 201
+        assert not (api_env.workdir(response.json()["id"]) / "project.md").exists()

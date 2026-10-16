@@ -71,6 +71,7 @@ from studio.stages.pipeline import (
     DEFAULT_KIND,
     KIND_SETTING_KEYS,
     LEGACY_KIND,
+    OPEN_KIND,
     ProjectKind,
     kind_errors,
     kind_from_settings,
@@ -200,10 +201,57 @@ def project_note_markdown(kind: ProjectKind, title: str, *, idea_card: bool = Fa
     return "\n".join(lines)
 
 
+OPEN_PROJECT_NAME = "project.md"
+"""完全自由项目唯一的初始说明（open-mode 设计 §3.2）：标题、主题与风格引用，放在工作区顶层。"""
+
+
+def _idea_theme(idea: IdeaValue) -> str:
+    lines = [idea.pitch or "（未填写卖点）"]
+    if idea.counterintuitive:
+        lines += ["", f"反直觉点：{idea.counterintuitive}"]
+    if idea.tags:
+        lines += ["", f"标签：{'、'.join(idea.tags)}"]
+    return "\n".join(lines)
+
+
+def open_project_markdown(
+    title: str, theme: str | None, idea: IdeaValue | None, style_name: str | None
+) -> str:
+    """主题优先级：请求里的 `theme` > 选题卡内容 > "（未填写）"。"""
+    if theme and theme.strip():
+        body = theme.strip()
+    elif idea is not None:
+        body = _idea_theme(idea)
+    else:
+        body = "（未填写）"
+    style = style_name or "未选择风格"
+    lines = [
+        f"# {title}",
+        "",
+        "## 主题",
+        "",
+        body,
+        "",
+        "## 风格",
+        "",
+        f"项目风格在 `style/`，入口 `style/STYLE.md`（{style}）。",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _seed_files(
-    kind: ProjectKind, pipeline: list[str], title: str, idea: IdeaValue | None
+    kind: ProjectKind,
+    pipeline: list[str],
+    title: str,
+    idea: IdeaValue | None,
+    *,
+    theme: str | None = None,
+    style_name: str | None = None,
 ) -> dict[str, str]:
     """新项目除风格之外的初始文件：想法卡片（有的话）与自由项目的项目说明。"""
+    if kind.mode == "open":
+        return {OPEN_PROJECT_NAME: open_project_markdown(title, theme, idea, style_name)}
     if kind.mode != "free":
         return {f"{pipeline[0]}/{IDEA_CARD_NAME}": _idea_card_markdown(idea)} if idea else {}
     seeded = {PROJECT_NOTE_NAME: project_note_markdown(kind, title, idea_card=idea is not None)}
@@ -278,7 +326,11 @@ def _cleanup_failed_project(engine: Engine, settings: Settings, project_id: str)
 def _kind_for_new_project(body: ProjectCreate, registry: StageRegistry) -> ProjectKind:
     """请求里的类型配置 → 合法且阶段都已注册的 `ProjectKind`，否则 422（在建工作区之前）。"""
     given = (body.engine, body.narration, body.music_source)
-    if all(value is None for value in given) and body.mode == "staged":
+    if body.mode == "open":
+        if any(value is not None for value in given):
+            raise HTTPException(status_code=422, detail="完全自由项目没有形态配置")
+        kind = OPEN_KIND
+    elif all(value is None for value in given) and body.mode == "staged":
         kind = DEFAULT_KIND
     elif any(value is None for value in given) or body.engine is None:
         raise HTTPException(
@@ -350,7 +402,17 @@ def create_project_endpoint(
             blobs,
             settings,
             project_id,
-            {**style_files, **_seed_files(kind, pipeline, body.title, idea)},
+            {
+                **style_files,
+                **_seed_files(
+                    kind,
+                    pipeline,
+                    body.title,
+                    idea,
+                    theme=body.theme,
+                    style_name=style_settings.get("style_name"),
+                ),
+            },
         )
         project = create_project(
             engine,

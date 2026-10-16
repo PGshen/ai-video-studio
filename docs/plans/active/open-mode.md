@@ -6,12 +6,12 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 执行中 |
 | 里程碑 | 完全自由模式（非编号） |
 | 设计依据 | [完全自由模式设计](../../design/2026-10-15-open-mode.md)（2026-10-16 负责人批准） |
 | 分支 | `feat/open-mode`（从 `main` 的 `dc05403` 切出，设计文档已在其上） |
-| 批准记录 | 2026-10-16：负责人批准设计；计划待批准 |
-| 执行方式 | 待负责人选择 |
+| 批准记录 | 2026-10-16：负责人批准设计；2026-10-16：负责人批准计划 |
+| 执行方式 | 本会话内联（Native），完成后一个独立评审检查整个分支；worktree `.claude/worktrees/open-mode` |
 
 ## 目标
 
@@ -69,7 +69,7 @@
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：项目模型与创建接口（待开始）
+### T1：项目模型与创建接口（完成）
 
 - **目标**：`open` 进入项目类型；能创建 `open` 项目，初始文件只有 `style/**` 与 `project.md`。此时 `open` 阶段还没注册，`video-kinds` 显示为不可用、创建返回 422（现有"未注册阶段"逻辑），T7 注册后自动变为可用；测试里用一个注册了假 `open` 阶段的 registry 覆盖创建成功的路径。
 - **涉及文件**：`backend/src/studio/stages/pipeline.py`、`backend/src/studio/api/schemas.py`（`ProjectCreate.mode` 加 `"open"`、新增 `theme: str | None`，`max_length=2000`）、`backend/src/studio/api/projects.py`、`backend/src/studio/api/video_kinds.py`（`STAGE_TITLES["open"] = "完全自由"`）、`backend/tests/stages/test_pipeline.py`、`backend/tests/api/test_projects.py`、`backend/tests/api/test_video_kinds.py`。
@@ -189,11 +189,12 @@
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 2026-10-16 — 计划草稿完成，待负责人批准
+- 2026-10-16 — 计划草稿完成，负责人批准，选择内联执行
+- 2026-10-16 — T1 — `OPEN_KIND`/`OPEN_STAGE`、预设卡片、`theme` 与 `project.md`、video-kinds 标题；make check 绿
 
 ## 下一步
 
-- 负责人批准计划并选择执行方式后：从 `main` 切 `feat/open-mode` 分支，把本计划状态改为「执行中」，从 T1 开始（先写 `tests/stages/test_pipeline.py` 中 `OPEN_KIND` 相关的失败测试）。
+- T2：在 `backend/src/studio/workspace/layout.py` 加 `EXCLUDED_DIR_NAMES`，先写 `tests/workspace/test_snapshot.py`、`test_files.py` 的失败测试（深层 `node_modules` 不进清单、回滚不触碰、同名文件照常进清单）。
 
 ## 决策记录
 

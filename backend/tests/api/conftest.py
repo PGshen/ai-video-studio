@@ -135,6 +135,10 @@ def register_free_stages(registry: StageRegistry) -> None:
         registry.register(stage)
 
 
+def register_open_stage(registry: StageRegistry) -> None:
+    registry.register(FakeStage("open", [], "notes"))
+
+
 def register_reel_stages(registry: StageRegistry) -> None:
     for stage in (
         FakeStage("concept", [], "concept"),
