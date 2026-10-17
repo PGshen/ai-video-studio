@@ -259,3 +259,69 @@ class TestWriteFile:
 
         assert response.status_code == 409
         await api_env.release_busy(turn_id)
+
+
+class TestRevealFile:
+    @pytest.fixture
+    def revealed(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        calls: list[str] = []
+        monkeypatch.setattr(
+            "studio.api.files.reveal_in_file_manager", lambda p: calls.append(str(p.resolve()))
+        )
+        return calls
+
+    async def test_reveals_file_by_absolute_path(
+        self, api_env: ApiEnv, revealed: list[str]
+    ) -> None:
+        pid = await _project(api_env)
+
+        response = await api_env.client.post(
+            f"/api/projects/{pid}/reveal", json={"path": "style/STYLE.md"}
+        )
+
+        assert response.status_code == 204
+        assert revealed == [str((api_env.workdir(pid) / "style" / "STYLE.md").resolve())]
+
+    async def test_empty_path_reveals_workspace_root(
+        self, api_env: ApiEnv, revealed: list[str]
+    ) -> None:
+        pid = await _project(api_env)
+
+        response = await api_env.client.post(f"/api/projects/{pid}/reveal", json={"path": ""})
+
+        assert response.status_code == 204
+        assert revealed == [str(api_env.workdir(pid).resolve())]
+
+    async def test_escape_is_400(self, api_env: ApiEnv, revealed: list[str]) -> None:
+        pid = await _project(api_env)
+
+        response = await api_env.client.post(f"/api/projects/{pid}/reveal", json={"path": "../x"})
+
+        assert response.status_code == 400
+        assert revealed == []
+
+    async def test_missing_or_hidden_is_404(self, api_env: ApiEnv, revealed: list[str]) -> None:
+        pid = await _project(api_env)
+        workdir = api_env.workdir(pid)
+        (workdir / ".cache").mkdir(parents=True, exist_ok=True)
+        (workdir / ".cache" / "tmp.txt").write_text("x", encoding="utf-8")
+
+        for path in ("nope.md", ".cache/tmp.txt"):
+            response = await api_env.client.post(f"/api/projects/{pid}/reveal", json={"path": path})
+            assert response.status_code == 404
+        assert revealed == []
+
+    async def test_launch_failure_is_500(
+        self, api_env: ApiEnv, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pid = await _project(api_env)
+
+        def boom(_path: object) -> None:
+            raise OSError("no file manager")
+
+        monkeypatch.setattr("studio.api.files.reveal_in_file_manager", boom)
+        response = await api_env.client.post(
+            f"/api/projects/{pid}/reveal", json={"path": "style/STYLE.md"}
+        )
+
+        assert response.status_code == 500

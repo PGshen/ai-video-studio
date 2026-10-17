@@ -29,6 +29,7 @@ import {
   listBrainstormSessions,
   listIdeas,
   patchSettings,
+  revealInFileManager,
   sendMessage,
   sessionStreamUrl,
   setProjectStatus,
@@ -99,6 +100,17 @@ describe('endpoints：动态路径段会被正确编码', () => {
     expect(String(fetchMock.mock.calls[0]![0])).toBe(
       '/api/projects/p%231/files/a%20b.md?stage=topic',
     )
+  })
+
+  it('revealInFileManager POST 工作区相对路径', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await revealInFileManager('p#1', 'covers/a b.png')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/projects/p%231/reveal')
+    expect(fetchMock.mock.calls[0]![1].method).toBe('POST')
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ path: 'covers/a b.png' })
   })
 
   it('getSession / sessionStreamUrl 对含空格的 session id 编码', async () => {

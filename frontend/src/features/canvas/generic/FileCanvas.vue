@@ -16,18 +16,21 @@
  *   编辑器还是保留只读内容（追加修复 G1，2026-09-28）。
  * - HTML（open-mode 设计 §7）：默认「预览」，用 `<iframe sandbox="allow-scripts">` 加载原始文件端点
  *   （不给同源，页面里的脚本拿不到应用的 cookie 与接口；相对路径按同一工作区解析）；「源码」就是编辑器。
+ * - 「在 Finder 中打开」：后端在本机文件管理器里选中当前文件（没选中时打开工作区根目录）。
  */
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { useFileContentQuery, useFileTreeQuery, useWriteFileMutation } from '@/composables/queries'
 import { ApiError } from '@/api/http'
-import { workspaceFileUrl } from '@/api/endpoints'
+import { revealInFileManager, workspaceFileUrl } from '@/api/endpoints'
+import { FolderOpenIcon } from '@lucide/vue'
 import CodeEditor from '@/components/CodeEditor.vue'
 import FileTree from './FileTree.vue'
 import { computeReadonly } from './editorReadonly'
 import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from '@/composables/conflictState'
 import { editorLanguage, isHtmlFile, isTextFile, mediaKind } from './fileKind'
 import { computeMissingFileAction } from './missingFile'
+import { fileManagerName } from './fileManagerName'
 
 const props = defineProps<{
   projectId: string
@@ -143,6 +146,21 @@ async function onSave(): Promise<void> {
   }
 }
 
+const revealLabel = `在 ${fileManagerName()} 中打开`
+const revealError = ref<string | null>(null)
+watch(selectedPath, () => {
+  revealError.value = null
+})
+
+async function onReveal(): Promise<void> {
+  revealError.value = null
+  try {
+    await revealInFileManager(props.projectId, fileMissing.value ? '' : (selectedPath.value ?? ''))
+  } catch (error) {
+    revealError.value = describeError(error)
+  }
+}
+
 function onEdit(content: string): void {
   if (!buffer.value) return
   buffer.value = edit(buffer.value, content)
@@ -168,32 +186,48 @@ function onLoadLatest(): void {
     />
 
     <div class="flex min-h-0 flex-col gap-2">
-      <div
-        v-if="isHtmlSelected && !fileMissing"
-        class="flex shrink-0 items-center gap-1"
-      >
+      <div class="flex shrink-0 items-center gap-1">
         <p class="text-muted-foreground mr-auto truncate text-xs">
-          {{ selectedPath }}
+          {{ selectedPath && !fileMissing ? selectedPath : '' }}
         </p>
+        <template v-if="isHtmlSelected && !fileMissing">
+          <Button
+            size="sm"
+            :variant="htmlView === 'preview' ? 'secondary' : 'ghost'"
+            class="h-7"
+            data-testid="html-view-preview"
+            @click="htmlView = 'preview'"
+          >
+            预览
+          </Button>
+          <Button
+            size="sm"
+            :variant="htmlView === 'source' ? 'secondary' : 'ghost'"
+            class="h-7"
+            data-testid="html-view-source"
+            @click="htmlView = 'source'"
+          >
+            源码
+          </Button>
+        </template>
         <Button
           size="sm"
-          :variant="htmlView === 'preview' ? 'secondary' : 'ghost'"
+          variant="ghost"
           class="h-7"
-          data-testid="html-view-preview"
-          @click="htmlView = 'preview'"
+          :title="selectedPath && !fileMissing ? revealLabel : `${revealLabel}（工作区目录）`"
+          data-testid="reveal-in-file-manager"
+          @click="onReveal"
         >
-          预览
-        </Button>
-        <Button
-          size="sm"
-          :variant="htmlView === 'source' ? 'secondary' : 'ghost'"
-          class="h-7"
-          data-testid="html-view-source"
-          @click="htmlView = 'source'"
-        >
-          源码
+          <FolderOpenIcon class="size-3.5" />
+          {{ revealLabel }}
         </Button>
       </div>
+      <p
+        v-if="revealError"
+        class="text-destructive text-xs"
+      >
+        {{ revealError }}
+      </p>
       <template v-if="!selectedPath">
         <p class="text-muted-foreground text-sm">
           从左侧选择一个文件
@@ -220,9 +254,6 @@ function onLoadLatest(): void {
         />
       </template>
       <template v-else-if="selectedMedia && mediaUrl">
-        <p class="text-muted-foreground truncate text-xs">
-          {{ selectedPath }}
-        </p>
         <div class="bg-muted/40 flex min-h-0 flex-1 items-center justify-center overflow-auto rounded border p-3">
           <img
             v-if="selectedMedia === 'image'"

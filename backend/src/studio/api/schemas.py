@@ -117,6 +117,11 @@ class FileWriteResult(BaseModel):
     path: str
 
 
+class RevealRequest(BaseModel):
+    path: str = ""
+    """工作区相对路径（文件或目录）；空字符串表示工作区根目录。"""
+
+
 class SnapshotOut(BaseModel):
     id: str
     reason: str

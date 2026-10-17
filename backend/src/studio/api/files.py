@@ -13,6 +13,10 @@
   链接、越出工作区）→ 400；合法但不在指定 `stage` 的可写范围内（含
   `upstream/`、阶段的 `tool_managed` 文件）→ 403；未知阶段名 → 404；项目
   正在跑一轮 → 409。
+- **在文件管理器中显示**：`POST /projects/{id}/reveal`，body `{"path": <相对路径>}`
+  （空 = 工作区根目录）。后端和浏览器在同一台机器上（单人本地使用），所以由后端调
+  系统命令（macOS `open -R`、Windows `explorer /select,`）。路径不合法 → 400；不存在或
+  在隐藏目录里 → 404；启动失败 → 500。
 
 项目级串行（I4）：凡是"先查 `is_project_busy` 再写工作区"的端点都写成
 `async def`，在事件循环线程上执行，检查与写入之间不 `await`——`TurnRunner`
@@ -33,9 +37,16 @@ from studio.agent.runner import TurnRunner
 from studio.agent.stage import StageRegistry
 from studio.api.animation_stage import MANIM_RETIRED_DETAIL, RETIRED_MANIM_STAGE
 from studio.api.deps import get_engine, get_registry, get_settings, get_turn_runner
-from studio.api.schemas import FileEntry, FileTreeOut, FileWriteRequest, FileWriteResult
+from studio.api.schemas import (
+    FileEntry,
+    FileTreeOut,
+    FileWriteRequest,
+    FileWriteResult,
+    RevealRequest,
+)
 from studio.config import Settings
 from studio.db.repo.projects import get_project
+from studio.proc import reveal_in_file_manager
 from studio.workspace import ScopeError, files, is_writable, project_dir
 from studio.workspace.layout import HIDDEN_TOP_DIRS
 
@@ -146,3 +157,32 @@ async def write_file_endpoint(
 
     files.write_text(workdir, path, body.content, scope)
     return FileWriteResult(path=path)
+
+
+@router.post("/projects/{project_id}/reveal", status_code=204)
+def reveal_endpoint(
+    project_id: str,
+    body: RevealRequest,
+    engine: Engine = Depends(get_engine),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    _require_project(engine, project_id)
+    workdir = project_dir(settings.data_dir, project_id)
+    if body.path == "":
+        target = workdir
+    else:
+        try:
+            path = files.normalize_relpath(body.path)
+            target = files.safe_path(workdir, path)
+        except ScopeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if _is_hidden(path):
+            raise HTTPException(status_code=404, detail=f"文件不存在：{path}")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在：{body.path or '.'}")
+
+    try:
+        reveal_in_file_manager(target)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"无法在文件管理器中显示：{exc}") from exc
+    return Response(status_code=204)

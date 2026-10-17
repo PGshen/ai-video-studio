@@ -124,6 +124,14 @@ export function writeFileContent(
   })
 }
 
+/** 让本机的 Finder / 资源管理器显示工作区里的文件或目录；`path` 为空表示工作区根目录。 */
+export function revealInFileManager(projectId: string, path: string): Promise<void> {
+  return request(`/projects/${encodePathSegment(projectId)}/reveal`, {
+    method: 'POST',
+    body: { path },
+  })
+}
+
 // ---- snapshots ------------------------------------------------------------
 
 export function listSnapshots(projectId: string): Promise<SnapshotOut[]> {

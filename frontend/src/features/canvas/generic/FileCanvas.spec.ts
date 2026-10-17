@@ -7,6 +7,12 @@ const state = vi.hoisted(() => ({
   files: [] as { path: string; readonly: boolean }[],
   content: 'hello',
   mutateAsync: vi.fn(),
+  reveal: vi.fn(),
+}))
+
+vi.mock('@/api/endpoints', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/endpoints')>()),
+  revealInFileManager: state.reveal,
 }))
 
 vi.mock('@/composables/queries', () => ({
@@ -38,6 +44,7 @@ async function mountWith(path: string) {
 
 beforeEach(() => {
   state.mutateAsync.mockReset()
+  state.reveal.mockReset()
   state.content = 'hello'
 })
 
@@ -80,5 +87,38 @@ describe('FileCanvas 的 HTML 预览（open-mode 设计 §7）', () => {
 
     expect(wrapper.text()).toContain('保存失败：不在可写范围内')
     expect(wrapper.text()).not.toContain('当前阶段')
+  })
+})
+
+describe('FileCanvas 的「在 Finder 中打开」', () => {
+  it('选中文件时显示选中的文件', async () => {
+    state.reveal.mockResolvedValue(undefined)
+    const wrapper = await mountWith('covers/a.png')
+
+    await wrapper.get('[data-testid="reveal-in-file-manager"]').trigger('click')
+    await flushPromises()
+
+    expect(state.reveal).toHaveBeenCalledWith('p1', 'covers/a.png')
+  })
+
+  it('没有选中文件时打开工作区根目录', async () => {
+    state.reveal.mockResolvedValue(undefined)
+    state.files = []
+    const wrapper = mount(FileCanvas, { props: { projectId: 'p1', stage: 'open', busy: false } })
+
+    await wrapper.get('[data-testid="reveal-in-file-manager"]').trigger('click')
+    await flushPromises()
+
+    expect(state.reveal).toHaveBeenCalledWith('p1', '')
+  })
+
+  it('失败时提示错误', async () => {
+    state.reveal.mockRejectedValue(new ApiError(500, '无法在文件管理器中显示：x'))
+    const wrapper = await mountWith('notes.md')
+
+    await wrapper.get('[data-testid="reveal-in-file-manager"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('无法在文件管理器中显示：x')
   })
 })

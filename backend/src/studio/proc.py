@@ -161,3 +161,35 @@ async def kill_tree(process: ProcessLike, *, platform: str | None = None) -> Non
     if not await asyncio.to_thread(kill_tree_sync, process.pid, platform="win32"):
         with contextlib.suppress(ProcessLookupError):
             process.kill()
+
+
+def reveal_argv(path: str, *, platform: str | None = None) -> list[str]:
+    """The command that shows `path` in the system file manager: selected in Finder (macOS)
+    or Explorer (Windows); other platforms have no portable "select", so open its folder."""
+    plat = _platform(platform)
+    if plat == "darwin":
+        return ["open", "-R", path]
+    if plat == "win32":
+        return ["explorer", f"/select,{path}"]
+    return ["xdg-open", os.path.dirname(path)]
+
+
+def reveal_in_file_manager(path: os.PathLike[str] | str) -> None:
+    """Show `path` in the system file manager; raises `OSError` when it cannot be started.
+
+    Explorer exits with 1 even when it worked, so only non-Windows exit codes are checked.
+    """
+    argv = reveal_argv(os.fspath(path))
+    try:
+        done = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OSError(f"{argv[0]} timed out") from exc
+    if sys.platform != "win32" and done.returncode != 0:
+        raise OSError(f"{argv[0]} exited with {done.returncode}")

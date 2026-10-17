@@ -179,3 +179,18 @@ async def test_run_killing_tree_kills_the_tree_on_timeout(tmp_path: Path) -> Non
         )
     grandchild = int(pid_file.read_text(encoding="utf-8"))
     assert await wait_gone(grandchild), f"grandchild {grandchild} survived the timeout"
+
+
+# ---- reveal_argv ----
+
+
+def test_reveal_argv_macos_selects_in_finder() -> None:
+    assert proc.reveal_argv("/w/a b.png", platform="darwin") == ["open", "-R", "/w/a b.png"]
+
+
+def test_reveal_argv_windows_selects_in_explorer() -> None:
+    assert proc.reveal_argv(r"C:\w\a.png", platform="win32") == ["explorer", r"/select,C:\w\a.png"]
+
+
+def test_reveal_argv_linux_opens_the_parent_folder() -> None:
+    assert proc.reveal_argv("/w/sub/a.png", platform="linux") == ["xdg-open", "/w/sub"]
