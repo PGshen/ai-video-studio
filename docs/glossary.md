@@ -15,7 +15,7 @@
 | 阶段 | stage | `topic`（选题打磨）、`narrative`（叙事）、`animation`（动画，含成片）；另有不属于项目的 `brainstorm` |
 | 多阶段模式 | staged mode | 项目类型的 `mode=staged`（默认）：从选题卡创建，按阶段推进、逐步定稿 |
 | 自由模式 | free mode | 项目类型的 `mode=free`：在项目页直接创建（也可以从选题卡），只有一个对话阶段 `free_explainer`（自由讲解）或 `free_produce`（自由创作：短片、MV），整个工作区可写、联网、没有上游；预览与成片照常，见 [ADR 0029](decisions/0029-自由模式单阶段项目.md)；与「完全自由模式」不同，它仍有格式契约、工具检查和 worker 成片 |
-| 完全自由模式 | open mode | 项目类型的 `mode=open`：唯一的阶段 `open` 没有阶段提示词（用运行时默认提示词，Claude 为 Claude Code 自带的）、没有格式契约和检查，工作区初始只有 `style/` 与 `project.md`，整个工作区可写，命令可以访问外网但不能访问本机回环（读写隔离不变；Codex 下仍断网），自建工具只有 `tts`；画布只有「文件」，定稿即项目完成。见 [ADR 0031](decisions/0031-完全自由模式.md) |
+| 完全自由模式 | open mode | 项目类型的 `mode=open`：唯一的阶段 `open` 没有阶段提示词（用运行时默认提示词，Claude 为 Claude Code 自带的）、没有格式契约和检查，工作区初始只有 `style/`、`project.md` 与 `TECH-STACKS.md`（技术栈参考，优先级最低），整个工作区可写，命令可以访问外网但不能访问本机回环（读写隔离不变；Codex 下仍断网），自建工具只有 `tts`；画布只有「文件」，定稿即项目完成。见 [ADR 0031](decisions/0031-完全自由模式.md) |
 | 项目说明 | project note | 自由项目创建时生成的 `notes/project.md`：形态与成片需要的文件，agent 每个新会话先读它 |
 | 阶段状态 | stage status | `locked`（未开放）、`active`（进行中）、`finalized`（已定稿）、`stale`（上游已变更） |
 | 工作区 | workspace | 一个项目的文件目录 `data/projects/<id>/`，产物的权威来源 |

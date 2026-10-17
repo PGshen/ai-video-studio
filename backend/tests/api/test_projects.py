@@ -1087,6 +1087,17 @@ class TestCreateFreeProjects:
 
         assert not (api_env.workdir(body["id"]) / "notes").exists()
 
+    @pytest.mark.parametrize("music_source", ["synth", "import"])
+    async def test_free_and_staged_projects_get_no_stack_guide(
+        self, api_env: ApiEnv, music_source: str
+    ) -> None:
+        """自由讲解/短片/MV 固定用项目的 HTML 引擎，技术栈指引只会和它们的格式要求打架。"""
+        staged = await api_env.create_project()
+        free = await self._create(api_env, narration=False, music_source=music_source)
+
+        assert not (api_env.workdir(staged["id"]) / "TECH-STACKS.md").exists()
+        assert not (api_env.workdir(free.json()["id"]) / "TECH-STACKS.md").exists()
+
     async def test_client_settings_cannot_smuggle_mode(self, api_env: ApiEnv) -> None:
         register_free_stages(api_env.app.state.registry)
 
@@ -1125,14 +1136,35 @@ class TestCreateOpenProjects:
         stages = list_stages(api_env.app.state.engine, body["id"])
         assert [(s.stage, s.status) for s in stages] == [("open", "active")]
 
-    async def test_workspace_only_has_style_and_project_md(self, api_env: ApiEnv) -> None:
+    async def test_workspace_has_style_project_md_and_the_stack_guide(
+        self, api_env: ApiEnv
+    ) -> None:
         response = await self._create(api_env, theme="光的折射")
 
         assert response.status_code == 201, response.text
         workdir = api_env.workdir(response.json()["id"])
         tree = files.list_tree(workdir)
-        assert [p for p in tree if not p.startswith("style/")] == ["project.md"]
+        assert [p for p in tree if not p.startswith("style/")] == ["TECH-STACKS.md", "project.md"]
         assert "style/STYLE.md" in tree
+
+    async def test_stack_guide_declares_itself_the_lowest_priority(self, api_env: ApiEnv) -> None:
+        """技术栈指引只在用户和风格都没指定时才用，开头就要说清楚，免得把风格带偏。"""
+        response = await self._create(api_env)
+
+        workdir = api_env.workdir(response.json()["id"])
+        guide = (workdir / "TECH-STACKS.md").read_text(encoding="utf-8")
+        head = guide[:600]
+        assert "优先级最低" in head
+        assert "用户" in head and "style/" in head
+        assert "不要" in head
+
+    async def test_project_md_states_the_stack_priority(self, api_env: ApiEnv) -> None:
+        response = await self._create(api_env)
+
+        text = self._project_md(api_env, response.json()["id"])
+        assert "## 技术栈" in text
+        stack = text[text.index("## 技术栈") :]
+        assert stack.index("用户") < stack.index("style/") < stack.index("TECH-STACKS.md")
 
     async def test_project_md_carries_title_theme_and_style(self, api_env: ApiEnv) -> None:
         response = await self._create(api_env, theme="光的折射\n\n给中学生看")

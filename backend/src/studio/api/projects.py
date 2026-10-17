@@ -68,6 +68,7 @@ from studio.db.repo.snapshots import delete_snapshots
 from studio.db.repo.stages import StageValue, create_stage, delete_stages, list_stages
 from studio.db.repo.suggestions import delete_suggestions
 from studio.db.repo.voices import get_voice
+from studio.stages.open import TECH_STACK_GUIDE_NAME, tech_stack_guide
 from studio.stages.pipeline import (
     DEFAULT_KIND,
     KIND_SETTING_KEYS,
@@ -204,7 +205,8 @@ def project_note_markdown(kind: ProjectKind, title: str, *, idea_card: bool = Fa
 
 
 OPEN_PROJECT_NAME = "project.md"
-"""完全自由项目唯一的初始说明（open-mode 设计 §3.2）：标题、主题与风格引用，放在工作区顶层。"""
+"""完全自由项目的初始说明（open-mode 设计 §3.2）：标题、主题、风格引用与技术栈优先级，
+放在工作区顶层。同时放进去的还有 `stages.open.TECH_STACK_GUIDE_NAME`（技术栈参考，优先级最低）。"""
 
 
 def _idea_theme(idea: IdeaValue) -> str:
@@ -238,6 +240,11 @@ def open_project_markdown(
         "",
         f"项目风格在 `style/`，入口 `style/STYLE.md`（{style}）。",
         "",
+        "## 技术栈",
+        "",
+        "用什么技术做、做成什么样，按这个顺序决定：用户在对话里说的 > `style/` 里写明的 > "
+        f"`{TECH_STACK_GUIDE_NAME}`（常见视频技术栈参考，只在前两者都没提到时参考）。",
+        "",
     ]
     return "\n".join(lines)
 
@@ -253,7 +260,10 @@ def _seed_files(
 ) -> dict[str, str]:
     """新项目除风格之外的初始文件：想法卡片（有的话）与自由项目的项目说明。"""
     if kind.mode == "open":
-        return {OPEN_PROJECT_NAME: open_project_markdown(title, theme, idea, style_name)}
+        return {
+            OPEN_PROJECT_NAME: open_project_markdown(title, theme, idea, style_name),
+            TECH_STACK_GUIDE_NAME: tech_stack_guide(),
+        }
     if kind.mode != "free":
         return {f"{pipeline[0]}/{IDEA_CARD_NAME}": _idea_card_markdown(idea)} if idea else {}
     seeded = {PROJECT_NOTE_NAME: project_note_markdown(kind, title, idea_card=idea is not None)}
