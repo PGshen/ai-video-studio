@@ -188,8 +188,17 @@ def test_reveal_argv_macos_selects_in_finder() -> None:
     assert proc.reveal_argv("/w/a b.png", platform="darwin") == ["open", "-R", "/w/a b.png"]
 
 
-def test_reveal_argv_windows_selects_in_explorer() -> None:
-    assert proc.reveal_argv(r"C:\w\a.png", platform="win32") == ["explorer", r"/select,C:\w\a.png"]
+def test_reveal_argv_windows_quotes_only_the_path_after_select() -> None:
+    # Explorer misreads a fully quoted `"/select,C:\a b"` (what list2cmdline would produce for a
+    # path with spaces) and opens the default folder, so the command line is spelled out.
+    assert (
+        proc.reveal_argv(r"C:\w\my video\a.png", platform="win32")
+        == r'explorer /select,"C:\w\my video\a.png"'
+    )
+
+
+def test_reveal_argv_windows_uses_backslashes() -> None:
+    assert proc.reveal_argv("C:/w/a.png", platform="win32") == r'explorer /select,"C:\w\a.png"'
 
 
 def test_reveal_argv_linux_opens_the_parent_folder() -> None:

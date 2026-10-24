@@ -16,7 +16,7 @@
  *   编辑器还是保留只读内容（追加修复 G1，2026-09-28）。
  * - HTML（open-mode 设计 §7）：默认「预览」，用 `<iframe sandbox="allow-scripts">` 加载原始文件端点
  *   （不给同源，页面里的脚本拿不到应用的 cookie 与接口；相对路径按同一工作区解析）；「源码」就是编辑器。
- * - 「在 Finder 中打开」：后端在本机文件管理器里选中当前文件（没选中时打开工作区根目录）。
+ * - 「在 Finder 中打开」（Windows 上叫「在文件夹中打开」）：后端在本机文件管理器里选中当前文件（没选中时打开工作区根目录）。
  */
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -30,7 +30,7 @@ import { computeReadonly } from './editorReadonly'
 import { edit, initBuffer, keepMine, loadLatest, saved, serverUpdate, type BufferState } from '@/composables/conflictState'
 import { editorLanguage, isHtmlFile, isTextFile, mediaKind } from './fileKind'
 import { computeMissingFileAction } from './missingFile'
-import { fileManagerName } from './fileManagerName'
+import { revealLabel as platformRevealLabel } from './revealLabel'
 
 const props = defineProps<{
   projectId: string
@@ -146,7 +146,7 @@ async function onSave(): Promise<void> {
   }
 }
 
-const revealLabel = `在 ${fileManagerName()} 中打开`
+const revealLabel = platformRevealLabel()
 const revealError = ref<string | null>(null)
 watch(selectedPath, () => {
   revealError.value = null

@@ -163,14 +163,20 @@ async def kill_tree(process: ProcessLike, *, platform: str | None = None) -> Non
             process.kill()
 
 
-def reveal_argv(path: str, *, platform: str | None = None) -> list[str]:
+def reveal_argv(path: str, *, platform: str | None = None) -> list[str] | str:
     """The command that shows `path` in the system file manager: selected in Finder (macOS)
-    or Explorer (Windows); other platforms have no portable "select", so open its folder."""
+    or Explorer (Windows); other platforms have no portable "select", so open its folder.
+
+    Windows gets a ready command-line string: Explorer only accepts `/select,"<path>"`, while
+    `list2cmdline` would quote the whole argument once the path has a space (Explorer then
+    opens the default folder). Windows paths cannot contain `"`, so the quoting is safe.
+    """
     plat = _platform(platform)
     if plat == "darwin":
         return ["open", "-R", path]
     if plat == "win32":
-        return ["explorer", f"/select,{path}"]
+        native = path.replace("/", "\\")
+        return f'explorer /select,"{native}"'
     return ["xdg-open", os.path.dirname(path)]
 
 
@@ -190,6 +196,6 @@ def reveal_in_file_manager(path: os.PathLike[str] | str) -> None:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        raise OSError(f"{argv[0]} timed out") from exc
+        raise OSError("file manager timed out") from exc
     if sys.platform != "win32" and done.returncode != 0:
-        raise OSError(f"{argv[0]} exited with {done.returncode}")
+        raise OSError(f"file manager exited with {done.returncode}")
