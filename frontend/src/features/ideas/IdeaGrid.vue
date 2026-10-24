@@ -1,12 +1,11 @@
 <script setup lang="ts">
 /**
- * 选题池主体（计划 M4 T9）：视图切换（未归档/已归档）、关键词与标签筛选、卡片网格（分页），
+ * 选题池主体（计划 M4 T9）：视图切换（未归档/已归档）、关键词筛选、卡片网格（分页），
  * 以及详情/新建/编辑/创建项目对话框的装配。筛选栏固定在顶部，只有卡片区滚动。数据来自 `useIdeasQuery`；agent 通过头脑风暴新建的卡片
  * 靠查询失效出现（T10）。
  */
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ListPager from '@/components/ListPager.vue'
@@ -24,7 +23,7 @@ import CreateProjectDialog from './CreateProjectDialog.vue'
 import IdeaCard from './IdeaCard.vue'
 import IdeaDetailDialog from './IdeaDetailDialog.vue'
 import IdeaEditDialog from './IdeaEditDialog.vue'
-import { allTags, filterIdeas } from './ideaView'
+import { filterIdeas } from './ideaView'
 
 const view = ref<IdeasView>(null)
 const router = useRouter()
@@ -33,18 +32,14 @@ const { data: projects } = useProjectsQuery()
 const projectCounts = computed(() => countProjectsByIdea(projects.value))
 
 const query = ref('')
-const tag = ref<string | null>(null)
-const visible = computed(() =>
-  filterIdeas(ideas.value ?? [], { query: query.value, tag: tag.value }),
-)
-const tags = computed(() => allTags(ideas.value ?? []))
+const visible = computed(() => filterIdeas(ideas.value ?? [], { query: query.value }))
 
 const page = ref(1)
 const totalPages = computed(() => pageCount(visible.value.length, PAGE_SIZE))
 // 删除/归档后总页数可能变少，页码跟着收回来。
 const currentPage = computed(() => Math.min(page.value, totalPages.value))
 const pageItems = computed(() => paginate(visible.value, currentPage.value, PAGE_SIZE))
-watch([view, query, tag], () => {
+watch([view, query], () => {
   page.value = 1
 })
 
@@ -167,22 +162,6 @@ async function setStatus(idea: IdeaOut, status: 'idea' | 'archived'): Promise<vo
           </Button>
           <slot name="actions" />
         </div>
-      </div>
-
-      <div
-        v-if="tags.length"
-        class="flex flex-wrap items-center gap-1"
-      >
-        <span class="text-muted-foreground text-xs">标签：</span>
-        <Badge
-          v-for="t in tags"
-          :key="t"
-          class="cursor-pointer"
-          :variant="tag === t ? 'default' : 'outline'"
-          @click="tag = tag === t ? null : t"
-        >
-          {{ t }}
-        </Badge>
       </div>
     </div>
 

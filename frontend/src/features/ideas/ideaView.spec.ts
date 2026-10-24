@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { IdeaOut } from '@/types/api'
 import {
   SCORE_DIMENSIONS,
-  allTags,
   emptyDraft,
   draftFromIdea,
   draftToPayload,
@@ -63,26 +62,20 @@ describe('parseTags', () => {
   })
 })
 
-describe('filterIdeas / allTags', () => {
+describe('filterIdeas', () => {
   const ideas = [
     idea({ id: 'a', title: '排序', tags: ['算法'] }),
     idea({ id: 'b', title: '黑洞', pitch: '视界', tags: ['物理'] }),
     idea({ id: 'c', title: '哈希表', pitch: null, counterintuitive: null, tags: ['算法', '数据结构'] }),
   ]
 
-  it('按标签筛选', () => {
-    expect(filterIdeas(ideas, { query: '', tag: '算法' }).map((i) => i.id)).toEqual(['a', 'c'])
-  })
   it('按关键词匹配标题、卖点、反直觉点、标签（不区分大小写）', () => {
-    expect(filterIdeas(ideas, { query: '视界', tag: null }).map((i) => i.id)).toEqual(['b'])
-    expect(filterIdeas(ideas, { query: '数据', tag: null }).map((i) => i.id)).toEqual(['c'])
-    expect(filterIdeas([idea({ title: 'Hash' })], { query: 'hASH', tag: null })).toHaveLength(1)
+    expect(filterIdeas(ideas, { query: '视界' }).map((i) => i.id)).toEqual(['b'])
+    expect(filterIdeas(ideas, { query: '数据' }).map((i) => i.id)).toEqual(['c'])
+    expect(filterIdeas([idea({ title: 'Hash' })], { query: 'hASH' })).toHaveLength(1)
   })
   it('没有条件时原样返回', () => {
-    expect(filterIdeas(ideas, { query: ' ', tag: null })).toHaveLength(3)
-  })
-  it('allTags 去重并按出现次数从多到少排序', () => {
-    expect(allTags(ideas)).toEqual(['算法', '物理', '数据结构'])
+    expect(filterIdeas(ideas, { query: ' ' })).toHaveLength(3)
   })
 })
 

@@ -28,26 +28,15 @@ export function parseTags(input: string): string[] {
 
 export interface IdeaFilter {
   query: string
-  tag: string | null
 }
 
 export function filterIdeas(ideas: readonly IdeaOut[], filter: IdeaFilter): IdeaOut[] {
   const needle = filter.query.trim().toLowerCase()
   return ideas.filter((idea) => {
-    if (filter.tag !== null && !idea.tags.includes(filter.tag)) return false
     if (!needle) return true
     const haystacks = [idea.title, idea.pitch ?? '', idea.counterintuitive ?? '', ...idea.tags]
     return haystacks.some((text) => text.toLowerCase().includes(needle))
   })
-}
-
-/** 出现过的标签，按出现次数从多到少（次数相同保持首次出现顺序）。 */
-export function allTags(ideas: readonly IdeaOut[]): string[] {
-  const counts = new Map<string, number>()
-  for (const idea of ideas) {
-    for (const tag of idea.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1)
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag)
 }
 
 /** 编辑/新建对话框里的表单状态：文本字段都是字符串，标签是一个输入框。 */
